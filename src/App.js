@@ -68,7 +68,9 @@ import ImeiConflictsPage from './pages/ImeiConflictsPage';
 import InvoicesPage from './pages/InvoicesPage';
 import WholesaleInvoicesPage from './pages/WholesaleInvoicesPage';
 import WarehouseInvoicesPage from './pages/WarehouseInvoicesPage';
+import TenantsPage from './pages/TenantsPage';
 import * as authApi from './api/auth';
+import * as tenantsApi from './api/tenants';
 import { loginSuccess, setGrants, setInitialized, logout } from './store/authSlice';
 import * as settingsApi from './api/settings';
 import { setAllSettings } from './store/settingsSlice';
@@ -89,6 +91,7 @@ function App() {
   const settings = useSelector(s => s.settings);
   const userName = useSelector(s => s.auth.user?.name || '');
   const isAuthedNow = useSelector(s => s.auth.isAuthenticated);
+  const authTenantId = useSelector(s => s.auth.user?.tenantId || '');
   const clientAppName = settings?.clientAppName;
   const appName = settings?.appName;
   const clientLogoUrl = settings?.clientLogoUrl;
@@ -204,7 +207,40 @@ function App() {
   }, [dispatch]);
   useEffect(() => {
     (async () => {
+      if (!isAuthed) return;
       try {
+        const isMaster = String(authTenantId || '').toLowerCase() === 'master';
+        const meta = await tenantsApi.me().catch(() => ({}));
+        if (!isMaster && meta && typeof meta === 'object') {
+          dispatch(setAllSettings({
+            clientAppName: meta.clientAppName || meta.name || '',
+            clientLogoUrl: meta.logo || '',
+            themeColor: meta.themeColor || '',
+            subscriptionPlan: meta.subscriptionPlan || 'basic',
+            subscriptionExpiresAt: meta.subscriptionExpiresAt || null
+          }));
+        } else {
+          dispatch(setAllSettings({
+            clientAppName: '',
+            clientLogoUrl: '',
+            themeColor: '',
+            subscriptionPlan: 'enterprise',
+            subscriptionExpiresAt: null
+          }));
+        }
+        try {
+          const root = document.documentElement;
+          const color = !isMaster && meta?.themeColor ? String(meta.themeColor) : '';
+          if (color) {
+            root.style.setProperty('--brand', color);
+            root.style.setProperty('--sidebar-bg', color);
+            root.style.setProperty('--active', color);
+          } else {
+            root.style.removeProperty('--brand');
+            root.style.removeProperty('--sidebar-bg');
+            root.style.removeProperty('--active');
+          }
+        } catch {}
         const remote = await settingsApi.get();
         if (remote && Object.keys(remote).length > 0) {
           dispatch(setAllSettings(remote));
@@ -223,7 +259,7 @@ function App() {
         console.error('Settings init error:', e);
       }
     })();
-  }, [dispatch]);
+  }, [dispatch, isAuthed, authTenantId]);
   useEffect(() => {
     (async () => {
       if (!isAuthed) return;
@@ -471,6 +507,7 @@ function App() {
             <Route path="/refund-approvals" element={<ProtectedRoute feature="modules.refundApprovals" roles={['Admin','Manager','SuperAdmin']} grant="approve_refunds"><RefundApprovalsPage /></ProtectedRoute>} />
             <Route path="/stock-records" element={<ProtectedRoute feature="admin.stockRecords" roles={['Admin','SuperAdmin']} grant={['view_stock_records','see_stock_records']}><StockRecordsPage /></ProtectedRoute>} />
             <Route path="/users" element={<ProtectedRoute feature="admin.users" roles={['Admin','SuperAdmin']} grant={['view_users','see_users']}><UsersPage /></ProtectedRoute>} />
+            <Route path="/tenants" element={<ProtectedRoute roles={['SuperAdmin']}><TenantsPage /></ProtectedRoute>} />
             <Route path="/cashdrawer" element={<ProtectedRoute feature="admin.cashDrawer" roles={['Admin','Manager','Cashier']} grant={['view_cashdrawer','see_cashdrawer']}><CashDrawerPage /></ProtectedRoute>} />
             <Route path="/config" element={<ProtectedRoute feature="admin.config" roles={['Admin','Manager']} grant={['view_config','see_config']}><ConfigSettingsPage /></ProtectedRoute>} />
             <Route path="/audit" element={<ProtectedRoute feature="admin.audit" roles={['SuperAdmin']} grant={['view_audit','see_audit']}><AuditLogPage /></ProtectedRoute>} />

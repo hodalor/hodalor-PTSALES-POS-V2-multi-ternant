@@ -10,6 +10,7 @@ import { getApiBase } from '../api/client';
 
 function LoginPage() {
   const [name, setName] = useState('');
+  const [tenantId, setTenantId] = useState('master');
   const [pin, setPin] = useState('');
   const [remember, setRemember] = useState(true);
   const [captchaInput, setCaptchaInput] = useState('');
@@ -35,6 +36,8 @@ function LoginPage() {
     try {
       const saved = localStorage.getItem('ptSales:rememberName');
       if (saved) setName(saved);
+      const savedTenantId = localStorage.getItem('ptSales:tenantId');
+      if (savedTenantId) setTenantId(savedTenantId);
     } catch {}
   }, []);
 
@@ -59,7 +62,7 @@ function LoginPage() {
   }, [expiresAt, regenerateCaptcha]);
 
   async function doServerLogin(u, p) {
-    const resp = await authApi.login({ username: u, pin: p });
+    const resp = await authApi.login({ username: u, pin: p, tenantId });
     try { localStorage.setItem('ptSales:authToken', resp.token); } catch {}
     return resp;
   }
@@ -73,7 +76,7 @@ function LoginPage() {
     try {
       const raw = localStorage.getItem('ptSales:offlineCreds');
       const map = raw ? JSON.parse(raw) : {};
-      const rec = map && typeof map === 'object' ? map[String(u)] : null;
+      const rec = map && typeof map === 'object' ? map[`${String(tenantId || 'master')}:${String(u)}`] : null;
       if (!rec) return null;
       const h = await hashPin(p);
       if (rec.pinHash !== h) return null;
@@ -108,7 +111,7 @@ function LoginPage() {
     } catch {}
     setResetLoading(true);
     try {
-      const resp = await authApi.login({ username: adminName, pin: adminPin });
+      const resp = await authApi.login({ username: adminName, pin: adminPin, tenantId });
       const role = String(resp?.role || '').toLowerCase();
       if (role !== 'admin' && role !== 'superadmin') {
         toast.show('Only Admin/SuperAdmin can reset PIN', { type: 'error' });
@@ -147,11 +150,13 @@ function LoginPage() {
     }
     setLoading(true);
     let role = null;
+    let grants = [];
     let landing = '/pos';
     let user = null;
     try {
       const resp = await doServerLogin(name, pin);
       role = resp.role;
+      grants = Array.isArray(resp.grants) ? resp.grants : [];
       landing = resp.landing || landing;
       user = resp.user;
       try { sessionStorage.setItem('ptSales:sessionPin', pin); } catch {}
@@ -159,7 +164,7 @@ function LoginPage() {
         const h = await hashPin(pin);
         const raw = localStorage.getItem('ptSales:offlineCreds');
         const map = raw ? JSON.parse(raw) : {};
-        map[String(name)] = { pinHash: h, role, user };
+        map[`${String(tenantId || 'master')}:${String(name)}`] = { pinHash: h, role, user };
         localStorage.setItem('ptSales:offlineCreds', JSON.stringify(map));
       } catch {}
     } catch (e) {
@@ -187,16 +192,18 @@ function LoginPage() {
         return;
       }
       role = offline.role;
+      grants = Array.isArray(offline.grants) ? offline.grants : [];
       user = offline.user;
       landing = offline.landing || landing;
       try { localStorage.setItem('ptSales:authToken', 'offline'); } catch {}
     }
+    try { localStorage.setItem('ptSales:tenantId', String(user?.tenantId || tenantId || 'master')); } catch {}
     if (remember) {
       try { localStorage.setItem('ptSales:rememberName', name); } catch {}
     } else {
       try { localStorage.removeItem('ptSales:rememberName'); } catch {}
     }
-    dispatch(loginSuccess({ user, role }));
+    dispatch(loginSuccess({ user, role, grants }));
     navigate(from || landing, { replace: true });
   }
 
@@ -212,6 +219,7 @@ function LoginPage() {
           </div>
         </div>
         <form onSubmit={handleSubmit} className="login-form">
+          <input placeholder="tenant id (use master for superadmin)" value={tenantId} onChange={e => setTenantId(e.target.value)} />
           <input placeholder="username" value={name} onChange={e => setName(e.target.value)} />
           <input placeholder="PIN (4-6 digits)" type="password" value={pin} onChange={e => setPin(e.target.value)} />
           <div className="captcha-row">

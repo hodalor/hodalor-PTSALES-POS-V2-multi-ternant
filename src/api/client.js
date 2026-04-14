@@ -1,5 +1,17 @@
 const LS_KEY = 'apiBaseUrl';
 
+function readJwtPayload(token) {
+  try {
+    const raw = String(token || '').split('.')[1] || '';
+    if (!raw) return null;
+    const normalized = raw.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = normalized.padEnd(normalized.length + ((4 - normalized.length % 4) % 4), '=');
+    return JSON.parse(atob(padded));
+  } catch {
+    return null;
+  }
+}
+
 export function getApiBase() {
   const fromLs = localStorage.getItem(LS_KEY);
   if (fromLs) return fromLs.replace(/\/+$/,'');
@@ -22,14 +34,21 @@ export async function fetchJson(path, opts = {}) {
   const ac = new AbortController();
   const tid = timeoutMs > 0 ? setTimeout(() => { try { ac.abort(); } catch {} }, timeoutMs) : null;
   let roleHeader = {};
+  let tokenPayload = null;
   try {
+    const token = localStorage.getItem('ptSales:authToken');
+    tokenPayload = readJwtPayload(token);
+    const tenantId = tokenPayload?.tenantId || localStorage.getItem('ptSales:tenantId') || '';
+    if (tenantId) roleHeader['X-Tenant-Id'] = String(tenantId);
     const raw = localStorage.getItem('ptSales:state');
     if (raw) {
       const st = JSON.parse(raw);
-      const role = st?.auth?.role;
-      const user = st?.auth?.user?.name;
+      const role = tokenPayload?.role || st?.auth?.role;
+      const user = tokenPayload?.name || st?.auth?.user?.name;
+      const scopedTenantId = tokenPayload?.tenantId || st?.auth?.user?.tenantId || tenantId || '';
       if (role) roleHeader['X-Role'] = role;
       if (user) roleHeader['X-User'] = user;
+      if (scopedTenantId) roleHeader['X-Tenant-Id'] = String(scopedTenantId);
     }
   } catch {}
   let authHeader = {};

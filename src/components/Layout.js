@@ -20,6 +20,7 @@ function Layout() {
   const [installEvt, setInstallEvt] = useState(null);
   const [showInstall, setShowInstall] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const auth = useSelector(s => s.auth);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem('ptSales:sidebarCollapsed') === '1'; } catch { return false; }
   });
@@ -94,6 +95,9 @@ function Layout() {
       });
     }
   }
+  const expiryTs = settings?.subscriptionExpiresAt ? new Date(settings.subscriptionExpiresAt).getTime() : 0;
+  const isMaster = String(auth.user?.tenantId || '').toLowerCase() === 'master';
+  const daysLeft = expiryTs ? Math.ceil((expiryTs - Date.now()) / (24 * 3600 * 1000)) : null;
   return (
     <div className={`layout ${sidebarOpen ? 'sidebar-open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
       <Sidebar collapsed={sidebarCollapsed} />
@@ -130,6 +134,14 @@ function Layout() {
               >
                 Not now
               </button>
+            </div>
+          </div>
+        )}
+        {!isMaster && daysLeft != null && (
+          <div className="card" style={{ margin: '8px 16px', padding: 12, background: daysLeft < 0 ? '#fee2e2' : daysLeft <= 14 ? '#fef3c7' : '#ecfeff' }}>
+            <div style={{ fontWeight: 700 }}>Subscription</div>
+            <div style={{ color: '#475569', fontSize: 13 }}>
+              {daysLeft < 0 ? 'Subscription expired. Contact your super admin.' : `Plan: ${String(settings.subscriptionPlan || 'basic')} • ${daysLeft} day(s) left`}
             </div>
           </div>
         )}

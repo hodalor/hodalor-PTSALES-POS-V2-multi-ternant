@@ -12,11 +12,11 @@ function ProtectedRoute({ roles, grant, feature, children }) {
   if (!auth.isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
-  if (feature && !isFeatureEnabled(settings, feature)) {
+  const isSuper = String(auth.role || '').toLowerCase() === 'superadmin' && String(auth.user?.tenantId || '').toLowerCase() === 'master';
+  if (!isSuper && feature && !isFeatureEnabled(settings, feature)) {
     const fallback = location.pathname === '/pos' ? '/dashboard' : '/pos';
     return <Navigate to={fallback} replace />;
   }
-  const isSuper = String(auth.role || '').toLowerCase() === 'superadmin';
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
   function has(g) {
     if (!g) return false;

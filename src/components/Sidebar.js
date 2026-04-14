@@ -538,6 +538,12 @@ function AdminGroup() {
             <span className="sidebar-text">Users</span>
           </NavLink>
           )}
+          {role === 'SuperAdmin' && (
+          <NavLink to="/tenants" className="sidebar-link" title="Tenants">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M4 20V8l8-4 8 4v12" stroke="currentColor" strokeWidth="2"/><path d="M9 20v-5h6v5" stroke="currentColor" strokeWidth="2"/></svg>
+            <span className="sidebar-text">Tenants</span>
+          </NavLink>
+          )}
           {isFeatureEnabled(settings, 'admin.manual') && (
           <NavLink to="/manual" className="sidebar-link" title="Manual">
             <svg viewBox="0 0 24 24" fill="none"><path d="M5 4h14v16H5z" stroke="currentColor" strokeWidth="2"/><path d="M7 8h10M7 12h10M7 16h6" stroke="currentColor" strokeWidth="2"/></svg>

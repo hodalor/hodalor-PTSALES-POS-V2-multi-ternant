@@ -33,6 +33,7 @@ function ConfigSettingsPage() {
   const roleLower = String(auth.role || '').toLowerCase();
   const canManageBranches = roleLower === 'admin' || roleLower === 'superadmin';
   const isSuperAdmin = roleLower === 'superadmin';
+  const isMasterSuperAdmin = isSuperAdmin && String(auth.user?.tenantId || '').toLowerCase() === 'master';
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);
   const setSetting = (key, value) => dispatch(setAllSettings({ ...(settings || {}), [key]: value }));
   const [apiBase, setApiBaseState] = useState(() => {
@@ -226,7 +227,7 @@ function ConfigSettingsPage() {
         <div style={{ display: 'grid', gap: 16 }}>
           <div className="card">
             <h2 className="section-title">App Identity</h2>
-            {isSuperAdmin && (
+            {isMasterSuperAdmin && (
             <>
               <label>
                 App Name
@@ -270,6 +271,15 @@ function ConfigSettingsPage() {
                 Receipt Brand Name (Receipt header)
                 <input className="input" value={settings.receiptBrandName || ''} onChange={e => dispatch(setReceiptBrandName(e.target.value))} style={{ display: 'block', width: '100%', marginTop: 6 }} />
               </label>
+              <label style={{ display: 'block', marginTop: 8 }}>
+                Theme Color
+                <input className="input" type="color" value={settings.themeColor || '#16a34a'} onChange={e => setSetting('themeColor', e.target.value)} style={{ display: 'block', width: '100%', marginTop: 6, height: 44 }} />
+              </label>
+              {String(auth.user?.tenantId || '').toLowerCase() !== 'master' && (
+                <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: '#f8fafc', color: '#475569' }}>
+                  Plan: {String(settings.subscriptionPlan || 'basic')}{settings.subscriptionExpiresAt ? ` • Expires ${new Date(settings.subscriptionExpiresAt).toLocaleDateString()}` : ''}
+                </div>
+              )}
               <div style={{ marginTop: 12 }}>
                 <h3 className="section-title" style={{ margin: '8px 0' }}>Client App Logo</h3>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -504,7 +514,7 @@ function ConfigSettingsPage() {
             Receipt Footer
             <input className="input" value={settings.receiptFooter} onChange={e => dispatch(setReceiptFooter(e.target.value))} style={{ display: 'block', width: '100%', marginTop: 6 }} />
           </label>
-          {isSuperAdmin && (
+          {isMasterSuperAdmin && (
             <label style={{ display: 'block', marginTop: 12 }}>
               <input type="checkbox" checked={!!settings.drawerOpenOnCash} onChange={e => dispatch(setDrawerOpenOnCash(e.target.checked))} />
               <span style={{ marginLeft: 8 }}>Trigger Drawer Open on Cash payment</span>
@@ -640,7 +650,7 @@ function ConfigSettingsPage() {
               </ul>
             </div>
           </div>
-          {isSuperAdmin && (
+          {isMasterSuperAdmin && (
             <div className="card">
               <h3 className="section-title" style={{ margin: '8px 0' }}>Background Refresh</h3>
               <label>
