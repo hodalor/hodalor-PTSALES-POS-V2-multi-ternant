@@ -5,6 +5,31 @@ import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
 const r = Router();
+const TENANT_ADMIN_ALLOWED_KEYS = new Set([
+  'clientAppName',
+  'clientLogoUrl',
+  'receiptBrandName',
+  'receiptHeader',
+  'receiptFooter',
+  'businessPhone',
+  'businessWebsite',
+  'businessTpin',
+  'receiptQrBaseUrl',
+  'invoiceCompanyAddress',
+  'invoiceFooter',
+  'invoiceDeclaration',
+  'invoiceSignatoryLabel',
+  'invoiceTitle',
+  'invoiceWordsLabel',
+  'invoiceGeneratedNote',
+  'invoicePaidStampEnabled',
+  'invoicePaidStampLabel',
+  'invoicePaidStampThankYou',
+  'invoicePaidStampShowDate',
+  'invoicePaidStampColor',
+  'themeColor',
+  'currentBranchId'
+]);
 
 r.use(requireAuth);
 
@@ -17,8 +42,16 @@ r.get('/', async (req, res) => {
 r.put('/', requireAdmin, async (req, res) => {
   const data = { ...(req.body || {}) };
   const role = String(req.user?.role || '').toLowerCase();
+  const isMasterSuperAdmin = role === 'superadmin' && String(req.user?.tenantId || req.tenantId || '').toLowerCase() === 'master';
   if (Object.prototype.hasOwnProperty.call(data, 'featureFlags') && role !== 'superadmin') {
     return res.status(403).json({ error: 'Forbidden' });
+  }
+  if (!isMasterSuperAdmin) {
+    const attemptedKeys = Object.keys(data || {});
+    const forbidden = attemptedKeys.filter((key) => !TENANT_ADMIN_ALLOWED_KEYS.has(key) && key !== 'featureFlags' && key !== 'userGrants');
+    if (forbidden.length > 0) {
+      return res.status(403).json({ error: `Forbidden keys: ${forbidden.join(', ')}` });
+    }
   }
   const prev = await Settings.findOne({ key: 'default' });
   const before = prev && prev.data ? prev.data : {};

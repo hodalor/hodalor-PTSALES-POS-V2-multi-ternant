@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createTenantAwareModel } from './_tenantModel.js';
 
 const ServerLogSchema = new mongoose.Schema({
   level: { type: String, default: 'info' },
@@ -16,5 +17,6 @@ const ServerLogSchema = new mongoose.Schema({
 
 ServerLogSchema.index({ ts: -1 });
 
-export default mongoose.model('ServerLog', ServerLogSchema);
-
+const { model, modelFor } = createTenantAwareModel('ServerLog', ServerLogSchema);
+export { modelFor };
+export default model;

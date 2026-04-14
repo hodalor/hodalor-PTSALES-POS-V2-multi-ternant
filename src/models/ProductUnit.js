@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createTenantAwareModel } from './_tenantModel.js';
 
 const ProductUnitSchema = new mongoose.Schema({
   productId: { type: String, required: true, index: true },
@@ -21,4 +22,6 @@ ProductUnitSchema.index({ imei: 1, status: 1 });
 ProductUnitSchema.index({ serialNumber: 1, status: 1 });
 ProductUnitSchema.index({ branchId: 1, status: 1 });
 
-export default mongoose.model('ProductUnit', ProductUnitSchema);
+const { model, modelFor } = createTenantAwareModel('ProductUnit', ProductUnitSchema);
+export { modelFor };
+export default model;

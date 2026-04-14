@@ -3,9 +3,12 @@ import cors from 'cors';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import connectDb from './config/db.js';
+import { runWithRequestContext } from './config/requestContext.js';
 import router from './routes/index.js';
 import { parseAuth } from './middleware/auth.js';
+import { tenantContext } from './middleware/tenant.js';
 import ServerLog from './models/ServerLog.js';
+import Settings from './models/Settings.js';
 
 dotenv.config();
 
@@ -18,6 +21,27 @@ if (process.env.NODE_ENV !== 'production') {
   }));
 }
 app.use(parseAuth);
+app.use(tenantContext);
+app.use((req, _res, next) => runWithRequestContext({
+  db: req.db || null,
+  tenantId: req.tenantId || req.user?.tenantId || 'master',
+  user: req.user || null
+}, next));
+app.use('/api', async (req, res, next) => {
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').toLowerCase();
+  const role = String(req.user?.role || '').toLowerCase();
+  if (role === 'superadmin' && tenantId === 'master') return next();
+  const feature = featureForApiPath(req.path || '');
+  if (!feature) return next();
+  try {
+    const doc = await Settings.findOne({ key: 'default' });
+    const flags = doc?.data?.featureFlags || {};
+    if (flags[feature] === false) {
+      return res.status(403).json({ error: 'Feature not enabled for this tenant' });
+    }
+  } catch {}
+  next();
+});
 
 function errorMeaning(code) {
   const c = String(code || '');
@@ -27,6 +51,33 @@ function errorMeaning(code) {
   if (c === 'ECONNREFUSED') return 'Connection refused';
   if (c === 'ETIMEDOUT') return 'Operation timed out';
   if (c === 'ENOENT') return 'Resource not found on filesystem';
+  return '';
+}
+
+function featureForApiPath(pathname) {
+  const path = String(pathname || '');
+  if (path.startsWith('/auth') || path.startsWith('/tenants')) return '';
+  if (path.startsWith('/products')) return 'modules.products';
+  if (path.startsWith('/branches')) return 'admin.config';
+  if (path.startsWith('/sales')) return 'modules.sales';
+  if (path.startsWith('/refunds')) return 'modules.refunds';
+  if (path.startsWith('/stock')) return 'modules.inventory';
+  if (path.startsWith('/suppliers')) return 'modules.suppliers';
+  if (path.startsWith('/customers')) return 'modules.customers';
+  if (path.startsWith('/settings')) return 'admin.config';
+  if (path.startsWith('/users')) return 'admin.users';
+  if (path.startsWith('/server-logs')) return 'admin.serverLogs';
+  if (path.startsWith('/audits')) return 'admin.audit';
+  if (path.startsWith('/cashsessions')) return 'admin.cashDrawer';
+  if (path.startsWith('/expenses')) return 'modules.expenses';
+  if (path.startsWith('/invoices')) return 'modules.invoices';
+  if (path.startsWith('/purchases')) return 'modules.purchases';
+  if (path.startsWith('/transfers')) return 'modules.transfers';
+  if (path.startsWith('/adjustments')) return 'modules.adjustments';
+  if (path.startsWith('/approvals')) return 'modules.approvalsCenter';
+  if (path.startsWith('/wholesale')) return 'modules.wholesalePos';
+  if (path.startsWith('/credits')) return 'modules.creditControl';
+  if (path.startsWith('/product-units')) return 'modules.products';
   return '';
 }
 

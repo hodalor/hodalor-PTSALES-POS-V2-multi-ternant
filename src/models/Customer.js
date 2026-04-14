@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createTenantAwareModel } from './_tenantModel.js';
 
 const CustomerSchema = new mongoose.Schema({
   clientId: { type: String, unique: true, sparse: true, index: true },
@@ -24,4 +25,6 @@ const CustomerSchema = new mongoose.Schema({
   creditRank: { type: String, default: 'Bronze' }
 }, { timestamps: true });
 
-export default mongoose.model('Customer', CustomerSchema);
+const { model, modelFor } = createTenantAwareModel('Customer', CustomerSchema);
+export { modelFor };
+export default model;

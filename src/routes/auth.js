@@ -4,20 +4,31 @@ import User from '../models/User.js';
 import { verifyPin } from '../utils/pin.js';
 import { requireAuth } from '../middleware/auth.js';
 import Settings from '../models/Settings.js';
+import Tenant from '../models/Tenant.js';
 
 const r = Router();
 
 function toLanding(role) {
   const rl = String(role || '');
-  if (rl === 'SuperAdmin' || rl === 'Admin' || rl === 'Manager') return '/dashboard';
+  if (rl === 'SuperAdmin') return '/tenants';
+  if (rl === 'Admin' || rl === 'Manager') return '/dashboard';
   if (rl === 'Inventory Staff') return '/inventory';
   if (rl === 'Auditor') return '/reports';
   return '/pos';
 }
 
 r.post('/login', async (req, res) => {
-  const { username, pin } = req.body || {};
-  if (!username || !/^\d{4,6}$/.test(String(pin || ''))) return res.status(400).json({ error: 'Invalid input' });
+  const { username, pin, tenantId } = req.body || {};
+  const loginTenantId = String(tenantId || req.tenantId || 'master').trim() || 'master';
+  if (!username || !/^\d{4,6}$/.test(String(pin || '')) || !loginTenantId) return res.status(400).json({ error: 'Invalid input' });
+  if (String(loginTenantId).toLowerCase() !== 'master') {
+    const meta = await Tenant.findOne({ tenantId: loginTenantId });
+    if (!meta) return res.status(404).json({ error: 'Tenant not found' });
+    if (meta.disabled) return res.status(403).json({ error: 'Tenant disabled' });
+    if (meta.subscriptionExpiresAt && new Date(meta.subscriptionExpiresAt).getTime() < Date.now()) {
+      return res.status(403).json({ error: 'Subscription expired' });
+    }
+  }
   const u = await User.findOne({ name: username });
   if (!u || !u.active) return res.status(401).json({ error: 'Invalid credentials' });
   const ok = await verifyPin(String(pin), u.pinHash);
@@ -35,6 +46,7 @@ r.post('/login', async (req, res) => {
     sub: String(u._id),
     name: u.name,
     role: u.role,
+    tenantId: loginTenantId,
     branchId: u.branchId || 'main',
     assignedBranches: u.assignedBranches,
     grants
@@ -45,7 +57,7 @@ r.post('/login', async (req, res) => {
     role: u.role,
     grants,
     landing: toLanding(u.role),
-    user: { name: u.name, branchId: u.branchId || 'main', assignedBranches: u.assignedBranches || (u.branchId ? [u.branchId] : []) }
+    user: { name: u.name, tenantId: loginTenantId, branchId: u.branchId || 'main', assignedBranches: u.assignedBranches || (u.branchId ? [u.branchId] : []) }
   });
 });
 
@@ -56,6 +68,6 @@ r.get('/me', requireAuth, async (req, res) => {
   res.json({
     role: u.role || null,
     grants: Array.isArray(u.grants) ? u.grants : [],
-    user: { name: u.name, branchId: u.branchId || 'main', assignedBranches: u.assignedBranches || (u.branchId ? [u.branchId] : []) }
+    user: { name: u.name, tenantId: u.tenantId || req.tenantId || 'master', branchId: u.branchId || 'main', assignedBranches: u.assignedBranches || (u.branchId ? [u.branchId] : []) }
   });
 });

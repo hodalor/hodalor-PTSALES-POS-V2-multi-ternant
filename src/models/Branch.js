@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createTenantAwareModel } from './_tenantModel.js';
 
 const BranchSchema = new mongoose.Schema({
   id: { type: String, required: true, unique: true },
@@ -7,4 +8,6 @@ const BranchSchema = new mongoose.Schema({
   branchType: { type: String, enum: ['retail', 'wholesale', 'warehouse'], default: 'retail', index: true }
 }, { timestamps: true });
 
-export default mongoose.model('Branch', BranchSchema);
+const { model, modelFor } = createTenantAwareModel('Branch', BranchSchema);
+export { modelFor };
+export default model;

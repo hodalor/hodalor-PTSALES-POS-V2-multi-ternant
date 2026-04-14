@@ -27,6 +27,13 @@ export function requireAdmin(req, res, next) {
   return res.status(403).json({ error: 'Forbidden' });
 }
 
+export function requireSuperAdmin(req, res, next) {
+  const role = String(req.user?.role || '').toLowerCase();
+  const tenantId = String(req.user?.tenantId || req.tenantId || '').toLowerCase();
+  if (role === 'superadmin' && (!tenantId || tenantId === 'master')) return next();
+  return res.status(403).json({ error: 'SuperAdmin only' });
+}
+
 export function requireRole(roles = []) {
   const set = new Set((roles || []).map(r => String(r || '').toLowerCase()));
   return (req, res, next) => {
@@ -55,5 +62,21 @@ export function requireRoleOrPerm(roles = [], perm = '') {
       } catch {}
     }
     return res.status(403).json({ error: 'Forbidden' });
+  };
+}
+
+export function requireFeature(featureKey = '') {
+  const key = String(featureKey || '').trim();
+  return async (req, res, next) => {
+    const role = String(req.user?.role || '').toLowerCase();
+    const tenantId = String(req.user?.tenantId || req.tenantId || '').toLowerCase();
+    if (role === 'superadmin' && (!tenantId || tenantId === 'master')) return next();
+    if (!key) return next();
+    try {
+      const doc = await Settings.findOne({ key: 'default' });
+      const flags = doc?.data?.featureFlags || {};
+      if (flags[key] === false) return res.status(403).json({ error: 'Feature not enabled for this tenant' });
+    } catch {}
+    return next();
   };
 }

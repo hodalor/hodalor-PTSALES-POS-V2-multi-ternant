@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createTenantAwareModel } from './_tenantModel.js';
 
 const PurchaseRequestItemSchema = new mongoose.Schema({
   lineId: { type: String, default: '' },
@@ -42,4 +43,6 @@ const PurchaseRequestSchema = new mongoose.Schema({
 PurchaseRequestSchema.index({ branchId: 1, status: 1, createdAt: -1 });
 PurchaseRequestSchema.index({ clientId: 1 }, { unique: true, sparse: true });
 
-export default mongoose.model('PurchaseRequest', PurchaseRequestSchema);
+const { model, modelFor } = createTenantAwareModel('PurchaseRequest', PurchaseRequestSchema);
+export { modelFor };
+export default model;

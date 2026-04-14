@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createTenantAwareModel } from './_tenantModel.js';
 
 const SaleItemSchema = new mongoose.Schema({
   productId: String,
@@ -51,4 +52,6 @@ const SaleSchema = new mongoose.Schema({
 
 SaleSchema.index({ created_at: -1 });
 
-export default mongoose.model('Sale', SaleSchema);
+const { model, modelFor } = createTenantAwareModel('Sale', SaleSchema);
+export { modelFor };
+export default model;

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createTenantAwareModel } from './_tenantModel.js';
 
 const InvoiceItemSchema = new mongoose.Schema({
   name: String,
@@ -44,4 +45,6 @@ const InvoiceSchema = new mongoose.Schema({
 
 InvoiceSchema.index({ createdAt: -1 });
 
-export default mongoose.model('Invoice', InvoiceSchema);
+const { model, modelFor } = createTenantAwareModel('Invoice', InvoiceSchema);
+export { modelFor };
+export default model;

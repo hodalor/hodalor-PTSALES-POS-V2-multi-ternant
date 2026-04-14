@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createTenantAwareModel } from './_tenantModel.js';
 
 const VariantSchema = new mongoose.Schema({
   id: { type: String, required: true },
@@ -55,4 +56,6 @@ const ProductSchema = new mongoose.Schema({
   minimumCreditPercentage: { type: Number, default: 0 }
 }, { timestamps: true, toJSON: { flattenMaps: true }, toObject: { flattenMaps: true } });
 
-export default mongoose.model('Product', ProductSchema);
+const { model, modelFor } = createTenantAwareModel('Product', ProductSchema);
+export { modelFor };
+export default model;

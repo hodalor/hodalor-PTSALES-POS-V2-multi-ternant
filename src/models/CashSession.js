@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createTenantAwareModel } from './_tenantModel.js';
 
 const MovementSchema = new mongoose.Schema({
   time: { type: Date, default: Date.now },
@@ -22,4 +23,6 @@ const CashSessionSchema = new mongoose.Schema({
 CashSessionSchema.index({ openedAt: -1 });
 CashSessionSchema.index({ cashierName: 1, isOpen: 1 });
 
-export default mongoose.model('CashSession', CashSessionSchema);
+const { model, modelFor } = createTenantAwareModel('CashSession', CashSessionSchema);
+export { modelFor };
+export default model;

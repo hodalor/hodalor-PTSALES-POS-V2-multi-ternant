@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createTenantAwareModel } from './_tenantModel.js';
 
 const SupplierSchema = new mongoose.Schema({
   clientId: { type: String, unique: true, sparse: true, index: true },
@@ -8,4 +9,6 @@ const SupplierSchema = new mongoose.Schema({
   email: String
 }, { timestamps: true });
 
-export default mongoose.model('Supplier', SupplierSchema);
+const { model, modelFor } = createTenantAwareModel('Supplier', SupplierSchema);
+export { modelFor };
+export default model;

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createTenantAwareModel } from './_tenantModel.js';
 
 const AdjustmentRequestItemSchema = new mongoose.Schema({
   lineId: { type: String, default: '' },
@@ -34,4 +35,6 @@ const AdjustmentRequestSchema = new mongoose.Schema({
 AdjustmentRequestSchema.index({ branchId: 1, status: 1, createdAt: -1 });
 AdjustmentRequestSchema.index({ clientId: 1 }, { unique: true, sparse: true });
 
-export default mongoose.model('AdjustmentRequest', AdjustmentRequestSchema);
+const { model, modelFor } = createTenantAwareModel('AdjustmentRequest', AdjustmentRequestSchema);
+export { modelFor };
+export default model;

@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createTenantAwareModel } from './_tenantModel.js';
 
 const CreditRepaymentSchema = new mongoose.Schema({
   creditSaleId: { type: String, required: true, index: true },
@@ -22,4 +23,6 @@ const CreditRepaymentSchema = new mongoose.Schema({
 
 CreditRepaymentSchema.index({ customerId: 1, status: 1, createdAt: -1 });
 
-export default mongoose.model('CreditRepayment', CreditRepaymentSchema);
+const { model, modelFor } = createTenantAwareModel('CreditRepayment', CreditRepaymentSchema);
+export { modelFor };
+export default model;

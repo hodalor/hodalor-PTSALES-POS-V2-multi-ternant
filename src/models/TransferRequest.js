@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createTenantAwareModel } from './_tenantModel.js';
 
 const TransferRequestItemSchema = new mongoose.Schema({
   lineId: { type: String, default: '' },
@@ -34,4 +35,6 @@ const TransferRequestSchema = new mongoose.Schema({
 TransferRequestSchema.index({ to: 1, status: 1, createdAt: -1 });
 TransferRequestSchema.index({ clientId: 1 }, { unique: true, sparse: true });
 
-export default mongoose.model('TransferRequest', TransferRequestSchema);
+const { model, modelFor } = createTenantAwareModel('TransferRequest', TransferRequestSchema);
+export { modelFor };
+export default model;

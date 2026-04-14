@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createTenantAwareModel } from './_tenantModel.js';
 
 const RefundRequestSchema = new mongoose.Schema({
   clientId: { type: String, unique: true, sparse: true, index: true },
@@ -25,4 +26,6 @@ const RefundRequestSchema = new mongoose.Schema({
   rejected_at: Date
 }, { timestamps: true });
 
-export default mongoose.model('RefundRequest', RefundRequestSchema);
+const { model, modelFor } = createTenantAwareModel('RefundRequest', RefundRequestSchema);
+export { modelFor };
+export default model;

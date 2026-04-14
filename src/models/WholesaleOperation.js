@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createTenantAwareModel } from './_tenantModel.js';
 
 const WholesaleOperationItemSchema = new mongoose.Schema({
   lineId: { type: String, default: '' },
@@ -64,4 +65,6 @@ WholesaleOperationSchema.index({ branchId: 1, status: 1, createdAt: -1 });
 WholesaleOperationSchema.index({ fromBranchId: 1, status: 1, createdAt: -1 });
 WholesaleOperationSchema.index({ toBranchId: 1, status: 1, createdAt: -1 });
 
-export default mongoose.model('WholesaleOperation', WholesaleOperationSchema);
+const { model, modelFor } = createTenantAwareModel('WholesaleOperation', WholesaleOperationSchema);
+export { modelFor };
+export default model;

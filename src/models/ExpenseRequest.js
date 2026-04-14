@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createTenantAwareModel } from './_tenantModel.js';
 
 const ExpenseRequestSchema = new mongoose.Schema({
   clientId: { type: String, unique: true, sparse: true, index: true },
@@ -21,4 +22,6 @@ const ExpenseRequestSchema = new mongoose.Schema({
 ExpenseRequestSchema.index({ branchId: 1, status: 1, createdAt: -1 });
 ExpenseRequestSchema.index({ clientId: 1 }, { unique: true, sparse: true });
 
-export default mongoose.model('ExpenseRequest', ExpenseRequestSchema);
+const { model, modelFor } = createTenantAwareModel('ExpenseRequest', ExpenseRequestSchema);
+export { modelFor };
+export default model;

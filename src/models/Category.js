@@ -1,7 +1,10 @@
 import mongoose from 'mongoose';
+import { createTenantAwareModel } from './_tenantModel.js';
 
 const CategorySchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true }
 }, { timestamps: true });
 
-export default mongoose.model('Category', CategorySchema);
+const { model, modelFor } = createTenantAwareModel('Category', CategorySchema);
+export { modelFor };
+export default model;

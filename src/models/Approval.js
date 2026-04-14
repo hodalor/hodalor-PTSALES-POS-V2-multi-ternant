@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createTenantAwareModel } from './_tenantModel.js';
 
 const ApprovalSchema = new mongoose.Schema({
   actionType: { type: String, required: true, index: true },
@@ -31,4 +32,6 @@ ApprovalSchema.index({ status: 1, actionType: 1, createdAt: -1 });
 ApprovalSchema.index({ actionType: 1, createdAt: -1 });
 ApprovalSchema.index({ referenceModel: 1, referenceId: 1 }, { unique: true });
 
-export default mongoose.model('Approval', ApprovalSchema);
+const { model, modelFor } = createTenantAwareModel('Approval', ApprovalSchema);
+export { modelFor };
+export default model;
