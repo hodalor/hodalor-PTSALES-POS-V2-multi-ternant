@@ -1,0 +1,857 @@
+import { useDispatch, useSelector } from 'react-redux';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { adjustStock } from '../store/productsSlice';
+import { useToast } from '../components/ToastProvider';
+import BranchSelect from '../components/BranchSelect';
+import { exportCsv, exportTablePdf } from '../utils/exporters';
+import * as adjustmentsApi from '../api/adjustments';
+import * as productUnitsApi from '../api/productUnits';
+import * as auditsApi from '../api/audits';
+import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
+import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
+import Modal from '../components/Modal';
+import { promptDialog } from '../utils/dialogs';
+import BarcodeScannerModal from '../components/BarcodeScannerModal';
+import { removeEntries as removeAuditEntries } from '../store/auditSlice';
+import InlineSpinner from '../components/InlineSpinner';
+
+function AdjustmentsPage() {
+  const products = useSelector(s => s.products.products);
+  const branches = useSelector(s => s.branches.branches);
+  const audit = useSelector(s => s.audit.entries);
+  const currentBranchId = useSelector(s => s.settings.currentBranchId);
+  const settings = useSelector(s => s.settings);
+  const auth = useSelector(s => s.auth);
+  const [productId, setProductId] = useState(products[0]?.id || '');
+  const [variantId, setVariantId] = useState('');
+  const [branchId, setBranchId] = useState(currentBranchId);
+  const [delta, setDelta] = useState(0);
+  const [serializedAdjustmentMode, setSerializedAdjustmentMode] = useState('increase');
+  const [serializedEntriesText, setSerializedEntriesText] = useState('');
+  const [serializedScanInput, setSerializedScanInput] = useState('');
+  const [serializedBatchMode, setSerializedBatchMode] = useState(true);
+  const [serializedCameraOpen, setSerializedCameraOpen] = useState(false);
+  const [serializedUnits, setSerializedUnits] = useState([]);
+  const [serializedUnitsQuery, setSerializedUnitsQuery] = useState('');
+  const [serializedLoading, setSerializedLoading] = useState(false);
+  const [remark, setRemark] = useState('');
+  const [savingAdjust, setSavingAdjust] = useState(false);
+  const [tab, setTab] = useState('initiate');
+  const [openModal, setOpenModal] = useState(false);
+  const [items, setItems] = useState([]);
+  const [statusFilter, setStatusFilter] = useState('pending');
+  const [loading, setLoading] = useState(false);
+  const [busyId, setBusyId] = useState(null);
+  const [detail, setDetail] = useState(null);
+  const dispatch = useDispatch();
+  const toast = useToast();
+  const serializedScanInputRef = useRef(null);
+  const offlineBackupAllowed = isOfflineBackupEnabled(settings);
+  useEffect(() => { setBranchId(currentBranchId); }, [currentBranchId]);
+
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [fActor, setFActor] = useState('');
+  const [fBranch, setFBranch] = useState(currentBranchId);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const roleLower = String(auth.role || '').toLowerCase();
+  const grants = Array.isArray(auth.grants) ? auth.grants : [];
+  function has(g) {
+    if (!g) return false;
+    if (roleLower === 'superadmin') return true;
+    return grants.includes(g);
+  }
+  const canAdjust = (['admin','manager','inventory staff'].includes(roleLower)) || has('add_adjustments');
+  const canApprove = (['admin','manager','superadmin'].includes(roleLower)) || has('approve_adjustments');
+  const canDeleteRecords = roleLower === 'superadmin';
+  const [selectedRecordIds, setSelectedRecordIds] = useState([]);
+  const [bulkAction, setBulkAction] = useState('');
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const selectedProduct = useMemo(() => products.find(p => p.id === productId) || null, [productId, products]);
+  const selectedTrackType = String(selectedProduct?.trackType || 'quantity');
+  const serializedEntries = useMemo(() => String(serializedEntriesText || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => {
+    const parts = line.split(/[,\t|]/).map(part => part.trim()).filter(Boolean);
+    return { imei: parts[0] || '', serialNumber: parts[1] || parts[0] || '' };
+  }), [serializedEntriesText]);
+
+  const byId = useMemo(() => {
+    const map = new Map();
+    branches.forEach(b => map.set(b.id, b.name || b.code || b.id));
+    return map;
+  }, [branches]);
+  useEffect(() => { setFBranch(currentBranchId); }, [currentBranchId]);
+  useEffect(() => { if (roleLower !== 'superadmin' && roleLower !== 'admin') setFBranch(branchId); }, [roleLower, branchId]);
+  const baseRows = useMemo(() => audit.filter(e => e.actionType === 'stock_adjust' || e.actionType === 'stock_damage_remove'), [audit]);
+  const actors = useMemo(() => Array.from(new Set(baseRows.map(e => e.actor).filter(Boolean))).sort(), [baseRows]);
+  const rows = useMemo(() => {
+    const fromTs = dateFrom ? new Date(dateFrom).getTime() : 0;
+    const toTs = dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER;
+    return baseRows.filter(e => {
+      const ts = new Date(e.ts).getTime();
+      if (ts < fromTs || ts > toTs) return false;
+      if (fActor && e.actor !== fActor) return false;
+      if (fBranch && (e.branchId || (e.details || {}).branchId) !== fBranch) return false;
+      return true;
+    }).map(e => {
+      const d = e.details || {};
+      const delta = e.actionType === 'stock_adjust' ? (Number(d.delta) || 0) : -Math.abs(Number(d.qty) || 0);
+      return {
+        id: e.id || e._id,
+        _id: e._id || e.id,
+        ts: e.ts,
+        actor: e.actor,
+        product: d.product || '',
+        variant: d.variant || '',
+        branchId: e.branchId || d.branchId || '',
+        delta,
+        type: e.actionType === 'stock_adjust' ? 'Adjust' : 'Damage/Expired',
+        remark: e.remark || ''
+      };
+    }).slice().reverse();
+  }, [baseRows, dateFrom, dateTo, fActor, fBranch]);
+
+  useEffect(() => {
+    if (selectedTrackType !== 'serialized') {
+      setSerializedUnits([]);
+      setSerializedUnitsQuery('');
+      return;
+    }
+    if (serializedAdjustmentMode === 'increase') {
+      setDelta(Math.max(0, serializedEntries.length));
+      return;
+    }
+    let alive = true;
+    async function run() {
+      if (!productId || !branchId) {
+        if (alive) setSerializedUnits([]);
+        return;
+      }
+      setSerializedLoading(true);
+      try {
+        const result = await productUnitsApi.listProductUnits({
+          productId,
+          variantId,
+          branchId,
+          inventoryType: 'retail',
+          status: 'in_stock',
+          query: serializedUnitsQuery,
+          pageSize: 50
+        });
+        if (!alive) return;
+        setSerializedUnits(prev => {
+          const selectedIds = new Set(prev.filter(unit => unit.selected).map(unit => unit._id));
+          const rows = (Array.isArray(result?.rows) ? result.rows : []).map(unit => ({ ...unit, selected: selectedIds.has(unit._id) }));
+          setDelta(-rows.filter(unit => unit.selected).length);
+          return rows;
+        });
+      } catch (e) {
+        if (!alive) return;
+        toast.show(String(e?.message || 'Failed to load serialized units'), { type: 'error' });
+        setSerializedUnits([]);
+      } finally {
+        if (alive) setSerializedLoading(false);
+      }
+    }
+    run();
+    return () => { alive = false; };
+  }, [branchId, productId, selectedTrackType, serializedAdjustmentMode, serializedEntries.length, serializedUnitsQuery, toast, variantId]);
+
+  function appendSerializedEntry(value) {
+    const text = String(value || '').trim();
+    if (!text) return;
+    const nextLines = String(serializedEntriesText || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    if (nextLines.some(line => {
+      const first = line.split(/[,\t|]/).map(part => part.trim()).filter(Boolean)[0] || '';
+      return first === text;
+    })) {
+      toast.show('This IMEI is already in the entry list', { type: 'error' });
+      return;
+    }
+    setSerializedEntriesText(prev => prev ? `${prev}\n${text}` : text);
+    setSerializedScanInput('');
+    if (serializedBatchMode) {
+      setTimeout(() => {
+        try { serializedScanInputRef.current?.focus(); } catch {}
+      }, 0);
+    }
+  }
+
+  async function deleteSelectedRecords() {
+    const ids = selectedRecordIds.filter(Boolean);
+    if (ids.length === 0) return;
+    const { confirmDialog } = await import('../utils/dialogs');
+    const ok = await confirmDialog(`Delete ${ids.length} selected adjustment record(s)?`);
+    if (!ok) return;
+    try {
+      setBulkDeleting(true);
+      await auditsApi.removeMany(ids);
+      dispatch(removeAuditEntries(ids));
+      setSelectedRecordIds([]);
+      setBulkAction('');
+      toast.show('Adjustment records deleted', { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to delete adjustment records'), { type: 'error' });
+    } finally {
+      setBulkDeleting(false);
+    }
+  }
+
+  function onExportCsv() {
+    const headers = [
+      { key: 'ts', label: 'Timestamp', value: r => new Date(r.ts).toLocaleString() },
+      { key: 'actor', label: 'Actor' },
+      { key: 'product', label: 'Product' },
+      { key: 'variant', label: 'Variant' },
+      { key: 'branch', label: 'Branch', value: r => byId.get(r.branchId) || r.branchId || '' },
+      { key: 'delta', label: 'Delta' },
+      { key: 'type', label: 'Type' },
+      { key: 'remark', label: 'Remark' }
+    ];
+    exportCsv('adjustments.csv', headers, rows);
+  }
+  function onExportPdf() {
+    const headers = [
+      { key: 'ts', label: 'Timestamp', value: r => new Date(r.ts).toLocaleString() },
+      { key: 'actor', label: 'Actor' },
+      { key: 'product', label: 'Product' },
+      { key: 'variant', label: 'Variant' },
+      { key: 'branch', label: 'Branch', value: r => byId.get(r.branchId) || r.branchId || '' },
+      { key: 'delta', label: 'Delta' },
+      { key: 'type', label: 'Type' },
+      { key: 'remark', label: 'Remark' }
+    ];
+    exportTablePdf('Adjustments', headers, rows);
+  }
+
+  async function adjust() {
+    if (savingAdjust) return;
+    if (!canAdjust) {
+      toast.show('Not authorized to adjust stock', { type: 'error' });
+      return;
+    }
+    const current = (() => {
+      if (!selectedProduct) return 0;
+      if (variantId) {
+        const v = (selectedProduct.variants || []).find(vv => vv.id === variantId);
+        return Number((v?.stockByBranch || {})[branchId] || 0);
+      }
+      return Number((selectedProduct.stockByBranch || {})[branchId] || 0);
+    })();
+    const nextItems = items.length > 0 ? items : null;
+    const clientId = `adjust-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const payload = {
+      productId: nextItems ? nextItems[0]?.productId : productId,
+      branchId,
+      delta: nextItems ? nextItems.reduce((sum, item) => sum + Number(item.delta || 0), 0) : Number(delta),
+      actor: auth.user?.name || 'unknown',
+      variantId: nextItems ? (nextItems[0]?.variantId || undefined) : (variantId || undefined),
+      remark,
+      initiatorName: auth.user?.name || 'unknown',
+      initiatorRole: auth.role || '',
+      clientId,
+      items: nextItems || (selectedTrackType === 'serialized' ? [{
+        lineId: '1',
+        productId,
+        variantId: variantId || '',
+        delta: Number(delta),
+        unitIds: serializedAdjustmentMode === 'decrease' ? serializedUnits.filter(unit => unit.selected).map(unit => unit._id) : [],
+        selectedUnits: serializedAdjustmentMode === 'decrease' ? serializedUnits.filter(unit => unit.selected).map(unit => ({ unitId: unit._id, imei: unit.imei || '', serialNumber: unit.serialNumber || '' })) : [],
+        serializedEntries: serializedAdjustmentMode === 'increase' ? serializedEntries : [],
+        remark: remark.trim(),
+        status: 'accepted'
+      }] : undefined)
+    };
+    if (!nextItems && (!productId || !branchId || delta === 0)) {
+      toast.show('Select product/branch and enter non-zero delta', { type: 'error' });
+      return;
+    }
+    if (!nextItems && selectedTrackType === 'serialized' && serializedAdjustmentMode === 'increase' && serializedEntries.length <= 0) {
+      toast.show('Scan or enter IMEI numbers to add serialized stock', { type: 'error' });
+      return;
+    }
+    if (!nextItems && selectedTrackType === 'serialized' && serializedAdjustmentMode === 'decrease' && serializedUnits.filter(unit => unit.selected).length <= 0) {
+      toast.show('Select serialized units to remove', { type: 'error' });
+      return;
+    }
+    if (!nextItems && Number(delta) < 0) {
+      const toRemove = Math.abs(Number(delta));
+      if (toRemove > current) {
+        toast.show(`Cannot remove more than available stock (${current})`, { type: 'error' });
+        return;
+      }
+    }
+    if (!remark || !remark.trim()) {
+      toast.show('Remark is required for adjustments', { type: 'error' });
+      return;
+    }
+    setSavingAdjust(true);
+    if (!navigator.onLine) {
+      if (!offlineBackupAllowed) {
+        toast.show('Offline: cannot submit request', { type: 'error' });
+        setSavingAdjust(false);
+        return;
+      }
+      try {
+        await enqueueHttp({ collection: 'adjustmentrequests', label: 'Adjustment request', path: '/api/adjustments/requests', method: 'POST', body: payload });
+      } catch (e) {
+        toast.show(String(e?.message || 'Failed to save offline'), { type: 'error' });
+        setSavingAdjust(false);
+        return;
+      }
+    } else {
+      try {
+        await adjustmentsApi.createRequest(payload);
+      } catch (e) {
+        toast.show(String(e?.message || 'Failed to submit request'), { type: 'error' });
+        setSavingAdjust(false);
+        return;
+      }
+    }
+    setDelta(0);
+    setSerializedAdjustmentMode('increase');
+    setVariantId('');
+    setRemark('');
+    setItems([]);
+    setSerializedEntriesText('');
+    setSerializedScanInput('');
+    setSerializedUnits([]);
+    toast.show(navigator.onLine ? 'Adjustment request submitted for approval' : 'Saved offline. Will sync when online.', { type: 'success' });
+    setSavingAdjust(false);
+  }
+
+  function addCurrentItem() {
+    if (!productId || !branchId || delta === 0) {
+      toast.show('Select product/branch and enter non-zero delta', { type: 'error' });
+      return;
+    }
+    if (selectedTrackType === 'serialized' && serializedAdjustmentMode === 'increase' && serializedEntries.length <= 0) {
+      toast.show('Scan or enter IMEI numbers to add serialized stock', { type: 'error' });
+      return;
+    }
+    if (selectedTrackType === 'serialized' && serializedAdjustmentMode === 'decrease' && serializedUnits.filter(unit => unit.selected).length <= 0) {
+      toast.show('Select serialized units to remove', { type: 'error' });
+      return;
+    }
+    setItems(prev => [...prev, {
+      lineId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      productId,
+      variantId: variantId || '',
+      delta: Number(delta),
+      unitIds: selectedTrackType === 'serialized' && serializedAdjustmentMode === 'decrease' ? serializedUnits.filter(unit => unit.selected).map(unit => unit._id) : [],
+      selectedUnits: selectedTrackType === 'serialized' && serializedAdjustmentMode === 'decrease' ? serializedUnits.filter(unit => unit.selected).map(unit => ({ unitId: unit._id, imei: unit.imei || '', serialNumber: unit.serialNumber || '' })) : [],
+      serializedEntries: selectedTrackType === 'serialized' && serializedAdjustmentMode === 'increase' ? serializedEntries : [],
+      remark: remark.trim(),
+      status: 'accepted'
+    }]);
+    setDelta(0);
+    setSerializedAdjustmentMode('increase');
+    setVariantId('');
+    setRemark('');
+    setSerializedEntriesText('');
+    setSerializedScanInput('');
+    setSerializedUnits([]);
+  }
+
+  function removeItem(lineId) {
+    setItems(prev => prev.filter(item => item.lineId !== lineId));
+  }
+
+  return (
+    <div style={{ padding: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+        <h1 style={{ margin: 0 }}>Adjustments</h1>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {tab === 'initiate' && (
+            <button className="btn btn-primary" onClick={() => setOpenModal(true)}>
+              <svg viewBox="0 0 24 24" fill="none"><path d="M12 6v12M6 12h12" stroke="currentColor" strokeWidth="2"/></svg>
+              Add Adjustment
+            </button>
+          )}
+          <OfflineQueueIndicator collection="adjustmentrequests" label="Adjustments queued" />
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+        <button className={tab === 'initiate' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('initiate')}>Initiate</button>
+        <button className={tab === 'approvals' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('approvals')} disabled={!canApprove}>Approvals</button>
+      </div>
+      {openModal && (
+        <Modal title="Add Adjustment" onClose={() => setOpenModal(false)} footer={
+          <>
+            <button className="btn" onClick={() => setOpenModal(false)}>Cancel</button>
+            <button className="btn" onClick={addCurrentItem}>Add To List</button>
+            <button className="btn btn-primary" onClick={async () => { await adjust(); setOpenModal(false); }} disabled={!canAdjust || savingAdjust}>
+              <svg viewBox="0 0 24 24" fill="none"><path d="M12 6v12M6 12h12" stroke="currentColor" strokeWidth="2"/></svg>
+              {savingAdjust ? 'Saving…' : 'Submit For Approval'}
+            </button>
+          </>
+        }>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <label>
+              <div style={{ marginBottom: 6, color: '#64748b' }}>Product</div>
+              <select className="select" value={productId} onChange={e => { setProductId(e.target.value); setVariantId(''); }}>
+                {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </label>
+            {(products.find(p => p.id === productId)?.variants || []).length > 0 && (
+              <label>
+                <div style={{ marginBottom: 6, color: '#64748b' }}>Variant</div>
+                <select className="select" value={variantId} onChange={e => setVariantId(e.target.value)} style={{ minWidth: 180 }}>
+                  <option value="">Base</option>
+                  {(products.find(p => p.id === productId)?.variants || []).map(v => (
+                    <option key={v.id} value={v.id}>{v.label}</option>
+                  ))}
+                </select>
+              </label>
+            )}
+            <label>
+              <div style={{ marginBottom: 6, color: '#64748b' }}>Branch</div>
+              <BranchSelect value={branchId} onChange={setBranchId} />
+            </label>
+            <label>
+              <div style={{ marginBottom: 6, color: '#64748b' }}>Delta (+/-)</div>
+              <input className="input" type="number" value={delta} onChange={e => setDelta(Number(e.target.value))} placeholder="Delta (+/-)" disabled={selectedTrackType === 'serialized'} />
+            </label>
+            {selectedTrackType === 'serialized' && (
+              <div style={{ gridColumn: '1 / -1', display: 'grid', gap: 8 }}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button type="button" className={serializedAdjustmentMode === 'increase' ? 'btn btn-primary' : 'btn'} onClick={() => { setSerializedAdjustmentMode('increase'); setSerializedUnits([]); }}>
+                    Add Units
+                  </button>
+                  <button type="button" className={serializedAdjustmentMode === 'decrease' ? 'btn btn-primary' : 'btn'} onClick={() => { setSerializedAdjustmentMode('decrease'); setSerializedEntriesText(''); setSerializedScanInput(''); }}>
+                    Remove Units
+                  </button>
+                </div>
+                {serializedAdjustmentMode === 'increase' ? (
+                  <>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <button type="button" className={serializedBatchMode ? 'btn btn-primary' : 'btn'} onClick={() => { setSerializedBatchMode(v => !v); setTimeout(() => { try { serializedScanInputRef.current?.focus(); } catch {} }, 0); }}>
+                        {serializedBatchMode ? 'Batch Mode On' : 'Batch Mode Off'}
+                      </button>
+                      <button type="button" className="btn" onClick={() => setSerializedCameraOpen(true)}>
+                        Camera Scan
+                      </button>
+                    </div>
+                    <input
+                      ref={serializedScanInputRef}
+                      className="input"
+                      autoFocus
+                      placeholder="Scan IMEI barcode or type and press Enter"
+                      value={serializedScanInput}
+                      onChange={e => setSerializedScanInput(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          appendSerializedEntry(serializedScanInput);
+                        }
+                      }}
+                      style={{ color: '#111827', background: '#ffffff' }}
+                    />
+                    <textarea className="input" rows={6} value={serializedEntriesText} onChange={e => setSerializedEntriesText(e.target.value)} placeholder={'One per line\nIMEI123456789\nIMEI987654321,SN-0002'} style={{ color: '#111827', background: '#ffffff' }} />
+                    <div style={{ color: '#64748b', fontSize: 12 }}>Delta updates automatically from scanned/entered IMEI values. Current entries: {serializedEntries.length}</div>
+                  </>
+                ) : (
+                  <>
+                    <input className="input" placeholder="Search IMEI or serial number" value={serializedUnitsQuery} onChange={e => setSerializedUnitsQuery(e.target.value)} style={{ color: '#111827', background: '#ffffff' }} />
+                    <div style={{ color: '#64748b', fontSize: 12 }}>Selected: {serializedUnits.filter(unit => unit.selected).length}</div>
+                    <div style={{ overflowX: 'auto', maxHeight: 260 }}>
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th align="left"></th>
+                            <th align="left">IMEI</th>
+                            <th align="left">Serial</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {serializedUnits.map(unit => (
+                            <tr key={unit._id}>
+                              <td>
+                                <input
+                                  type="checkbox"
+                                  checked={!!unit.selected}
+                                  onChange={e => setSerializedUnits(prev => {
+                                    const next = prev.map(row => row._id === unit._id ? { ...row, selected: e.target.checked } : row);
+                                    setDelta(-next.filter(row => row.selected).length);
+                                    return next;
+                                  })}
+                                />
+                              </td>
+                              <td style={{ color: '#111827' }}>{unit.imei || '—'}</td>
+                              <td style={{ color: '#111827' }}>{unit.serialNumber || '—'}</td>
+                            </tr>
+                          ))}
+                          {!serializedLoading && serializedUnits.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>No available serialized units</td></tr>}
+                          {serializedLoading && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>Loading serialized units…</td></tr>}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+            <label style={{ gridColumn: '1 / -1' }}>
+              <div style={{ marginBottom: 6, color: '#64748b' }}>Remark (required)</div>
+              <input className="input" value={remark} onChange={e => setRemark(e.target.value)} placeholder="Reason or note" />
+            </label>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <div style={{ marginBottom: 6, color: '#64748b' }}>Items In This Request</div>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th align="left">Product</th>
+                  <th align="left">Delta</th>
+                  <th align="left">Units</th>
+                  <th align="left"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map(item => {
+                  const product = products.find(p => p.id === item.productId);
+                  return (
+                    <tr key={item.lineId}>
+                      <td>
+                        <div>{product?.name || item.productId}</div>
+                        {Array.isArray(item.selectedUnits) && item.selectedUnits.length > 0 && (
+                          <div style={{ marginTop: 4, color: '#111827', fontSize: 12 }}>
+                            {item.selectedUnits.map(unit => unit.imei || unit.serialNumber || unit.unitId).filter(Boolean).join(', ')}
+                          </div>
+                        )}
+                        {Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0 && (
+                          <div style={{ marginTop: 4, color: '#111827', fontSize: 12 }}>
+                            {item.serializedEntries.map(unit => unit.imei || unit.serialNumber).filter(Boolean).join(', ')}
+                          </div>
+                        )}
+                      </td>
+                      <td>{item.delta}</td>
+                      <td>{Array.isArray(item.unitIds) && item.unitIds.length > 0 ? item.unitIds.length : (Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0 ? item.serializedEntries.length : '—')}</td>
+                      <td><button className="btn" onClick={() => removeItem(item.lineId)}>Remove</button></td>
+                    </tr>
+                  );
+                })}
+                {items.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No items added yet. You can still submit a single item.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </Modal>
+      )}
+      <BarcodeScannerModal
+        title="Scan IMEI Barcode"
+        open={serializedCameraOpen}
+        onClose={() => setSerializedCameraOpen(false)}
+        onDetected={(value) => {
+          appendSerializedEntry(value);
+          setSerializedCameraOpen(false);
+        }}
+      />
+      {tab === 'approvals' && (
+        <ApprovalsSection
+          canApprove={canApprove}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          loading={loading}
+          setLoading={setLoading}
+          products={products}
+          byId={byId}
+          setDetail={setDetail}
+          busyId={busyId}
+          setBusyId={setBusyId}
+          toast={toast}
+          auth={auth}
+          dispatch={dispatch}
+        />
+      )}
+      <div className="card" style={{ marginTop: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr) auto', gap: 8, marginBottom: 8 }}>
+          <label>
+            From
+            <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+          </label>
+          <label>
+            To
+            <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          </label>
+          <label>
+            Actor
+            <select className="select" value={fActor} onChange={e => setFActor(e.target.value)}>
+              <option value="">All</option>
+              {actors.map(a => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </label>
+          <label>
+            Branch
+            <BranchSelect value={fBranch} onChange={setFBranch} />
+          </label>
+          <div style={{ alignSelf: 'end', display: 'flex', gap: 6 }}>
+            <button className="btn" onClick={onExportCsv}>Export CSV</button>
+            <button className="btn" onClick={onExportPdf}>Export PDF</button>
+            {canDeleteRecords && (
+              <>
+                <select className="select" value={bulkAction} onChange={e => setBulkAction(e.target.value)} style={{ width: 180 }} disabled={bulkDeleting}>
+                  <option value="">Actions</option>
+                  <option value="delete">Delete Selected</option>
+                </select>
+                <button className="btn" disabled={bulkDeleting || bulkAction !== 'delete' || selectedRecordIds.length === 0} onClick={() => void deleteSelectedRecords()}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    {bulkDeleting && <InlineSpinner />}
+                    {bulkDeleting ? 'Deleting…' : 'Apply'}
+                  </span>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+        <h2 className="section-title">Recent Adjustments</h2>
+        <table className="table">
+          <thead>
+            <tr>
+              <th align="left">Timestamp</th>
+              <th align="left">Actor</th>
+              <th align="left">Product</th>
+              <th align="left">Variant</th>
+              <th align="left">Branch</th>
+              <th align="left">Delta</th>
+              <th align="left">Type</th>
+              <th align="left">Remark</th>
+              {canDeleteRecords && (
+                <th align="left">
+                  <input
+                    type="checkbox"
+                    disabled={bulkDeleting}
+                    checked={rows.length > 0 && rows.every(entry => selectedRecordIds.includes(String(entry._id || entry.id || '')))}
+                    onChange={e => setSelectedRecordIds(e.target.checked ? rows.map(entry => String(entry._id || entry.id || '')).filter(Boolean) : [])}
+                  />
+                </th>
+              )}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.slice((page-1)*pageSize, (page-1)*pageSize + pageSize).map(r => (
+              <tr key={r.id} style={bulkDeleting && selectedRecordIds.includes(String(r._id || r.id || '')) ? { opacity: 0.55 } : undefined}>
+                <td>{new Date(r.ts).toLocaleString()}</td>
+                <td>{r.actor}</td>
+                <td>{r.product || '—'}</td>
+                <td>{r.variant || '—'}</td>
+                <td>{byId.get(r.branchId) || r.branchId || '—'}</td>
+                <td>{r.delta}</td>
+                <td>{r.type}</td>
+                <td>{r.remark || '—'}</td>
+                {canDeleteRecords && (
+                  <td>
+                    <input
+                      type="checkbox"
+                      disabled={bulkDeleting}
+                      checked={selectedRecordIds.includes(String(r._id || r.id || ''))}
+                      onChange={evt => setSelectedRecordIds(prev => evt.target.checked ? [...new Set([...prev, String(r._id || r.id || '')])] : prev.filter(id => id !== String(r._id || r.id || '')))}
+                    />
+                  </td>
+                )}
+              </tr>
+            ))}
+            {rows.length === 0 && (
+              <tr><td colSpan={canDeleteRecords ? 9 : 8} style={{ padding: 12, color: '#64748b' }}>No adjustment records yet</td></tr>
+            )}
+          </tbody>
+        </table>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8 }}>
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <button className="btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>Prev</button>
+            <span>Page {page} of {Math.max(1, Math.ceil(rows.length / pageSize))}</span>
+            <button className="btn" onClick={() => setPage(p => Math.min(Math.max(1, Math.ceil(rows.length / pageSize)), p + 1))} disabled={page >= Math.max(1, Math.ceil(rows.length / pageSize))}>Next</button>
+          </div>
+          <label>
+            <span style={{ marginRight: 6 }}>Rows</span>
+            <select className="select" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}>
+              <option value={10}>10</option>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </label>
+        </div>
+      </div>
+      {detail && (
+        <Modal title="Adjustment Request" onClose={() => setDetail(null)}>
+          <RequestDetail detail={detail} products={products} byId={byId} />
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function ApprovalsSection({ canApprove, statusFilter, setStatusFilter, loading, setLoading, products, byId, setDetail, busyId, setBusyId, toast, auth, dispatch }) {
+  const [requests, setRequests] = useState([]);
+  const [reloadAt, setReloadAt] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      setLoading(true);
+      try {
+        let rows = await adjustmentsApi.listRequests({ status: statusFilter, limit: 200 });
+        if ((!Array.isArray(rows) || rows.length === 0) && (statusFilter === 'pending' || statusFilter === 'approved' || statusFilter === 'rejected')) {
+          const all = await adjustmentsApi.listRequests({ limit: 200 });
+          const wanted = statusFilter === 'pending' ? ['pending', 'pending_approval'] : [statusFilter];
+          rows = Array.isArray(all) ? all.filter(r => wanted.includes(String(r.status || ''))) : [];
+        }
+        if (alive) setRequests(Array.isArray(rows) ? rows : []);
+      } catch (e) {
+        if (alive) {
+          setRequests([]);
+          try { toast.show(String(e?.message || 'Failed to load requests'), { type: 'error' }); } catch {}
+        }
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [statusFilter, setLoading, reloadAt, toast]);
+  async function approve(r) {
+    if (!canApprove) { toast.show('Not authorized to approve adjustments', { type: 'error' }); return; }
+    const id = r._id || r.clientId;
+    try {
+      const remark = await promptDialog('Enter remark for approval (required)');
+      if (!remark || !String(remark).trim()) { toast.show('Remark is required', { type: 'error' }); return; }
+      setBusyId(id);
+      if (!navigator.onLine) {
+        await enqueueHttp({ collection: 'adjustmentrequests', label: 'Adjustment approve', path: '/api/adjustments/approve', method: 'POST', body: { id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark } });
+      } else {
+        await adjustmentsApi.approve({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
+      }
+      dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.branchId, delta: Number(r.delta || 0) }));
+      toast.show('Adjustment approved and stock updated', { type: 'success' });
+      setRequests(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, status: 'approved', approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', approvalRemark: remark, approved_at: new Date().toISOString() } : x));
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to approve'), { type: 'error' });
+    } finally { setBusyId(null); }
+  }
+  async function reject(r) {
+    if (!canApprove) { toast.show('Not authorized to reject adjustments', { type: 'error' }); return; }
+    const id = r._id || r.clientId;
+    try {
+      const remark = await promptDialog('Enter reason for rejection (required)');
+      if (!remark || !String(remark).trim()) { toast.show('Remark is required', { type: 'error' }); return; }
+      setBusyId(id);
+      if (!navigator.onLine) {
+        await enqueueHttp({ collection: 'adjustmentrequests', label: 'Adjustment reject', path: '/api/adjustments/reject', method: 'POST', body: { id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark } });
+      } else {
+        await adjustmentsApi.reject({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
+      }
+      toast.show('Adjustment rejected', { type: 'success' });
+      setRequests(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, status: 'rejected', approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', rejectionRemark: remark, rejected_at: new Date().toISOString() } : x));
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to reject'), { type: 'error' });
+    } finally { setBusyId(null); }
+  }
+  return (
+    <div className="card" style={{ marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h2 className="section-title" style={{ marginBottom: 8 }}>Approvals</h2>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className={statusFilter === 'pending' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending')}>Pending</button>
+          <button className={statusFilter === 'approved' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('approved')}>Approved</button>
+          <button className={statusFilter === 'rejected' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('rejected')}>Rejected</button>
+          <button className="btn" onClick={() => setReloadAt(Date.now())} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+        </div>
+      </div>
+      <table className="table">
+        <thead>
+          <tr>
+            <th align="left">Product</th>
+            <th align="left">Branch</th>
+            <th align="left">Delta</th>
+            <th align="left"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {loading && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>Loading…</td></tr>}
+          {!loading && requests.map(r => {
+            const p = products.find(x => x.id === r.productId);
+            return (
+              <tr key={r._id || r.clientId} style={{ borderTop: '1px solid #e2e8f0', cursor: 'pointer' }} onClick={() => setDetail(r)}>
+                <td>{p?.name || r.productId}{r.variantId ? ` • ${(p?.variants || []).find(v => v.id === r.variantId)?.label || r.variantId}` : ''}</td>
+                <td>{byId.get(r.branchId) || r.branchId}</td>
+                <td>{r.delta}</td>
+                <td>
+                  {r.status === 'pending_approval' ? (
+                    <>
+                      <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? 'Working…' : 'Approve'}</button>
+                      <button className="btn" onClick={(e) => { e.stopPropagation(); reject(r); }} style={{ marginLeft: 6 }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? 'Working…' : 'Reject'}</button>
+                    </>
+                  ) : (
+                    <span style={{ color: r.status === 'approved' ? '#10b981' : '#ef4444', fontWeight: 600 }}>{r.status}</span>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+          {!loading && requests.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No items</td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function RequestDetail({ detail, products, byId }) {
+  const p = products.find(x => x.id === detail.productId);
+  const vLabel = detail.variantId ? ((p?.variants || []).find(v => v.id === detail.variantId)?.label || detail.variantId) : '';
+  return (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <div><div style={{ color: '#64748b' }}>Status</div><div>{detail.status}</div></div>
+        <div><div style={{ color: '#64748b' }}>Product</div><div>{p?.name || detail.productId}{vLabel ? ` • ${vLabel}` : ''}</div></div>
+        <div><div style={{ color: '#64748b' }}>Branch</div><div>{byId.get(detail.branchId) || detail.branchId}</div></div>
+        <div><div style={{ color: '#64748b' }}>Delta</div><div>{detail.delta}</div></div>
+        <div><div style={{ color: '#64748b' }}>Initiator</div><div>{detail.initiatorName} {detail.initiatorRole ? `(${detail.initiatorRole})` : ''}</div></div>
+        <div><div style={{ color: '#64748b' }}>Initiation Remark</div><div>{detail.remark || '—'}</div></div>
+        <div><div style={{ color: '#64748b' }}>Approver</div><div>{detail.approverName ? `${detail.approverName}${detail.approverRole ? ` (${detail.approverRole})` : ''}` : '—'}</div></div>
+        {detail.status === 'approved' && <div><div style={{ color: '#64748b' }}>Approval Remark</div><div>{detail.approvalRemark || '—'}</div></div>}
+        {detail.status === 'rejected' && <div><div style={{ color: '#64748b' }}>Rejection Remark</div><div>{detail.rejectionRemark || '—'}</div></div>}
+        <div><div style={{ color: '#64748b' }}>Created</div><div>{detail.createdAt ? new Date(detail.createdAt).toLocaleString() : '—'}</div></div>
+        <div><div style={{ color: '#64748b' }}>Updated</div><div>{detail.updatedAt ? new Date(detail.updatedAt).toLocaleString() : '—'}</div></div>
+      </div>
+      {Array.isArray(detail.items) && detail.items.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ marginBottom: 6, color: '#64748b' }}>Request Items</div>
+          <table className="table">
+            <thead>
+              <tr>
+                <th align="left">Product</th>
+                <th align="left">Delta</th>
+                <th align="left">Units</th>
+                <th align="left">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {detail.items.map((item, index) => {
+                const product = products.find(row => row.id === item.productId);
+                return (
+                  <tr key={item.lineId || index}>
+                    <td>
+                      <div>{product?.name || item.productId}</div>
+                      {Array.isArray(item.selectedUnits) && item.selectedUnits.length > 0 && (
+                        <div style={{ marginTop: 4, color: '#111827', fontSize: 12 }}>
+                          {item.selectedUnits.map(unit => unit.imei || unit.serialNumber || unit.unitId).filter(Boolean).join(', ')}
+                        </div>
+                      )}
+                      {Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0 && (
+                        <div style={{ marginTop: 4, color: '#111827', fontSize: 12 }}>
+                          {item.serializedEntries.map(unit => unit.imei || unit.serialNumber).filter(Boolean).join(', ')}
+                        </div>
+                      )}
+                    </td>
+                    <td>{item.delta}</td>
+                    <td>{Array.isArray(item.unitIds) && item.unitIds.length > 0 ? item.unitIds.length : (Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0 ? item.serializedEntries.length : '—')}</td>
+                    <td>{item.status || 'accepted'}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </>
+  );
+}
+
+export default AdjustmentsPage;
