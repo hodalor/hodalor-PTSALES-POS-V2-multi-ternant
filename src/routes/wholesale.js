@@ -1,0 +1,152 @@
+import { Router } from 'express';
+import WholesaleOperation from '../models/WholesaleOperation.js';
+import Approval from '../models/Approval.js';
+import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
+import { createApprovalForReference } from '../utils/approvalWorkflow.js';
+import mongoose from 'mongoose';
+
+const r = Router();
+
+r.use(requireAuth);
+
+function permissionForOperation(type = '') {
+  const key = String(type || '').toLowerCase();
+  if (key === 'purchase') return 'add_purchases';
+  if (key === 'transfer') return 'add_transfers';
+  if (key === 'adjustment') return 'add_adjustments';
+  if (key === 'refund') return 'add_refunds';
+  return '';
+}
+
+r.get('/operations', async (req, res) => {
+  const query = {};
+  if (req.query.status) query.status = String(req.query.status);
+  if (req.query.operationType) query.operationType = String(req.query.operationType);
+  if (req.query.operationArea) query.operationArea = String(req.query.operationArea);
+  const paged = String(req.query.paged || '') === '1';
+  const page = Math.max(1, Number(req.query.page || 1) || 1);
+  const pageSize = Math.max(1, Math.min(100, Number(req.query.pageSize || 50) || 50));
+  const role = String(req.user?.role || '').toLowerCase();
+  const assigned = req.user?.assignedBranches ?? 'all';
+  if (!(role === 'superadmin' || role === 'admin') && assigned !== 'all') {
+    const arr = Array.isArray(assigned) ? assigned : [assigned];
+    if (String(req.query.operationType || '').toLowerCase() === 'transfer') {
+      query.$or = [
+        { fromBranchId: { $in: arr } },
+        { toBranchId: { $in: arr } },
+        { branchId: { $in: arr } }
+      ];
+    } else {
+      query.branchId = { $in: arr };
+    }
+  }
+  const total = paged ? await WholesaleOperation.countDocuments(query) : null;
+  const rows = await WholesaleOperation.find(query)
+    .sort({ createdAt: -1 })
+    .skip(paged ? (page - 1) * pageSize : 0)
+    .limit(paged ? pageSize : 500)
+    .lean();
+  const referenceIds = rows.map(row => String(row._id)).filter(Boolean);
+  const approvals = referenceIds.length > 0
+    ? await Approval.find({ referenceModel: 'WholesaleOperation', referenceId: { $in: referenceIds } }).lean()
+    : [];
+  const approvalByReferenceId = new Map(approvals.map(row => [String(row.referenceId), row]));
+  const normalized = rows.map(row => {
+    const approval = approvalByReferenceId.get(String(row._id));
+    if (!approval) return row;
+    return {
+      ...row,
+      approvalId: row.approvalId || String(approval._id),
+      status: ['pending_director', 'pending_manager', 'approved', 'rejected'].includes(String(approval.status || ''))
+        ? String(approval.status)
+        : row.status
+    };
+  });
+  if (paged) return res.json({ rows: normalized, total, page, pageSize });
+  res.json(normalized);
+});
+
+r.post('/operations', requireRoleOrPerm(['Admin', 'Manager', 'Inventory Staff'], 'add_purchases'), async (req, res) => {
+  const body = req.body || {};
+  const operationArea = String(body.operationArea || 'wholesale').toLowerCase() === 'warehouse' ? 'warehouse' : 'wholesale';
+  const operationType = String(body.operationType || '').toLowerCase();
+  if (!['purchase', 'transfer', 'adjustment', 'refund'].includes(operationType)) {
+    return res.status(400).json({ error: 'Invalid operationType' });
+  }
+  const specificPerm = permissionForOperation(operationType);
+  const role = String(req.user?.role || '').toLowerCase();
+  const grants = Array.isArray(req.user?.grants) ? req.user.grants : [];
+  if (!['admin', 'manager', 'inventory staff', 'superadmin'].includes(role) && specificPerm && !grants.includes(specificPerm)) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+  const qty = Math.max(0, Number(body.qty || 0));
+  const items = Array.isArray(body.items) ? body.items : [];
+  if (items.length === 0 && qty <= 0) return res.status(400).json({ error: 'Quantity must be greater than zero' });
+  if (items.length === 0 && !body.productId) return res.status(400).json({ error: 'Missing productId' });
+  if (operationType === 'transfer' && (!body.fromBranchId || !body.toBranchId)) {
+    return res.status(400).json({ error: 'Transfer requires fromBranchId and toBranchId' });
+  }
+  if (operationType !== 'transfer' && !body.branchId) {
+    return res.status(400).json({ error: 'Branch is required' });
+  }
+  const op = await WholesaleOperation.create({
+    clientId: body.clientId || undefined,
+    operationArea,
+    operationType,
+    productId: String(body.productId),
+    variantId: String(body.variantId || ''),
+    branchId: String(body.branchId || ''),
+    fromBranchId: String(body.fromBranchId || ''),
+    toBranchId: String(body.toBranchId || ''),
+    fromInventoryType: String(body.fromInventoryType || operationArea),
+    toInventoryType: String(body.toInventoryType || (operationType === 'transfer' ? operationArea : operationArea)),
+    qty,
+    cost: Number(body.cost || 0),
+    requestedAmount: Number(body.requestedAmount || 0),
+    adjustmentType: String(body.adjustmentType || 'increase'),
+    supplier: String(body.supplier || ''),
+    reason: String(body.reason || ''),
+    remark: String(body.remark || ''),
+    items,
+    initiatedByName: req.user?.name || 'unknown',
+    initiatedByRole: req.user?.role || '',
+    status: 'pending_director'
+  });
+  const approval = await createApprovalForReference({
+    actionType: `${operationArea}_${operationType}`,
+    referenceModel: 'WholesaleOperation',
+    referenceId: String(op._id),
+    initiatedByName: req.user?.name || 'unknown',
+    initiatedByRole: req.user?.role || ''
+  });
+  res.json({
+    operation: {
+      ...(op.toObject ? op.toObject() : op),
+      approvalId: String(approval._id),
+      approvalMode: 'workflow',
+      status: 'pending_director'
+    },
+    approval
+  });
+});
+
+r.delete('/operations/:id', async (req, res) => {
+  const role = String(req.user?.role || '').toLowerCase();
+  if (role !== 'superadmin') return res.status(403).json({ error: 'Forbidden' });
+  const rawId = String(req.params.id || '');
+  const lookup = [{ clientId: rawId }];
+  if (mongoose.isValidObjectId(rawId)) lookup.unshift({ _id: rawId });
+  const row = await WholesaleOperation.findOne({ $or: lookup });
+  const approval = await Approval.findOne({ referenceModel: 'WholesaleOperation', referenceId: rawId })
+    || (row ? await Approval.findOne({ referenceModel: 'WholesaleOperation', referenceId: String(row._id) }) : null);
+  if (!row && !approval) return res.status(404).json({ error: 'Not found' });
+  const effectiveStatus = String(approval?.status || row?.status || '').toLowerCase();
+  if (effectiveStatus === 'approved') {
+    return res.status(400).json({ error: 'Approved requests cannot be deleted' });
+  }
+  if (row) await row.deleteOne();
+  if (approval) await Approval.deleteMany({ referenceModel: 'WholesaleOperation', referenceId: String(approval.referenceId || row?._id || rawId) });
+  res.json({ ok: true });
+});
+
+export default r;
