@@ -1,6 +1,6 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { addProduct, updateProduct, removeProduct, setStock, addCategory } from '../store/productsSlice';
-import { useMemo, useRef, useState } from 'react';
+import { addProduct, updateProduct, removeProduct, setStock } from '../store/productsSlice';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatCurrency } from '../utils/currency';
 import { addAudit } from '../store/auditSlice';
 import { useToast } from '../components/ToastProvider';
@@ -9,18 +9,31 @@ import { productSpec } from '../utils/productSpec';
 import * as productsApi from '../api/products';
 import * as stockApi from '../api/stock';
 import * as productUnitsApi from '../api/productUnits';
+import * as settingsApi from '../api/settings';
 import Modal from '../components/Modal';
 import BarcodeScannerModal from '../components/BarcodeScannerModal';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import { getAllowedPriceTiers, getDisplayPrice, getPreferredPriceTier } from '../utils/priceVisibility';
+import { setAllSettings } from '../store/settingsSlice';
 
 function ProductsPage() {
   const dispatch = useDispatch();
   const products = useSelector(s => s.products.products);
-  const categories = useSelector(s => s.products.categories);
   const branches = useSelector(s => s.branches.branches);
   const settings = useSelector(s => s.settings);
+  const configuredCategories = useMemo(() => (Array.isArray(settings.categories) ? settings.categories : []), [settings.categories]);
+  const availableCategories = useMemo(() => {
+    const merged = [...configuredCategories, ...products.map(p => p.category).filter(Boolean)];
+    const seen = new Set();
+    return merged.filter((item) => {
+      const key = String(item || '').trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [configuredCategories, products]);
+  const categoryOptions = useMemo(() => (availableCategories.length > 0 ? availableCategories : ['General']), [availableCategories]);
   const currentBranchId = useSelector(s => s.settings.currentBranchId);
   const sales = useSelector(s => s.sales.sales);
   const currentBranch = branches.find(b => b.id === currentBranchId);
@@ -51,7 +64,7 @@ function ProductsPage() {
   const [price, setPrice] = useState('');
   const [wholesalePrice, setWholesalePrice] = useState('');
   const [agentPrice, setAgentPrice] = useState('');
-  const [category, setCategory] = useState(categories[0] || '');
+  const [category, setCategory] = useState(configuredCategories[0] || '');
   const [newCategory, setNewCategory] = useState('');
   const [initialStock, setInitialStock] = useState(0);
   const [editStockQty, setEditStockQty] = useState(0);
@@ -96,9 +109,13 @@ function ProductsPage() {
   const toast = useToast();
   const [saving, setSaving] = useState(false);
 
+  useEffect(() => {
+    if (!category && categoryOptions.length > 0) setCategory(categoryOptions[0]);
+  }, [category, categoryOptions]);
+
   function resetForm() {
     setName(''); setSku(''); setPrice(''); setWholesalePrice(''); setAgentPrice('');
-    setCategory(categories[0] || ''); setNewCategory('');
+    setCategory(categoryOptions[0] || 'General'); setNewCategory('');
     setInitialStock(0); setEditStockQty(0); setLowStock(0); setWholesaleLowStock(0); setWarehouseLowStock(0); setImagePreview('');
     setCostPrice(''); setExpiryDate('');
     setUnitKind('none'); setUnitValue(''); setUnitSymbol('');
@@ -560,11 +577,32 @@ function ProductsPage() {
     }
   }
 
-  function addCat() {
-    if (!newCategory.trim()) return;
-    dispatch(addCategory(newCategory.trim()));
-    setCategory(newCategory.trim());
+  async function addCat() {
+    const value = String(newCategory || '').trim();
+    if (!value) return;
+    if (categoryOptions.some(item => String(item).toLowerCase() === value.toLowerCase())) {
+      setCategory(categoryOptions.find(item => String(item).toLowerCase() === value.toLowerCase()) || value);
+      setNewCategory('');
+      return;
+    }
+    const nextCategories = [...configuredCategories, value];
+    dispatch(setAllSettings({ ...(settings || {}), categories: nextCategories }));
+    setCategory(value);
     setNewCategory('');
+    try {
+      if (!navigator.onLine) {
+        if (!offlineBackupAllowed) {
+          toast.show('Offline: connect internet and try again.', { type: 'error' });
+          return;
+        }
+        await enqueueHttp({ collection: 'settings', label: 'Category settings', path: '/api/settings', method: 'PUT', body: { categories: nextCategories } });
+        toast.show('Category saved offline. Will backup when online.', { type: 'success' });
+        return;
+      }
+      await settingsApi.save({ categories: nextCategories });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to save category'), { type: 'error' });
+    }
   }
 
   const unitSymbolOptions = useMemo(() => {
@@ -1058,7 +1096,7 @@ function ProductsPage() {
                 <div>
                     <label className="label">Category</label>
                     <select className="select" value={category} onChange={e => setCategory(e.target.value)} style={{ display: 'block', width: '100%' }}>
-                        {categories.map(c => <option key={c}>{c}</option>)}
+                        {categoryOptions.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                 </div>
                 <div>
@@ -1066,7 +1104,7 @@ function ProductsPage() {
                      <label className="label">New Category</label>
                      <div style={{ display: 'flex', gap: 8 }}>
                         <input className="input" placeholder="New category" value={newCategory} onChange={e => setNewCategory(e.target.value)} style={{ flex: 1 }} />
-                        <button className="btn" onClick={addCat}>Add</button>
+                        <button className="btn" type="button" onClick={addCat}>Add</button>
                      </div>
                 </div>
             </div>

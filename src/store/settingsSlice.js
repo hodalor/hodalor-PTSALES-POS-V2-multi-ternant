@@ -52,6 +52,7 @@ const initialState = {
   refreshIntervalSec: 60,
   userGrants: {},
   featureFlags: {},
+  categories: [],
   loyaltyEnabled: false,
   loyaltyEarnAmount: 0,
   loyaltyEarnPoints: 0,
@@ -146,6 +147,21 @@ const settingsSlice = createSlice({
     },
     setClientLogoUrl(state, action) {
       state.clientLogoUrl = String(action.payload || '');
+    },
+    setCategories(state, action) {
+      state.categories = Array.isArray(action.payload) ? action.payload.map(x => String(x || '').trim()).filter(Boolean) : [];
+    },
+    addSettingsCategory(state, action) {
+      const value = String(action.payload || '').trim();
+      if (!value) return;
+      const existing = Array.isArray(state.categories) ? state.categories : [];
+      if (!existing.some(item => String(item).toLowerCase() === value.toLowerCase())) {
+        state.categories = [...existing, value];
+      }
+    },
+    removeSettingsCategory(state, action) {
+      const value = String(action.payload || '').trim().toLowerCase();
+      state.categories = (Array.isArray(state.categories) ? state.categories : []).filter(item => String(item || '').trim().toLowerCase() !== value);
     },
     setBusinessPhone(state, action) {
       state.businessPhone = String(action.payload || '');
@@ -299,5 +315,5 @@ const settingsSlice = createSlice({
   }
 });
 
-export const { setAllSettings, setUserGrants, setUserGrant, setAppName, setFooterText, setCurrentBranch, setReceiptLogoUrl, setReceiptHeader, setReceiptFooter, setClientAppName, setClientLogoUrl, setBusinessPhone, setBusinessWebsite, setBusinessTpin, setReceiptQrBaseUrl, setInvoicePrefix, setNextInvoiceNumber, setWholesaleInvoicePrefix, setNextWholesaleInvoiceNumber, setWarehouseInvoicePrefix, setNextWarehouseInvoiceNumber, setReceiptPrefix, setNextReceiptNumber, setDrawerOpenOnCash, setTaxRate, setCurrencyCode, setCurrencySymbol, setCurrencyPosition, addCurrency, removeCurrency, setActiveCurrency, setRefreshIntervalSec, setLoyaltyEnabled, setLoyaltyEarnAmount, setLoyaltyEarnPoints, setLoyaltyRedeemValue, setLoyaltyMinRedeemPoints, setLoyaltyMaxRedeemPercent, setInvoiceCompanyAddress, setInvoiceFooter, setInvoiceDeclaration, setInvoiceSignatoryLabel, setInvoiceTitle, setInvoiceWordsLabel, setInvoiceGeneratedNote, setInvoiceNumberDigits, setInvoicePaidStampEnabled, setInvoicePaidStampLabel, setInvoicePaidStampThankYou, setInvoicePaidStampShowDate, setInvoicePaidStampColor, setReceiptBrandName } = settingsSlice.actions;
+export const { setAllSettings, setUserGrants, setUserGrant, setAppName, setFooterText, setCurrentBranch, setReceiptLogoUrl, setReceiptHeader, setReceiptFooter, setClientAppName, setClientLogoUrl, setCategories, addSettingsCategory, removeSettingsCategory, setBusinessPhone, setBusinessWebsite, setBusinessTpin, setReceiptQrBaseUrl, setInvoicePrefix, setNextInvoiceNumber, setWholesaleInvoicePrefix, setNextWholesaleInvoiceNumber, setWarehouseInvoicePrefix, setNextWarehouseInvoiceNumber, setReceiptPrefix, setNextReceiptNumber, setDrawerOpenOnCash, setTaxRate, setCurrencyCode, setCurrencySymbol, setCurrencyPosition, addCurrency, removeCurrency, setActiveCurrency, setRefreshIntervalSec, setLoyaltyEnabled, setLoyaltyEarnAmount, setLoyaltyEarnPoints, setLoyaltyRedeemValue, setLoyaltyMinRedeemPoints, setLoyaltyMaxRedeemPercent, setInvoiceCompanyAddress, setInvoiceFooter, setInvoiceDeclaration, setInvoiceSignatoryLabel, setInvoiceTitle, setInvoiceWordsLabel, setInvoiceGeneratedNote, setInvoiceNumberDigits, setInvoicePaidStampEnabled, setInvoicePaidStampLabel, setInvoicePaidStampThankYou, setInvoicePaidStampShowDate, setInvoicePaidStampColor, setReceiptBrandName } = settingsSlice.actions;
 export default settingsSlice.reducer;

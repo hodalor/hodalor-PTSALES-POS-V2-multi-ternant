@@ -1,5 +1,5 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { setAppName, setFooterText, setCurrentBranch, setReceiptHeader, setReceiptFooter, setBusinessPhone, setBusinessWebsite, setBusinessTpin, setReceiptQrBaseUrl, setInvoicePrefix, setNextInvoiceNumber, setWholesaleInvoicePrefix, setNextWholesaleInvoiceNumber, setWarehouseInvoicePrefix, setNextWarehouseInvoiceNumber, setReceiptPrefix, setNextReceiptNumber, setDrawerOpenOnCash, setTaxRate, setCurrencyCode, setCurrencySymbol, setCurrencyPosition, setRefreshIntervalSec, addCurrency, removeCurrency, setActiveCurrency, setLoyaltyEnabled, setLoyaltyEarnAmount, setLoyaltyEarnPoints, setLoyaltyRedeemValue, setLoyaltyMinRedeemPoints, setLoyaltyMaxRedeemPercent, setClientAppName, setClientLogoUrl, setInvoiceCompanyAddress, setInvoiceFooter, setInvoiceDeclaration, setInvoiceSignatoryLabel, setInvoiceTitle, setInvoiceWordsLabel, setInvoiceGeneratedNote, setInvoiceNumberDigits, setInvoicePaidStampEnabled, setInvoicePaidStampLabel, setInvoicePaidStampThankYou, setInvoicePaidStampShowDate, setInvoicePaidStampColor, setReceiptBrandName, setAllSettings } from '../store/settingsSlice';
+import { setAppName, setFooterText, setCurrentBranch, setReceiptHeader, setReceiptFooter, setBusinessPhone, setBusinessWebsite, setBusinessTpin, setReceiptQrBaseUrl, setInvoicePrefix, setNextInvoiceNumber, setWholesaleInvoicePrefix, setNextWholesaleInvoiceNumber, setWarehouseInvoicePrefix, setNextWarehouseInvoiceNumber, setReceiptPrefix, setNextReceiptNumber, setDrawerOpenOnCash, setTaxRate, setCurrencyCode, setCurrencySymbol, setCurrencyPosition, setRefreshIntervalSec, addCurrency, removeCurrency, setActiveCurrency, setLoyaltyEnabled, setLoyaltyEarnAmount, setLoyaltyEarnPoints, setLoyaltyRedeemValue, setLoyaltyMinRedeemPoints, setLoyaltyMaxRedeemPercent, setClientAppName, setClientLogoUrl, setInvoiceCompanyAddress, setInvoiceFooter, setInvoiceDeclaration, setInvoiceSignatoryLabel, setInvoiceTitle, setInvoiceWordsLabel, setInvoiceGeneratedNote, setInvoiceNumberDigits, setInvoicePaidStampEnabled, setInvoicePaidStampLabel, setInvoicePaidStampThankYou, setInvoicePaidStampShowDate, setInvoicePaidStampColor, setReceiptBrandName, setAllSettings, addSettingsCategory, removeSettingsCategory } from '../store/settingsSlice';
 import { addBranch, removeBranch, updateBranch } from '../store/branchesSlice';
 import * as branchesApi from '../api/branches';
 import { useEffect, useRef, useState } from 'react';
@@ -23,6 +23,7 @@ function ConfigSettingsPage() {
   const [newCurCode, setNewCurCode] = useState('');
   const [newCurSymbol, setNewCurSymbol] = useState('');
   const [newCurPos, setNewCurPos] = useState('prefix');
+  const [newCategoryName, setNewCategoryName] = useState('');
   const [savingSettings, setSavingSettings] = useState(false);
   const [addingBranch, setAddingBranch] = useState(false);
   const [removingBranchId, setRemovingBranchId] = useState('');
@@ -56,6 +57,51 @@ function ConfigSettingsPage() {
           <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite" />
         </path>
       </svg>
+    );
+  }
+
+  function addConfigCategory() {
+    const value = String(newCategoryName || '').trim();
+    if (!value) return;
+    const existing = Array.isArray(settings.categories) ? settings.categories : [];
+    if (existing.some(item => String(item).toLowerCase() === value.toLowerCase())) {
+      toast.show('Category already exists', { type: 'error' });
+      return;
+    }
+    dispatch(addSettingsCategory(value));
+    setNewCategoryName('');
+  }
+
+  function removeConfigCategory(categoryName) {
+    dispatch(removeSettingsCategory(categoryName));
+  }
+
+  function renderCategoriesCard() {
+    return (
+      <div className="card" style={{ alignSelf: 'start', padding: 20 }}>
+        <h3 className="section-title" style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>Manage Categories</h3>
+        <div style={{ color: '#64748b', fontSize: 13, marginTop: 12, marginBottom: 16 }}>
+          Add or remove product categories here. SuperAdmin or users with `manage_categories` grant can modify.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, marginBottom: 18 }}>
+          <input className="input" placeholder="New category" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} style={{ width: '100%', minHeight: 48 }} />
+          <button className="btn btn-primary" type="button" onClick={addConfigCategory} style={{ minWidth: 92, minHeight: 48 }}>Add</button>
+        </div>
+        <div style={{ display: 'grid', gap: 0 }}>
+          {(settings.categories || []).map(cat => (
+            <div key={cat} style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: 18, color: '#0f172a' }}>{cat}</div>
+              <button className="btn" type="button" onClick={() => removeConfigCategory(cat)} style={{ minWidth: 96, borderRadius: 14, padding: '10px 14px' }}>Remove</button>
+            </div>
+          ))}
+          {(!settings.categories || settings.categories.length === 0) && (
+            <div style={{ color: '#64748b', padding: '8px 0' }}>No categories added yet.</div>
+          )}
+        </div>
+        <div style={{ color: '#64748b', fontSize: 12, marginTop: 12 }}>
+          Categories saved here are available in the product creation form for this tenant.
+        </div>
+      </div>
     );
   }
 
@@ -224,8 +270,8 @@ function ConfigSettingsPage() {
           <OfflineQueueIndicator collection="branches" label="Branches queued" />
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-        <div style={{ display: 'grid', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
+        <div style={{ display: 'grid', gap: 16, alignContent: 'start', alignItems: 'start' }}>
           <div className="card">
             <h2 className="section-title">App Identity</h2>
             {isMasterSuperAdmin && (
@@ -816,9 +862,11 @@ function ConfigSettingsPage() {
             </button>
           </div>
         </div>
-        <div className="card">
-          <h2 className="section-title">Branches</h2>
-          <div style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: 'grid', gap: 16, alignContent: 'start', alignItems: 'start' }}>
+          {renderCategoriesCard()}
+          <div className="card" style={{ alignSelf: 'start', width: '100%' }}>
+            <h2 className="section-title">Branches</h2>
+            <div style={{ display: 'grid', gap: 12 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
               <div className="card" style={{ padding: 16 }}>
                 <div style={{ color: '#64748b', fontSize: 12 }}>Retail Branches</div>
@@ -863,6 +911,7 @@ function ConfigSettingsPage() {
             {renderBranchGroup('retail', 'Retail Branches', 'Retail sales locations and outlets.')}
             {renderBranchGroup('wholesale', 'Wholesale Shops', 'Wholesale-only selling locations and stores.')}
             {renderBranchGroup('warehouse', 'Warehouses', 'Storage and supply locations without POS.')}
+          </div>
           </div>
         </div>
       </div>

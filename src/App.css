@@ -52,6 +52,8 @@ html, body, #root {
 }
 .sidebar-nav {
   display: grid;
+  grid-auto-rows: max-content;
+  align-content: start;
   gap: 6px;
   overflow: auto;
   flex: 1 1 auto;
@@ -518,6 +520,8 @@ html, body, #root {
 }
 .sidebar-subgroup {
   display: grid;
+  grid-auto-rows: max-content;
+  align-content: start;
   gap: 6px;
   margin-top: 6px;
   margin-left: 8px;
