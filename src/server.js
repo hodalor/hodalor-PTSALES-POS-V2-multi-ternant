@@ -31,6 +31,7 @@ app.use('/api', async (req, res, next) => {
   const tenantId = String(req.user?.tenantId || req.tenantId || 'master').toLowerCase();
   const role = String(req.user?.role || '').toLowerCase();
   if (role === 'superadmin' && tenantId === 'master') return next();
+  if (String(req.path || '').startsWith('/settings') && String(req.method || '').toUpperCase() === 'GET') return next();
   const feature = featureForApiPath(req.path || '');
   if (!feature) return next();
   try {
@@ -111,7 +112,7 @@ app.use((req, res) => {
 });
 
 const port = process.env.PORT || 4000;
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`API on ${port}`);
   ServerLog.create({ level: 'info', message: `Server started on ${port}`, actor: 'server' }).catch(() => {});
   Promise.resolve().then(async () => {
@@ -129,6 +130,18 @@ app.listen(port, () => {
       }).catch(() => {});
     }
   });
+});
+server.on('error', (err) => {
+  const code = err && (err.code || err.name);
+  console.error(`Server failed to start on port ${port}:`, err?.message || String(err));
+  ServerLog.create({
+    level: 'error',
+    actor: 'server',
+    message: `Server failed to start on port ${port}`,
+    errorCode: code ? String(code) : '',
+    errorMeaning: errorMeaning(code),
+    stack: String(err?.stack || '')
+  }).catch(() => {});
 });
 
 process.on('unhandledRejection', (reason) => {

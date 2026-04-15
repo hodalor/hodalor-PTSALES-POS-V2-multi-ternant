@@ -3,7 +3,9 @@ import Settings from '../models/Settings.js';
 import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { filterGrantsByFeatureFlags } from '../config/tenantAccess.js';
+import { filterGrantsByFeatureFlags, featureFlagsFromEnabled } from '../config/tenantAccess.js';
+import { modelFor as TenantModelFor } from '../models/Tenant.js';
+import { getMasterConnection } from '../config/tenancy.js';
 
 const r = Router();
 const TENANT_ADMIN_ALLOWED_KEYS = new Set([
@@ -36,6 +38,33 @@ r.use(requireAuth);
 
 r.get('/', async (req, res) => {
   let doc = await Settings.findOne({ key: 'default' });
+  const tenantId = String(req.user?.tenantId || req.tenantId || '').trim();
+  if (tenantId && tenantId.toLowerCase() !== 'master') {
+    try {
+      const master = await getMasterConnection();
+      const TenantModel = TenantModelFor(master);
+      const tenant = await TenantModel.findOne({ tenantId }).lean();
+      if (tenant) {
+        const before = doc?.data || {};
+        const nextData = {
+          ...before,
+          clientAppName: tenant.clientAppName || before.clientAppName || tenant.name || '',
+          clientLogoUrl: tenant.logo || before.clientLogoUrl || '',
+          themeColor: tenant.themeColor || before.themeColor || '',
+          subscriptionPlan: tenant.subscriptionPlan || before.subscriptionPlan || 'basic',
+          subscriptionExpiresAt: tenant.subscriptionExpiresAt || before.subscriptionExpiresAt || null,
+          featureFlags: featureFlagsFromEnabled(Array.isArray(tenant.features) ? tenant.features : [])
+        };
+        if (!doc || JSON.stringify(before) !== JSON.stringify(nextData)) {
+          doc = await Settings.findOneAndUpdate(
+            { key: 'default' },
+            { key: 'default', data: nextData },
+            { new: true, upsert: true }
+          );
+        }
+      }
+    } catch {}
+  }
   if (!doc) return res.json({});
   res.json(doc.data || {});
 });
@@ -73,6 +102,20 @@ r.put('/', requireAdmin, async (req, res) => {
   const nextData = { ...before, ...data };
   let doc = await Settings.findOneAndUpdate({ key: 'default' }, { data: nextData }, { new: true, upsert: true });
   const after = doc && doc.data ? doc.data : {};
+  const tenantId = String(req.user?.tenantId || req.tenantId || '').trim();
+  if (tenantId && tenantId.toLowerCase() !== 'master') {
+    const changedIdentity = {};
+    if (Object.prototype.hasOwnProperty.call(data, 'clientAppName')) changedIdentity.clientAppName = String(after.clientAppName || '');
+    if (Object.prototype.hasOwnProperty.call(data, 'clientLogoUrl')) changedIdentity.logo = String(after.clientLogoUrl || '');
+    if (Object.prototype.hasOwnProperty.call(data, 'themeColor')) changedIdentity.themeColor = String(after.themeColor || '');
+    if (Object.keys(changedIdentity).length > 0) {
+      try {
+        const master = await getMasterConnection();
+        const TenantModel = TenantModelFor(master);
+        await TenantModel.findOneAndUpdate({ tenantId }, { $set: changedIdentity });
+      } catch {}
+    }
+  }
   const changed = [];
   Object.keys(data || {}).forEach(k => {
     try {

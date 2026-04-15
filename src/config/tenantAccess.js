@@ -62,8 +62,12 @@ export function normalizePlan(plan) {
 }
 
 export function normalizeFeatureList(plan, features) {
+  if (Array.isArray(features)) {
+    const explicit = new Set(features.map((key) => String(key || '').trim()).filter((key) => ALL_FEATURES.includes(key)));
+    return ALL_FEATURES.filter((key) => explicit.has(key));
+  }
   const base = new Set(PLAN_FEATURES[normalizePlan(plan)] || PLAN_FEATURES.basic);
-  const extras = Array.isArray(features) ? features : [];
+  const extras = [];
   extras.forEach((key) => {
     const value = String(key || '').trim();
     if (ALL_FEATURES.includes(value)) base.add(value);

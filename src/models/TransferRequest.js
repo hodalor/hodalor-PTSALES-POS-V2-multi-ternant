@@ -33,7 +33,6 @@ const TransferRequestSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 TransferRequestSchema.index({ to: 1, status: 1, createdAt: -1 });
-TransferRequestSchema.index({ clientId: 1 }, { unique: true, sparse: true });
 
 const { model, modelFor } = createTenantAwareModel('TransferRequest', TransferRequestSchema);
 export { modelFor };

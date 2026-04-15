@@ -163,6 +163,21 @@ r.patch('/:tenantId', requireSuperAdmin, async (req, res) => {
   res.json(updated);
 });
 
+r.delete('/:tenantId', requireSuperAdmin, async (req, res) => {
+  const tid = normalizeTenantId(req.params.tenantId);
+  if (!tid || tid.toLowerCase() === 'master') return res.status(400).json({ error: 'Cannot delete master tenant' });
+  const master = await getMasterConnection();
+  const TenantModel = TenantModelFor(master);
+  const before = await TenantModel.findOne({ tenantId: tid });
+  if (!before) return res.status(404).json({ error: 'Tenant not found' });
+  try {
+    const conn = await getTenantConnection(tid);
+    if (conn?.db) await conn.dropDatabase();
+  } catch {}
+  await TenantModel.deleteOne({ tenantId: tid });
+  res.json({ ok: true });
+});
+
 r.post('/:tenantId/admin', requireSuperAdmin, async (req, res) => {
   const tid = normalizeTenantId(req.params.tenantId);
   const { adminName, adminPin } = req.body || {};

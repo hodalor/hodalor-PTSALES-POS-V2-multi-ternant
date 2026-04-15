@@ -6,6 +6,7 @@ import { requireAuth } from '../middleware/auth.js';
 import Settings from '../models/Settings.js';
 import Tenant from '../models/Tenant.js';
 import { filterGrantsByFeatureFlags } from '../config/tenantAccess.js';
+import { resolveStoredTenantId } from '../config/tenancy.js';
 
 const r = Router();
 
@@ -20,7 +21,7 @@ function toLanding(role) {
 
 r.post('/login', async (req, res) => {
   const { username, pin, tenantId } = req.body || {};
-  const loginTenantId = String(tenantId || req.tenantId || 'master').trim() || 'master';
+  const loginTenantId = await resolveStoredTenantId(String(tenantId || req.tenantId || 'master').trim() || 'master');
   if (!username || !/^\d{4,6}$/.test(String(pin || '')) || !loginTenantId) return res.status(400).json({ error: 'Invalid input' });
   if (String(loginTenantId).toLowerCase() !== 'master') {
     const meta = await Tenant.findOne({ tenantId: loginTenantId });

@@ -37,8 +37,18 @@ export async function getMasterConnection() {
   return connectMaster();
 }
 
-export async function getTenantConnection(tenantId) {
+export async function resolveStoredTenantId(tenantId) {
   const tid = normalizeTenantId(tenantId);
+  if (!tid || tid.toLowerCase() === 'master') return 'master';
+  const master = await getMasterConnection();
+  const row = await master.db.collection('tenants').findOne({
+    tenantId: { $regex: `^${tid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }
+  }, { projection: { tenantId: 1 } });
+  return row?.tenantId ? String(row.tenantId) : tid;
+}
+
+export async function getTenantConnection(tenantId) {
+  const tid = await resolveStoredTenantId(tenantId);
   if (tid.toLowerCase() === 'master') return connectMaster();
   if (tenantConnections.has(tid)) return tenantConnections.get(tid);
   const uri = process.env.MONGODB_URI;

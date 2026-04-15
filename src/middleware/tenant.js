@@ -1,4 +1,4 @@
-import { getTenantConnection, normalizeTenantId } from '../config/tenancy.js';
+import { getTenantConnection, normalizeTenantId, resolveStoredTenantId } from '../config/tenancy.js';
 
 function readTenantId(req) {
   const bodyTenantId = req.body && typeof req.body === 'object' ? req.body.tenantId : '';
@@ -9,7 +9,8 @@ function readTenantId(req) {
 
 export async function tenantContext(req, res, next) {
   try {
-    const tenantId = readTenantId(req);
+    const requestedTenantId = readTenantId(req);
+    const tenantId = await resolveStoredTenantId(requestedTenantId);
     req.tenantId = tenantId;
     req.db = await getTenantConnection(tenantId);
     next();

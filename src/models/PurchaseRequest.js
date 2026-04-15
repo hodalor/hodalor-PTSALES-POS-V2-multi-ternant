@@ -41,7 +41,6 @@ const PurchaseRequestSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 PurchaseRequestSchema.index({ branchId: 1, status: 1, createdAt: -1 });
-PurchaseRequestSchema.index({ clientId: 1 }, { unique: true, sparse: true });
 
 const { model, modelFor } = createTenantAwareModel('PurchaseRequest', PurchaseRequestSchema);
 export { modelFor };

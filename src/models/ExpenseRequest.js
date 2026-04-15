@@ -20,7 +20,6 @@ const ExpenseRequestSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 ExpenseRequestSchema.index({ branchId: 1, status: 1, createdAt: -1 });
-ExpenseRequestSchema.index({ clientId: 1 }, { unique: true, sparse: true });
 
 const { model, modelFor } = createTenantAwareModel('ExpenseRequest', ExpenseRequestSchema);
 export { modelFor };

@@ -33,7 +33,6 @@ const AdjustmentRequestSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 AdjustmentRequestSchema.index({ branchId: 1, status: 1, createdAt: -1 });
-AdjustmentRequestSchema.index({ clientId: 1 }, { unique: true, sparse: true });
 
 const { model, modelFor } = createTenantAwareModel('AdjustmentRequest', AdjustmentRequestSchema);
 export { modelFor };
