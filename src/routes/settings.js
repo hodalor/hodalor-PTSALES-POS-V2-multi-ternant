@@ -104,19 +104,6 @@ r.put('/', requireAdmin, async (req, res) => {
   let doc = await Settings.findOneAndUpdate({ key: 'default' }, { data: nextData }, { new: true, upsert: true });
   const after = doc && doc.data ? doc.data : {};
   const tenantId = String(req.user?.tenantId || req.tenantId || '').trim();
-  if (tenantId && tenantId.toLowerCase() !== 'master') {
-    const changedIdentity = {};
-    if (Object.prototype.hasOwnProperty.call(data, 'clientAppName')) changedIdentity.clientAppName = String(after.clientAppName || '');
-    if (Object.prototype.hasOwnProperty.call(data, 'clientLogoUrl')) changedIdentity.logo = String(after.clientLogoUrl || '');
-    if (Object.prototype.hasOwnProperty.call(data, 'themeColor')) changedIdentity.themeColor = String(after.themeColor || '');
-    if (Object.keys(changedIdentity).length > 0) {
-      try {
-        const master = await getMasterConnection();
-        const TenantModel = TenantModelFor(master);
-        await TenantModel.findOneAndUpdate({ tenantId }, { $set: changedIdentity });
-      } catch {}
-    }
-  }
   const changed = [];
   Object.keys(data || {}).forEach(k => {
     try {
@@ -128,21 +115,36 @@ r.put('/', requireAdmin, async (req, res) => {
     }
   });
   res.json(after || {});
-  void Audit.create({
-    actor: (req.user && req.user.name) || 'unknown',
-    actionType: 'settings_update',
-    details: { changedKeys: changed, count: changed.length },
-    branchId: req.user?.branchId || ''
-  }).catch(() => {});
-  void ServerLog.create({
-    level: 'info',
-    actor: (req.user && req.user.name) || 'unknown',
-    route: req.originalUrl || req.url || '',
-    method: req.method || 'PUT',
-    status: 200,
-    message: 'Settings updated',
-    details: { changedKeys: changed, count: changed.length }
-  }).catch(() => {});
+  void Promise.resolve().then(async () => {
+    if (tenantId && tenantId.toLowerCase() !== 'master') {
+      const changedIdentity = {};
+      if (Object.prototype.hasOwnProperty.call(data, 'clientAppName')) changedIdentity.clientAppName = String(after.clientAppName || '');
+      if (Object.prototype.hasOwnProperty.call(data, 'clientLogoUrl')) changedIdentity.logo = String(after.clientLogoUrl || '');
+      if (Object.prototype.hasOwnProperty.call(data, 'themeColor')) changedIdentity.themeColor = String(after.themeColor || '');
+      if (Object.keys(changedIdentity).length > 0) {
+        try {
+          const master = await getMasterConnection();
+          const TenantModel = TenantModelFor(master);
+          await TenantModel.findOneAndUpdate({ tenantId }, { $set: changedIdentity });
+        } catch {}
+      }
+    }
+    await Audit.create({
+      actor: (req.user && req.user.name) || 'unknown',
+      actionType: 'settings_update',
+      details: { changedKeys: changed, count: changed.length },
+      branchId: req.user?.branchId || ''
+    }).catch(() => {});
+    await ServerLog.create({
+      level: 'info',
+      actor: (req.user && req.user.name) || 'unknown',
+      route: req.originalUrl || req.url || '',
+      method: req.method || 'PUT',
+      status: 200,
+      message: 'Settings updated',
+      details: { changedKeys: changed, count: changed.length }
+    }).catch(() => {});
+  });
 });
 
 export default r;

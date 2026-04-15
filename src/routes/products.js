@@ -165,21 +165,21 @@ r.post('/', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (req,
     p.id = String(p._id);
     try { await p.save(); } catch {}
   }
-  await Audit.create({
+  res.json(p);
+  void Audit.create({
     actor: (req.user && req.user.name) || 'unknown',
     actionType: 'product_create',
     details: { name: p.name, sku: p.sku, price: p.price, category: p.category || '', initialStock: initialStock > 0 ? initialStock : 0, initialBranchId: initialBranchId || '' },
     branchId: req.user?.branchId || ''
-  });
-  await ServerLog.create({
+  }).catch(() => {});
+  void ServerLog.create({
     level: 'info',
     actor: (req.user && req.user.name) || 'unknown',
     route: req.originalUrl || req.url || '',
     method: req.method || 'POST',
     status: 200,
     message: `Product created: ${p.name} (${p.sku})`
-  });
-  res.json(p);
+  }).catch(() => {});
 });
 
 r.put('/:id', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (req, res) => {
@@ -211,13 +211,14 @@ r.put('/:id', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (re
       changed.push(k);
     }
   });
-  await Audit.create({
+  res.json(p);
+  void Audit.create({
     actor: (req.user && req.user.name) || 'unknown',
     actionType: 'product_update',
     details: { id, name: p?.name || before?.name || '', sku: p?.sku || before?.sku || '', changedKeys: changed },
     branchId: req.user?.branchId || ''
-  });
-  await ServerLog.create({
+  }).catch(() => {});
+  void ServerLog.create({
     level: 'info',
     actor: (req.user && req.user.name) || 'unknown',
     route: req.originalUrl || req.url || '',
@@ -225,8 +226,7 @@ r.put('/:id', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (re
     status: 200,
     message: `Product updated: ${p?.name || id}`,
     details: { changedKeys: changed }
-  });
-  res.json(p);
+  }).catch(() => {});
 });
 
 r.delete('/:id', requireAdmin, async (req, res) => {
@@ -234,21 +234,21 @@ r.delete('/:id', requireAdmin, async (req, res) => {
   const query = productLookupQuery(id);
   const doc = await Product.findOne(query);
   await Product.findOneAndDelete(query);
-  await Audit.create({
+  res.json({ ok: true });
+  void Audit.create({
     actor: (req.user && req.user.name) || 'unknown',
     actionType: 'product_delete',
     details: { id, name: doc?.name || '', sku: doc?.sku || '' },
     branchId: req.user?.branchId || ''
-  });
-  await ServerLog.create({
+  }).catch(() => {});
+  void ServerLog.create({
     level: 'info',
     actor: (req.user && req.user.name) || 'unknown',
     route: req.originalUrl || req.url || '',
     method: req.method || 'DELETE',
     status: 200,
     message: `Product deleted: ${doc?.name || id}`
-  });
-  res.json({ ok: true });
+  }).catch(() => {});
 });
 
 export default r;
