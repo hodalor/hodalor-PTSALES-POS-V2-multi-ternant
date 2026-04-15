@@ -62,42 +62,54 @@ export const GRANT_FEATURE_MAP = Object.fromEntries(
 );
 
 export const TENANT_FEATURE_CATALOG = [
-  { key: 'modules.dashboard', label: 'Dashboard', group: 'Main Menus' },
-  { key: 'modules.pos', label: 'POS', group: 'Main Menus' },
-  { key: 'modules.wholesalePos', label: 'Wholesale POS', group: 'Main Menus' },
-  { key: 'modules.invoices', label: 'Invoices', group: 'Main Menus' },
-  { key: 'modules.sales', label: 'Sales', group: 'Main Menus' },
-  { key: 'modules.products', label: 'Products', group: 'Main Menus' },
-  { key: 'modules.inventory', label: 'Inventory', group: 'Main Menus' },
-  { key: 'modules.labels', label: 'Labels', group: 'Main Menus' },
-  { key: 'modules.purchases', label: 'Purchases', group: 'Main Menus' },
-  { key: 'modules.expenses', label: 'Expenses', group: 'Main Menus' },
-  { key: 'modules.transfers', label: 'Transfers', group: 'Main Menus' },
-  { key: 'modules.adjustments', label: 'Adjustments', group: 'Main Menus' },
-  { key: 'modules.suppliers', label: 'Suppliers', group: 'Main Menus' },
-  { key: 'modules.customers', label: 'Customers', group: 'Main Menus' },
-  { key: 'modules.creditControl', label: 'Credit Control', group: 'Main Menus' },
-  { key: 'modules.approvalsCenter', label: 'Approvals Center', group: 'Main Menus' },
-  { key: 'modules.refunds', label: 'Refunds', group: 'Main Menus' },
-  { key: 'modules.refundApprovals', label: 'Refund Approvals', group: 'Main Menus' },
-  { key: 'modules.expenseApprovals', label: 'Expense Approvals', group: 'Main Menus' },
-  { key: 'modules.reports', label: 'Reports', group: 'Main Menus' },
-  { key: 'modules.backup', label: 'Backup', group: 'Main Menus' },
-  { key: 'admin.users', label: 'Users', group: 'Admin Menus' },
-  { key: 'admin.manual', label: 'Manual', group: 'Admin Menus' },
-  { key: 'admin.audit', label: 'Audit Log', group: 'Admin Menus' },
-  { key: 'admin.serverLogs', label: 'Server Logs', group: 'Admin Menus' },
-  { key: 'admin.stockRecords', label: 'Stock Records', group: 'Admin Menus' },
-  { key: 'admin.cashDrawer', label: 'Cash Drawer', group: 'Admin Menus' },
-  { key: 'admin.config', label: 'Config', group: 'Admin Menus' },
-  { key: 'admin.godhand', label: 'GodHand', group: 'Admin Menus' },
-  { key: 'admin.docs', label: 'Docs', group: 'Admin Menus' },
-  { key: 'features.offlineBackup', label: 'Offline usage (queue + backup)', group: 'Features' },
-  { key: 'tabs.customerPurchaseHistory', label: 'Customer Purchase History', group: 'Tabs' },
-  { key: 'tabs.posHeldSales', label: 'POS - Held Sales panel', group: 'Tabs' },
-  { key: 'tabs.invoiceNew', label: 'Invoices - New Invoice tab', group: 'Tabs' },
-  { key: 'tabs.invoiceRecords', label: 'Invoices - Records tab', group: 'Tabs' },
-  ...TENANT_GRANT_CATALOG.map((item) => ({ key: `grants.${item.key}`, label: item.label, group: 'Grant Access' }))
+  { key: 'modules.dashboard', label: 'Dashboard', group: 'Retail / General' },
+  { key: 'modules.pos', label: 'POS', group: 'Retail / General' },
+  { key: 'modules.sales', label: 'Sales', group: 'Retail / General' },
+  { key: 'modules.products', label: 'Products', group: 'Retail / General' },
+  { key: 'modules.inventory', label: 'Inventory', group: 'Retail / General' },
+  { key: 'modules.labels', label: 'Labels', group: 'Retail / General' },
+  { key: 'modules.customers', label: 'Customers', group: 'Retail / General' },
+  { key: 'modules.suppliers', label: 'Suppliers', group: 'Retail / General' },
+  { key: 'modules.expenses', label: 'Expenses', group: 'Retail / General' },
+  { key: 'modules.reports', label: 'Reports', group: 'Retail / General' },
+  { key: 'modules.backup', label: 'Backup', group: 'Retail / General' },
+
+  { key: 'modules.wholesalePos', label: 'Wholesale POS', group: 'Distribution / Wholesale' },
+  { key: 'modules.invoices', label: 'Invoices', group: 'Distribution / Wholesale' },
+  { key: 'modules.purchases', label: 'Purchases', group: 'Distribution / Wholesale' },
+  { key: 'modules.transfers', label: 'Transfers', group: 'Distribution / Wholesale' },
+  { key: 'modules.adjustments', label: 'Adjustments', group: 'Distribution / Wholesale' },
+  { key: 'modules.creditControl', label: 'Credit Control', group: 'Distribution / Wholesale' },
+  { key: 'modules.approvalsCenter', label: 'Approvals Center', group: 'Distribution / Wholesale' },
+  { key: 'modules.refunds', label: 'Refunds', group: 'Distribution / Wholesale' },
+  { key: 'modules.refundApprovals', label: 'Refund Approvals', group: 'Distribution / Wholesale' },
+  { key: 'modules.expenseApprovals', label: 'Expense Approvals', group: 'Distribution / Wholesale' },
+
+  { key: 'admin.users', label: 'Users', group: 'Admin / Control' },
+  { key: 'admin.manual', label: 'Manual', group: 'Admin / Control' },
+  { key: 'admin.audit', label: 'Audit Log', group: 'Admin / Control' },
+  { key: 'admin.serverLogs', label: 'Server Logs', group: 'Admin / Control' },
+  { key: 'admin.stockRecords', label: 'Stock Records', group: 'Admin / Control' },
+  { key: 'admin.cashDrawer', label: 'Cash Drawer', group: 'Admin / Control' },
+  { key: 'admin.config', label: 'Config', group: 'Admin / Control' },
+  { key: 'admin.godhand', label: 'GodHand', group: 'Admin / Control' },
+  { key: 'admin.docs', label: 'Docs', group: 'Admin / Control' },
+
+  { key: 'features.offlineBackup', label: 'Offline usage (queue + backup)', group: 'Platform Features' },
+  { key: 'tabs.customerPurchaseHistory', label: 'Customer Purchase History', group: 'Platform Features' },
+  { key: 'tabs.posHeldSales', label: 'POS - Held Sales panel', group: 'Platform Features' },
+  { key: 'tabs.invoiceNew', label: 'Invoices - New Invoice tab', group: 'Platform Features' },
+  { key: 'tabs.invoiceRecords', label: 'Invoices - Records tab', group: 'Platform Features' },
+
+  ...TENANT_GRANT_CATALOG.map((item) => {
+    let group = 'Grant Access / Retail';
+    if (['view_wholesale_pos', 'view_purchases', 'add_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'edit_adjustments', 'approve_adjustments', 'view_credit_control', 'approve_credit_director', 'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_wholesale_director', 'approve_wholesale_manager', 'view_wholesale_invoices', 'view_warehouse_invoices', 'view_warehouse_approvals'].includes(item.key)) {
+      group = 'Grant Access / Distribution';
+    } else if (['view_users', 'view_config', 'view_audit', 'view_stock_records', 'view_cashdrawer', 'view_imei_conflicts'].includes(item.key)) {
+      group = 'Grant Access / Admin';
+    }
+    return { key: `grants.${item.key}`, label: item.label, group };
+  })
 ];
 
 export function filterGrantsByTenantFlags(grants, settings) {

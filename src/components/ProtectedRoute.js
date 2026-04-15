@@ -12,7 +12,18 @@ function ProtectedRoute({ roles, grant, feature, children }) {
   if (!auth.isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
+  const expiryTs = settings?.subscriptionExpiresAt ? new Date(settings.subscriptionExpiresAt).getTime() : 0;
   const isSuper = String(auth.role || '').toLowerCase() === 'superadmin' && String(auth.user?.tenantId || '').toLowerCase() === 'master';
+  if (!isSuper && expiryTs && expiryTs < Date.now()) {
+    return (
+      <div style={{ padding: 24, display: 'grid', gap: 12 }}>
+        <div style={{ fontSize: 24, fontWeight: 800, color: '#991b1b' }}>Subscription Expired</div>
+        <div style={{ color: '#475569' }}>
+          This tenant subscription has expired. Please contact the super admin to renew access.
+        </div>
+      </div>
+    );
+  }
   if (!isSuper && feature && !isFeatureEnabled(settings, feature)) {
     const fallback = location.pathname === '/pos' ? '/dashboard' : '/pos';
     return <Navigate to={fallback} replace />;

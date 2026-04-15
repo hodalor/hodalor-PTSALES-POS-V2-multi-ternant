@@ -141,7 +141,7 @@ function Layout() {
           <div className="card" style={{ margin: '8px 16px', padding: 12, background: daysLeft < 0 ? '#fee2e2' : daysLeft <= 14 ? '#fef3c7' : '#ecfeff' }}>
             <div style={{ fontWeight: 700 }}>Subscription</div>
             <div style={{ color: '#475569', fontSize: 13 }}>
-              {daysLeft < 0 ? 'Subscription expired. Contact your super admin.' : `Plan: ${String(settings.subscriptionPlan || 'basic')} • ${daysLeft} day(s) left`}
+              {daysLeft < 0 ? `Subscription expired ${Math.abs(daysLeft)} day(s) ago. Contact your super admin.` : `Plan: ${String(settings.subscriptionPlan || 'basic')} • ${daysLeft} day(s) left`}
             </div>
           </div>
         )}

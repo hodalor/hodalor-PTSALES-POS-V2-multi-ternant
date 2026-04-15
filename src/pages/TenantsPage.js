@@ -16,6 +16,7 @@ function TenantsPage() {
     name: '',
     subscriptionPlan: 'basic',
     clientAppName: '',
+    subscriptionExpiresAt: '',
     adminName: '',
     adminPin: '',
     features: []
@@ -50,6 +51,16 @@ function TenantsPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  function daysLeftLabel(value) {
+    if (!value) return 'No expiry set';
+    const ts = new Date(value).getTime();
+    if (!Number.isFinite(ts)) return 'Invalid date';
+    const days = Math.ceil((ts - Date.now()) / (24 * 3600 * 1000));
+    if (days < 0) return `Expired ${Math.abs(days)} day(s) ago`;
+    if (days === 0) return 'Expires today';
+    return `${days} day(s) left`;
+  }
+
   function toggleFeature(key) {
     setForm((prev) => {
       const set = new Set(prev.features || []);
@@ -69,6 +80,7 @@ function TenantsPage() {
         name: form.name,
         subscriptionPlan: form.subscriptionPlan,
         clientAppName: form.clientAppName,
+        subscriptionExpiresAt: form.subscriptionExpiresAt || null,
         adminName: form.adminName,
         adminPin: form.adminPin,
         features: form.features
@@ -83,7 +95,7 @@ function TenantsPage() {
         await tenantsApi.create(payload);
         toast.show('Tenant created', { type: 'success' });
       }
-      setForm({ tenantId: '', name: '', subscriptionPlan: 'basic', clientAppName: '', adminName: '', adminPin: '', features: [] });
+      setForm({ tenantId: '', name: '', subscriptionPlan: 'basic', clientAppName: '', subscriptionExpiresAt: '', adminName: '', adminPin: '', features: [] });
       setEditing('');
       await load();
     } catch (e2) {
@@ -100,6 +112,7 @@ function TenantsPage() {
       name: String(row.name || ''),
       subscriptionPlan: String(row.subscriptionPlan || 'basic'),
       clientAppName: String(row.clientAppName || ''),
+      subscriptionExpiresAt: row.subscriptionExpiresAt ? String(row.subscriptionExpiresAt).slice(0, 10) : '',
       adminName: '',
       adminPin: '',
       features: Array.isArray(row.features) ? row.features : []
@@ -128,12 +141,16 @@ function TenantsPage() {
             <input className="input" value={form.clientAppName} onChange={(e) => setValue('clientAppName', e.target.value)} />
           </label>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
           <label>
             Plan
             <select className="input" value={form.subscriptionPlan} onChange={(e) => setValue('subscriptionPlan', e.target.value)}>
               {PLAN_OPTIONS.map((plan) => <option key={plan} value={plan}>{plan}</option>)}
             </select>
+          </label>
+          <label>
+            Expiry Date
+            <input className="input" type="date" value={form.subscriptionExpiresAt || ''} onChange={(e) => setValue('subscriptionExpiresAt', e.target.value)} />
           </label>
           <label>
             Default Admin Username
@@ -143,6 +160,9 @@ function TenantsPage() {
             Default Admin PIN
             <input className="input" type="password" value={form.adminPin} onChange={(e) => setValue('adminPin', e.target.value)} />
           </label>
+        </div>
+        <div style={{ color: '#64748b', fontSize: 13 }}>
+          Subscription status: {daysLeftLabel(form.subscriptionExpiresAt)}
         </div>
         <div>
           <div style={{ fontWeight: 700, marginBottom: 8 }}>Feature Overrides</div>
@@ -189,7 +209,7 @@ function TenantsPage() {
                   <td>{row.name}</td>
                   <td>{row.subscriptionPlan}</td>
                   <td>{row.dbName}</td>
-                  <td>{row.disabled ? 'Disabled' : 'Active'}</td>
+                  <td>{row.disabled ? 'Disabled' : 'Active'}{row.subscriptionExpiresAt ? ` • ${daysLeftLabel(String(row.subscriptionExpiresAt).slice(0, 10))}` : ''}</td>
                   <td><button className="btn" onClick={() => startEdit(row)}>Edit</button></td>
                 </tr>
               ))}
