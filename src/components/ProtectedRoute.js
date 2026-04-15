@@ -28,6 +28,16 @@ function ProtectedRoute({ roles, grant, feature, children }) {
     const fallback = location.pathname === '/pos' ? '/dashboard' : '/pos';
     return <Navigate to={fallback} replace />;
   }
+  const grantFeatureEnabled = (g) => {
+    const key = `grants.${String(g || '')}`;
+    return settings?.featureFlags?.[key] !== false;
+  };
+  if (!isSuper && grant) {
+    const requested = Array.isArray(grant) ? grant : [grant];
+    if (!requested.some(grantFeatureEnabled)) {
+      return <Navigate to="/dashboard" replace />;
+    }
+  }
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
   function has(g) {
     if (!g) return false;

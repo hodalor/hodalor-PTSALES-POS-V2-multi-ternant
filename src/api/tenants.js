@@ -12,6 +12,10 @@ export function update(tenantId, payload) {
   return fetchJson(`/api/tenants/${encodeURIComponent(tenantId)}`, { method: 'PATCH', body: JSON.stringify(payload) });
 }
 
+export function remove(tenantId) {
+  return fetchJson(`/api/tenants/${encodeURIComponent(tenantId)}`, { method: 'DELETE' });
+}
+
 export function setAdmin(tenantId, payload) {
   return fetchJson(`/api/tenants/${encodeURIComponent(tenantId)}/admin`, { method: 'POST', body: JSON.stringify(payload) });
 }

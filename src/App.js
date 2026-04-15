@@ -8,13 +8,14 @@ import SerializedInventoryPage from './pages/SerializedInventoryPage';
 import ReportsPage from './pages/ReportsPage';
 import NotFoundPage from './pages/NotFoundPage';
 import ProtectedRoute from './components/ProtectedRoute';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import * as productsApi from './api/products';
 import * as suppliersApi from './api/suppliers';
 import * as customersApi from './api/customers';
 import { loadState, clearTenantState } from './store/persist';
 import { filterGrantsByTenantFlags } from './utils/tenantAccess';
+import { isFeatureEnabled } from './utils/featureFlags';
 import * as branchesApi from './api/branches';
 import { setProducts } from './store/productsSlice';
 import { setSuppliers } from './store/suppliersSlice';
@@ -97,6 +98,8 @@ function App() {
   const clientAppName = settings?.clientAppName;
   const appName = settings?.appName;
   const clientLogoUrl = settings?.clientLogoUrl;
+  const themeColor = settings?.themeColor || '#0b1220';
+  const [settingsReady, setSettingsReady] = useState(false);
   useEffect(() => {
     function resizeToPng(src, size) {
       return new Promise((resolve) => {
@@ -146,7 +149,7 @@ function App() {
         start_url: '/',
         scope: '/',
         display: 'standalone',
-        theme_color: '#0b1220',
+        theme_color: themeColor,
         background_color: '#0b1220',
         orientation: 'portrait',
         categories: ['business', 'finance', 'productivity']
@@ -171,6 +174,14 @@ function App() {
         document.head.appendChild(meta);
       }
       meta.setAttribute('content', branded);
+      document.title = branded;
+      let themeMeta = document.querySelector('meta[name="theme-color"]');
+      if (!themeMeta) {
+        themeMeta = document.createElement('meta');
+        themeMeta.setAttribute('name', 'theme-color');
+        document.head.appendChild(themeMeta);
+      }
+      themeMeta.setAttribute('content', themeColor);
       let apple = document.querySelector('link[rel="apple-touch-icon"]');
       if (!apple) {
         apple = document.createElement('link');
@@ -180,7 +191,7 @@ function App() {
       apple.setAttribute('href', icon192);
     }
     regen();
-  }, [clientAppName, appName, clientLogoUrl]);
+  }, [clientAppName, appName, clientLogoUrl, themeColor]);
   useEffect(() => {
     (async () => {
       try {
@@ -208,19 +219,41 @@ function App() {
     return () => clearTimeout(tid);
   }, [dispatch]);
   useEffect(() => {
+    if (!isAuthed) {
+      setSettingsReady(false);
+      return;
+    }
     (async () => {
       if (!isAuthed) return;
       try {
         const isMaster = String(authTenantId || '').toLowerCase() === 'master';
         const meta = await tenantsApi.me().catch(() => ({}));
-        if (!isMaster && meta && typeof meta === 'object') {
-          dispatch(setAllSettings({
-            clientAppName: meta.clientAppName || meta.name || '',
-            clientLogoUrl: meta.logo || '',
-            themeColor: meta.themeColor || '',
-            subscriptionPlan: meta.subscriptionPlan || 'basic',
-            subscriptionExpiresAt: meta.subscriptionExpiresAt || null
-          }));
+        const remote = await settingsApi.get();
+        if ((remote && Object.keys(remote).length > 0) || (!isMaster && meta && typeof meta === 'object')) {
+          const merged = isMaster
+            ? (remote || {})
+            : {
+                ...(remote || {}),
+                clientAppName: remote?.clientAppName || meta?.clientAppName || meta?.name || '',
+                clientLogoUrl: remote?.clientLogoUrl || meta?.logo || '',
+                themeColor: remote?.themeColor || meta?.themeColor || '',
+                subscriptionPlan: remote?.subscriptionPlan || meta?.subscriptionPlan || 'basic',
+                subscriptionExpiresAt: remote?.subscriptionExpiresAt || meta?.subscriptionExpiresAt || null
+              };
+          dispatch(setAllSettings(merged));
+          try {
+            const root = document.documentElement;
+            const color = !isMaster ? String(merged.themeColor || '') : '';
+            if (color) {
+              root.style.setProperty('--brand', color);
+              root.style.setProperty('--sidebar-bg', color);
+              root.style.setProperty('--active', color);
+            } else {
+              root.style.removeProperty('--brand');
+              root.style.removeProperty('--sidebar-bg');
+              root.style.removeProperty('--active');
+            }
+          } catch {}
         } else {
           dispatch(setAllSettings({
             clientAppName: '',
@@ -229,24 +262,12 @@ function App() {
             subscriptionPlan: 'enterprise',
             subscriptionExpiresAt: null
           }));
-        }
-        try {
-          const root = document.documentElement;
-          const color = !isMaster && meta?.themeColor ? String(meta.themeColor) : '';
-          if (color) {
-            root.style.setProperty('--brand', color);
-            root.style.setProperty('--sidebar-bg', color);
-            root.style.setProperty('--active', color);
-          } else {
+          try {
+            const root = document.documentElement;
             root.style.removeProperty('--brand');
             root.style.removeProperty('--sidebar-bg');
             root.style.removeProperty('--active');
-          }
-        } catch {}
-        const remote = await settingsApi.get();
-        if (remote && Object.keys(remote).length > 0) {
-          dispatch(setAllSettings(remote));
-        } else {
+          } catch {}
           const snapshot = loadState();
           const localDefaults = snapshot?.settings || {};
           if (Object.keys(localDefaults).length > 0) {
@@ -255,12 +276,14 @@ function App() {
         }
       } catch (e) {
         console.error('Settings init error:', e);
+      } finally {
+        setSettingsReady(true);
       }
     })();
   }, [dispatch, isAuthed, authTenantId]);
   useEffect(() => {
     (async () => {
-      if (!isAuthed) return;
+      if (!isAuthed || !settingsReady) return;
       try {
         const migFlag = localStorage.getItem(`ptSales:migratedDbV1:${String(authTenantId || 'default')}`);
         if (migFlag) return;
@@ -308,26 +331,27 @@ function App() {
         localStorage.setItem(`ptSales:migratedDbV1:${String(authTenantId || 'default')}`, '1');
       } catch {}
     })();
-  }, [isAuthed, authTenantId]);
+  }, [isAuthed, authTenantId, settingsReady]);
   useEffect(() => {
     let alive = true;
     (async () => {
-      if (!isAuthed) return;
+      if (!isAuthed || !settingsReady) return;
       try {
+        const can = (feature) => isFeatureEnabled(settings, feature);
         const [p, s, c, b, r, sl, u, au, invs, pr, tr, exr, adr] = await Promise.allSettled([
-          productsApi.list(),
-          suppliersApi.list(),
-          customersApi.list(),
-          branchesApi.list(),
-          refundsApi.listRequests(),
-          salesApi.list(),
-          usersApi.list(),
-          auditsApi.list(),
-          invoicesApi.list(),
-          purchasesApi.listRequests({ status: 'pending', limit: 200 }),
-          transfersApi.listRequests({ status: 'pending', limit: 200 }),
-          expensesApi.listRequests({ status: 'pending', limit: 200 }),
-          adjustmentsApi.listRequests({ status: 'pending', limit: 200 })
+          can('modules.products') ? productsApi.list() : Promise.resolve([]),
+          can('modules.suppliers') ? suppliersApi.list() : Promise.resolve([]),
+          can('modules.customers') ? customersApi.list() : Promise.resolve([]),
+          can('admin.config') ? branchesApi.list() : Promise.resolve([]),
+          can('modules.refunds') ? refundsApi.listRequests() : Promise.resolve([]),
+          can('modules.sales') ? salesApi.list() : Promise.resolve([]),
+          can('admin.users') ? usersApi.list() : Promise.resolve([]),
+          can('admin.audit') ? auditsApi.list() : Promise.resolve([]),
+          can('modules.invoices') ? invoicesApi.list() : Promise.resolve([]),
+          can('modules.purchases') ? purchasesApi.listRequests({ status: 'pending', limit: 200 }) : Promise.resolve([]),
+          can('modules.transfers') ? transfersApi.listRequests({ status: 'pending', limit: 200 }) : Promise.resolve([]),
+          (can('modules.expenses') || can('modules.expenseApprovals')) ? expensesApi.listRequests({ status: 'pending', limit: 200 }) : Promise.resolve([]),
+          can('modules.adjustments') ? adjustmentsApi.listRequests({ status: 'pending', limit: 200 }) : Promise.resolve([])
         ]);
         if (alive && p.status === 'fulfilled' && Array.isArray(p.value)) dispatch(setProducts(p.value));
         if (alive && s.status === 'fulfilled' && Array.isArray(s.value)) dispatch(setSuppliers(s.value));
@@ -357,7 +381,7 @@ function App() {
       } catch {}
     })();
     return () => { alive = false; };
-  }, [dispatch, isAuthed]);
+  }, [dispatch, isAuthed, settings, settingsReady]);
   useEffect(() => {
     let alive = true;
     const int = setInterval(async () => {
@@ -393,27 +417,28 @@ function App() {
       document.addEventListener('visibilitychange', onVis, { passive: true });
     }
     const interval = setInterval(async () => {
-      if (!navigator.onLine || !alive || !isAuthed) return;
+      if (!navigator.onLine || !alive || !isAuthed || !settingsReady) return;
       if (Date.now() - lastActive >= idleMs) {
         try { localStorage.removeItem('ptSales:authToken'); } catch {}
         dispatch(logout());
         return;
       }
       try {
+        const can = (feature) => isFeatureEnabled(settings, feature);
         const [p, s, c, b, r, sl, u, au, invs, pr, tr, exr, adr] = await Promise.allSettled([
-          productsApi.list(),
-          suppliersApi.list(),
-          customersApi.list(),
-          branchesApi.list(),
-          refundsApi.listRequests(),
-          salesApi.list(),
-          usersApi.list(),
-          auditsApi.list(),
-          invoicesApi.list(),
-          purchasesApi.listRequests({ status: 'pending', limit: 200 }),
-          transfersApi.listRequests({ status: 'pending', limit: 200 }),
-          expensesApi.listRequests({ status: 'pending', limit: 200 }),
-          adjustmentsApi.listRequests({ status: 'pending', limit: 200 })
+          can('modules.products') ? productsApi.list() : Promise.resolve([]),
+          can('modules.suppliers') ? suppliersApi.list() : Promise.resolve([]),
+          can('modules.customers') ? customersApi.list() : Promise.resolve([]),
+          can('admin.config') ? branchesApi.list() : Promise.resolve([]),
+          can('modules.refunds') ? refundsApi.listRequests() : Promise.resolve([]),
+          can('modules.sales') ? salesApi.list() : Promise.resolve([]),
+          can('admin.users') ? usersApi.list() : Promise.resolve([]),
+          can('admin.audit') ? auditsApi.list() : Promise.resolve([]),
+          can('modules.invoices') ? invoicesApi.list() : Promise.resolve([]),
+          can('modules.purchases') ? purchasesApi.listRequests({ status: 'pending', limit: 200 }) : Promise.resolve([]),
+          can('modules.transfers') ? transfersApi.listRequests({ status: 'pending', limit: 200 }) : Promise.resolve([]),
+          (can('modules.expenses') || can('modules.expenseApprovals')) ? expensesApi.listRequests({ status: 'pending', limit: 200 }) : Promise.resolve([]),
+          can('modules.adjustments') ? adjustmentsApi.listRequests({ status: 'pending', limit: 200 }) : Promise.resolve([])
         ]);
         if (alive && p.status === 'fulfilled' && Array.isArray(p.value)) dispatch(setProducts(p.value));
         if (alive && s.status === 'fulfilled' && Array.isArray(s.value)) dispatch(setSuppliers(s.value));
@@ -452,7 +477,7 @@ function App() {
       window.removeEventListener('scroll', bump);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [dispatch, refreshSec, isAuthed, isAuthedNow]);
+  }, [dispatch, refreshSec, isAuthed, isAuthedNow, settings, settingsReady]);
   return (
     <ToastProvider>
       <BrowserRouter>

@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { isFeatureEnabled } from '../utils/featureFlags';
 import { listCreditSales } from '../api/credits';
 import { listApprovals } from '../api/approvals';
@@ -39,9 +39,14 @@ function Sidebar({ collapsed }) {
     const threshold = Number(product?.warehouseLowStock != null ? product.warehouseLowStock : (product?.lowStock || 0));
     return stock <= threshold;
   }).length;
-  const can = (list, grant) => {
+  const can = useCallback((list, grant) => {
     if (!Array.isArray(list) || list.length === 0) return true;
     if (rl === 'superadmin') return true;
+    const grantFeatureEnabled = (g) => settings?.featureFlags?.[`grants.${String(g || '')}`] !== false;
+    if (grant) {
+      const requested = Array.isArray(grant) ? grant : [grant];
+      if (!requested.some(grantFeatureEnabled)) return false;
+    }
     const okRole = list.map(x => String(x).toLowerCase()).includes(rl);
     function has(g) {
       if (!g) return false;
@@ -53,7 +58,7 @@ function Sidebar({ collapsed }) {
     }
     const okGrant = Array.isArray(grant) ? grant.some(has) : has(grant);
     return okRole || okGrant;
-  };
+  }, [grants, rl, settings]);
   function toggleGroup(group) {
     setRetailOpen(group === 'retail' ? !retailOpen : false);
     setWholesaleOpen(group === 'wholesale' ? !wholesaleOpen : false);
@@ -81,14 +86,19 @@ function Sidebar({ collapsed }) {
     let alive = true;
     (async () => {
       try {
-          const [overdueRows, directorRows, managerRows, warehouseRows] = await Promise.all([
-          listCreditSales({ status: 'overdue' }).catch(() => []),
-          listApprovals({ actionType: 'credit_repayment', status: 'pending_director' }).catch(() => []),
-          listApprovals({ actionType: 'credit_repayment', status: 'pending_manager' }).catch(() => []),
-            Promise.all([
-              listOperations({ operationArea: 'warehouse', status: 'pending_director' }).catch(() => []),
-              listOperations({ operationArea: 'warehouse', status: 'pending_manager' }).catch(() => [])
-            ]).catch(() => [[], []])
+        const canCredit = isFeatureEnabled(settings, 'modules.creditControl') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_credit_control']);
+        const canApprovals = isFeatureEnabled(settings, 'modules.approvalsCenter') && can(['Admin','Manager','SuperAdmin'],['view_approvals','approve_credit_director','approve_credit_manager','approve_wholesale_director','approve_wholesale_manager']);
+        const canWholesale = isFeatureEnabled(settings, 'modules.wholesalePos') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'],['view_wholesale_pos']);
+        const [overdueRows, directorRows, managerRows, warehouseRows] = await Promise.all([
+          canCredit ? listCreditSales({ status: 'overdue' }).catch(() => []) : Promise.resolve([]),
+          canApprovals ? listApprovals({ actionType: 'credit_repayment', status: 'pending_director' }).catch(() => []) : Promise.resolve([]),
+          canApprovals ? listApprovals({ actionType: 'credit_repayment', status: 'pending_manager' }).catch(() => []) : Promise.resolve([]),
+          (canApprovals && canWholesale)
+            ? Promise.all([
+                listOperations({ operationArea: 'warehouse', status: 'pending_director' }).catch(() => []),
+                listOperations({ operationArea: 'warehouse', status: 'pending_manager' }).catch(() => [])
+              ]).catch(() => [[], []])
+            : Promise.resolve([[], []])
         ]);
         if (!alive) return;
         setEasyBuyOverdue(Array.isArray(overdueRows) ? overdueRows.length : 0);
@@ -100,7 +110,7 @@ function Sidebar({ collapsed }) {
       } catch {}
     })();
     return () => { alive = false; };
-  }, []);
+  }, [settings, role, grants, can]);
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-brand">

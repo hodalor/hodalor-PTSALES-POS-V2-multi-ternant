@@ -61,6 +61,33 @@ export const GRANT_FEATURE_MAP = Object.fromEntries(
   TENANT_GRANT_CATALOG.map((item) => [item.key, `grants.${item.key}`])
 );
 
+export const PLAN_DEFAULT_FEATURES = {
+  basic: [
+    'modules.dashboard', 'modules.pos', 'modules.invoices', 'modules.sales', 'modules.products',
+    'modules.inventory', 'modules.labels', 'modules.purchases', 'modules.suppliers',
+    'modules.customers', 'modules.backup', 'admin.users', 'admin.audit',
+    'admin.cashDrawer', 'admin.config', 'features.offlineBackup',
+    'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
+    'grants.view_dashboard', 'grants.view_pos', 'grants.view_retail_price', 'grants.view_sales',
+    'grants.add_sales', 'grants.view_products', 'grants.add_products', 'grants.edit_products',
+    'grants.view_inventory', 'grants.edit_inventory', 'grants.view_labels', 'grants.view_purchases',
+    'grants.add_purchases', 'grants.view_suppliers', 'grants.add_suppliers', 'grants.view_customers',
+    'grants.add_customers', 'grants.view_cashdrawer', 'grants.view_users', 'grants.view_config'
+  ],
+  pro: [
+    'modules.dashboard', 'modules.pos', 'modules.wholesalePos', 'modules.invoices', 'modules.sales',
+    'modules.products', 'modules.inventory', 'modules.labels', 'modules.purchases', 'modules.expenses',
+    'modules.transfers', 'modules.adjustments', 'modules.suppliers', 'modules.customers',
+    'modules.creditControl', 'modules.approvalsCenter', 'modules.refunds', 'modules.refundApprovals',
+    'modules.expenseApprovals', 'modules.reports', 'modules.backup',
+    'admin.users', 'admin.manual', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords',
+    'admin.cashDrawer', 'admin.config', 'features.offlineBackup',
+    'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
+    ...TENANT_GRANT_CATALOG.map((item) => `grants.${item.key}`).filter((key) => !['grants.approve_credit_director', 'grants.approve_wholesale_director'].includes(key))
+  ],
+  enterprise: null
+};
+
 export const TENANT_FEATURE_CATALOG = [
   { key: 'modules.dashboard', label: 'Dashboard', group: 'Retail / General' },
   { key: 'modules.pos', label: 'POS', group: 'Retail / General' },
@@ -115,4 +142,10 @@ export const TENANT_FEATURE_CATALOG = [
 export function filterGrantsByTenantFlags(grants, settings) {
   const flags = settings?.featureFlags || {};
   return (Array.isArray(grants) ? grants : []).filter((grant) => flags[GRANT_FEATURE_MAP[String(grant)] || ''] !== false);
+}
+
+export function getPlanDefaultFeatures(plan) {
+  const value = String(plan || 'basic').trim().toLowerCase();
+  if (value === 'enterprise') return TENANT_FEATURE_CATALOG.map((item) => item.key);
+  return (PLAN_DEFAULT_FEATURES[value] || PLAN_DEFAULT_FEATURES.basic).slice();
 }
