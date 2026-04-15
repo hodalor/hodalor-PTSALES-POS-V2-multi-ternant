@@ -14,14 +14,21 @@ const transfersSlice = createSlice({
       state.requests.unshift(r);
     },
     approveTransfer(state, action) {
-      const { id, approverName, approverRole, remark } = action.payload || {};
+      const { id, approverName, approverRole, remark, nextStatus } = action.payload || {};
       const r = state.requests.find(x => String(x._id || x.clientId) === String(id));
       if (r) {
-        r.status = 'approved';
-        r.approverName = approverName || 'unknown';
-        r.approverRole = approverRole || '';
-        r.approvalRemark = remark || '';
-        r.approved_at = new Date().toISOString();
+        r.status = nextStatus || 'approved';
+        if (r.status === 'pending_manager') {
+          r.directorApproverName = approverName || 'unknown';
+          r.directorApproverRole = approverRole || '';
+          r.directorApprovalRemark = remark || '';
+          r.directorApproved_at = new Date().toISOString();
+        } else {
+          r.approverName = approverName || 'unknown';
+          r.approverRole = approverRole || '';
+          r.approvalRemark = remark || '';
+          r.approved_at = new Date().toISOString();
+        }
       }
     },
     rejectTransfer(state, action) {
@@ -40,4 +47,3 @@ const transfersSlice = createSlice({
 
 export const { setTransferRequests, createTransferRequest, approveTransfer, rejectTransfer } = transfersSlice.actions;
 export default transfersSlice.reducer;
-

@@ -48,7 +48,7 @@ function PurchasesPage() {
   const [openModal, setOpenModal] = useState(false);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [statusFilter, setStatusFilter] = useState('pending'); // pending | approved | rejected
+  const [statusFilter, setStatusFilter] = useState('pending_director');
   const [detail, setDetail] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const dispatch = useDispatch();
@@ -78,7 +78,9 @@ function PurchasesPage() {
     return grants.includes(g);
   }
   const canReceive = (['admin','manager','inventory staff'].includes(roleLower)) || has('add_purchases');
-  const canApprove = (['admin','manager','superadmin'].includes(roleLower)) || has('approve_purchases');
+  const canApprove = (['admin','manager','director','superadmin'].includes(roleLower)) || has('approve_purchases');
+  const canDirectorApprove = (['admin','director','superadmin'].includes(roleLower)) || has('approve_wholesale_director') || has('approve_credit_director') || has('approve_purchases');
+  const canManagerApprove = (['admin','manager','superadmin'].includes(roleLower)) || has('approve_wholesale_manager') || has('approve_credit_manager') || has('approve_purchases');
   const canDeleteRecords = roleLower === 'superadmin';
   const [selectedRecordIds, setSelectedRecordIds] = useState([]);
   const [bulkAction, setBulkAction] = useState('');
@@ -251,7 +253,7 @@ function PurchasesPage() {
       initiatorName: auth.user?.name || 'unknown',
       initiatorRole: auth.role || '',
       pack: selectedTrackType === 'serialized' ? '' : (pack ? pack.name : ''),
-      status: 'pending_approval',
+      status: 'pending_director',
       clientId,
       created_at: new Date().toISOString(),
       items: nextItems || (selectedTrackType === 'serialized' ? [{
@@ -362,7 +364,7 @@ function PurchasesPage() {
   }, [roleLower, assigned]);
   const pendingRequests = useMemo(() => {
     return requests.filter(r => {
-      const s = r.status === 'pending_approval' ? 'pending' : r.status;
+      const s = r.status === 'pending_approval' ? 'pending_director' : r.status;
       if (s !== statusFilter) return false;
       if (fBranch && r.branchId !== fBranch) return false;
       if (allowedBranches && !allowedBranches.has(r.branchId)) return false;
@@ -389,6 +391,8 @@ function PurchasesPage() {
   }, [tab, statusFilter, fBranch, dispatch]);
   async function approve(r) {
     if (!canApprove) { toast.show('Not authorized to approve purchases', { type: 'error' }); return; }
+    if (String(r.status || '') === 'pending_director' && !canDirectorApprove) { toast.show('Director approval required', { type: 'error' }); return; }
+    if (String(r.status || '') === 'pending_manager' && !canManagerApprove) { toast.show('Manager approval required', { type: 'error' }); return; }
     const id = r._id || r.clientId;
     try {
       const { promptDialog } = await import('../utils/dialogs');
@@ -398,11 +402,19 @@ function PurchasesPage() {
       if (!navigator.onLine) {
         await enqueueHttp({ collection: 'purchaserequests', label: 'Purchase approve', path: '/api/purchases/approve', method: 'POST', body: { id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark } });
       } else {
-        await purchasesApi.approve({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
+        const response = await purchasesApi.approve({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
+        const nextStatus = String(response?.status || '');
+        dispatch(approvePurchase({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark, nextStatus }));
+        if (nextStatus === 'approved') {
+          dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.branchId, delta: Number(r.baseUnits || 0) }));
+          toast.show('Purchase approved and stock updated', { type: 'success' });
+        } else {
+          toast.show('Director approval recorded. Waiting for manager approval.', { type: 'success' });
+        }
+        return;
       }
-      dispatch(approvePurchase({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark }));
-      dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.branchId, delta: Number(r.baseUnits || 0) }));
-      toast.show('Purchase approved and stock updated', { type: 'success' });
+      dispatch(approvePurchase({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark, nextStatus: 'pending_manager' }));
+      toast.show('Purchase approval queued offline', { type: 'success' });
     } catch (e) {
       toast.show(String(e?.message || 'Failed to approve'), { type: 'error' });
     } finally { setBusyId(null); }
@@ -587,7 +599,8 @@ function PurchasesPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 className="section-title" style={{ marginBottom: 8 }}>Approvals</h2>
             <div style={{ display: 'flex', gap: 6 }}>
-              <button className={statusFilter === 'pending' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending')}>Pending</button>
+              <button className={statusFilter === 'pending_director' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_director')}>Pending Director</button>
+              <button className={statusFilter === 'pending_manager' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_manager')}>Pending Manager</button>
               <button className={statusFilter === 'approved' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('approved')}>Approved</button>
               <button className={statusFilter === 'rejected' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('rejected')}>Rejected</button>
             </div>
@@ -616,9 +629,9 @@ function PurchasesPage() {
                     <td>{r.supplier || '—'}</td>
                     <td>{Number.isFinite(Number(r.cost)) ? formatCurrency(Number(r.cost), settings) : '—'}</td>
                     <td>
-                      {r.status === 'pending_approval' ? (
+                      {['pending_approval', 'pending_director', 'pending_manager'].includes(String(r.status || '')) ? (
                         <>
-                          <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? 'Working…' : 'Approve'}</button>
+                          <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={((String(r.status || '') === 'pending_director' && !canDirectorApprove) || (String(r.status || '') === 'pending_manager' && !canManagerApprove) || busyId === (r._id || r.clientId))}>{busyId === (r._id || r.clientId) ? 'Working…' : String(r.status || '') === 'pending_manager' ? 'Manager Approve' : 'Director Approve'}</button>
                           <button className="btn" onClick={(e) => { e.stopPropagation(); reject(r); }} style={{ marginLeft: 6 }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? 'Working…' : 'Reject'}</button>
                         </>
                       ) : (

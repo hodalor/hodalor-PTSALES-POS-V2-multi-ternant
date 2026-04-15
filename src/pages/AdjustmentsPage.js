@@ -39,7 +39,7 @@ function AdjustmentsPage() {
   const [tab, setTab] = useState('initiate');
   const [openModal, setOpenModal] = useState(false);
   const [items, setItems] = useState([]);
-  const [statusFilter, setStatusFilter] = useState('pending');
+  const [statusFilter, setStatusFilter] = useState('pending_director');
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [detail, setDetail] = useState(null);
@@ -63,7 +63,9 @@ function AdjustmentsPage() {
     return grants.includes(g);
   }
   const canAdjust = (['admin','manager','inventory staff'].includes(roleLower)) || has('add_adjustments');
-  const canApprove = (['admin','manager','superadmin'].includes(roleLower)) || has('approve_adjustments');
+  const canApprove = (['admin','manager','director','superadmin'].includes(roleLower)) || has('approve_adjustments');
+  const canDirectorApprove = (['admin','director','superadmin'].includes(roleLower)) || has('approve_wholesale_director') || has('approve_credit_director') || has('approve_adjustments');
+  const canManagerApprove = (['admin','manager','superadmin'].includes(roleLower)) || has('approve_wholesale_manager') || has('approve_credit_manager') || has('approve_adjustments');
   const canDeleteRecords = roleLower === 'superadmin';
   const [selectedRecordIds, setSelectedRecordIds] = useState([]);
   const [bulkAction, setBulkAction] = useState('');
@@ -548,6 +550,8 @@ function AdjustmentsPage() {
       {tab === 'approvals' && (
         <ApprovalsSection
           canApprove={canApprove}
+          canDirectorApprove={canDirectorApprove}
+          canManagerApprove={canManagerApprove}
           statusFilter={statusFilter}
           setStatusFilter={setStatusFilter}
           loading={loading}
@@ -680,7 +684,7 @@ function AdjustmentsPage() {
   );
 }
 
-function ApprovalsSection({ canApprove, statusFilter, setStatusFilter, loading, setLoading, products, byId, setDetail, busyId, setBusyId, toast, auth, dispatch }) {
+function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, statusFilter, setStatusFilter, loading, setLoading, products, byId, setDetail, busyId, setBusyId, toast, auth, dispatch }) {
   const [requests, setRequests] = useState([]);
   const [reloadAt, setReloadAt] = useState(0);
   useEffect(() => {
@@ -689,9 +693,9 @@ function ApprovalsSection({ canApprove, statusFilter, setStatusFilter, loading, 
       setLoading(true);
       try {
         let rows = await adjustmentsApi.listRequests({ status: statusFilter, limit: 200 });
-        if ((!Array.isArray(rows) || rows.length === 0) && (statusFilter === 'pending' || statusFilter === 'approved' || statusFilter === 'rejected')) {
+        if ((!Array.isArray(rows) || rows.length === 0) && (statusFilter === 'pending_director' || statusFilter === 'pending_manager' || statusFilter === 'approved' || statusFilter === 'rejected')) {
           const all = await adjustmentsApi.listRequests({ limit: 200 });
-          const wanted = statusFilter === 'pending' ? ['pending', 'pending_approval'] : [statusFilter];
+          const wanted = statusFilter === 'pending_director' ? ['pending', 'pending_approval', 'pending_director'] : [statusFilter];
           rows = Array.isArray(all) ? all.filter(r => wanted.includes(String(r.status || ''))) : [];
         }
         if (alive) setRequests(Array.isArray(rows) ? rows : []);
@@ -708,6 +712,8 @@ function ApprovalsSection({ canApprove, statusFilter, setStatusFilter, loading, 
   }, [statusFilter, setLoading, reloadAt, toast]);
   async function approve(r) {
     if (!canApprove) { toast.show('Not authorized to approve adjustments', { type: 'error' }); return; }
+    if (String(r.status || '') === 'pending_director' && !canDirectorApprove) { toast.show('Director approval required', { type: 'error' }); return; }
+    if (String(r.status || '') === 'pending_manager' && !canManagerApprove) { toast.show('Manager approval required', { type: 'error' }); return; }
     const id = r._id || r.clientId;
     try {
       const remark = await promptDialog('Enter remark for approval (required)');
@@ -715,12 +721,23 @@ function ApprovalsSection({ canApprove, statusFilter, setStatusFilter, loading, 
       setBusyId(id);
       if (!navigator.onLine) {
         await enqueueHttp({ collection: 'adjustmentrequests', label: 'Adjustment approve', path: '/api/adjustments/approve', method: 'POST', body: { id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark } });
+        toast.show('Adjustment approval queued offline', { type: 'success' });
+        setRequests(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, status: 'pending_manager', directorApproverName: auth.user?.name || 'unknown', directorApproverRole: auth.role || '', directorApprovalRemark: remark, directorApproved_at: new Date().toISOString() } : x));
+        return;
       } else {
-        await adjustmentsApi.approve({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
+        const response = await adjustmentsApi.approve({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
+        const next = response?.request || response;
+        const nextStatus = String(next?.status || '');
+        if (nextStatus === 'approved') {
+          dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.branchId, delta: Number(r.delta || 0) }));
+          toast.show('Adjustment approved and stock updated', { type: 'success' });
+          setRequests(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, ...next } : x));
+        } else {
+          toast.show('Director approval recorded. Waiting for manager approval.', { type: 'success' });
+          setRequests(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, ...next } : x));
+        }
+        return;
       }
-      dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.branchId, delta: Number(r.delta || 0) }));
-      toast.show('Adjustment approved and stock updated', { type: 'success' });
-      setRequests(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, status: 'approved', approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', approvalRemark: remark, approved_at: new Date().toISOString() } : x));
     } catch (e) {
       toast.show(String(e?.message || 'Failed to approve'), { type: 'error' });
     } finally { setBusyId(null); }
@@ -748,7 +765,8 @@ function ApprovalsSection({ canApprove, statusFilter, setStatusFilter, loading, 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h2 className="section-title" style={{ marginBottom: 8 }}>Approvals</h2>
         <div style={{ display: 'flex', gap: 6 }}>
-          <button className={statusFilter === 'pending' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending')}>Pending</button>
+          <button className={statusFilter === 'pending_director' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_director')}>Pending Director</button>
+          <button className={statusFilter === 'pending_manager' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_manager')}>Pending Manager</button>
           <button className={statusFilter === 'approved' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('approved')}>Approved</button>
           <button className={statusFilter === 'rejected' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('rejected')}>Rejected</button>
           <button className="btn" onClick={() => setReloadAt(Date.now())} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
@@ -773,9 +791,9 @@ function ApprovalsSection({ canApprove, statusFilter, setStatusFilter, loading, 
                 <td>{byId.get(r.branchId) || r.branchId}</td>
                 <td>{r.delta}</td>
                 <td>
-                  {r.status === 'pending_approval' ? (
+                  {['pending_approval', 'pending_director', 'pending_manager'].includes(String(r.status || '')) ? (
                     <>
-                      <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? 'Working…' : 'Approve'}</button>
+                      <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={((String(r.status || '') === 'pending_director' && !canDirectorApprove) || (String(r.status || '') === 'pending_manager' && !canManagerApprove) || busyId === (r._id || r.clientId))}>{busyId === (r._id || r.clientId) ? 'Working…' : String(r.status || '') === 'pending_manager' ? 'Manager Approve' : 'Director Approve'}</button>
                       <button className="btn" onClick={(e) => { e.stopPropagation(); reject(r); }} style={{ marginLeft: 6 }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? 'Working…' : 'Reject'}</button>
                     </>
                   ) : (

@@ -43,7 +43,7 @@ function TransfersPage() {
   const [serializedUnitsQuery, setSerializedUnitsQuery] = useState('');
   const [serializedLoading, setSerializedLoading] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [statusFilter, setStatusFilter] = useState('pending');
+  const [statusFilter, setStatusFilter] = useState('pending_director');
   const [detail, setDetail] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [auditDetail, setAuditDetail] = useState(null);
@@ -63,7 +63,7 @@ function TransfersPage() {
     return grants.includes(g);
   }
   const canTransfer = (['admin','manager','inventory staff'].includes(roleLower)) || has('add_transfers');
-  const canApprove = (['admin','manager','superadmin'].includes(roleLower)) || has('approve_transfers');
+  const canApprove = (['admin','manager','director','superadmin'].includes(roleLower)) || has('approve_transfers');
   const canWorkflowDirector = roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'director' || has('approve_wholesale_director');
   const canWorkflowManager = roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'manager' || has('approve_wholesale_manager');
   const canDeleteRecords = roleLower === 'superadmin';
@@ -203,7 +203,7 @@ function TransfersPage() {
       remark,
       initiatorName: auth.user?.name || 'unknown',
       initiatorRole: auth.role || '',
-      status: 'pending_approval',
+      status: 'pending_director',
       clientId,
       created_at: new Date().toISOString(),
       items: nextItems || (selectedTrackType === 'serialized'
@@ -284,15 +284,14 @@ function TransfersPage() {
   }, [roleLower, assigned]);
   const pendingRequests = useMemo(() => {
     const legacy = requests.filter(r => {
-      const s = r.status === 'pending_approval' ? 'pending' : r.status;
+      const s = r.status === 'pending_approval' ? 'pending_director' : r.status;
       if (s !== statusFilter) return false;
       if (allowedBranches && !allowedBranches.has(r.to)) return false;
       return true;
     });
     const workflow = wholesaleInbound.filter(r => {
       const rawStatus = String(r.status || '').toLowerCase();
-      const mapped = rawStatus === 'pending_manager' ? 'pending' : rawStatus;
-      if (mapped !== statusFilter) return false;
+      if (rawStatus !== statusFilter) return false;
       const toBranch = r.toBranchId || r.to;
       if (allowedBranches && !allowedBranches.has(toBranch)) return false;
       return true;
@@ -345,7 +344,7 @@ function TransfersPage() {
       try {
         const rows = await wholesaleApi.listOperations({
           operationType: 'transfer',
-          status: statusFilter === 'pending' ? 'pending_manager' : statusFilter
+          status: statusFilter
         });
         if (alive && Array.isArray(rows)) {
           const filtered = rows.filter(row => {
@@ -377,16 +376,25 @@ function TransfersPage() {
       } else if (isWorkflow) {
         await wholesaleApi.approveOperation(r, { approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
       } else {
-        await transfersApi.approve({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
+        const response = await transfersApi.approve({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
+        const nextStatus = String(response?.status || '');
+        dispatch(approveTransfer({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark, nextStatus }));
+        if (nextStatus === 'approved') {
+          dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.from, delta: -Number(r.qty || 0) }));
+          dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.to, delta: Number(r.qty || 0) }));
+          toast.show('Transfer approved and stock updated', { type: 'success' });
+        } else {
+          toast.show('Director approval recorded. Waiting for manager approval.', { type: 'success' });
+        }
+        return;
       }
       if (!isWorkflow) {
-        dispatch(approveTransfer({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark }));
-        dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.from, delta: -Number(r.qty || 0) }));
-        dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.to, delta: Number(r.qty || 0) }));
+        dispatch(approveTransfer({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark, nextStatus: 'pending_manager' }));
+        toast.show('Transfer approval queued offline', { type: 'success' });
       } else {
-        await wholesaleApi.listOperations({ operationType: 'transfer', status: statusFilter === 'pending' ? 'pending_manager' : statusFilter }).then(rows => setWholesaleInbound((Array.isArray(rows) ? rows : []).filter(row => String(row.toInventoryType || '').toLowerCase() === 'retail')));
+        await wholesaleApi.listOperations({ operationType: 'transfer', status: statusFilter }).then(rows => setWholesaleInbound((Array.isArray(rows) ? rows : []).filter(row => String(row.toInventoryType || '').toLowerCase() === 'retail')));
+        toast.show('Transfer approved and stock updated', { type: 'success' });
       }
-      toast.show('Transfer approved and stock updated', { type: 'success' });
     } catch (e) {
       toast.show(String(e?.message || 'Failed to approve'), { type: 'error' });
     } finally { setBusyId(null); }
@@ -410,7 +418,7 @@ function TransfersPage() {
         await transfersApi.reject({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
       }
       if (!isWorkflow) dispatch(rejectTransfer({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark }));
-      else await wholesaleApi.listOperations({ operationType: 'transfer', status: statusFilter === 'pending' ? 'pending_manager' : statusFilter }).then(rows => setWholesaleInbound((Array.isArray(rows) ? rows : []).filter(row => String(row.toInventoryType || '').toLowerCase() === 'retail')));
+      else await wholesaleApi.listOperations({ operationType: 'transfer', status: statusFilter }).then(rows => setWholesaleInbound((Array.isArray(rows) ? rows : []).filter(row => String(row.toInventoryType || '').toLowerCase() === 'retail')));
       toast.show('Transfer rejected', { type: 'success' });
     } catch (e) {
       toast.show(String(e?.message || 'Failed to reject'), { type: 'error' });
@@ -551,7 +559,8 @@ function TransfersPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 className="section-title" style={{ marginBottom: 8 }}>Approvals</h2>
             <div style={{ display: 'flex', gap: 6 }}>
-              <button className={statusFilter === 'pending' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending')}>Pending</button>
+              <button className={statusFilter === 'pending_director' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_director')}>Pending Director</button>
+              <button className={statusFilter === 'pending_manager' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_manager')}>Pending Manager</button>
               <button className={statusFilter === 'approved' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('approved')}>Approved</button>
               <button className={statusFilter === 'rejected' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('rejected')}>Rejected</button>
             </div>
@@ -740,7 +749,7 @@ function TransfersPage() {
             {(() => {
               const canAct = String(detail.approvalMode || '') === 'workflow'
                 ? ((String(detail.status || '') === 'pending_director' && canWorkflowDirector) || (String(detail.status || '') === 'pending_manager' && canWorkflowManager))
-                : (detail.status === 'pending_approval' && canApprove);
+                : (((String(detail.status || '') === 'pending_director' && canWorkflowDirector) || (String(detail.status || '') === 'pending_manager' && canWorkflowManager)) && canApprove);
               if (!canAct) return null;
               return (
                 <>
