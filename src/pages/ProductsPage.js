@@ -38,6 +38,13 @@ function ProductsPage() {
   const sales = useSelector(s => s.sales.sales);
   const currentBranch = branches.find(b => b.id === currentBranchId);
   const currentBranchLabel = (currentBranch?.code) || (currentBranch?.name) || currentBranchId;
+  const currentInventoryType = useMemo(() => (
+    String(currentBranch?.branchType || 'retail').toLowerCase() === 'warehouse'
+      ? 'warehouse'
+      : String(currentBranch?.branchType || 'retail').toLowerCase() === 'wholesale'
+        ? 'wholesale'
+        : 'retail'
+  ), [currentBranch]);
   const auth = useSelector(s => s.auth);
   const roleLower = String(auth.role || '').toLowerCase();
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
@@ -332,12 +339,20 @@ function ProductsPage() {
         toast.show('Serialized products must be stocked with IMEI/serial units after saving', { type: 'error' });
         return;
     }
-    setSaving(true);
 
     if (modalMode === 'add') {
         if (!canAddProducts) { toast.show('Not authorized to add products', { type: 'error' }); return; }
+        setSaving(true);
         
         const cleanAttrs = (attrs || []).filter(a => a.key && a.value).map(a => ({ key: a.key.trim(), value: a.value.trim() }));
+        const qty = Number(initialStock) || 0;
+        const branchStock = currentBranchId && qty > 0
+          ? (currentInventoryType === 'warehouse'
+              ? { warehouseStockByBranch: { [currentBranchId]: qty } }
+              : currentInventoryType === 'wholesale'
+                ? { wholesaleStockByBranch: { [currentBranchId]: qty } }
+                : { stockByBranch: { [currentBranchId]: qty } })
+          : {};
         const payload = {
             name: name.trim(),
             sku: sku.trim(),
@@ -362,7 +377,11 @@ function ProductsPage() {
             shoeSize: unitKind === 'shoe' ? shoeSize.trim() : '',
             attributes: cleanAttrs,
             packs: (packs || []).filter(p => p.name && Number(p.quantity) > 0).map(p => ({ name: p.name.trim(), quantity: Number(p.quantity) })),
-            variants: (variants || []).filter(v => v.label).map(v => ({ id: crypto.randomUUID(), label: v.label.trim(), sku: v.sku?.trim() || '', price: v.price !== '' ? Number(v.price) : undefined, stockByBranch: {} }))
+            variants: (variants || []).filter(v => v.label).map(v => ({ id: crypto.randomUUID(), label: v.label.trim(), sku: v.sku?.trim() || '', price: v.price !== '' ? Number(v.price) : undefined, stockByBranch: {}, wholesaleStockByBranch: {}, warehouseStockByBranch: {} })),
+            initialStock: qty,
+            initialBranchId: currentBranchId,
+            initialInventoryType: currentInventoryType,
+            ...branchStock
         };
 
         if (!navigator.onLine && !offlineBackupAllowed) {
@@ -392,8 +411,7 @@ function ProductsPage() {
             }
         }
         
-        if (String(trackType || 'quantity') !== 'serialized' && newId && (Number(initialStock) || 0) > 0) {
-            const qty = Number(initialStock) || 0;
+        if (String(trackType || 'quantity') !== 'serialized' && newId && qty > 0) {
             dispatch(addAudit({
                 actor: auth.user?.name || 'unknown',
                 actionType: 'stock_set_initial',
@@ -401,19 +419,6 @@ function ProductsPage() {
                 branchId: currentBranchId,
                 offline: !navigator.onLine
             }));
-            if (!navigator.onLine) {
-                dispatch(setStock({ productId: newId, branchId: currentBranchId, quantity: qty }));
-                try {
-                    await enqueueHttp({ collection: 'audits', label: 'Stock set initial', path: '/api/stock/set', method: 'POST', body: { productId: newId, branchId: currentBranchId, quantity: qty, actor: auth.user?.name || 'unknown' } });
-                } catch {}
-            } else {
-                try {
-                    await stockApi.setStock({ productId: newId, branchId: currentBranchId, quantity: qty, actor: auth.user?.name || 'unknown' });
-                    dispatch(setStock({ productId: newId, branchId: currentBranchId, quantity: qty }));
-                } catch {
-                    toast.show('Failed to save initial stock', { type: 'error' });
-                }
-            }
         }
         
         dispatch(addAudit({
@@ -438,6 +443,7 @@ function ProductsPage() {
             remark = await promptDialog('Enter remark for price change');
             if (!remark || !remark.trim()) { toast.show('Remark is required when changing price', { type: 'error' }); return; }
         }
+        setSaving(true);
 
         const cleanAttrs = (attrs || []).filter(a => a.key && a.value).map(a => ({ key: a.key.trim(), value: a.value.trim() }));
         const nextIdByIdx = new Map();
