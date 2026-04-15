@@ -25,6 +25,7 @@ function ConfigSettingsPage() {
   const [newCurPos, setNewCurPos] = useState('prefix');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [savingSettings, setSavingSettings] = useState(false);
+  const [savingCategories, setSavingCategories] = useState(false);
   const [addingBranch, setAddingBranch] = useState(false);
   const [removingBranchId, setRemovingBranchId] = useState('');
   const toast = useToast();
@@ -60,20 +61,55 @@ function ConfigSettingsPage() {
     );
   }
 
-  function addConfigCategory() {
+  async function persistCategories(nextCategories, rollbackCategories, successMessage) {
+    try {
+      setSavingCategories(true);
+      if (!navigator.onLine) {
+        if (!offlineBackupAllowed) {
+          dispatch(setAllSettings({ ...(settings || {}), categories: rollbackCategories }));
+          toast.show('Offline: connect internet and try again.', { type: 'error' });
+          return false;
+        }
+        await enqueueHttp({ collection: 'settings', label: 'Category settings', path: '/api/settings', method: 'PUT', body: { categories: nextCategories } });
+        initialSettingsRef.current = { ...(initialSettingsRef.current || {}), categories: nextCategories };
+        initialSettingsCapturedRef.current = true;
+        toast.show('Categories saved offline. Will backup when online.', { type: 'success' });
+        return true;
+      }
+      await settingsApi.save({ categories: nextCategories });
+      initialSettingsRef.current = { ...(initialSettingsRef.current || {}), categories: nextCategories };
+      initialSettingsCapturedRef.current = true;
+      toast.show(successMessage, { type: 'success' });
+      return true;
+    } catch (e) {
+      dispatch(setAllSettings({ ...(settings || {}), categories: rollbackCategories }));
+      toast.show(String(e?.message || 'Failed to save categories'), { type: 'error' });
+      return false;
+    } finally {
+      setSavingCategories(false);
+    }
+  }
+
+  async function addConfigCategory() {
     const value = String(newCategoryName || '').trim();
-    if (!value) return;
+    if (!value || savingCategories) return;
     const existing = Array.isArray(settings.categories) ? settings.categories : [];
     if (existing.some(item => String(item).toLowerCase() === value.toLowerCase())) {
       toast.show('Category already exists', { type: 'error' });
       return;
     }
+    const nextCategories = [...existing, value];
     dispatch(addSettingsCategory(value));
     setNewCategoryName('');
+    await persistCategories(nextCategories, existing, 'Category added');
   }
 
-  function removeConfigCategory(categoryName) {
+  async function removeConfigCategory(categoryName) {
+    if (savingCategories) return;
+    const existing = Array.isArray(settings.categories) ? settings.categories : [];
+    const nextCategories = existing.filter(item => String(item).toLowerCase() !== String(categoryName || '').toLowerCase());
     dispatch(removeSettingsCategory(categoryName));
+    await persistCategories(nextCategories, existing, 'Category removed');
   }
 
   function renderCategoriesCard() {
@@ -81,17 +117,22 @@ function ConfigSettingsPage() {
       <div className="card" style={{ alignSelf: 'start', padding: 20 }}>
         <h3 className="section-title" style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>Manage Categories</h3>
         <div style={{ color: '#64748b', fontSize: 13, marginTop: 12, marginBottom: 16 }}>
-          Add or remove product categories here. SuperAdmin or users with `manage_categories` grant can modify.
+          Add or remove product categories here. Changes save instantly and product creation updates immediately for this tenant.
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, marginBottom: 18 }}>
-          <input className="input" placeholder="New category" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} style={{ width: '100%', minHeight: 48 }} />
-          <button className="btn btn-primary" type="button" onClick={addConfigCategory} style={{ minWidth: 92, minHeight: 48 }}>Add</button>
+          <input className="input" placeholder="New category" value={newCategoryName} onChange={e => setNewCategoryName(e.target.value)} style={{ width: '100%', minHeight: 48 }} disabled={savingCategories} />
+          <button className="btn btn-primary" type="button" onClick={addConfigCategory} style={{ minWidth: 92, minHeight: 48 }} disabled={savingCategories}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {savingCategories && <Spinner />}
+              {savingCategories ? 'Saving…' : 'Add'}
+            </span>
+          </button>
         </div>
         <div style={{ display: 'grid', gap: 0 }}>
           {(settings.categories || []).map(cat => (
             <div key={cat} style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid #e2e8f0' }}>
               <div style={{ fontSize: 18, color: '#0f172a' }}>{cat}</div>
-              <button className="btn" type="button" onClick={() => removeConfigCategory(cat)} style={{ minWidth: 96, borderRadius: 14, padding: '10px 14px' }}>Remove</button>
+              <button className="btn" type="button" onClick={() => removeConfigCategory(cat)} style={{ minWidth: 96, borderRadius: 14, padding: '10px 14px' }} disabled={savingCategories}>Remove</button>
             </div>
           ))}
           {(!settings.categories || settings.categories.length === 0) && (
@@ -227,26 +268,26 @@ function ConfigSettingsPage() {
         ? { background: '#dbeafe', color: '#1d4ed8' }
         : { background: '#dcfce7', color: '#166534' };
     return (
-      <div className="card" style={{ padding: 16 }}>
+      <div className="card" style={{ padding: 18, alignSelf: 'start' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
           <div>
-            <h3 className="section-title" style={{ margin: 0 }}>{title}</h3>
-            <div style={{ color: '#64748b', fontSize: 12 }}>{description}</div>
+            <h3 className="section-title" style={{ margin: 0, fontSize: 18 }}>{title}</h3>
+            <div style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>{description}</div>
           </div>
-          <div style={{ color: '#64748b', fontSize: 12 }}>{groupBranches.length} location(s)</div>
+          <div style={{ color: '#64748b', fontSize: 12, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '4px 10px' }}>{groupBranches.length} location(s)</div>
         </div>
         <ul>
           {groupBranches.map(b => (
-            <li key={b.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #f1f5f9' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                <span>{b.name} ({b.code})</span>
+            <li key={b.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 12, padding: '14px 0', borderBottom: '1px solid #f1f5f9' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 18, color: '#0f172a' }}>{b.name} ({b.code})</span>
                 <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 700, ...badgeStyle }}>
                   {String(b.branchType || 'retail')}
                 </span>
               </span>
-              <span>
-                <button className="btn" onClick={() => onEditBranch(b)} disabled={!canManageBranches || !!removingBranchId}>Edit</button>
-                <button className="btn" onClick={() => onRemoveBranch(b)} disabled={!canManageBranches || b.id === 'main' || !!removingBranchId} style={{ marginLeft: 8 }}>
+              <span style={{ display: 'inline-flex', gap: 8 }}>
+                <button className="btn" onClick={() => onEditBranch(b)} disabled={!canManageBranches || !!removingBranchId} style={{ borderRadius: 14, padding: '10px 14px' }}>Edit</button>
+                <button className="btn" onClick={() => onRemoveBranch(b)} disabled={!canManageBranches || b.id === 'main' || !!removingBranchId} style={{ borderRadius: 14, padding: '10px 14px' }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     {removingBranchId === String(b.id || '') && <Spinner />}
                     {removingBranchId === String(b.id || '') ? 'Removing…' : 'Remove'}
@@ -262,17 +303,20 @@ function ConfigSettingsPage() {
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <h1 style={{ margin: 0 }}>Configuration</h1>
+    <div className="config-page" style={{ padding: 16 }}>
+      <div className="config-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
+        <div>
+          <h1 style={{ margin: 0 }}>Configuration</h1>
+          <div className="config-subtitle">Manage branding, invoicing, categories, branches, currency, and tenant behavior from one place.</div>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <OfflineQueueIndicator collection="settings" label="Settings queued" />
           <OfflineQueueIndicator collection="branches" label="Branches queued" />
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
-        <div style={{ display: 'grid', gap: 16, alignContent: 'start', alignItems: 'start' }}>
-          <div className="card">
+      <div className="config-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
+        <div className="config-column" style={{ display: 'grid', gap: 16, alignContent: 'start', alignItems: 'start' }}>
+          <div className="card config-panel">
             <h2 className="section-title">App Identity</h2>
             {isMasterSuperAdmin && (
             <>
@@ -308,7 +352,7 @@ function ConfigSettingsPage() {
             )}
           </div>
           {(roleLower === 'admin' || isSuperAdmin) && (
-            <div className="card">
+            <div className="card config-panel">
               <h3 className="section-title" style={{ margin: '8px 0' }}>Client App Name</h3>
               <label>
                 Client App Name (Top bar)
@@ -384,7 +428,7 @@ function ConfigSettingsPage() {
             </div>
           )}
           {(roleLower === 'admin' || isSuperAdmin) && (
-            <div className="card">
+            <div className="card config-panel">
               <h3 className="section-title" style={{ margin: '8px 0' }}>App Installation (PWA)</h3>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <button
@@ -442,10 +486,10 @@ function ConfigSettingsPage() {
               </div>
             </div>
           )}
-          <div className="card" style={{ padding: 12, color: '#64748b' }}>
+          <div className="card config-note-card" style={{ padding: 12, color: '#64748b' }}>
             Receipt uses the Client App Logo (falls back to /clientlogo512.png or /logo512.png).
           </div>
-          <div className="card" style={{ padding: 12 }}>
+          <div className="card config-panel" style={{ padding: 12 }}>
             <h3 className="section-title" style={{ margin: '8px 0' }}>Invoice Settings</h3>
             <label style={{ display: 'block', marginTop: 8 }}>
               Company Address (Letterhead)
@@ -534,7 +578,7 @@ function ConfigSettingsPage() {
               <div style={{ color: '#64748b', marginTop: 6 }}>Top text uses Client App Name automatically.</div>
             </div>
           </div>
-          <div className="card">
+          <div className="card config-panel">
           <label style={{ display: 'block', marginTop: 0 }}>
             Business Phone
             <input className="input" value={settings.businessPhone || ''} onChange={e => dispatch(setBusinessPhone(e.target.value))} style={{ display: 'block', width: '100%', marginTop: 6 }} />
@@ -585,7 +629,7 @@ function ConfigSettingsPage() {
             />
           </label>
           </div>
-          <div className="card">
+          <div className="card config-panel">
             <h3 className="section-title" style={{ margin: '8px 0' }}>Credit Sale Rules</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <label>
@@ -614,7 +658,7 @@ function ConfigSettingsPage() {
               </label>
             </div>
           </div>
-          <div className="card">
+          <div className="card config-panel">
             <h3 className="section-title" style={{ margin: '8px 0' }}>Loyalty Points</h3>
             <label style={{ display: 'block', marginBottom: 8 }}>
               <input type="checkbox" checked={!!settings.loyaltyEnabled} onChange={e => dispatch(setLoyaltyEnabled(e.target.checked))} />
@@ -698,7 +742,7 @@ function ConfigSettingsPage() {
             </div>
           </div>
           {isMasterSuperAdmin && (
-            <div className="card">
+            <div className="card config-panel">
               <h3 className="section-title" style={{ margin: '8px 0' }}>Background Refresh</h3>
               <label>
                 Interval (seconds)
@@ -774,7 +818,7 @@ function ConfigSettingsPage() {
               </div>
             </div>
           )}
-          <div className="card" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <div className="card config-savebar" style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button
               className="btn btn-primary"
               onClick={async () => {
@@ -862,36 +906,40 @@ function ConfigSettingsPage() {
             </button>
           </div>
         </div>
-        <div style={{ display: 'grid', gap: 16, alignContent: 'start', alignItems: 'start' }}>
+        <div className="config-column" style={{ display: 'grid', gap: 16, alignContent: 'start', alignItems: 'start' }}>
           {renderCategoriesCard()}
-          <div className="card" style={{ alignSelf: 'start', width: '100%' }}>
-            <h2 className="section-title">Branches</h2>
+          <div className="card config-panel" style={{ alignSelf: 'start', width: '100%' }}>
+            <h2 className="section-title" style={{ marginBottom: 6, fontSize: 24, fontWeight: 800 }}>Branches</h2>
+            <div style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
+              Manage tenant locations here. Branch changes save instantly and are available immediately across the app.
+            </div>
             <div style={{ display: 'grid', gap: 12 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
-              <div className="card" style={{ padding: 16 }}>
+              <div className="card" style={{ padding: 18 }}>
                 <div style={{ color: '#64748b', fontSize: 12 }}>Retail Branches</div>
                 <div style={{ fontSize: 28, fontWeight: 800 }}>{branches.filter(b => String(b.branchType || 'retail').toLowerCase() === 'retail').length}</div>
               </div>
-              <div className="card" style={{ padding: 16 }}>
+              <div className="card" style={{ padding: 18 }}>
                 <div style={{ color: '#64748b', fontSize: 12 }}>Distribution Shops</div>
                 <div style={{ fontSize: 28, fontWeight: 800, color: '#1d4ed8' }}>{branches.filter(b => String(b.branchType || 'retail').toLowerCase() === 'wholesale').length}</div>
               </div>
-              <div className="card" style={{ padding: 16 }}>
+              <div className="card" style={{ padding: 18 }}>
                 <div style={{ color: '#64748b', fontSize: 12 }}>Warehouses</div>
                 <div style={{ fontSize: 28, fontWeight: 800, color: '#6d28d9' }}>{branches.filter(b => String(b.branchType || 'retail').toLowerCase() === 'warehouse').length}</div>
               </div>
             </div>
-            <div className="card" style={{ padding: 16 }}>
+            <div className="card" style={{ padding: 18 }}>
               <label>
-                Current Branch
+                <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>Current Branch</div>
+                <div style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>Choose the default active branch for this user session.</div>
                 <select className="select" value={settings.currentBranchId} onChange={e => dispatch(setCurrentBranch(e.target.value))} style={{ display: 'block', width: '100%', marginTop: 6 }}>
                   {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </label>
             </div>
-            <div className="card" style={{ padding: 16 }}>
-              <h3 className="section-title" style={{ margin: '0 0 8px 0' }}>Create Location</h3>
-              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>Create retail branches, wholesale shops, or warehouse locations from here.</div>
+            <div className="card" style={{ padding: 18 }}>
+              <h3 className="section-title" style={{ margin: '0 0 8px 0', fontSize: 18 }}>Create Location</h3>
+              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 12 }}>Create retail branches, wholesale shops, or warehouse locations from here. Saves immediately.</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8 }}>
                 <input className="input" placeholder="Branch name" value={branchName} onChange={e => setBranchName(e.target.value)} disabled={!canManageBranches} />
                 <input className="input" placeholder="Code" value={branchCode} onChange={e => setBranchCode(e.target.value)} disabled={!canManageBranches} />
@@ -900,7 +948,7 @@ function ConfigSettingsPage() {
                   <option value="wholesale">Wholesale</option>
                   <option value="warehouse">Warehouse</option>
                 </select>
-                <button className="btn btn-primary" onClick={addNewBranch} disabled={!canManageBranches || addingBranch}>
+                <button className="btn btn-primary" onClick={addNewBranch} disabled={!canManageBranches || addingBranch} style={{ minWidth: 110 }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     {addingBranch && <Spinner />}
                     {addingBranch ? 'Adding…' : 'Add'}
