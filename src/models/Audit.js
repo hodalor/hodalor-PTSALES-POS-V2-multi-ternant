@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-import { createTenantAwareModel } from './_tenantModel.js';
 
 const AuditSchema = new mongoose.Schema({
   actor: String,
@@ -13,6 +12,4 @@ const AuditSchema = new mongoose.Schema({
 
 AuditSchema.index({ ts: -1 });
 
-const { model, modelFor } = createTenantAwareModel('Audit', AuditSchema);
-export { modelFor };
-export default model;
+export default mongoose.model('Audit', AuditSchema);

@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-import { createTenantAwareModel } from './_tenantModel.js';
 
 const UserSchema = new mongoose.Schema({
   name: { type: String, required: true, unique: true },
@@ -10,6 +9,4 @@ const UserSchema = new mongoose.Schema({
   active: { type: Boolean, default: true }
 }, { timestamps: true });
 
-const { model, modelFor } = createTenantAwareModel('User', UserSchema);
-export { modelFor };
-export default model;
+export default mongoose.model('User', UserSchema);
