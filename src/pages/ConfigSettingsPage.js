@@ -25,6 +25,7 @@ function ConfigSettingsPage() {
   const [newCurPos, setNewCurPos] = useState('prefix');
   const [newCategoryName, setNewCategoryName] = useState('');
   const [savingSettings, setSavingSettings] = useState(false);
+  const [settingsSavedPulse, setSettingsSavedPulse] = useState(false);
   const [savingCategories, setSavingCategories] = useState(false);
   const [addingBranch, setAddingBranch] = useState(false);
   const [removingBranchId, setRemovingBranchId] = useState('');
@@ -890,6 +891,8 @@ function ConfigSettingsPage() {
                   await settingsApi.save(payload);
                   initialSettingsRef.current = { ...(initialSettingsRef.current || {}), ...payload };
                   initialSettingsCapturedRef.current = true;
+                  setSettingsSavedPulse(true);
+                  setTimeout(() => setSettingsSavedPulse(false), 1600);
                   toast.show('Settings saved', { type: 'success' });
                 } catch {
                   toast.show('Failed to save settings', { type: 'error' });
@@ -901,7 +904,7 @@ function ConfigSettingsPage() {
             >
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 {savingSettings && <Spinner />}
-                {savingSettings ? 'Saving…' : 'Save'}
+                {savingSettings ? 'Saving…' : settingsSavedPulse ? 'Saved' : 'Save'}
               </span>
             </button>
           </div>

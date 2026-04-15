@@ -411,6 +411,10 @@ function ProductsPage() {
             }
         }
         
+        setSaving(false);
+        closeModal();
+        toast.show(navigator.onLine ? 'Product added' : 'Saved offline. Will backup when online.', { type: 'success' });
+
         if (String(trackType || 'quantity') !== 'serialized' && newId && qty > 0) {
             dispatch(addAudit({
                 actor: auth.user?.name || 'unknown',
@@ -428,10 +432,6 @@ function ProductsPage() {
             branchId: currentBranchId,
             offline: !navigator.onLine
         }));
-        
-        setSaving(false);
-        closeModal();
-        toast.show(navigator.onLine ? 'Product added' : 'Saved offline. Will backup when online.', { type: 'success' });
 
     } else if (modalMode === 'edit') {
         if (!canEditProducts) { toast.show('Not authorized to edit products', { type: 'error' }); return; }

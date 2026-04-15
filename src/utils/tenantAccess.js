@@ -1,60 +1,60 @@
 export const TENANT_GRANT_CATALOG = [
-  { key: 'view_dashboard', label: 'Dashboard' },
-  { key: 'view_pos', label: 'POS' },
-  { key: 'view_wholesale_pos', label: 'Wholesale POS' },
-  { key: 'view_retail_price', label: 'Retail Price Visibility' },
-  { key: 'view_wholesale_price', label: 'Wholesale Price Visibility' },
-  { key: 'view_agent_price', label: 'Agent Price Visibility' },
-  { key: 'view_sales', label: 'Sales' },
-  { key: 'add_sales', label: 'Sales: Add' },
-  { key: 'view_products', label: 'Products' },
-  { key: 'add_products', label: 'Products: Add' },
-  { key: 'edit_products', label: 'Products: Edit' },
-  { key: 'view_inventory', label: 'Inventory' },
-  { key: 'edit_inventory', label: 'Inventory: Edit' },
-  { key: 'view_serialized_inventory', label: 'Serialized Inventory' },
-  { key: 'view_labels', label: 'Labels' },
-  { key: 'view_purchases', label: 'Purchases' },
-  { key: 'add_purchases', label: 'Purchases: Add' },
-  { key: 'edit_purchases', label: 'Purchases: Edit' },
-  { key: 'approve_purchases', label: 'Purchases: Approve' },
-  { key: 'view_transfers', label: 'Transfers' },
-  { key: 'add_transfers', label: 'Transfers: Add' },
-  { key: 'edit_transfers', label: 'Transfers: Edit' },
-  { key: 'approve_transfers', label: 'Transfers: Approve' },
-  { key: 'view_adjustments', label: 'Adjustments' },
-  { key: 'add_adjustments', label: 'Adjustments: Add' },
-  { key: 'edit_adjustments', label: 'Adjustments: Edit' },
-  { key: 'approve_adjustments', label: 'Adjustments: Approve' },
-  { key: 'view_suppliers', label: 'Suppliers' },
-  { key: 'add_suppliers', label: 'Suppliers: Add' },
-  { key: 'edit_suppliers', label: 'Suppliers: Edit' },
-  { key: 'view_customers', label: 'Customers' },
-  { key: 'add_customers', label: 'Customers: Add' },
-  { key: 'edit_customers', label: 'Customers: Edit' },
-  { key: 'view_credit_control', label: 'Credit Control' },
-  { key: 'approve_credit_director', label: 'Credit: Director Approve' },
-  { key: 'approve_credit_manager', label: 'Credit: Manager Approve' },
-  { key: 'view_credit_repayment_approvals', label: 'Credit Repayment Approvals' },
-  { key: 'view_approvals', label: 'Approvals Center' },
-  { key: 'approve_wholesale_director', label: 'Wholesale: Director Approve' },
-  { key: 'approve_wholesale_manager', label: 'Wholesale: Manager Approve' },
-  { key: 'view_refunds', label: 'Refunds' },
-  { key: 'add_refunds', label: 'Refunds: Add Request' },
-  { key: 'approve_refunds', label: 'Refunds: Approve/Reject' },
-  { key: 'view_expenses', label: 'Expenses' },
-  { key: 'add_expenses', label: 'Expenses: Add/Delete' },
-  { key: 'approve_expenses', label: 'Expenses: Approve/Reject' },
-  { key: 'view_reports', label: 'Reports' },
-  { key: 'view_stock_records', label: 'Stock Records' },
-  { key: 'view_wholesale_invoices', label: 'Wholesale Invoices' },
-  { key: 'view_warehouse_invoices', label: 'Warehouse Invoices' },
-  { key: 'view_warehouse_approvals', label: 'Warehouse Approvals' },
-  { key: 'view_imei_conflicts', label: 'IMEI Conflicts' },
-  { key: 'view_cashdrawer', label: 'Cash Drawer' },
-  { key: 'view_users', label: 'Users' },
-  { key: 'view_config', label: 'Config' },
-  { key: 'view_audit', label: 'Audit Log' }
+  { key: 'view_dashboard', label: 'Open Dashboard' },
+  { key: 'view_pos', label: 'Use POS' },
+  { key: 'view_wholesale_pos', label: 'Use Wholesale POS' },
+  { key: 'view_retail_price', label: 'See Retail Prices' },
+  { key: 'view_wholesale_price', label: 'See Wholesale Prices' },
+  { key: 'view_agent_price', label: 'See Agent Prices' },
+  { key: 'view_sales', label: 'Open Sales' },
+  { key: 'add_sales', label: 'Create Sales' },
+  { key: 'view_products', label: 'Open Products' },
+  { key: 'add_products', label: 'Create Products' },
+  { key: 'edit_products', label: 'Edit Products' },
+  { key: 'view_inventory', label: 'Open Inventory' },
+  { key: 'edit_inventory', label: 'Adjust Inventory' },
+  { key: 'view_serialized_inventory', label: 'Open Serialized Inventory' },
+  { key: 'view_labels', label: 'Use Labels' },
+  { key: 'view_purchases', label: 'Open Purchases' },
+  { key: 'add_purchases', label: 'Create Purchases' },
+  { key: 'edit_purchases', label: 'Edit Purchases' },
+  { key: 'approve_purchases', label: 'Approve Purchases' },
+  { key: 'view_transfers', label: 'Open Transfers' },
+  { key: 'add_transfers', label: 'Create Transfers' },
+  { key: 'edit_transfers', label: 'Edit Transfers' },
+  { key: 'approve_transfers', label: 'Approve Transfers' },
+  { key: 'view_adjustments', label: 'Open Adjustments' },
+  { key: 'add_adjustments', label: 'Create Adjustments' },
+  { key: 'edit_adjustments', label: 'Edit Adjustments' },
+  { key: 'approve_adjustments', label: 'Approve Adjustments' },
+  { key: 'view_suppliers', label: 'Open Suppliers' },
+  { key: 'add_suppliers', label: 'Create Suppliers' },
+  { key: 'edit_suppliers', label: 'Edit Suppliers' },
+  { key: 'view_customers', label: 'Open Customers' },
+  { key: 'add_customers', label: 'Create Customers' },
+  { key: 'edit_customers', label: 'Edit Customers' },
+  { key: 'view_credit_control', label: 'Open Credit Control' },
+  { key: 'approve_credit_director', label: 'Director Credit Approval' },
+  { key: 'approve_credit_manager', label: 'Manager Credit Approval' },
+  { key: 'view_credit_repayment_approvals', label: 'Open Credit Repayment Approvals' },
+  { key: 'view_approvals', label: 'Open Approvals Center' },
+  { key: 'approve_wholesale_director', label: 'Director Wholesale Approval' },
+  { key: 'approve_wholesale_manager', label: 'Manager Wholesale Approval' },
+  { key: 'view_refunds', label: 'Open Refunds' },
+  { key: 'add_refunds', label: 'Create Refund Requests' },
+  { key: 'approve_refunds', label: 'Approve or Reject Refunds' },
+  { key: 'view_expenses', label: 'Open Expenses' },
+  { key: 'add_expenses', label: 'Create or Delete Expenses' },
+  { key: 'approve_expenses', label: 'Approve or Reject Expenses' },
+  { key: 'view_reports', label: 'Open Reports' },
+  { key: 'view_stock_records', label: 'Open Stock Records' },
+  { key: 'view_wholesale_invoices', label: 'Open Wholesale Invoices' },
+  { key: 'view_warehouse_invoices', label: 'Open Warehouse Invoices' },
+  { key: 'view_warehouse_approvals', label: 'Open Warehouse Approvals' },
+  { key: 'view_imei_conflicts', label: 'Open IMEI Conflicts' },
+  { key: 'view_cashdrawer', label: 'Open Cash Drawer' },
+  { key: 'view_users', label: 'Open Users' },
+  { key: 'view_config', label: 'Open Config' },
+  { key: 'view_audit', label: 'Open Audit Log' }
 ];
 
 export const GRANT_FEATURE_MAP = Object.fromEntries(
@@ -88,52 +88,222 @@ export const PLAN_DEFAULT_FEATURES = {
   enterprise: null
 };
 
+export const FEATURE_GROUP_META = {
+  'Menus / Retail & General': {
+    order: 1,
+    title: 'Menus / Retail & General',
+    description: 'Main retail-facing screens shown in the sidebar.'
+  },
+  'Menus / Distribution & Wholesale': {
+    order: 2,
+    title: 'Menus / Distribution & Wholesale',
+    description: 'Distribution, warehouse, and approval-related menu screens.'
+  },
+  'Menus / Admin & Control': {
+    order: 3,
+    title: 'Menus / Admin & Control',
+    description: 'Admin-only pages, monitoring, and control screens.'
+  },
+  'Tabs & Workspace': {
+    order: 4,
+    title: 'Tabs & Workspace',
+    description: 'Extra panels and tabs inside enabled pages.'
+  },
+  'Runtime & Sync': {
+    order: 5,
+    title: 'Runtime & Sync',
+    description: 'Offline queueing and runtime experience features.'
+  },
+  'Permissions / Pricing & Visibility': {
+    order: 6,
+    title: 'Permissions / Pricing & Visibility',
+    description: 'Controls what prices and visibility-sensitive data users can see.'
+  },
+  'Permissions / Retail Actions': {
+    order: 7,
+    title: 'Permissions / Retail Actions',
+    description: 'Action permissions for retail-side operations.'
+  },
+  'Permissions / Distribution Actions': {
+    order: 8,
+    title: 'Permissions / Distribution Actions',
+    description: 'Action permissions for purchasing, transfers, approvals, and warehouse flows.'
+  },
+  'Permissions / Admin Actions': {
+    order: 9,
+    title: 'Permissions / Admin Actions',
+    description: 'Permissions for admin tools, logs, and control screens.'
+  }
+};
+
+export const TENANT_SIDEBAR_SECTIONS = [
+  {
+    id: 'primary',
+    title: 'Primary Menus',
+    description: 'Top-level sidebar screens that appear on their own.',
+    items: [
+      { label: 'Dashboard', keys: ['modules.dashboard', 'grants.view_dashboard'] },
+      { label: 'Sales', keys: ['modules.sales', 'grants.view_sales', 'grants.add_sales'] },
+      { label: 'Invoices', keys: ['modules.invoices'] },
+      { label: 'Products', keys: ['modules.products', 'grants.view_products', 'grants.add_products', 'grants.edit_products'] },
+      { label: 'Inventory', keys: ['modules.inventory', 'grants.view_inventory', 'grants.edit_inventory'] },
+      { label: 'Serialized Inventory', keys: ['modules.inventory', 'grants.view_serialized_inventory'] },
+      { label: 'Labels', keys: ['modules.labels', 'grants.view_labels'] },
+      { label: 'Approvals Center', keys: ['modules.approvalsCenter', 'grants.view_approvals', 'grants.approve_credit_director', 'grants.approve_credit_manager', 'grants.approve_wholesale_director', 'grants.approve_wholesale_manager'] },
+      { label: 'Refund Approvals', keys: ['modules.refundApprovals', 'grants.approve_refunds'] },
+      { label: 'Reports', keys: ['modules.reports', 'grants.view_reports'] },
+      { label: 'Backup', keys: ['modules.backup', 'features.offlineBackup'] },
+      { label: 'IMEI Conflicts', keys: ['modules.backup', 'grants.view_imei_conflicts'] }
+    ]
+  },
+  {
+    id: 'retail',
+    title: 'Retail',
+    description: 'Matches the Retail group on the sidebar.',
+    items: [
+      { label: 'POS', keys: ['modules.pos', 'grants.view_pos'] },
+      { label: 'Purchases', keys: ['modules.purchases', 'grants.view_purchases', 'grants.add_purchases', 'grants.edit_purchases', 'grants.approve_purchases'] },
+      { label: 'Transfers', keys: ['modules.transfers', 'grants.view_transfers', 'grants.add_transfers', 'grants.edit_transfers', 'grants.approve_transfers'] },
+      { label: 'Adjustments', keys: ['modules.adjustments', 'grants.view_adjustments', 'grants.add_adjustments', 'grants.edit_adjustments', 'grants.approve_adjustments'] },
+      { label: 'Refunds', keys: ['modules.refunds', 'grants.view_refunds', 'grants.add_refunds', 'grants.approve_refunds'] }
+    ]
+  },
+  {
+    id: 'distribution',
+    title: 'Distribution',
+    description: 'Matches the Distribution sidebar group and includes approval capabilities by default.',
+    items: [
+      { label: 'Distribution Goods', keys: ['modules.wholesalePos', 'grants.view_wholesale_pos'] },
+      { label: 'Distribution POS', keys: ['modules.wholesalePos', 'grants.view_wholesale_pos'] },
+      { label: 'Distribution Invoices', keys: ['modules.invoices', 'grants.view_wholesale_invoices'] },
+      { label: 'Distribution Purchase', keys: ['modules.purchases', 'grants.view_purchases', 'grants.add_purchases', 'grants.edit_purchases', 'grants.approve_purchases'] },
+      { label: 'Distribution Transfer', keys: ['modules.transfers', 'grants.view_transfers', 'grants.add_transfers', 'grants.edit_transfers', 'grants.approve_transfers'] },
+      { label: 'Distribution Adjustment', keys: ['modules.adjustments', 'grants.view_adjustments', 'grants.add_adjustments', 'grants.edit_adjustments', 'grants.approve_adjustments'] },
+      { label: 'Distribution Refund', keys: ['modules.refunds', 'grants.view_refunds', 'grants.add_refunds', 'grants.approve_refunds'] },
+      { label: 'Director / Manager Approvals', keys: ['grants.approve_wholesale_director', 'grants.approve_wholesale_manager'] }
+    ]
+  },
+  {
+    id: 'warehouse',
+    title: 'Warehouse',
+    description: 'Matches the Warehouse sidebar group with warehouse-specific approvals.',
+    items: [
+      { label: 'Warehouse Goods', keys: ['modules.wholesalePos', 'grants.view_wholesale_pos'] },
+      { label: 'Warehouse Invoices', keys: ['modules.invoices', 'grants.view_warehouse_invoices'] },
+      { label: 'Warehouse Purchase', keys: ['modules.purchases', 'grants.view_purchases', 'grants.add_purchases', 'grants.edit_purchases', 'grants.approve_purchases'] },
+      { label: 'Warehouse Transfer', keys: ['modules.transfers', 'grants.view_transfers', 'grants.add_transfers', 'grants.edit_transfers', 'grants.approve_transfers'] },
+      { label: 'Warehouse Adjustment', keys: ['modules.adjustments', 'grants.view_adjustments', 'grants.add_adjustments', 'grants.edit_adjustments', 'grants.approve_adjustments'] },
+      { label: 'Warehouse Approvals', keys: ['grants.view_warehouse_approvals', 'grants.approve_wholesale_director', 'grants.approve_wholesale_manager'] }
+    ]
+  },
+  {
+    id: 'credit',
+    title: 'Credit Sale',
+    description: 'Matches the Credit Sale group on the sidebar.',
+    items: [
+      { label: 'Overview', keys: ['modules.creditControl', 'grants.view_credit_control'] },
+      { label: 'Good Clients', keys: ['modules.creditControl', 'grants.view_credit_control'] },
+      { label: 'Defaulters', keys: ['modules.creditControl', 'grants.view_credit_control'] },
+      { label: 'Payment Approvals', keys: ['grants.view_credit_repayment_approvals', 'grants.approve_credit_director', 'grants.approve_credit_manager'] }
+    ]
+  },
+  {
+    id: 'expense',
+    title: 'Expense',
+    description: 'Matches the Expense group on the sidebar.',
+    items: [
+      { label: 'Expenses', keys: ['modules.expenses', 'grants.view_expenses', 'grants.add_expenses'] },
+      { label: 'Expense Approvals', keys: ['modules.expenseApprovals', 'grants.approve_expenses'] }
+    ]
+  },
+  {
+    id: 'partners',
+    title: 'Partners',
+    description: 'Matches the Partners group on the sidebar.',
+    items: [
+      { label: 'Suppliers', keys: ['modules.suppliers', 'grants.view_suppliers', 'grants.add_suppliers', 'grants.edit_suppliers'] },
+      { label: 'Customers', keys: ['modules.customers', 'grants.view_customers', 'grants.add_customers', 'grants.edit_customers'] }
+    ]
+  },
+  {
+    id: 'admin',
+    title: 'Admin',
+    description: 'Admin submenu items shown inside the Admin group.',
+    items: [
+      { label: 'Users', keys: ['admin.users', 'grants.view_users'] },
+      { label: 'Manual', keys: ['admin.manual'] },
+      { label: 'Audit Log', keys: ['admin.audit', 'grants.view_audit'] },
+      { label: 'Server Logs', keys: ['admin.serverLogs'] },
+      { label: 'Stock Records', keys: ['admin.stockRecords', 'grants.view_stock_records'] },
+      { label: 'Cash Drawer', keys: ['admin.cashDrawer', 'grants.view_cashdrawer'] },
+      { label: 'Config', keys: ['admin.config', 'grants.view_config'] },
+      { label: 'GodHand', keys: ['admin.godhand'] },
+      { label: 'Docs', keys: ['admin.docs'] }
+    ]
+  },
+  {
+    id: 'tabs-runtime',
+    title: 'Tabs & Runtime',
+    description: 'Smaller workspace tabs and runtime capabilities.',
+    items: [
+      { label: 'Customer Purchase History Tab', keys: ['tabs.customerPurchaseHistory'] },
+      { label: 'POS Held Sales Tab', keys: ['tabs.posHeldSales'] },
+      { label: 'Invoices New Tab', keys: ['tabs.invoiceNew'] },
+      { label: 'Invoices Records Tab', keys: ['tabs.invoiceRecords'] },
+      { label: 'Offline Queue & Backup', keys: ['features.offlineBackup'] },
+      { label: 'Price Visibility', keys: ['grants.view_retail_price', 'grants.view_wholesale_price', 'grants.view_agent_price'] }
+    ]
+  }
+];
+
 export const TENANT_FEATURE_CATALOG = [
-  { key: 'modules.dashboard', label: 'Dashboard', group: 'Retail / General' },
-  { key: 'modules.pos', label: 'POS', group: 'Retail / General' },
-  { key: 'modules.sales', label: 'Sales', group: 'Retail / General' },
-  { key: 'modules.products', label: 'Products', group: 'Retail / General' },
-  { key: 'modules.inventory', label: 'Inventory', group: 'Retail / General' },
-  { key: 'modules.labels', label: 'Labels', group: 'Retail / General' },
-  { key: 'modules.customers', label: 'Customers', group: 'Retail / General' },
-  { key: 'modules.suppliers', label: 'Suppliers', group: 'Retail / General' },
-  { key: 'modules.expenses', label: 'Expenses', group: 'Retail / General' },
-  { key: 'modules.reports', label: 'Reports', group: 'Retail / General' },
-  { key: 'modules.backup', label: 'Backup', group: 'Retail / General' },
+  { key: 'modules.dashboard', label: 'Dashboard', group: 'Menus / Retail & General' },
+  { key: 'modules.pos', label: 'POS', group: 'Menus / Retail & General' },
+  { key: 'modules.sales', label: 'Sales', group: 'Menus / Retail & General' },
+  { key: 'modules.products', label: 'Products', group: 'Menus / Retail & General' },
+  { key: 'modules.inventory', label: 'Inventory', group: 'Menus / Retail & General' },
+  { key: 'modules.labels', label: 'Labels', group: 'Menus / Retail & General' },
+  { key: 'modules.customers', label: 'Customers', group: 'Menus / Retail & General' },
+  { key: 'modules.suppliers', label: 'Suppliers', group: 'Menus / Retail & General' },
+  { key: 'modules.expenses', label: 'Expenses', group: 'Menus / Retail & General' },
+  { key: 'modules.reports', label: 'Reports', group: 'Menus / Retail & General' },
+  { key: 'modules.backup', label: 'Backup', group: 'Menus / Retail & General' },
 
-  { key: 'modules.wholesalePos', label: 'Wholesale POS', group: 'Distribution / Wholesale' },
-  { key: 'modules.invoices', label: 'Invoices', group: 'Distribution / Wholesale' },
-  { key: 'modules.purchases', label: 'Purchases', group: 'Distribution / Wholesale' },
-  { key: 'modules.transfers', label: 'Transfers', group: 'Distribution / Wholesale' },
-  { key: 'modules.adjustments', label: 'Adjustments', group: 'Distribution / Wholesale' },
-  { key: 'modules.creditControl', label: 'Credit Control', group: 'Distribution / Wholesale' },
-  { key: 'modules.approvalsCenter', label: 'Approvals Center', group: 'Distribution / Wholesale' },
-  { key: 'modules.refunds', label: 'Refunds', group: 'Distribution / Wholesale' },
-  { key: 'modules.refundApprovals', label: 'Refund Approvals', group: 'Distribution / Wholesale' },
-  { key: 'modules.expenseApprovals', label: 'Expense Approvals', group: 'Distribution / Wholesale' },
+  { key: 'modules.wholesalePos', label: 'Wholesale POS', group: 'Menus / Distribution & Wholesale' },
+  { key: 'modules.invoices', label: 'Invoices', group: 'Menus / Distribution & Wholesale' },
+  { key: 'modules.purchases', label: 'Purchases', group: 'Menus / Distribution & Wholesale' },
+  { key: 'modules.transfers', label: 'Transfers', group: 'Menus / Distribution & Wholesale' },
+  { key: 'modules.adjustments', label: 'Adjustments', group: 'Menus / Distribution & Wholesale' },
+  { key: 'modules.creditControl', label: 'Credit Control', group: 'Menus / Distribution & Wholesale' },
+  { key: 'modules.approvalsCenter', label: 'Approvals Center', group: 'Menus / Distribution & Wholesale' },
+  { key: 'modules.refunds', label: 'Refunds', group: 'Menus / Distribution & Wholesale' },
+  { key: 'modules.refundApprovals', label: 'Refund Approvals', group: 'Menus / Distribution & Wholesale' },
+  { key: 'modules.expenseApprovals', label: 'Expense Approvals', group: 'Menus / Distribution & Wholesale' },
 
-  { key: 'admin.users', label: 'Users', group: 'Admin / Control' },
-  { key: 'admin.manual', label: 'Manual', group: 'Admin / Control' },
-  { key: 'admin.audit', label: 'Audit Log', group: 'Admin / Control' },
-  { key: 'admin.serverLogs', label: 'Server Logs', group: 'Admin / Control' },
-  { key: 'admin.stockRecords', label: 'Stock Records', group: 'Admin / Control' },
-  { key: 'admin.cashDrawer', label: 'Cash Drawer', group: 'Admin / Control' },
-  { key: 'admin.config', label: 'Config', group: 'Admin / Control' },
-  { key: 'admin.godhand', label: 'GodHand', group: 'Admin / Control' },
-  { key: 'admin.docs', label: 'Docs', group: 'Admin / Control' },
+  { key: 'admin.users', label: 'Users', group: 'Menus / Admin & Control' },
+  { key: 'admin.manual', label: 'Manual', group: 'Menus / Admin & Control' },
+  { key: 'admin.audit', label: 'Audit Log', group: 'Menus / Admin & Control' },
+  { key: 'admin.serverLogs', label: 'Server Logs', group: 'Menus / Admin & Control' },
+  { key: 'admin.stockRecords', label: 'Stock Records', group: 'Menus / Admin & Control' },
+  { key: 'admin.cashDrawer', label: 'Cash Drawer', group: 'Menus / Admin & Control' },
+  { key: 'admin.config', label: 'Config', group: 'Menus / Admin & Control' },
+  { key: 'admin.godhand', label: 'GodHand', group: 'Menus / Admin & Control' },
+  { key: 'admin.docs', label: 'Docs', group: 'Menus / Admin & Control' },
 
-  { key: 'features.offlineBackup', label: 'Offline usage (queue + backup)', group: 'Platform Features' },
-  { key: 'tabs.customerPurchaseHistory', label: 'Customer Purchase History', group: 'Platform Features' },
-  { key: 'tabs.posHeldSales', label: 'POS - Held Sales panel', group: 'Platform Features' },
-  { key: 'tabs.invoiceNew', label: 'Invoices - New Invoice tab', group: 'Platform Features' },
-  { key: 'tabs.invoiceRecords', label: 'Invoices - Records tab', group: 'Platform Features' },
+  { key: 'features.offlineBackup', label: 'Offline usage (queue + backup)', group: 'Runtime & Sync' },
+  { key: 'tabs.customerPurchaseHistory', label: 'Customer Purchase History', group: 'Tabs & Workspace' },
+  { key: 'tabs.posHeldSales', label: 'POS - Held Sales panel', group: 'Tabs & Workspace' },
+  { key: 'tabs.invoiceNew', label: 'Invoices - New Invoice tab', group: 'Tabs & Workspace' },
+  { key: 'tabs.invoiceRecords', label: 'Invoices - Records tab', group: 'Tabs & Workspace' },
 
   ...TENANT_GRANT_CATALOG.map((item) => {
-    let group = 'Grant Access / Retail';
-    if (['view_wholesale_pos', 'view_purchases', 'add_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'edit_adjustments', 'approve_adjustments', 'view_credit_control', 'approve_credit_director', 'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_wholesale_director', 'approve_wholesale_manager', 'view_wholesale_invoices', 'view_warehouse_invoices', 'view_warehouse_approvals'].includes(item.key)) {
-      group = 'Grant Access / Distribution';
+    let group = 'Permissions / Retail Actions';
+    if (['view_retail_price', 'view_wholesale_price', 'view_agent_price'].includes(item.key)) {
+      group = 'Permissions / Pricing & Visibility';
+    } else if (['view_wholesale_pos', 'view_purchases', 'add_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'edit_adjustments', 'approve_adjustments', 'view_credit_control', 'approve_credit_director', 'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_wholesale_director', 'approve_wholesale_manager', 'view_wholesale_invoices', 'view_warehouse_invoices', 'view_warehouse_approvals'].includes(item.key)) {
+      group = 'Permissions / Distribution Actions';
     } else if (['view_users', 'view_config', 'view_audit', 'view_stock_records', 'view_cashdrawer', 'view_imei_conflicts'].includes(item.key)) {
-      group = 'Grant Access / Admin';
+      group = 'Permissions / Admin Actions';
     }
     return { key: `grants.${item.key}`, label: item.label, group };
   })
