@@ -71,6 +71,13 @@ function normalizePricingPayload(body = {}) {
   return out;
 }
 
+function stockFieldForInventoryType(inventoryType) {
+  const type = String(inventoryType || 'retail').toLowerCase();
+  if (type === 'warehouse') return 'warehouseStockByBranch';
+  if (type === 'wholesale') return 'wholesaleStockByBranch';
+  return 'stockByBranch';
+}
+
 function pad12Digits(n) {
   const s = String(n).replace(/\D/g, '');
   if (s.length >= 12) return s.slice(-12);
@@ -139,7 +146,20 @@ r.get('/', async (req, res) => {
 
 r.post('/', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (req, res) => {
   const body = normalizePricingPayload(req.body || {});
+  const initialStock = Number(body.initialStock || 0);
+  const initialBranchId = String(body.initialBranchId || '').trim();
+  const initialInventoryType = String(body.initialInventoryType || 'retail').trim().toLowerCase();
+  delete body.initialStock;
+  delete body.initialBranchId;
+  delete body.initialInventoryType;
   if (!body.barcode) body.barcode = generateEAN13();
+  if (initialBranchId && Number.isFinite(initialStock) && initialStock > 0 && normalizeTrackType(body.trackType) !== 'serialized') {
+    const field = stockFieldForInventoryType(initialInventoryType);
+    body[field] = {
+      ...(body[field] || {}),
+      [initialBranchId]: initialStock
+    };
+  }
   const p = await Product.create(body);
   if (!p.id) {
     p.id = String(p._id);
@@ -148,7 +168,7 @@ r.post('/', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (req,
   await Audit.create({
     actor: (req.user && req.user.name) || 'unknown',
     actionType: 'product_create',
-    details: { name: p.name, sku: p.sku, price: p.price, category: p.category || '' },
+    details: { name: p.name, sku: p.sku, price: p.price, category: p.category || '', initialStock: initialStock > 0 ? initialStock : 0, initialBranchId: initialBranchId || '' },
     branchId: req.user?.branchId || ''
   });
   await ServerLog.create({
