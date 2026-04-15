@@ -11,40 +11,9 @@ import { setGrants as setAuthGrants } from '../store/authSlice';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import InlineSpinner from '../components/InlineSpinner';
+import { TENANT_GRANT_CATALOG, filterGrantsByTenantFlags } from '../utils/tenantAccess';
 
-const ALL_GRANTS = [
-  { key: 'view_dashboard', label: 'Dashboard' },
-  { key: 'view_pos', label: 'POS' },
-  { key: 'view_wholesale_pos', label: 'Wholesale POS' },
-  { key: 'view_retail_price', label: 'Retail Price Visibility' },
-  { key: 'view_wholesale_price', label: 'Wholesale Price Visibility' },
-  { key: 'view_agent_price', label: 'Agent Price Visibility' },
-  { key: 'view_sales', label: 'Sales' }, { key: 'add_sales', label: 'Sales: Add' },
-  { key: 'view_products', label: 'Products' }, { key: 'add_products', label: 'Products: Add' }, { key: 'edit_products', label: 'Products: Edit' },
-  { key: 'view_inventory', label: 'Inventory' }, { key: 'edit_inventory', label: 'Inventory: Edit' },
-  { key: 'view_serialized_inventory', label: 'Serialized Inventory' },
-  { key: 'view_labels', label: 'Labels' },
-  { key: 'view_purchases', label: 'Purchases' }, { key: 'add_purchases', label: 'Purchases: Add' }, { key: 'edit_purchases', label: 'Purchases: Edit' }, { key: 'approve_purchases', label: 'Purchases: Approve' },
-  { key: 'view_transfers', label: 'Transfers' }, { key: 'add_transfers', label: 'Transfers: Add' }, { key: 'edit_transfers', label: 'Transfers: Edit' }, { key: 'approve_transfers', label: 'Transfers: Approve' },
-  { key: 'view_adjustments', label: 'Adjustments' }, { key: 'add_adjustments', label: 'Adjustments: Add' }, { key: 'edit_adjustments', label: 'Adjustments: Edit' }, { key: 'approve_adjustments', label: 'Adjustments: Approve' },
-  { key: 'view_suppliers', label: 'Suppliers' }, { key: 'add_suppliers', label: 'Suppliers: Add' }, { key: 'edit_suppliers', label: 'Suppliers: Edit' },
-  { key: 'view_customers', label: 'Customers' }, { key: 'add_customers', label: 'Customers: Add' }, { key: 'edit_customers', label: 'Customers: Edit' },
-  { key: 'view_credit_control', label: 'Credit Control' }, { key: 'approve_credit_director', label: 'Credit: Director Approve' }, { key: 'approve_credit_manager', label: 'Credit: Manager Approve' },
-  { key: 'view_credit_repayment_approvals', label: 'Credit Repayment Approvals' },
-  { key: 'view_approvals', label: 'Approvals Center' }, { key: 'approve_wholesale_director', label: 'Wholesale: Director Approve' }, { key: 'approve_wholesale_manager', label: 'Wholesale: Manager Approve' },
-  { key: 'view_refunds', label: 'Refunds' }, { key: 'add_refunds', label: 'Refunds: Add Request' }, { key: 'approve_refunds', label: 'Refunds: Approve/Reject' },
-  { key: 'view_expenses', label: 'Expenses' }, { key: 'add_expenses', label: 'Expenses: Add/Delete' }, { key: 'approve_expenses', label: 'Expenses: Approve/Reject' },
-  { key: 'view_reports', label: 'Reports' },
-  { key: 'view_stock_records', label: 'Stock Records' },
-  { key: 'view_wholesale_invoices', label: 'Wholesale Invoices' },
-  { key: 'view_warehouse_invoices', label: 'Warehouse Invoices' },
-  { key: 'view_warehouse_approvals', label: 'Warehouse Approvals' },
-  { key: 'view_imei_conflicts', label: 'IMEI Conflicts' },
-  { key: 'view_cashdrawer', label: 'Cash Drawer' },
-  { key: 'view_users', label: 'Users' },
-  { key: 'view_config', label: 'Config' },
-  { key: 'view_audit', label: 'Audit Log' }
-];
+const ALL_GRANTS = TENANT_GRANT_CATALOG;
 const ALL_GRANTS_KEYS = ALL_GRANTS.map(g => g.key);
 const AUDIT_GRANT_KEYS = new Set(['view_audit', 'see_audit']);
 
@@ -91,8 +60,11 @@ function UsersPage() {
   const existingGrants = settings?.userGrants || {};
   const [grants, setGrants] = useState([]);
   const canManageAuditGrant = isSuper;
-  const grantOptions = useMemo(() => canManageAuditGrant ? ALL_GRANTS : ALL_GRANTS.filter(g => !AUDIT_GRANT_KEYS.has(String(g.key))), [canManageAuditGrant]);
-  const allGrantKeys = ALL_GRANTS_KEYS;
+  const grantOptions = useMemo(() => {
+    const scoped = ALL_GRANTS.filter((item) => filterGrantsByTenantFlags([item.key], settings).includes(item.key));
+    return canManageAuditGrant ? scoped : scoped.filter(g => !AUDIT_GRANT_KEYS.has(String(g.key)));
+  }, [canManageAuditGrant, settings]);
+  const allGrantKeys = useMemo(() => filterGrantsByTenantFlags(ALL_GRANTS_KEYS, settings), [settings]);
   const defaultsForRole = useCallback((r) => {
     const rl = String(r || '').toLowerCase();
     if (rl === 'superadmin') return allGrantKeys.slice();
@@ -110,8 +82,8 @@ function UsersPage() {
   // auto-apply defaults when role is selected on Create User
   useEffect(() => {
     const next = defaultsForRole(role);
-    setGrants(canManageAuditGrant ? next : stripAuditGrants(next));
-  }, [role, defaultsForRole]);
+    setGrants(canManageAuditGrant ? filterGrantsByTenantFlags(next, settings) : stripAuditGrants(filterGrantsByTenantFlags(next, settings)));
+  }, [role, defaultsForRole, canManageAuditGrant, settings]);
   // if editing role changed to SuperAdmin, ensure all grants are checked
   useEffect(() => {
     if (String(editRole || '').toLowerCase() === 'superadmin') {
@@ -144,7 +116,7 @@ function UsersPage() {
       return;
     }
     const forceAll = role === 'SuperAdmin' || role === 'Admin';
-    const safeCreateGrants = canManageAuditGrant ? grants.slice() : stripAuditGrants(grants);
+    const safeCreateGrants = canManageAuditGrant ? filterGrantsByTenantFlags(grants, settings) : stripAuditGrants(filterGrantsByTenantFlags(grants, settings));
     const assigned = forceAll || allBranches ? 'all' : (selectedBranches.length > 0 ? selectedBranches : [branchId]);
     const primaryBranch = allBranches ? 'main' : (assigned[0] || 'main');
     if (viewerRole === 'Admin' && role === 'SuperAdmin') {
@@ -222,7 +194,7 @@ function UsersPage() {
     setEditBranchId(u.branchId || branches[0]?.id || 'main');
     setEditActive(u.active !== false);
     setEditRemark('');
-    const g = existingGrants?.[u.name] || [];
+    const g = filterGrantsByTenantFlags(existingGrants?.[u.name] || [], settings);
     setEditGrants(canManageAuditGrant ? (Array.isArray(g) ? g : []) : stripAuditGrants(g));
   }
 
@@ -269,7 +241,7 @@ function UsersPage() {
     }
     const prevName = target?.name || editName;
     const payload = { name: fields.name, role: fields.role, active: fields.active, branchId: fields.branchId, assignedBranches: fields.assignedBranches };
-    const safeEditGrants = canManageAuditGrant ? editGrants.slice() : stripAuditGrants(editGrants);
+    const safeEditGrants = canManageAuditGrant ? filterGrantsByTenantFlags(editGrants, settings) : stripAuditGrants(filterGrantsByTenantFlags(editGrants, settings));
     if (fields.pin) payload.pin = fields.pin;
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) {

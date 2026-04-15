@@ -1,3 +1,5 @@
+import { loadState } from '../store/persist';
+
 const LS_KEY = 'apiBaseUrl';
 
 function readJwtPayload(token) {
@@ -40,9 +42,8 @@ export async function fetchJson(path, opts = {}) {
     tokenPayload = readJwtPayload(token);
     const tenantId = tokenPayload?.tenantId || localStorage.getItem('ptSales:tenantId') || '';
     if (tenantId) roleHeader['X-Tenant-Id'] = String(tenantId);
-    const raw = localStorage.getItem('ptSales:state');
-    if (raw) {
-      const st = JSON.parse(raw);
+    const st = loadState();
+    if (st) {
       const role = tokenPayload?.role || st?.auth?.role;
       const user = tokenPayload?.name || st?.auth?.user?.name;
       const scopedTenantId = tokenPayload?.tenantId || st?.auth?.user?.tenantId || tenantId || '';

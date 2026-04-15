@@ -1,4 +1,5 @@
 import { getApiBase } from '../api/client';
+import { loadState } from '../store/persist';
 
 export async function ensureOnlineJwt() {
   try {
@@ -7,12 +8,10 @@ export async function ensureOnlineJwt() {
   } catch {}
   let name = '';
   try {
-    const raw = localStorage.getItem('ptSales:state');
-    if (raw) {
-      const st = JSON.parse(raw);
-      name = st?.auth?.user?.name || '';
-    }
+    const st = loadState();
+    name = st?.auth?.user?.name || '';
   } catch {}
+  const tenantId = (() => { try { return String(localStorage.getItem('ptSales:tenantId') || 'master'); } catch { return 'master'; } })();
   let pin = '';
   try {
     pin = sessionStorage.getItem('ptSales:sessionPin') || '';
@@ -20,7 +19,7 @@ export async function ensureOnlineJwt() {
   if (!name || !pin || !/^\d{4,6}$/.test(String(pin))) return false;
   const base = getApiBase();
   try {
-    const res = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: name, pin }) });
+    const res = await fetch(`${base}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tenantId, username: name, pin }) });
     if (!res.ok) return false;
     const data = await res.json();
     if (data?.token) {

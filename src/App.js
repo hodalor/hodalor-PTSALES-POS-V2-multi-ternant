@@ -13,6 +13,8 @@ import { useDispatch, useSelector } from 'react-redux';
 import * as productsApi from './api/products';
 import * as suppliersApi from './api/suppliers';
 import * as customersApi from './api/customers';
+import { loadState, clearTenantState } from './store/persist';
+import { filterGrantsByTenantFlags } from './utils/tenantAccess';
 import * as branchesApi from './api/branches';
 import { setProducts } from './store/productsSlice';
 import { setSuppliers } from './store/suppliersSlice';
@@ -245,11 +247,7 @@ function App() {
         if (remote && Object.keys(remote).length > 0) {
           dispatch(setAllSettings(remote));
         } else {
-          let snapshot = null;
-          try {
-            const raw = localStorage.getItem('ptSales:state');
-            if (raw) snapshot = JSON.parse(raw);
-          } catch {}
+          const snapshot = loadState();
           const localDefaults = snapshot?.settings || {};
           if (Object.keys(localDefaults).length > 0) {
             await settingsApi.save(localDefaults);
@@ -264,13 +262,9 @@ function App() {
     (async () => {
       if (!isAuthed) return;
       try {
-        const migFlag = localStorage.getItem('ptSales:migratedDbV1');
+        const migFlag = localStorage.getItem(`ptSales:migratedDbV1:${String(authTenantId || 'default')}`);
         if (migFlag) return;
-        let snapshot = null;
-        try {
-          const raw = localStorage.getItem('ptSales:state');
-          if (raw) snapshot = JSON.parse(raw);
-        } catch {}
+        const snapshot = loadState();
         const [srvBranches, srvProducts, srvSuppliers, srvCustomers] = await Promise.all([
           branchesApi.list().catch(() => []),
           productsApi.list().catch(() => []),
@@ -310,11 +304,11 @@ function App() {
             }
           }
         }
-        try { localStorage.removeItem('ptSales:state'); } catch {}
-        localStorage.setItem('ptSales:migratedDbV1', '1');
+        clearTenantState(authTenantId || 'default');
+        localStorage.setItem(`ptSales:migratedDbV1:${String(authTenantId || 'default')}`, '1');
       } catch {}
     })();
-  }, [isAuthed]);
+  }, [isAuthed, authTenantId]);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -382,8 +376,8 @@ function App() {
     if (!isAuthed) return;
     const userGrants = settings?.userGrants;
     const g = (userGrants && userName) ? (userGrants[userName] || []) : [];
-    dispatch(setGrants(Array.isArray(g) ? g : []));
-  }, [isAuthed, settings?.userGrants, userName, dispatch]);
+    dispatch(setGrants(filterGrantsByTenantFlags(Array.isArray(g) ? g : [], settings)));
+  }, [isAuthed, settings, settings?.userGrants, userName, dispatch]);
   useEffect(() => {
     let alive = true;
     const idleMs = 180000;

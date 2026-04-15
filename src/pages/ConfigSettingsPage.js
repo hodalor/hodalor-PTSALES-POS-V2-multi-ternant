@@ -10,6 +10,7 @@ import * as settingsApi from '../api/settings';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import { getBeforeInstallPromptEvent, isInstalled, isRelatedInstalled, checkUpdateAndOpen } from '../pwa/installPrompt';
+import { clearTenantState } from '../store/persist';
 
 function ConfigSettingsPage() {
   const dispatch = useDispatch();
@@ -688,6 +689,7 @@ function ConfigSettingsPage() {
                   className="btn"
                   onClick={() => {
                     try {
+                      clearTenantState(auth.user?.tenantId || 'default');
                       localStorage.removeItem('ptSales:state');
                       toast.show('Local data cleared', { type: 'success' });
                     } catch {}

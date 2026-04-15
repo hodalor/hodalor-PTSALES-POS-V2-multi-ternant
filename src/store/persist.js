@@ -1,8 +1,13 @@
 const KEY = 'ptSales:state';
 
+export function getTenantStateKey(explicitTenantId) {
+  const tenantId = String(explicitTenantId || localStorage.getItem('ptSales:tenantId') || 'default').trim() || 'default';
+  return `${KEY}:${tenantId}`;
+}
+
 export function loadState() {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = localStorage.getItem(getTenantStateKey()) || localStorage.getItem(KEY);
     if (!raw) return undefined;
     return JSON.parse(raw);
   } catch {
@@ -24,7 +29,15 @@ export function saveState(state) {
       sessions: state.sessions,
       invoices: state.invoices
     };
-    localStorage.setItem(KEY, JSON.stringify(snapshot));
+    localStorage.setItem(getTenantStateKey(state?.auth?.user?.tenantId), JSON.stringify(snapshot));
+  } catch {
+    // ignore
+  }
+}
+
+export function clearTenantState(tenantId) {
+  try {
+    localStorage.removeItem(getTenantStateKey(tenantId));
   } catch {
     // ignore
   }

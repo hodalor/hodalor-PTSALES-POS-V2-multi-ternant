@@ -7,6 +7,7 @@ import { useToast } from '../components/ToastProvider';
 import Modal from '../components/Modal';
 import * as usersApi from '../api/users';
 import { getApiBase } from '../api/client';
+import { clearTenantState } from '../store/persist';
 
 function LoginPage() {
   const [name, setName] = useState('');
@@ -197,11 +198,20 @@ function LoginPage() {
       landing = offline.landing || landing;
       try { localStorage.setItem('ptSales:authToken', 'offline'); } catch {}
     }
-    try { localStorage.setItem('ptSales:tenantId', String(user?.tenantId || tenantId || 'master')); } catch {}
+    const nextTenantId = String(user?.tenantId || tenantId || 'master');
+    let previousTenantId = 'master';
+    try { previousTenantId = String(localStorage.getItem('ptSales:tenantId') || 'master'); } catch {}
+    try { localStorage.setItem('ptSales:tenantId', nextTenantId); } catch {}
     if (remember) {
       try { localStorage.setItem('ptSales:rememberName', name); } catch {}
     } else {
       try { localStorage.removeItem('ptSales:rememberName'); } catch {}
+    }
+    if (previousTenantId !== nextTenantId) {
+      clearTenantState(nextTenantId);
+      try { localStorage.removeItem('ptSales:state'); } catch {}
+      window.location.replace(from || landing);
+      return;
     }
     dispatch(loginSuccess({ user, role, grants }));
     navigate(from || landing, { replace: true });
