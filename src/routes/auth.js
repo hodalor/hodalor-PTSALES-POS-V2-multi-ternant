@@ -5,6 +5,7 @@ import { verifyPin } from '../utils/pin.js';
 import { requireAuth } from '../middleware/auth.js';
 import Settings from '../models/Settings.js';
 import Tenant from '../models/Tenant.js';
+import { filterGrantsByFeatureFlags } from '../config/tenantAccess.js';
 
 const r = Router();
 
@@ -40,7 +41,7 @@ r.post('/login', async (req, res) => {
     const doc = await Settings.findOne({ key: 'default' });
     const map = doc?.data?.userGrants || {};
     const arr = map && map[u.name];
-    if (Array.isArray(arr)) grants = arr;
+    if (Array.isArray(arr)) grants = filterGrantsByFeatureFlags(arr, doc?.data?.featureFlags || {});
   } catch {}
   const payload = {
     sub: String(u._id),
@@ -65,9 +66,16 @@ export default r;
 
 r.get('/me', requireAuth, async (req, res) => {
   const u = req.user || {};
+  let grants = Array.isArray(u.grants) ? u.grants : [];
+  try {
+    const doc = await Settings.findOne({ key: 'default' });
+    const map = doc?.data?.userGrants || {};
+    const arr = map && map[u.name];
+    if (Array.isArray(arr)) grants = filterGrantsByFeatureFlags(arr, doc?.data?.featureFlags || {});
+  } catch {}
   res.json({
     role: u.role || null,
-    grants: Array.isArray(u.grants) ? u.grants : [],
+    grants,
     user: { name: u.name, tenantId: u.tenantId || req.tenantId || 'master', branchId: u.branchId || 'main', assignedBranches: u.assignedBranches || (u.branchId ? [u.branchId] : []) }
   });
 });

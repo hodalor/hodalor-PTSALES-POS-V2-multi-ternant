@@ -6,66 +6,10 @@ import { modelFor as SettingsModelFor } from '../models/Settings.js';
 import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
 import { getMasterConnection, getTenantConnection, getTenantDbName, normalizeTenantId } from '../config/tenancy.js';
 import { hashPin } from '../utils/pin.js';
+import { ALL_FEATURES, normalizePlan, normalizeFeatureList, featureFlagsFromEnabled } from '../config/tenantAccess.js';
 
 const r = Router();
 r.use(requireAuth);
-
-const ALL_FEATURES = [
-  'modules.dashboard', 'modules.pos', 'modules.wholesalePos', 'modules.invoices', 'modules.sales',
-  'modules.products', 'modules.inventory', 'modules.labels', 'modules.purchases', 'modules.expenses',
-  'modules.transfers', 'modules.adjustments', 'modules.suppliers', 'modules.customers',
-  'modules.creditControl', 'modules.approvalsCenter', 'modules.refunds', 'modules.refundApprovals',
-  'modules.expenseApprovals', 'modules.reports', 'modules.backup',
-  'admin.users', 'admin.manual', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords',
-  'admin.cashDrawer', 'admin.config', 'admin.godhand', 'admin.docs',
-  'features.offlineBackup',
-  'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords'
-];
-
-const PLAN_FEATURES = {
-  basic: [
-    'modules.dashboard', 'modules.pos', 'modules.invoices', 'modules.sales', 'modules.products',
-    'modules.inventory', 'modules.labels', 'modules.purchases', 'modules.suppliers',
-    'modules.customers', 'modules.backup', 'admin.users', 'admin.audit',
-    'admin.cashDrawer', 'admin.config', 'features.offlineBackup',
-    'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords'
-  ],
-  pro: [
-    'modules.dashboard', 'modules.pos', 'modules.invoices', 'modules.sales', 'modules.products',
-    'modules.inventory', 'modules.labels', 'modules.purchases', 'modules.expenses',
-    'modules.transfers', 'modules.adjustments', 'modules.suppliers', 'modules.customers',
-    'modules.approvalsCenter', 'modules.refunds', 'modules.refundApprovals', 'modules.expenseApprovals',
-    'modules.reports', 'modules.backup', 'admin.users', 'admin.manual', 'admin.audit',
-    'admin.serverLogs', 'admin.stockRecords', 'admin.cashDrawer', 'admin.config',
-    'features.offlineBackup', 'tabs.customerPurchaseHistory', 'tabs.posHeldSales',
-    'tabs.invoiceNew', 'tabs.invoiceRecords'
-  ],
-  enterprise: ALL_FEATURES.slice()
-};
-
-function normalizePlan(plan) {
-  const value = String(plan || 'basic').trim().toLowerCase();
-  return ['basic', 'pro', 'enterprise'].includes(value) ? value : 'basic';
-}
-
-function normalizeFeatureList(plan, features) {
-  const base = new Set(PLAN_FEATURES[normalizePlan(plan)] || PLAN_FEATURES.basic);
-  const extras = Array.isArray(features) ? features : [];
-  extras.forEach((key) => {
-    const value = String(key || '').trim();
-    if (ALL_FEATURES.includes(value)) base.add(value);
-  });
-  return ALL_FEATURES.filter((key) => base.has(key));
-}
-
-function featureFlagsFromEnabled(enabledList) {
-  const enabled = new Set((enabledList || []).map((x) => String(x)));
-  const flags = {};
-  ALL_FEATURES.forEach((key) => {
-    if (!enabled.has(key)) flags[key] = false;
-  });
-  return flags;
-}
 
 async function ensureTenantBootstrap(tenantId, payload = {}) {
   const conn = await getTenantConnection(tenantId);
@@ -115,6 +59,18 @@ async function ensureTenantBootstrap(tenantId, payload = {}) {
   }
 }
 
+async function wipeTenantDb(tenantId) {
+  const conn = await getTenantConnection(tenantId);
+  const db = conn?.db;
+  if (!db) return;
+  const collections = await db.listCollections().toArray();
+  for (const item of collections) {
+    const name = String(item?.name || '');
+    if (!name || name.startsWith('system.')) continue;
+    await db.collection(name).deleteMany({});
+  }
+}
+
 r.get('/me', async (req, res) => {
   const tid = String(req.user?.tenantId || req.tenantId || 'master');
   if (!tid || tid.toLowerCase() === 'master') return res.json({});
@@ -142,6 +98,7 @@ r.post('/', requireSuperAdmin, async (req, res) => {
   if (exists) return res.status(409).json({ error: 'Tenant already exists' });
   const plan = normalizePlan(subscriptionPlan);
   const enabledFeatures = normalizeFeatureList(plan, features);
+  await wipeTenantDb(tid);
   const doc = await TenantModel.create({
     tenantId: tid,
     name: String(name).trim(),

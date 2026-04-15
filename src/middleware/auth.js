@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken';
 import Settings from '../models/Settings.js';
+import { filterGrantsByFeatureFlags } from '../config/tenantAccess.js';
 
 export function parseAuth(req, _res, next) {
   const auth = req.header('authorization') || req.header('Authorization') || '';
@@ -58,7 +59,7 @@ export function requireRoleOrPerm(roles = [], perm = '') {
         const doc = await Settings.findOne({ key: 'default' });
         const map = doc?.data?.userGrants || {};
         const arr = map?.[req.user?.name];
-        if (Array.isArray(arr) && arr.includes(p)) return next();
+        if (Array.isArray(arr) && filterGrantsByFeatureFlags(arr, doc?.data?.featureFlags || {}).includes(p)) return next();
       } catch {}
     }
     return res.status(403).json({ error: 'Forbidden' });
