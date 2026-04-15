@@ -14,7 +14,7 @@ const auditSlice = createSlice({
       state.entries = server.concat(offline);
     },
     addAudit(state, action) {
-      const { actor, actionType, details, remark, branchId, ts, offline } = action.payload || {};
+      const { actor, actionType, details, remark, branchId, ts, offline, severity, tenantId, tenantName } = action.payload || {};
       state.entries.push({
         id: nanoid(),
         ts: ts || new Date().toISOString(),
@@ -23,6 +23,9 @@ const auditSlice = createSlice({
         details: details || null,
         remark: remark || '',
         branchId: branchId || null,
+        severity: severity || 'info',
+        tenantId: tenantId || '',
+        tenantName: tenantName || '',
         offline: !!offline
       });
     },

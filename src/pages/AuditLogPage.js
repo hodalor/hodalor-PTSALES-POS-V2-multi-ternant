@@ -1,30 +1,42 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import * as auditsApi from '../api/audits';
+import { setEntries } from '../store/auditSlice';
 import { removeEntries as removeAuditEntries } from '../store/auditSlice';
 import InlineSpinner from '../components/InlineSpinner';
 import { confirmDialog } from '../utils/dialogs';
 
 function toCsv(rows) {
-  const headers = ['Timestamp','Actor','Action','Branch','Remark','Details'];
+  const headers = ['Timestamp','Tenant','Severity','Actor','Action','Branch','Remark','Details'];
   const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const lines = [headers.map(escape).join(',')];
   rows.forEach(r => {
     lines.push([
-      r.ts, r.actor, r.actionType, r.branchLabel ?? r.branchId ?? '', r.remark ?? '', JSON.stringify(r.details ?? {})
+      r.ts, r.tenantName ?? r.tenantId ?? '', r.severity ?? 'info', r.actor, r.actionType, r.branchLabel ?? r.branchId ?? '', r.remark ?? '', JSON.stringify(r.details ?? {})
     ].map(escape).join(','));
   });
   return lines.join('\n');
 }
+
+const SEVERITY_OPTIONS = ['info', 'warn', 'error', 'critical'];
+const severityStyle = {
+  info: { background: '#dbeafe', color: '#1d4ed8' },
+  warn: { background: '#fef3c7', color: '#b45309' },
+  error: { background: '#fee2e2', color: '#b91c1c' },
+  critical: { background: '#ede9fe', color: '#6d28d9' }
+};
 
 function AuditLogPage() {
   const dispatch = useDispatch();
   const entries = useSelector(s => s.audit.entries);
   const branches = useSelector(s => s.branches.branches);
   const isSuper = String(useSelector(s => s.auth.role || '') || '').toLowerCase() === 'superadmin';
+  const currentTenantId = useSelector(s => s.auth.user?.tenantId || '');
   const [qActor, setQActor] = useState('');
   const [qAction, setQAction] = useState('');
   const [qBranch, setQBranch] = useState('');
+  const [qTenant, setQTenant] = useState('');
+  const [qSeverity, setQSeverity] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [selectedIds, setSelectedIds] = useState([]);
@@ -33,6 +45,7 @@ function AuditLogPage() {
 
   const actors = useMemo(() => Array.from(new Set(entries.map(e => e.actor).filter(Boolean))).sort(), [entries]);
   const actions = useMemo(() => Array.from(new Set(entries.map(e => e.actionType).filter(Boolean))).sort(), [entries]);
+  const tenants = useMemo(() => Array.from(new Set(entries.map(e => e.tenantName || e.tenantId).filter(Boolean))).sort(), [entries]);
   const byId = useMemo(() => {
     const map = new Map();
     branches.forEach(b => map.set(b.id, b.name));
@@ -48,9 +61,27 @@ function AuditLogPage() {
       if (qActor && e.actor !== qActor) return false;
       if (qAction && e.actionType !== qAction) return false;
       if (qBranch && e.branchId !== qBranch) return false;
+      if (qTenant && (e.tenantId !== qTenant && e.tenantName !== qTenant)) return false;
+      if (qSeverity && String(e.severity || 'info') !== qSeverity) return false;
       return true;
     }).map(e => ({ ...e, branchLabel: byId.get(e.branchId) || e.branchId || '—' }));
-  }, [entries, from, to, qActor, qAction, qBranch, byId]);
+  }, [entries, from, to, qActor, qAction, qBranch, qTenant, qSeverity, byId]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const rows = await auditsApi.list(500, {
+          tenantId: isSuper ? qTenant : '',
+          from,
+          to,
+          severity: qSeverity
+        });
+        if (alive) dispatch(setEntries(rows));
+      } catch {}
+    })();
+    return () => { alive = false; };
+  }, [dispatch, isSuper, qTenant, from, to, qSeverity]);
 
   function exportCsv() {
     const blob = new Blob([toCsv(filtered)], { type: 'text/csv;charset=utf-8;' });
@@ -85,7 +116,7 @@ function AuditLogPage() {
     <div style={{ padding: 16 }}>
       <h1>Audit Log</h1>
       <div className="card" style={{ marginBottom: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isSuper ? 'repeat(7, 1fr)' : 'repeat(6, 1fr)', gap: 8 }}>
           <label>
             From
             <input className="input" type="date" value={from} onChange={e => setFrom(e.target.value)} />
@@ -93,6 +124,22 @@ function AuditLogPage() {
           <label>
             To
             <input className="input" type="date" value={to} onChange={e => setTo(e.target.value)} />
+          </label>
+          {isSuper && (
+            <label>
+              Tenant
+              <select className="select" value={qTenant} onChange={e => setQTenant(e.target.value)}>
+                <option value="">All</option>
+                {tenants.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+          )}
+          <label>
+            Severity
+            <select className="select" value={qSeverity} onChange={e => setQSeverity(e.target.value)}>
+              <option value="">All</option>
+              {SEVERITY_OPTIONS.map(level => <option key={level} value={level}>{level}</option>)}
+            </select>
           </label>
           <label>
             Actor
@@ -149,6 +196,8 @@ function AuditLogPage() {
                 </th>
               )}
               <th align="left">Timestamp</th>
+              {isSuper && <th align="left">Tenant</th>}
+              <th align="left">Severity</th>
               <th align="left">Actor</th>
               <th align="left">Action</th>
               <th align="left">Branch</th>
@@ -170,6 +219,12 @@ function AuditLogPage() {
                   </td>
                 )}
                 <td>{new Date(e.ts).toLocaleString()}</td>
+                {isSuper && <td>{e.tenantName || e.tenantId || currentTenantId || '—'}</td>}
+                <td>
+                  <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 700, ...(severityStyle[String(e.severity || 'info')] || severityStyle.info) }}>
+                    {String(e.severity || 'info')}
+                  </span>
+                </td>
                 <td>{e.actor}</td>
                 <td>{e.actionType}</td>
                 <td>{e.branchLabel}</td>
@@ -178,7 +233,7 @@ function AuditLogPage() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan={isSuper ? 7 : 6} style={{ padding: 12, color: '#64748b' }}>No entries</td></tr>
+              <tr><td colSpan={isSuper ? 9 : 7} style={{ padding: 12, color: '#64748b' }}>No entries</td></tr>
             )}
           </tbody>
         </table>
