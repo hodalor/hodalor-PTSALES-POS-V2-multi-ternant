@@ -10,6 +10,24 @@ import { adjustSerializedUnits, normalizeTrackType, resolveInventoryTypeFromBran
 const r = Router();
 r.use(requireAuth);
 
+function canDirectorApproveRetail(user) {
+  const role = String(user?.role || '').toLowerCase();
+  const grants = Array.isArray(user?.grants) ? user.grants : [];
+  return ['superadmin', 'admin', 'director'].includes(role)
+    || grants.includes('approve_wholesale_director')
+    || grants.includes('approve_credit_director')
+    || grants.includes('approve_adjustments');
+}
+
+function canManagerApproveRetail(user) {
+  const role = String(user?.role || '').toLowerCase();
+  const grants = Array.isArray(user?.grants) ? user.grants : [];
+  return ['superadmin', 'admin', 'manager'].includes(role)
+    || grants.includes('approve_wholesale_manager')
+    || grants.includes('approve_credit_manager')
+    || grants.includes('approve_adjustments');
+}
+
 function productLookupQuery(productId) {
   const pid = String(productId || '');
   const or = [{ id: pid }];
@@ -95,10 +113,10 @@ async function adjustVariantStock(productId, variantId, branchId, delta) {
   return p;
 }
 
-r.get('/requests', requireRoleOrPerm(['Admin','Manager'], 'approve_adjustments'), async (req, res) => {
+r.get('/requests', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_adjustments'), async (req, res) => {
   const statusRaw = String(req.query.status || '').trim().toLowerCase();
   const limit = Math.min(2000, Math.max(1, Number(req.query.limit) || 200));
-  const map = { pending: 'pending_approval', approved: 'approved', rejected: 'rejected' };
+  const map = { pending: 'pending_approval', pending_director: 'pending_director', pending_manager: 'pending_manager', approved: 'approved', rejected: 'rejected' };
   const q = {};
   if (map[statusRaw]) q.status = map[statusRaw];
   const rows = await AdjustmentRequest.find(q).sort({ createdAt: -1 }).limit(limit).lean();
@@ -135,6 +153,7 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
     delta: Number(delta),
     remark: String(remark || ''),
     items: draftItems,
+    status: 'pending_director',
     initiatorName: req.user?.name || '',
     initiatorRole: req.user?.role || ''
   });
@@ -148,12 +167,24 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
   res.json(row);
 });
 
-r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_adjustments'), async (req, res) => {
+r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_adjustments'), async (req, res) => {
   const { id, remark, items: reviewedItems } = req.body || {};
   const row = await AdjustmentRequest.findById(id);
   if (!row) return res.status(404).json({ error: 'Request not found' });
-  if (row.status !== 'pending_approval') return res.status(400).json({ error: 'Request not pending' });
+  if (!['pending_approval', 'pending_director', 'pending_manager'].includes(String(row.status || ''))) return res.status(400).json({ error: 'Request not pending' });
   const nextItems = normalizeItems({ items: reviewedItems && reviewedItems.length ? reviewedItems : (row.items || []) });
+  if (String(row.status || '') === 'pending_approval' || String(row.status || '') === 'pending_director') {
+    if (!canDirectorApproveRetail(req.user)) return res.status(403).json({ error: 'Director approval required' });
+    row.status = 'pending_manager';
+    row.items = nextItems;
+    row.directorApproverName = req.user?.name || '';
+    row.directorApproverRole = req.user?.role || '';
+    row.directorApprovalRemark = String(remark || '');
+    row.directorApproved_at = new Date();
+    await row.save();
+    return res.json({ ok: true, request: row });
+  }
+  if (!canManagerApproveRetail(req.user)) return res.status(403).json({ error: 'Manager approval required' });
   let p = null;
   try {
     const inventoryType = await resolveInventoryTypeFromBranch(row.branchId, 'retail');
@@ -194,6 +225,10 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_adjustments')
     return res.status(e?.status || 500).json({ error: e?.message || 'Failed to apply adjustment' });
   }
   row.status = 'approved';
+  row.managerApproverName = req.user?.name || '';
+  row.managerApproverRole = req.user?.role || '';
+  row.managerApprovalRemark = String(remark || '');
+  row.managerApproved_at = new Date();
   row.approverName = req.user?.name || '';
   row.approverRole = req.user?.role || '';
   row.approvalRemark = String(remark || '');
@@ -219,11 +254,18 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_adjustments')
   res.json({ ok: true, request: row });
 });
 
-r.post('/reject', requireRoleOrPerm(['Admin','Manager'], 'approve_adjustments'), async (req, res) => {
+r.post('/reject', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_adjustments'), async (req, res) => {
   const { id, remark } = req.body || {};
   const row = await AdjustmentRequest.findById(id);
   if (!row) return res.status(404).json({ error: 'Request not found' });
-  if (row.status !== 'pending_approval') return res.status(400).json({ error: 'Request not pending' });
+  if (!['pending_approval', 'pending_director', 'pending_manager'].includes(String(row.status || ''))) return res.status(400).json({ error: 'Request not pending' });
+  const currentStatus = String(row.status || '');
+  if ((currentStatus === 'pending_approval' || currentStatus === 'pending_director') && !canDirectorApproveRetail(req.user)) {
+    return res.status(403).json({ error: 'Director approval required' });
+  }
+  if (currentStatus === 'pending_manager' && !canManagerApproveRetail(req.user)) {
+    return res.status(403).json({ error: 'Manager approval required' });
+  }
   row.status = 'rejected';
   row.approverName = req.user?.name || '';
   row.approverRole = req.user?.role || '';

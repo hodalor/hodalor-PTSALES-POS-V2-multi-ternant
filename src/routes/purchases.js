@@ -10,6 +10,24 @@ import { createSerializedUnits, normalizeTrackType, resolveInventoryTypeFromBran
 const r = Router();
 r.use(requireAuth);
 
+function canDirectorApproveRetail(user) {
+  const role = String(user?.role || '').toLowerCase();
+  const grants = Array.isArray(user?.grants) ? user.grants : [];
+  return ['superadmin', 'admin', 'director'].includes(role)
+    || grants.includes('approve_wholesale_director')
+    || grants.includes('approve_credit_director')
+    || grants.includes('approve_purchases');
+}
+
+function canManagerApproveRetail(user) {
+  const role = String(user?.role || '').toLowerCase();
+  const grants = Array.isArray(user?.grants) ? user.grants : [];
+  return ['superadmin', 'admin', 'manager'].includes(role)
+    || grants.includes('approve_wholesale_manager')
+    || grants.includes('approve_credit_manager')
+    || grants.includes('approve_purchases');
+}
+
 function productLookupQuery(productId) {
   const pid = String(productId || '');
   const or = [{ id: pid }];
@@ -64,7 +82,7 @@ r.get('/requests', async (req, res) => {
   const role = String(req.user?.role || '').toLowerCase();
   const assigned = req.user?.assignedBranches ?? 'all';
   const statusRaw = String(req.query?.status || '').trim().toLowerCase();
-  const map = { pending: 'pending_approval', approved: 'approved', rejected: 'rejected' };
+  const map = { pending: 'pending_approval', pending_director: 'pending_director', pending_manager: 'pending_manager', approved: 'approved', rejected: 'rejected' };
   const q = {};
   if (map[statusRaw]) q.status = map[statusRaw];
   if (!(role === 'superadmin' || role === 'admin') && assigned !== 'all') {
@@ -72,6 +90,7 @@ r.get('/requests', async (req, res) => {
     q.branchId = { $in: arr };
   }
   const limit = Math.min(1000, Math.max(20, Number(req.query?.limit || 200)));
+  if (String(req.query?.status || '') === 'pending') q.status = { $in: ['pending_approval', 'pending_director', 'pending_manager'] };
   const rows = await PurchaseRequest.find(q).sort({ createdAt: -1 }).limit(limit).lean();
   res.json(rows);
 });
@@ -85,7 +104,7 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
   }
   const pr = await PurchaseRequest.create({
     ...payload,
-    status: 'pending_approval',
+    status: 'pending_director',
     clientId: clientId || undefined,
     items: normalizeItems(payload)
   });
@@ -99,7 +118,7 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
   res.json(pr);
 });
 
-r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_purchases'), async (req, res) => {
+r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_purchases'), async (req, res) => {
   const { id, approverName, approverRole, remark, items: reviewedItems } = req.body || {};
   if (!remark || !String(remark).trim()) return res.status(400).json({ error: 'Approval remark required' });
   const key = String(id || '');
@@ -108,7 +127,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_purchases'), 
   or.push({ clientId: key });
   const pr = await PurchaseRequest.findOne({ $or: or });
   if (!pr) return res.status(404).json({ error: 'Not found' });
-  if (pr.status !== 'pending_approval') return res.json(pr);
+  if (!['pending_approval', 'pending_director', 'pending_manager'].includes(String(pr.status || ''))) return res.json(pr);
   const role = String(req.user?.role || '').toLowerCase();
   const assigned = req.user?.assignedBranches ?? 'all';
   if (!(role === 'superadmin' || role === 'admin')) {
@@ -119,6 +138,18 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_purchases'), 
   }
 
   const nextItems = normalizeItems({ items: reviewedItems && reviewedItems.length ? reviewedItems : (pr.items || []) });
+  if (String(pr.status || '') === 'pending_approval' || String(pr.status || '') === 'pending_director') {
+    if (!canDirectorApproveRetail(req.user)) return res.status(403).json({ error: 'Director approval required' });
+    pr.status = 'pending_manager';
+    pr.directorApproverName = approverName || req.user?.name || 'unknown';
+    pr.directorApproverRole = approverRole || req.user?.role || '';
+    pr.directorApprovalRemark = String(remark || '').trim();
+    pr.directorApproved_at = new Date();
+    pr.items = nextItems;
+    await pr.save();
+    return res.json(pr);
+  }
+  if (!canManagerApproveRetail(req.user)) return res.status(403).json({ error: 'Manager approval required' });
   let lastProduct = null;
   try {
     const inventoryType = await resolveInventoryTypeFromBranch(pr.branchId, 'retail');
@@ -179,8 +210,12 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_purchases'), 
   }
 
   pr.status = 'approved';
-  pr.approverName = approverName || 'unknown';
-  pr.approverRole = approverRole || '';
+  pr.managerApproverName = approverName || req.user?.name || 'unknown';
+  pr.managerApproverRole = approverRole || req.user?.role || '';
+  pr.managerApprovalRemark = String(remark || '').trim();
+  pr.managerApproved_at = new Date();
+  pr.approverName = approverName || req.user?.name || 'unknown';
+  pr.approverRole = approverRole || req.user?.role || '';
   pr.approvalRemark = String(remark || '').trim();
   pr.items = nextItems;
   pr.approved_at = new Date();
@@ -206,7 +241,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_purchases'), 
   res.json(pr);
 });
 
-r.post('/reject', requireRoleOrPerm(['Admin','Manager'], 'approve_purchases'), async (req, res) => {
+r.post('/reject', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_purchases'), async (req, res) => {
   const { id, approverName, approverRole, remark } = req.body || {};
   if (!remark || !String(remark).trim()) return res.status(400).json({ error: 'Rejection remark required' });
   const key = String(id || '');
@@ -215,7 +250,7 @@ r.post('/reject', requireRoleOrPerm(['Admin','Manager'], 'approve_purchases'), a
   or.push({ clientId: key });
   const pr = await PurchaseRequest.findOne({ $or: or });
   if (!pr) return res.status(404).json({ error: 'Not found' });
-  if (pr.status !== 'pending_approval') return res.json(pr);
+  if (!['pending_approval', 'pending_director', 'pending_manager'].includes(String(pr.status || ''))) return res.json(pr);
   const role = String(req.user?.role || '').toLowerCase();
   const assigned = req.user?.assignedBranches ?? 'all';
   if (!(role === 'superadmin' || role === 'admin')) {
@@ -223,6 +258,13 @@ r.post('/reject', requireRoleOrPerm(['Admin','Manager'], 'approve_purchases'), a
       const arr = Array.isArray(assigned) ? assigned : [assigned];
       if (!arr.includes(pr.branchId)) return res.status(403).json({ error: 'Forbidden for branch' });
     }
+  }
+  const currentStatus = String(pr.status || '');
+  if ((currentStatus === 'pending_approval' || currentStatus === 'pending_director') && !canDirectorApproveRetail(req.user)) {
+    return res.status(403).json({ error: 'Director approval required' });
+  }
+  if (currentStatus === 'pending_manager' && !canManagerApproveRetail(req.user)) {
+    return res.status(403).json({ error: 'Manager approval required' });
   }
   pr.status = 'rejected';
   pr.approverName = approverName || 'unknown';
