@@ -31,7 +31,8 @@ const TENANT_ADMIN_ALLOWED_KEYS = new Set([
   'invoicePaidStampShowDate',
   'invoicePaidStampColor',
   'themeColor',
-  'currentBranchId'
+  'currentBranchId',
+  'categories'
 ]);
 
 r.use(requireAuth);
