@@ -93,6 +93,57 @@ r.get('/limits', requireSuperAdmin, async (_req, res) => {
   res.json(defaults);
 });
 
+r.get('/user-audit', requireSuperAdmin, async (_req, res) => {
+  const master = await getMasterConnection();
+  const TenantModel = TenantModelFor(master);
+  const tenantRows = await TenantModel.find().sort({ tenantId: 1 }).lean();
+  const nameMap = new Map();
+  for (const tenant of tenantRows) {
+    const tid = String(tenant.tenantId || '').trim();
+    if (!tid) continue;
+    const conn = await getTenantConnection(tid);
+    const User = UserModelFor(conn);
+    const rows = await User.find({}, { name: 1, role: 1, createdAt: 1, updatedAt: 1 }).sort({ name: 1 }).lean();
+    rows.forEach((row) => {
+      const key = String(row.name || '').trim();
+      if (!key) return;
+      if (!nameMap.has(key)) nameMap.set(key, []);
+      nameMap.get(key).push({
+        tenantId: tid,
+        role: String(row.role || ''),
+        createdAt: row.createdAt || null,
+        updatedAt: row.updatedAt || null
+      });
+    });
+  }
+  const duplicates = Array.from(nameMap.entries())
+    .filter(([, occurrences]) => occurrences.length > 1)
+    .map(([userName, occurrences]) => {
+      const matchingTenant = tenantRows.find((tenant) => String(tenant.tenantId || '').toLowerCase() === String(userName || '').toLowerCase());
+      return {
+        userName,
+        suggestedOwnerTenantId: matchingTenant ? String(matchingTenant.tenantId || '') : '',
+        occurrences
+      };
+    })
+    .sort((a, b) => String(a.userName || '').localeCompare(String(b.userName || '')));
+  res.json({
+    scannedTenants: tenantRows.length,
+    duplicateUserNames: duplicates,
+    duplicateCount: duplicates.length
+  });
+});
+
+r.post('/user-audit/cleanup', requireSuperAdmin, async (req, res) => {
+  const tenantId = normalizeTenantId(req.body?.tenantId);
+  const userName = String(req.body?.userName || '').trim();
+  if (!tenantId || !userName) return res.status(400).json({ error: 'tenantId and userName are required' });
+  const conn = await getTenantConnection(tenantId);
+  const User = UserModelFor(conn);
+  const result = await User.deleteOne({ name: userName });
+  res.json({ ok: true, tenantId, userName, deletedCount: result.deletedCount || 0 });
+});
+
 r.patch('/limits', requireSuperAdmin, async (req, res) => {
   const master = await getMasterConnection();
   const defaults = normalizeLimitDefaults(req.body || {});

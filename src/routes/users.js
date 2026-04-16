@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import User from '../models/User.js';
-import Audit from '../models/Audit.js';
+import { modelFor as UserModelFor } from '../models/User.js';
+import { modelFor as AuditModelFor } from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireAdmin, requireRoleOrPerm } from '../middleware/auth.js';
 import { hashPin } from '../utils/pin.js';
@@ -14,6 +14,7 @@ const r = Router();
 r.use(requireAuth);
 
 r.get('/', requireAdmin, async (req, res) => {
+  const User = UserModelFor(req.db);
   const rows = await User.find().sort({ name: 1 }).lean();
   const mapped = rows.map(u => ({
     id: String(u._id),
@@ -27,6 +28,8 @@ r.get('/', requireAdmin, async (req, res) => {
 });
 
 r.post('/', requireAdmin, async (req, res) => {
+  const User = UserModelFor(req.db);
+  const Audit = AuditModelFor(req.db);
   const { name, role, pin, branchId, assignedBranches } = req.body || {};
   if (!name || !role || !/^\d{4,6}$/.test(String(pin || ''))) {
     return res.status(400).json({ error: 'Invalid input' });
@@ -88,6 +91,8 @@ r.post('/', requireAdmin, async (req, res) => {
 });
 
 r.put('/:name', requireAdmin, async (req, res) => {
+  const User = UserModelFor(req.db);
+  const Audit = AuditModelFor(req.db);
   const name = req.params.name;
   const { name: newName, role, pin, branchId, assignedBranches, active } = req.body || {};
   const u = await User.findOne({ name });
@@ -162,6 +167,8 @@ r.put('/:name', requireAdmin, async (req, res) => {
 });
 
 r.delete('/:name', requireAdmin, async (req, res) => {
+  const User = UserModelFor(req.db);
+  const Audit = AuditModelFor(req.db);
   const name = req.params.name;
   const u = await User.findOne({ name });
   if (!u) return res.json({ ok: true });
