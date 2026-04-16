@@ -164,10 +164,10 @@ export const TENANT_SIDEBAR_SECTIONS = [
     description: 'Matches the Retail group on the sidebar.',
     items: [
       { label: 'POS', keys: ['pages.retail.pos'] },
-      { label: 'Purchases', keys: ['pages.retail.purchases'] },
-      { label: 'Transfers', keys: ['pages.retail.transfers'] },
-      { label: 'Adjustments', keys: ['pages.retail.adjustments'] },
-      { label: 'Refunds', keys: ['pages.retail.refunds'] }
+      { label: 'Purchases', keys: ['pages.retail.purchases', 'modules.purchases', 'grants.view_purchases', 'grants.add_purchases', 'grants.edit_purchases', 'grants.approve_purchases'] },
+      { label: 'Transfers', keys: ['pages.retail.transfers', 'modules.transfers', 'grants.view_transfers', 'grants.add_transfers', 'grants.edit_transfers', 'grants.approve_transfers'] },
+      { label: 'Adjustments', keys: ['pages.retail.adjustments', 'modules.adjustments', 'grants.view_adjustments', 'grants.add_adjustments', 'grants.edit_adjustments', 'grants.approve_adjustments'] },
+      { label: 'Refunds', keys: ['pages.retail.refunds', 'modules.refunds', 'grants.view_refunds', 'grants.add_refunds', 'grants.approve_refunds'] }
     ]
   },
   {
@@ -176,14 +176,14 @@ export const TENANT_SIDEBAR_SECTIONS = [
     title: 'Distribution',
     description: 'Matches the Distribution sidebar group and includes approval capabilities by default.',
     items: [
-      { label: 'Distribution Goods', keys: ['pages.distribution.goods'] },
-      { label: 'Distribution POS', keys: ['pages.distribution.pos'] },
-      { label: 'Distribution Invoices', keys: ['pages.distribution.invoices'] },
-      { label: 'Distribution Purchase', keys: ['pages.distribution.purchase'] },
-      { label: 'Distribution Transfer', keys: ['pages.distribution.transfer'] },
-      { label: 'Distribution Adjustment', keys: ['pages.distribution.adjustment'] },
-      { label: 'Distribution Refund', keys: ['pages.distribution.refund'] },
-      { label: 'Director / Manager Approvals', keys: ['pages.distribution.approvals'] }
+      { label: 'Distribution Goods', keys: ['pages.distribution.goods', 'modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config'] },
+      { label: 'Distribution POS', keys: ['pages.distribution.pos', 'modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config'] },
+      { label: 'Distribution Invoices', keys: ['pages.distribution.invoices', 'modules.invoices', 'grants.view_wholesale_invoices'] },
+      { label: 'Distribution Purchase', keys: ['pages.distribution.purchase', 'modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config', 'grants.add_purchases'] },
+      { label: 'Distribution Transfer', keys: ['pages.distribution.transfer', 'modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config', 'grants.add_transfers'] },
+      { label: 'Distribution Adjustment', keys: ['pages.distribution.adjustment', 'modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config', 'grants.add_adjustments'] },
+      { label: 'Distribution Refund', keys: ['pages.distribution.refund', 'modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config', 'grants.add_refunds'] },
+      { label: 'Director / Manager Approvals', keys: ['pages.distribution.approvals', 'modules.wholesalePos', 'modules.products', 'admin.config', 'modules.approvalsCenter', 'grants.view_products', 'grants.view_config', 'grants.approve_wholesale_director', 'grants.approve_wholesale_manager'] }
     ]
   },
   {
@@ -192,12 +192,12 @@ export const TENANT_SIDEBAR_SECTIONS = [
     title: 'Warehouse',
     description: 'Matches the Warehouse sidebar group with warehouse-specific approvals.',
     items: [
-      { label: 'Warehouse Goods', keys: ['pages.warehouse.goods'] },
-      { label: 'Warehouse Invoices', keys: ['pages.warehouse.invoices'] },
-      { label: 'Warehouse Purchase', keys: ['pages.warehouse.purchase'] },
-      { label: 'Warehouse Transfer', keys: ['pages.warehouse.transfer'] },
-      { label: 'Warehouse Adjustment', keys: ['pages.warehouse.adjustment'] },
-      { label: 'Warehouse Approvals', keys: ['pages.warehouse.approvals'] }
+      { label: 'Warehouse Goods', keys: ['pages.warehouse.goods', 'modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config'] },
+      { label: 'Warehouse Invoices', keys: ['pages.warehouse.invoices', 'modules.invoices', 'grants.view_warehouse_invoices'] },
+      { label: 'Warehouse Purchase', keys: ['pages.warehouse.purchase', 'modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config', 'grants.add_purchases'] },
+      { label: 'Warehouse Transfer', keys: ['pages.warehouse.transfer', 'modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config', 'grants.add_transfers'] },
+      { label: 'Warehouse Adjustment', keys: ['pages.warehouse.adjustment', 'modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config', 'grants.add_adjustments'] },
+      { label: 'Warehouse Approvals', keys: ['pages.warehouse.approvals', 'modules.wholesalePos', 'modules.products', 'admin.config', 'modules.approvalsCenter', 'grants.view_products', 'grants.view_config', 'grants.view_warehouse_approvals', 'grants.approve_wholesale_director', 'grants.approve_wholesale_manager'] }
     ]
   },
   {

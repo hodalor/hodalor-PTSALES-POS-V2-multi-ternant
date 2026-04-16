@@ -73,6 +73,7 @@ import WholesaleInvoicesPage from './pages/WholesaleInvoicesPage';
 import WarehouseInvoicesPage from './pages/WarehouseInvoicesPage';
 import TenantsPage from './pages/TenantsPage';
 import * as authApi from './api/auth';
+import { resetTenantAppState } from './store';
 import * as tenantsApi from './api/tenants';
 import { loginSuccess, setGrants, setInitialized, logout } from './store/authSlice';
 import * as settingsApi from './api/settings';
@@ -207,8 +208,10 @@ function App() {
           dispatch(logout());
         }
       } catch {
+        const tenantId = String(localStorage.getItem('ptSales:tenantId') || 'default');
         try { if (navigator.onLine) await authApi.logout(); } catch {}
         try { localStorage.removeItem('ptSales:authToken'); } catch {}
+        dispatch(resetTenantAppState(tenantId));
         dispatch(logout());
       } finally {
         dispatch(setInitialized(true));
@@ -413,8 +416,10 @@ function App() {
     const interval = setInterval(async () => {
       if (!navigator.onLine || !alive || !isAuthed || !settingsReady) return;
       if (Date.now() - lastActive >= idleMs) {
+        const tenantId = String(authTenantId || localStorage.getItem('ptSales:tenantId') || 'default');
         try { await authApi.logout(); } catch {}
         try { localStorage.removeItem('ptSales:authToken'); } catch {}
+        dispatch(resetTenantAppState(tenantId));
         dispatch(logout());
         return;
       }
@@ -489,7 +494,7 @@ function App() {
       window.removeEventListener('scroll', bump);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [dispatch, refreshSec, isAuthed, isAuthedNow, settings, settingsReady, authRole, authGrants]);
+  }, [dispatch, refreshSec, isAuthed, isAuthedNow, settings, settingsReady, authTenantId, authRole, authGrants]);
   return (
     <ToastProvider>
       <BrowserRouter>

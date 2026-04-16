@@ -8,6 +8,7 @@ import Modal from '../components/Modal';
 import * as usersApi from '../api/users';
 import { getApiBase } from '../api/client';
 import { clearTenantState } from '../store/persist';
+import { resetTenantAppState } from '../store';
 
 function LoginPage() {
   const [name, setName] = useState('');
@@ -211,6 +212,7 @@ function LoginPage() {
       try { localStorage.removeItem('ptSales:rememberName'); } catch {}
     }
     if (previousTenantId !== nextTenantId) {
+      dispatch(resetTenantAppState(nextTenantId));
       clearTenantState(nextTenantId);
       try { localStorage.removeItem('ptSales:state'); } catch {}
       window.location.replace(from || landing);

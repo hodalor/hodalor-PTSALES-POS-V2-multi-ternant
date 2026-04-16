@@ -54,6 +54,17 @@ function UsersPage() {
   const superAdminsCount = users.filter(u => u.role === 'SuperAdmin' && u.active !== false).length;
   const toast = useToast();
   const [editGrants, setEditGrants] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!auth.isAuthenticated) return;
+      try {
+        const rows = await usersApi.list();
+        if (alive && Array.isArray(rows)) dispatch(setUsers(rows));
+      } catch {}
+    })();
+    return () => { alive = false; };
+  }, [dispatch, auth.isAuthenticated, auth.user?.tenantId]);
 
   const settings = useSelector(s => s.settings);
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);

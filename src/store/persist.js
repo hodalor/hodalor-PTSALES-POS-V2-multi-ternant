@@ -7,7 +7,10 @@ export function getTenantStateKey(explicitTenantId) {
 
 export function loadState() {
   try {
-    const raw = localStorage.getItem(getTenantStateKey()) || localStorage.getItem(KEY);
+    try {
+      if (localStorage.getItem(KEY)) localStorage.removeItem(KEY);
+    } catch {}
+    const raw = localStorage.getItem(getTenantStateKey());
     if (!raw) return undefined;
     return JSON.parse(raw);
   } catch {
@@ -38,6 +41,7 @@ export function saveState(state) {
 export function clearTenantState(tenantId) {
   try {
     localStorage.removeItem(getTenantStateKey(tenantId));
+    localStorage.removeItem(KEY);
   } catch {
     // ignore
   }

@@ -8,6 +8,7 @@ import { useToast } from './ToastProvider';
 import { ensureOnlineJwt } from '../offline/reAuth';
 import { refreshAllData } from '../offline/refreshAll';
 import * as authApi from '../api/auth';
+import { resetTenantAppState } from '../store';
 
 function Header({ onToggleSidebar }) {
   const auth = useSelector(state => state.auth);
@@ -77,8 +78,10 @@ function Header({ onToggleSidebar }) {
               {auth.user?.name} — {auth.role}
             </span>
             <button className="btn" onClick={async () => {
+              const tenantId = String(auth.user?.tenantId || 'default');
               try { if (navigator.onLine) await authApi.logout(); } catch {}
               try { localStorage.removeItem('ptSales:authToken'); localStorage.removeItem('ptSales:tenantId'); } catch {}
+              dispatch(resetTenantAppState(tenantId));
               dispatch(logout());
             }}>Logout</button>
           </>
