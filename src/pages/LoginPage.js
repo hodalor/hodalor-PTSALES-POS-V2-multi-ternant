@@ -129,6 +129,7 @@ function LoginPage() {
       toast.show(e?.message || 'Failed to reset PIN', { type: 'error' });
     } finally {
       try {
+        try { await authApi.logout(); } catch {}
         if (prevToken) localStorage.setItem('ptSales:authToken', prevToken);
         else localStorage.removeItem('ptSales:authToken');
       } catch {}
@@ -185,6 +186,8 @@ function LoginPage() {
         if (isNetwork) {
           const base = (() => { try { return getApiBase(); } catch { return ''; } })();
           toast.show(`Cannot reach server at ${base}. Check API Endpoint or connection.`, { type: 'error' });
+        } else if (msg) {
+          toast.show(msg, { type: 'error' });
         } else {
           toast.show('Invalid credentials or no offline record', { type: 'error' });
         }

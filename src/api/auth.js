@@ -10,3 +10,7 @@ export function login(payload) {
 export function me() {
   return fetchJson('/api/auth/me');
 }
+
+export function logout() {
+  return fetchJson('/api/auth/logout', { method: 'POST' });
+}

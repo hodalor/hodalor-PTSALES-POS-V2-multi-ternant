@@ -17,9 +17,10 @@ function Sidebar({ collapsed }) {
   const rl = String(role || '').toLowerCase();
   const expensePending = useSelector(s => (s.expenseRequests?.requests || []).filter(r => String(r.status || '') === 'pending_approval').length);
   const refundPending = useSelector(s => (s.refunds?.requests || []).filter(r => String(r.status || '') === 'pending_approval').length);
-  const adjustmentPending = useSelector(s => (s.adjustmentRequests?.requests || []).filter(r => String(r.status || '') === 'pending_approval').length);
-  const purchasePending = useSelector(s => (s.purchases?.requests || []).filter(r => String(r.status || '') === 'pending_approval').length);
-  const transferPending = useSelector(s => (s.transfers?.requests || []).filter(r => String(r.status || '') === 'pending_approval').length);
+  const pendingStages = ['pending_approval', 'pending_director', 'pending_manager'];
+  const adjustmentPending = useSelector(s => (s.adjustmentRequests?.requests || []).filter(r => pendingStages.includes(String(r.status || ''))).length);
+  const purchasePending = useSelector(s => (s.purchases?.requests || []).filter(r => pendingStages.includes(String(r.status || ''))).length);
+  const transferPending = useSelector(s => (s.transfers?.requests || []).filter(r => pendingStages.includes(String(r.status || ''))).length);
   const [retailOpen, setRetailOpen] = useState(false);
   const [wholesaleOpen, setWholesaleOpen] = useState(false);
   const [warehouseOpen, setWarehouseOpen] = useState(false);
@@ -59,6 +60,7 @@ function Sidebar({ collapsed }) {
     const okGrant = Array.isArray(grant) ? grant.some(has) : has(grant);
     return okRole || okGrant;
   }, [grants, rl, settings]);
+  const sectionEnabled = useCallback((key) => isFeatureEnabled(settings, key), [settings]);
   function toggleGroup(group) {
     setRetailOpen(group === 'retail' ? !retailOpen : false);
     setWholesaleOpen(group === 'wholesale' ? !wholesaleOpen : false);
@@ -88,12 +90,12 @@ function Sidebar({ collapsed }) {
       try {
         const canCredit = isFeatureEnabled(settings, 'modules.creditControl') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_credit_control']);
         const canApprovals = isFeatureEnabled(settings, 'modules.approvalsCenter') && can(['Admin','Manager','SuperAdmin'],['view_approvals','approve_credit_director','approve_credit_manager','approve_wholesale_director','approve_wholesale_manager']);
-        const canWholesale = isFeatureEnabled(settings, 'modules.wholesalePos') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'],['view_wholesale_pos']);
+        const canWarehouse = sectionEnabled('sections.warehouse') && isFeatureEnabled(settings, 'modules.wholesalePos') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'],['view_wholesale_pos']);
         const [overdueRows, directorRows, managerRows, warehouseRows] = await Promise.all([
           canCredit ? listCreditSales({ status: 'overdue' }).catch(() => []) : Promise.resolve([]),
           canApprovals ? listApprovals({ actionType: 'credit_repayment', status: 'pending_director' }).catch(() => []) : Promise.resolve([]),
           canApprovals ? listApprovals({ actionType: 'credit_repayment', status: 'pending_manager' }).catch(() => []) : Promise.resolve([]),
-          (canApprovals && canWholesale)
+          (canApprovals && canWarehouse)
             ? Promise.all([
                 listOperations({ operationArea: 'warehouse', status: 'pending_director' }).catch(() => []),
                 listOperations({ operationArea: 'warehouse', status: 'pending_manager' }).catch(() => [])
@@ -110,7 +112,7 @@ function Sidebar({ collapsed }) {
       } catch {}
     })();
     return () => { alive = false; };
-  }, [settings, role, grants, can]);
+  }, [settings, role, grants, can, sectionEnabled]);
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-brand">
@@ -125,13 +127,13 @@ function Sidebar({ collapsed }) {
         </NavLink>
         )}
         
-        {(
+        {(sectionEnabled('sections.retail') && (
           (isFeatureEnabled(settings, 'modules.pos') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_pos','see_pos'])) ||
           (isFeatureEnabled(settings, 'modules.purchases') && can(['Admin','Manager','Inventory Staff','SuperAdmin'],['view_purchases','see_purchases'])) ||
           (isFeatureEnabled(settings, 'modules.transfers') && can(['Admin','Manager','Inventory Staff','SuperAdmin'],['view_transfers','see_transfers'])) ||
           (isFeatureEnabled(settings, 'modules.adjustments') && can(['Admin','Manager','Inventory Staff','SuperAdmin'],['view_adjustments','see_adjustments'])) ||
           (isFeatureEnabled(settings, 'modules.refunds') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_refunds','see_refunds']))
-        ) && (
+        )) && (
         <div>
           <button className="sidebar-group-toggle" onClick={() => toggleGroup('retail')}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -188,7 +190,7 @@ function Sidebar({ collapsed }) {
           )}
         </div>
         )}
-        {isFeatureEnabled(settings, 'modules.wholesalePos') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'],['view_wholesale_pos']) && (
+        {sectionEnabled('sections.distribution') && isFeatureEnabled(settings, 'modules.wholesalePos') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'],['view_wholesale_pos']) && (
         <div>
           <button className="sidebar-group-toggle" onClick={() => toggleGroup('wholesale')}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -238,7 +240,7 @@ function Sidebar({ collapsed }) {
           )}
         </div>
         )}
-        {isFeatureEnabled(settings, 'modules.wholesalePos') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'],['view_wholesale_pos']) && (
+        {sectionEnabled('sections.warehouse') && isFeatureEnabled(settings, 'modules.wholesalePos') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'],['view_wholesale_pos']) && (
         <div>
           <button className="sidebar-group-toggle" onClick={() => toggleGroup('warehouse')}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -331,9 +333,9 @@ function Sidebar({ collapsed }) {
           <span className="sidebar-text">Labels</span>
         </NavLink>
         )}
-        {(
+        {(sectionEnabled('sections.credit') && (
           (isFeatureEnabled(settings, 'modules.creditControl') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_credit_control']))
-        ) && (
+        )) && (
         <div>
           <button className="sidebar-group-toggle" onClick={() => toggleGroup('credit')}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -384,10 +386,10 @@ function Sidebar({ collapsed }) {
           )}
         </div>
         )}
-        {(
+        {(sectionEnabled('sections.expense') && (
           (isFeatureEnabled(settings, 'modules.expenses') && can(['Admin','Manager','SuperAdmin'],['view_expenses','see_expenses','add_expenses'])) ||
           (isFeatureEnabled(settings, 'modules.expenseApprovals') && can(['Admin','Manager','SuperAdmin'],['approve_expenses']))
-        ) && (
+        )) && (
         <div>
           <button className="sidebar-group-toggle" onClick={() => toggleGroup('expense')}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -424,10 +426,10 @@ function Sidebar({ collapsed }) {
           )}
         </div>
         )}
-        {(
+        {(sectionEnabled('sections.partners') && (
           (isFeatureEnabled(settings, 'modules.suppliers') && can(['Admin','Manager','Inventory Staff','SuperAdmin'],['view_suppliers','see_suppliers'])) ||
           (isFeatureEnabled(settings, 'modules.customers') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_customers','see_customers']))
-        ) && (
+        )) && (
         <div>
           <button className="sidebar-group-toggle" onClick={() => toggleGroup('partners')}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
@@ -490,10 +492,12 @@ function Sidebar({ collapsed }) {
               </span>
             )}
           </NavLink>
+          {can(['Admin','Manager','SuperAdmin'], ['view_imei_conflicts']) && (
           <NavLink to="/imei-conflicts" className="sidebar-link" title="IMEI Conflicts">
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 9v4M12 17h.01M5 20h14L12 4 5 20z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
             <span className="sidebar-text">IMEI Conflicts</span>
           </NavLink>
+          )}
         </>
         )}
         <AdminGroup />
@@ -508,6 +512,7 @@ function AdminGroup() {
   const grants = useSelector(s => s.auth.grants);
   const settings = useSelector(s => s.settings);
   const allowed = (
+    isFeatureEnabled(settings, 'sections.admin') && (
     ['Admin', 'SuperAdmin'].includes(role) ||
     (Array.isArray(grants) && (
       grants.includes('view_users') || grants.includes('see_users') ||
@@ -516,6 +521,7 @@ function AdminGroup() {
       grants.includes('view_stock_records') || grants.includes('see_stock_records') ||
       grants.includes('view_cashdrawer') || grants.includes('see_cashdrawer')
     ))
+    )
   );
   const anyEnabled = (
     isFeatureEnabled(settings, 'admin.users') ||

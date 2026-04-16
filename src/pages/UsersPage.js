@@ -162,8 +162,8 @@ function UsersPage() {
       }
       const latest = await usersApi.list().catch(() => null);
       if (Array.isArray(latest)) dispatch(setUsers(latest));
-    } catch {
-      toast.show('Failed to save user to server', { type: 'error' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to save user to server'), { type: 'error' });
       return;
     }
     dispatch(addAudit({
@@ -294,8 +294,8 @@ function UsersPage() {
       if ((auth.user?.name || '') === editName) {
         dispatch(setAuthGrants(saved?.userGrants?.[editName] || []));
       }
-    } catch {
-      toast.show('Failed to update user on server', { type: 'error' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to update user on server'), { type: 'error' });
       return;
     } finally {
       setSavingEdit(false);
@@ -352,8 +352,8 @@ function UsersPage() {
         details: { id: u.id, name: u.name, active },
         remark: r
       }));
-    } catch {
-      toast.show('Failed to update status on server', { type: 'error' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to update status on server'), { type: 'error' });
     } finally {
       setWorkingUserName('');
     }

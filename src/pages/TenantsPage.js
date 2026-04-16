@@ -14,6 +14,8 @@ const EMPTY_FORM = {
   subscriptionExpiresAt: '',
   adminName: '',
   adminPin: '',
+  maxUserAccountsOverride: '',
+  maxActiveUsersOverride: '',
   features: getPlanDefaultFeatures('basic')
 };
 
@@ -22,16 +24,28 @@ function TenantsPage() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savingDefaults, setSavingDefaults] = useState(false);
   const [editing, setEditing] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [limitDefaults, setLimitDefaults] = useState({
+    basic: { maxUserAccounts: '', maxActiveUsers: '' },
+    pro: { maxUserAccounts: '', maxActiveUsers: '' },
+    enterprise: { maxUserAccounts: '', maxActiveUsers: '' }
+  });
 
   const sections = useMemo(() => TENANT_SIDEBAR_SECTIONS, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setRows(await tenantsApi.list());
+      const [tenantRows, defaults] = await Promise.all([tenantsApi.list(), tenantsApi.getLimitDefaults()]);
+      setRows(tenantRows);
+      setLimitDefaults({
+        basic: { maxUserAccounts: defaults?.basic?.maxUserAccounts ?? '', maxActiveUsers: defaults?.basic?.maxActiveUsers ?? '' },
+        pro: { maxUserAccounts: defaults?.pro?.maxUserAccounts ?? '', maxActiveUsers: defaults?.pro?.maxActiveUsers ?? '' },
+        enterprise: { maxUserAccounts: defaults?.enterprise?.maxUserAccounts ?? '', maxActiveUsers: defaults?.enterprise?.maxActiveUsers ?? '' }
+      });
     } catch (e) {
       toast.show(String(e?.message || 'Failed to load tenants'), { type: 'error' });
     } finally {
@@ -103,6 +117,8 @@ function TenantsPage() {
         subscriptionExpiresAt: form.subscriptionExpiresAt || null,
         adminName: form.adminName,
         adminPin: form.adminPin,
+        maxUserAccountsOverride: form.maxUserAccountsOverride === '' ? null : Number(form.maxUserAccountsOverride),
+        maxActiveUsersOverride: form.maxActiveUsersOverride === '' ? null : Number(form.maxActiveUsersOverride),
         features: form.features
       };
       if (editing) {
@@ -135,9 +151,50 @@ function TenantsPage() {
       subscriptionExpiresAt: row.subscriptionExpiresAt ? String(row.subscriptionExpiresAt).slice(0, 10) : '',
       adminName: '',
       adminPin: '',
+      maxUserAccountsOverride: row.maxUserAccountsOverride ?? '',
+      maxActiveUsersOverride: row.maxActiveUsersOverride ?? '',
       features: Array.isArray(row.features) ? row.features : []
     });
     setShowForm(true);
+  }
+
+  function setLimitDefault(plan, key, value) {
+    setLimitDefaults((prev) => ({
+      ...prev,
+      [plan]: { ...(prev[plan] || {}), [key]: value }
+    }));
+  }
+
+  async function saveLimitDefaults() {
+    if (savingDefaults) return;
+    setSavingDefaults(true);
+    try {
+      const payload = {
+        basic: {
+          maxUserAccounts: limitDefaults.basic.maxUserAccounts === '' ? null : Number(limitDefaults.basic.maxUserAccounts),
+          maxActiveUsers: limitDefaults.basic.maxActiveUsers === '' ? null : Number(limitDefaults.basic.maxActiveUsers)
+        },
+        pro: {
+          maxUserAccounts: limitDefaults.pro.maxUserAccounts === '' ? null : Number(limitDefaults.pro.maxUserAccounts),
+          maxActiveUsers: limitDefaults.pro.maxActiveUsers === '' ? null : Number(limitDefaults.pro.maxActiveUsers)
+        },
+        enterprise: {
+          maxUserAccounts: limitDefaults.enterprise.maxUserAccounts === '' ? null : Number(limitDefaults.enterprise.maxUserAccounts),
+          maxActiveUsers: limitDefaults.enterprise.maxActiveUsers === '' ? null : Number(limitDefaults.enterprise.maxActiveUsers)
+        }
+      };
+      const saved = await tenantsApi.updateLimitDefaults(payload);
+      setLimitDefaults({
+        basic: { maxUserAccounts: saved?.basic?.maxUserAccounts ?? '', maxActiveUsers: saved?.basic?.maxActiveUsers ?? '' },
+        pro: { maxUserAccounts: saved?.pro?.maxUserAccounts ?? '', maxActiveUsers: saved?.pro?.maxActiveUsers ?? '' },
+        enterprise: { maxUserAccounts: saved?.enterprise?.maxUserAccounts ?? '', maxActiveUsers: saved?.enterprise?.maxActiveUsers ?? '' }
+      });
+      toast.show('Tenant user limits updated', { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to save limits'), { type: 'error' });
+    } finally {
+      setSavingDefaults(false);
+    }
   }
 
   function applyPlanDefaults() {
@@ -152,6 +209,33 @@ function TenantsPage() {
         <div style={{ color: '#64748b' }}>Create companies, assign plans, and override features from one master control.</div>
         </div>
         <button className="btn btn-primary" onClick={openCreateModal}>Add Tenant</button>
+      </div>
+
+      <div className="card">
+        <h2 className="section-title">Default User Limits By Plan</h2>
+        <div style={{ color: '#64748b', marginBottom: 12 }}>
+          Set general limits for each package. Leave blank for unlimited. Each tenant can still override these values individually.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+          {PLAN_OPTIONS.map((plan) => (
+            <div key={plan} className="card" style={{ padding: 14, border: '1px solid #e2e8f0' }}>
+              <div style={{ fontWeight: 800, marginBottom: 10, textTransform: 'capitalize' }}>{plan}</div>
+              <div style={{ display: 'grid', gap: 10 }}>
+                <label>
+                  Max User Accounts
+                  <input className="input" type="number" min="1" value={limitDefaults[plan]?.maxUserAccounts ?? ''} onChange={(e) => setLimitDefault(plan, 'maxUserAccounts', e.target.value)} placeholder="Unlimited" />
+                </label>
+                <label>
+                  Max Active Users
+                  <input className="input" type="number" min="1" value={limitDefaults[plan]?.maxActiveUsers ?? ''} onChange={(e) => setLimitDefault(plan, 'maxActiveUsers', e.target.value)} placeholder="Unlimited" />
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+          <button className="btn btn-primary" type="button" onClick={saveLimitDefaults} disabled={savingDefaults}>{savingDefaults ? 'Saving…' : 'Save Limit Defaults'}</button>
+        </div>
       </div>
 
       <div className="card">
@@ -251,6 +335,22 @@ function TenantsPage() {
                 <input className="input" type="password" value={form.adminPin} onChange={(e) => setValue('adminPin', e.target.value)} />
               </label>
             </div>
+            <div className="card" style={{ padding: 14, border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a' }}>
+              <div style={{ fontWeight: 800, marginBottom: 6 }}>User Limits</div>
+              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
+                Leave override fields blank to use the plan default. You can override a tenant regardless of its package.
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <label>
+                  Max User Accounts Override
+                  <input className="input" type="number" min="1" value={form.maxUserAccountsOverride} onChange={(e) => setValue('maxUserAccountsOverride', e.target.value)} placeholder="Use plan default" />
+                </label>
+                <label>
+                  Max Active Users Override
+                  <input className="input" type="number" min="1" value={form.maxActiveUsersOverride} onChange={(e) => setValue('maxActiveUsersOverride', e.target.value)} placeholder="Use plan default" />
+                </label>
+              </div>
+            </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, color: '#64748b', fontSize: 13 }}>
               <span>Subscription status: {daysLeftLabel(form.subscriptionExpiresAt)}</span>
               <button className="btn" type="button" onClick={applyPlanDefaults}>Reset Features To Plan Default</button>
@@ -262,7 +362,7 @@ function TenantsPage() {
               </div>
               <div style={{ display: 'grid', gap: 12 }}>
                 {sections.map((section) => {
-                  const sectionKeys = Array.from(new Set(section.items.flatMap((item) => item.keys || [])));
+                  const sectionKeys = Array.from(new Set([section.sectionKey, ...section.items.flatMap((item) => item.keys || [])].filter(Boolean)));
                   const sectionChecked = hasAll(sectionKeys);
                   return (
                   <div key={section.id} className="card" style={{ padding: 14, border: '1px solid #dbe3ee', background: '#ffffff', color: '#0f172a' }}>

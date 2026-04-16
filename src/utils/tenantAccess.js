@@ -139,6 +139,7 @@ export const FEATURE_GROUP_META = {
 export const TENANT_SIDEBAR_SECTIONS = [
   {
     id: 'primary',
+    sectionKey: 'sections.primary',
     title: 'Primary Menus',
     description: 'Top-level sidebar screens that appear on their own.',
     items: [
@@ -158,6 +159,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
   },
   {
     id: 'retail',
+    sectionKey: 'sections.retail',
     title: 'Retail',
     description: 'Matches the Retail group on the sidebar.',
     items: [
@@ -170,6 +172,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
   },
   {
     id: 'distribution',
+    sectionKey: 'sections.distribution',
     title: 'Distribution',
     description: 'Matches the Distribution sidebar group and includes approval capabilities by default.',
     items: [
@@ -185,6 +188,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
   },
   {
     id: 'warehouse',
+    sectionKey: 'sections.warehouse',
     title: 'Warehouse',
     description: 'Matches the Warehouse sidebar group with warehouse-specific approvals.',
     items: [
@@ -198,6 +202,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
   },
   {
     id: 'credit',
+    sectionKey: 'sections.credit',
     title: 'Credit Sale',
     description: 'Matches the Credit Sale group on the sidebar.',
     items: [
@@ -209,6 +214,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
   },
   {
     id: 'expense',
+    sectionKey: 'sections.expense',
     title: 'Expense',
     description: 'Matches the Expense group on the sidebar.',
     items: [
@@ -218,6 +224,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
   },
   {
     id: 'partners',
+    sectionKey: 'sections.partners',
     title: 'Partners',
     description: 'Matches the Partners group on the sidebar.',
     items: [
@@ -227,6 +234,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
   },
   {
     id: 'admin',
+    sectionKey: 'sections.admin',
     title: 'Admin',
     description: 'Admin submenu items shown inside the Admin group.',
     items: [
@@ -243,6 +251,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
   },
   {
     id: 'tabs-runtime',
+    sectionKey: 'sections.tabsRuntime',
     title: 'Tabs & Runtime',
     description: 'Smaller workspace tabs and runtime capabilities.',
     items: [

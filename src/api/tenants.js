@@ -4,6 +4,14 @@ export function list() {
   return fetchJson('/api/tenants');
 }
 
+export function getLimitDefaults() {
+  return fetchJson('/api/tenants/limits');
+}
+
+export function updateLimitDefaults(payload) {
+  return fetchJson('/api/tenants/limits', { method: 'PATCH', body: JSON.stringify(payload) });
+}
+
 export function create(payload) {
   return fetchJson('/api/tenants', { method: 'POST', body: JSON.stringify(payload) });
 }
