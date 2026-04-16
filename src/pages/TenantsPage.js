@@ -25,9 +25,12 @@ function TenantsPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [savingDefaults, setSavingDefaults] = useState(false);
+  const [runningAudit, setRunningAudit] = useState(false);
+  const [cleaningAuditKey, setCleaningAuditKey] = useState('');
   const [editing, setEditing] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [userAudit, setUserAudit] = useState({ scannedTenants: 0, duplicateCount: 0, duplicateUserNames: [] });
   const [limitDefaults, setLimitDefaults] = useState({
     basic: { maxUserAccounts: '', maxActiveUsers: '' },
     pro: { maxUserAccounts: '', maxActiveUsers: '' },
@@ -197,6 +200,54 @@ function TenantsPage() {
     }
   }
 
+  async function runUserAudit() {
+    if (runningAudit) return;
+    setRunningAudit(true);
+    try {
+      const report = await tenantsApi.runUserAudit();
+      setUserAudit({
+        scannedTenants: Number(report?.scannedTenants || 0),
+        duplicateCount: Number(report?.duplicateCount || 0),
+        duplicateUserNames: Array.isArray(report?.duplicateUserNames) ? report.duplicateUserNames : []
+      });
+      toast.show('Tenant user audit completed', { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to run tenant user audit'), { type: 'error' });
+    } finally {
+      setRunningAudit(false);
+    }
+  }
+
+  async function cleanupAuditOccurrence(tenantId, userName) {
+    const key = `${tenantId}:${userName}`;
+    if (cleaningAuditKey) return;
+    const { confirmDialog } = await import('../utils/dialogs');
+    const ok = await confirmDialog(`Remove user ${userName} from tenant ${tenantId}?`);
+    if (!ok) return;
+    setCleaningAuditKey(key);
+    try {
+      await tenantsApi.cleanupUserAuditRecord({ tenantId, userName });
+      setUserAudit((prev) => {
+        const nextGroups = (prev.duplicateUserNames || [])
+          .map((group) => ({
+            ...group,
+            occurrences: (group.occurrences || []).filter((occ) => !(String(occ.tenantId) === String(tenantId) && String(group.userName) === String(userName)))
+          }))
+          .filter((group) => (group.occurrences || []).length > 1);
+        return {
+          ...prev,
+          duplicateUserNames: nextGroups,
+          duplicateCount: nextGroups.length
+        };
+      });
+      toast.show(`Removed ${userName} from ${tenantId}`, { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to clean audit record'), { type: 'error' });
+    } finally {
+      setCleaningAuditKey('');
+    }
+  }
+
   function applyPlanDefaults() {
     setForm((prev) => ({ ...prev, features: getPlanDefaultFeatures(prev.subscriptionPlan) }));
   }
@@ -282,6 +333,58 @@ function TenantsPage() {
               {rows.length === 0 && <tr><td colSpan="7" style={{ color: '#64748b', padding: 12 }}>No tenants yet.</td></tr>}
             </tbody>
           </table>
+        )}
+      </div>
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, marginBottom: 12 }}>
+          <div>
+            <h2 className="section-title">Tenant User Audit</h2>
+            <div style={{ color: '#64748b' }}>
+              Scans all tenant databases for suspicious duplicate usernames that appear in more than one tenant.
+            </div>
+          </div>
+          <button className="btn btn-primary" type="button" onClick={runUserAudit} disabled={runningAudit}>
+            {runningAudit ? 'Scanning…' : 'Run User Audit'}
+          </button>
+        </div>
+        <div style={{ color: '#475569', marginBottom: 10 }}>
+          Scanned tenants: {userAudit.scannedTenants} • Duplicate usernames found: {userAudit.duplicateCount}
+        </div>
+        {(userAudit.duplicateUserNames || []).length === 0 ? (
+          <div style={{ color: '#64748b' }}>No suspicious cross-tenant duplicate usernames found.</div>
+        ) : (
+          <div style={{ display: 'grid', gap: 12 }}>
+            {(userAudit.duplicateUserNames || []).map((group) => (
+              <div key={group.userName} className="card" style={{ padding: 14, border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 800 }}>{group.userName}</div>
+                    <div style={{ color: '#64748b', fontSize: 12 }}>
+                      Suggested owner tenant: {group.suggestedOwnerTenantId || 'Unknown'}
+                    </div>
+                  </div>
+                  <div style={{ color: '#64748b', fontSize: 12 }}>{(group.occurrences || []).length} tenant(s)</div>
+                </div>
+                <div style={{ display: 'grid', gap: 8 }}>
+                  {(group.occurrences || []).map((occ) => {
+                    const key = `${occ.tenantId}:${group.userName}`;
+                    const protectedOwner = group.suggestedOwnerTenantId && String(group.suggestedOwnerTenantId) === String(occ.tenantId);
+                    return (
+                      <div key={key} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center', padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 10, background: '#f8fafc' }}>
+                        <div>
+                          <div style={{ fontWeight: 700 }}>{occ.tenantId}</div>
+                          <div style={{ color: '#64748b', fontSize: 12 }}>Role: {occ.role || 'Unknown'}</div>
+                        </div>
+                        <button className="btn" type="button" disabled={protectedOwner || cleaningAuditKey === key} onClick={() => cleanupAuditOccurrence(occ.tenantId, group.userName)}>
+                          {protectedOwner ? 'Suggested Owner' : cleaningAuditKey === key ? 'Removing…' : 'Remove From Tenant'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
       {showForm && (

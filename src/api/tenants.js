@@ -31,3 +31,11 @@ export function setAdmin(tenantId, payload) {
 export function me() {
   return fetchJson('/api/tenants/me');
 }
+
+export function runUserAudit() {
+  return fetchJson('/api/tenants/user-audit');
+}
+
+export function cleanupUserAuditRecord(payload) {
+  return fetchJson('/api/tenants/user-audit/cleanup', { method: 'POST', body: JSON.stringify(payload) });
+}
