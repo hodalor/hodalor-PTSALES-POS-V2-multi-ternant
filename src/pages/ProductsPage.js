@@ -16,6 +16,7 @@ import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import { getAllowedPriceTiers, getDisplayPrice, getPreferredPriceTier } from '../utils/priceVisibility';
 import { setAllSettings } from '../store/settingsSlice';
+import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 
 function ProductsPage() {
   const dispatch = useDispatch();
@@ -530,23 +531,25 @@ function ProductsPage() {
                         toast.show('Offline: cannot save stock. Connect internet and try again.', { type: 'error' });
                         setSaving(false); return;
                     }
-                    dispatch(setStock({ productId: pid, branchId: currentBranchId, quantity: next }));
+                    dispatch(setStock({ productId: pid, branchId: currentBranchId, quantity: next, syncPending: true }));
                     try {
                         await enqueueHttp({ collection: 'audits', label: 'Stock set', path: '/api/stock/set', method: 'POST', body: { productId: original._id || original.id || pid, branchId: currentBranchId, quantity: next, actor: auth.user?.name || 'unknown' } });
                     } catch {
-                        dispatch(setStock({ productId: pid, branchId: currentBranchId, quantity: prev }));
+                        dispatch(setStock({ productId: pid, branchId: currentBranchId, quantity: prev, syncPending: false }));
                         toast.show('Failed to save offline', { type: 'error' });
                         setSaving(false); return;
                     }
                 } else {
-                    dispatch(setStock({ productId: pid, branchId: currentBranchId, quantity: next }));
+                    dispatch(setStock({ productId: pid, branchId: currentBranchId, quantity: next, syncPending: true }));
                     stockApi.setStock({
                         productId: original._id || original.id || pid,
                         branchId: currentBranchId,
                         quantity: next,
                         actor: auth.user?.name || 'unknown'
+                    }).then(() => {
+                        void refreshAffectedProducts(dispatch, [pid]);
                     }).catch(() => {
-                        dispatch(setStock({ productId: pid, branchId: currentBranchId, quantity: prev }));
+                        dispatch(setStock({ productId: pid, branchId: currentBranchId, quantity: prev, syncPending: false }));
                         toast.show('Failed to save stock. Check your permission or connection.', { type: 'error' });
                     });
                 }
@@ -873,22 +876,24 @@ function ProductsPage() {
                           toast.show('Offline: connect internet and try again.', { type: 'error' });
                           return;
                         }
-                        dispatch(setStock({ productId: pid, branchId: currentBranchId, quantity: q }));
+                        dispatch(setStock({ productId: pid, branchId: currentBranchId, quantity: q, syncPending: true }));
                         enqueueHttp({ collection: 'audits', label: 'Stock set', path: '/api/stock/set', method: 'POST', body: { productId: p.id || p._id || p.sku, branchId: currentBranchId, quantity: q, actor: auth.user?.name || 'unknown' } })
                           .catch(() => {
-                            dispatch(setStock({ productId: pid, branchId: currentBranchId, quantity: prev }));
+                            dispatch(setStock({ productId: pid, branchId: currentBranchId, quantity: prev, syncPending: false }));
                             toast.show('Failed to save offline', { type: 'error' });
                           });
                         return;
                       }
-                      dispatch(setStock({ productId: pid, branchId: currentBranchId, quantity: q }));
+                      dispatch(setStock({ productId: pid, branchId: currentBranchId, quantity: q, syncPending: true }));
                       stockApi.setStock({
                         productId: p.id || p._id || p.sku,
                         branchId: currentBranchId,
                         quantity: q,
                         actor: auth.user?.name || 'unknown'
+                      }).then(() => {
+                        void refreshAffectedProducts(dispatch, [pid]);
                       }).catch(() => {
-                        dispatch(setStock({ productId: pid, branchId: currentBranchId, quantity: prev }));
+                        dispatch(setStock({ productId: pid, branchId: currentBranchId, quantity: prev, syncPending: false }));
                         toast.show('Failed to save stock. Check your permission or connection.', { type: 'error' });
                       });
                     }}
@@ -977,23 +982,25 @@ function ProductsPage() {
                                   toast.show('Offline: connect internet and try again.', { type: 'error' });
                                   return;
                                 }
-                                dispatch(setStock({ productId: p.id || p._id || p.sku, variantId: v.id, branchId: currentBranchId, quantity: q }));
+                                dispatch(setStock({ productId: p.id || p._id || p.sku, variantId: v.id, branchId: currentBranchId, quantity: q, syncPending: true }));
                                 enqueueHttp({ collection: 'audits', label: 'Variant stock set', path: '/api/stock/set', method: 'POST', body: { productId: p.id || p._id || p.sku, variantId: v.id, branchId: currentBranchId, quantity: q, actor: auth.user?.name || 'unknown' } })
                                   .catch(() => {
-                                    dispatch(setStock({ productId: pid, variantId: v.id, branchId: currentBranchId, quantity: prev }));
+                                    dispatch(setStock({ productId: pid, variantId: v.id, branchId: currentBranchId, quantity: prev, syncPending: false }));
                                     toast.show('Failed to save offline', { type: 'error' });
                                   });
                                 return;
                               }
-                              dispatch(setStock({ productId: p.id || p._id || p.sku, variantId: v.id, branchId: currentBranchId, quantity: q }));
+                              dispatch(setStock({ productId: p.id || p._id || p.sku, variantId: v.id, branchId: currentBranchId, quantity: q, syncPending: true }));
                               stockApi.setStock({
                                 productId: p.id || p._id || p.sku,
                                 variantId: v.id,
                                 branchId: currentBranchId,
                                 quantity: q,
                                 actor: auth.user?.name || 'unknown'
+                              }).then(() => {
+                                void refreshAffectedProducts(dispatch, [pid]);
                               }).catch(() => {
-                                dispatch(setStock({ productId: pid, variantId: v.id, branchId: currentBranchId, quantity: prev }));
+                                dispatch(setStock({ productId: pid, variantId: v.id, branchId: currentBranchId, quantity: prev, syncPending: false }));
                                 toast.show('Failed to save variant stock. Check your permission or connection.', { type: 'error' });
                               });
                             }}

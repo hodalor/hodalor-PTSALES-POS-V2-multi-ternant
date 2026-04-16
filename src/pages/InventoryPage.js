@@ -9,6 +9,7 @@ import { useToast } from '../components/ToastProvider';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import { getAllowedPriceTiers, getDisplayPrice, getPriceTierLabel } from '../utils/priceVisibility';
+import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 
 function branchTypeBadgeStyle(branchType = 'retail') {
   const kind = String(branchType || 'retail').toLowerCase();
@@ -55,7 +56,7 @@ function InventoryPage() {
       toast.show('Offline: cannot save stock changes', { type: 'error' });
       return;
     }
-    dispatch(setStock({ productId: p.id, variantId: variantId || undefined, branchId: bId, quantity: Number(quantity) }));
+    dispatch(setStock({ productId: p.id, variantId: variantId || undefined, branchId: bId, quantity: Number(quantity), syncPending: true }));
     dispatch(addAudit({
       actor: auth.user?.name || 'unknown',
       actionType: 'stock_set_manual',
@@ -73,14 +74,15 @@ function InventoryPage() {
     if (!navigator.onLine) {
       enqueueHttp({ collection: 'audits', label: 'Stock set', path: '/api/stock/set', method: 'POST', body: payload })
         .catch(() => {
-          dispatch(setStock({ productId: p.id, variantId: variantId || undefined, branchId: bId, quantity: Number(oldQty) }));
+          dispatch(setStock({ productId: p.id, variantId: variantId || undefined, branchId: bId, quantity: Number(oldQty), syncPending: false }));
           toast.show('Failed to save offline', { type: 'error' });
         });
       return;
     }
     stockApi.setStock(payload)
+      .then(() => { void refreshAffectedProducts(dispatch, [p.id]); })
       .catch((e) => {
-        dispatch(setStock({ productId: p.id, variantId: variantId || undefined, branchId: bId, quantity: Number(oldQty) }));
+        dispatch(setStock({ productId: p.id, variantId: variantId || undefined, branchId: bId, quantity: Number(oldQty), syncPending: false }));
         toast.show(String(e?.message || 'Failed to save stock'), { type: 'error' });
       });
   }
