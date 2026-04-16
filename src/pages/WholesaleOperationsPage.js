@@ -91,6 +91,15 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     return (selectedProduct.variants || []).find(v => String(v.id) === String(variantId)) || null;
   }, [selectedProduct, variantId]);
   const selectedTrackType = String(selectedVariant?.trackType || selectedProduct?.trackType || 'quantity');
+  useEffect(() => {
+    if (operationType === 'refund') return;
+    if (!selectedProduct) {
+      setCost('');
+      return;
+    }
+    const nextCost = Number(selectedProduct.costPrice || 0);
+    setCost(Number.isFinite(nextCost) ? String(nextCost) : '');
+  }, [operationType, productId, variantId, selectedProduct]);
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
   const canDirectorApprove = roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'director' || grants.includes('approve_wholesale_director') || grants.includes('approve_credit_director');
   const canManagerApprove = roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'manager' || grants.includes('approve_wholesale_manager') || grants.includes('approve_credit_manager');

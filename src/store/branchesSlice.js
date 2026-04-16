@@ -13,8 +13,8 @@ const branchesSlice = createSlice({
       if (!server) return;
       const normalized = server.map(b => ({ ...b, id: String(b?.id || b?._id || ''), branchType: b?.branchType || 'retail' }));
       const seen = new Set(normalized.map(b => b?.id).filter(Boolean).map(String));
-      const offline = state.branches.filter(b => b && b.offline && !seen.has(String(b.id)));
-      state.branches = normalized.concat(offline);
+      const localPending = state.branches.filter(b => b && (b.offline || b.syncPending) && !seen.has(String(b.id)));
+      state.branches = normalized.concat(localPending);
     },
     addBranch: {
       reducer(state, action) {
@@ -22,18 +22,19 @@ const branchesSlice = createSlice({
       },
       prepare(data) {
         const id = data?.id != null ? String(data.id) : nanoid();
-        const payload = { id, name: '', code: '', branchType: 'retail', ...data };
+        const payload = { id, name: '', code: '', branchType: 'retail', syncPending: true, ...data };
         return { payload };
       }
     },
     updateBranch(state, action) {
-      const { id, name, code, branchType, offline } = action.payload;
+      const { id, name, code, branchType, offline, syncPending } = action.payload;
       const b = state.branches.find(x => x.id === id);
       if (b) {
         b.name = name;
         b.code = code;
         if (branchType) b.branchType = branchType;
         if (typeof offline === 'boolean') b.offline = offline;
+        if (typeof syncPending === 'boolean') b.syncPending = syncPending;
       }
     },
     removeBranch(state, action) {

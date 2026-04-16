@@ -15,6 +15,7 @@ import Modal from '../components/Modal';
 import { approveTransfer, createTransferRequest, rejectTransfer, setTransferRequests } from '../store/transfersSlice';
 import { removeEntries as removeAuditEntries } from '../store/auditSlice';
 import InlineSpinner from '../components/InlineSpinner';
+import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 
 function TransfersPage() {
   const products = useSelector(s => s.products.products);
@@ -382,6 +383,7 @@ function TransfersPage() {
         if (nextStatus === 'approved') {
           dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.from, delta: -Number(r.qty || 0) }));
           dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.to, delta: Number(r.qty || 0) }));
+          void refreshAffectedProducts(dispatch, [r.productId]);
           toast.show('Transfer approved and stock updated', { type: 'success' });
         } else {
           toast.show('Director approval recorded. Waiting for manager approval.', { type: 'success' });

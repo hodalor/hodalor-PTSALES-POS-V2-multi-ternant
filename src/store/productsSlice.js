@@ -62,8 +62,8 @@ const productsSlice = createSlice({
         };
       });
       const seen = new Set(mapped.map(p => p.id).filter(Boolean));
-      const offline = state.products.filter(p => p && p.offline && !seen.has(p.id));
-      state.products = mapped.concat(offline);
+      const localPending = state.products.filter(p => p && (p.offline || p.syncPending) && !seen.has(p.id));
+      state.products = mapped.concat(localPending);
       const cats = Array.from(new Set(mapped.map(p => p.category).filter(Boolean)));
       state.categories = cats.length > 0 ? cats : state.categories;
     },
@@ -124,6 +124,7 @@ const productsSlice = createSlice({
           unitSymbol: '',
           sizeLabel: '',
           shoeSize: '',
+          syncPending: true,
           retailPrice: product?.retailPrice != null ? Number(product.retailPrice) : Number(product?.price || 0),
           wholesalePrice: product?.wholesalePrice != null ? Number(product.wholesalePrice) : Number(product?.retailPrice != null ? product.retailPrice : product?.price || 0),
           agentPrice: product?.agentPrice != null ? Number(product.agentPrice) : Number(product?.wholesalePrice != null ? product.wholesalePrice : (product?.retailPrice != null ? product.retailPrice : product?.price || 0)),

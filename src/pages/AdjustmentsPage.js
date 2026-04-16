@@ -14,6 +14,7 @@ import { promptDialog } from '../utils/dialogs';
 import BarcodeScannerModal from '../components/BarcodeScannerModal';
 import { removeEntries as removeAuditEntries } from '../store/auditSlice';
 import InlineSpinner from '../components/InlineSpinner';
+import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 
 function AdjustmentsPage() {
   const products = useSelector(s => s.products.products);
@@ -730,6 +731,7 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
         const nextStatus = String(next?.status || '');
         if (nextStatus === 'approved') {
           dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.branchId, delta: Number(r.delta || 0) }));
+          void refreshAffectedProducts(dispatch, [r.productId]);
           toast.show('Adjustment approved and stock updated', { type: 'success' });
           setRequests(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, ...next } : x));
         } else {

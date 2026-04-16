@@ -16,6 +16,7 @@ import { removeEntries as removeAuditEntries } from '../store/auditSlice';
 import Modal from '../components/Modal';
 import BarcodeScannerModal from '../components/BarcodeScannerModal';
 import InlineSpinner from '../components/InlineSpinner';
+import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 
 function PurchasesPage() {
   const products = useSelector(s => s.products.products);
@@ -66,6 +67,14 @@ function PurchasesPage() {
   }, [branches]);
   const selectedProduct = useMemo(() => products.find(p => p.id === productId) || null, [productId, products]);
   const selectedTrackType = String(selectedProduct?.trackType || 'quantity');
+  useEffect(() => {
+    if (!selectedProduct) {
+      setCost('');
+      return;
+    }
+    const nextCost = Number(selectedProduct.costPrice || 0);
+    setCost(Number.isFinite(nextCost) ? String(nextCost) : '');
+  }, [productId, variantId, selectedProduct]);
   const serializedEntries = useMemo(() => String(serializedEntriesText || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => {
     const parts = line.split(/[,\t|]/).map(part => part.trim()).filter(Boolean);
     return { imei: parts[0] || '', serialNumber: parts[1] || parts[0] || '' };
@@ -407,6 +416,7 @@ function PurchasesPage() {
         dispatch(approvePurchase({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark, nextStatus }));
         if (nextStatus === 'approved') {
           dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.branchId, delta: Number(r.baseUnits || 0) }));
+          void refreshAffectedProducts(dispatch, [r.productId]);
           toast.show('Purchase approved and stock updated', { type: 'success' });
         } else {
           toast.show('Director approval recorded. Waiting for manager approval.', { type: 'success' });

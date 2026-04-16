@@ -168,8 +168,15 @@ function ConfigSettingsPage() {
           .finally(() => setAddingBranch(false));
       } else {
         branchesApi.create({ id: created.id, name: created.name, code: created.code, branchType: created.branchType || branchType })
-          .then(() => {
-            dispatch(updateBranch({ id: created.id, name: created.name, code: created.code, branchType: created.branchType || branchType, offline: false }));
+          .then((saved) => {
+            dispatch(updateBranch({
+              id: created.id,
+              name: saved?.name || created.name,
+              code: saved?.code || created.code,
+              branchType: saved?.branchType || created.branchType || branchType,
+              offline: false,
+              syncPending: true
+            }));
           })
           .catch(() => {
             dispatch(removeBranch(created.id));

@@ -1,5 +1,5 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { addProduct, updateProduct, removeProduct, setStock } from '../store/productsSlice';
+import { addProduct, updateProduct, removeProduct, mergeProducts, setStock } from '../store/productsSlice';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatCurrency } from '../utils/currency';
 import { addAudit } from '../store/auditSlice';
@@ -403,7 +403,11 @@ function ProductsPage() {
             }
         } else {
             try {
-                await productsApi.create(serverPayload);
+                const created = await productsApi.create(serverPayload);
+                if (created && newId) {
+                    dispatch(updateProduct({ id: newId, ...created, offline: false, syncPending: true }));
+                    dispatch(mergeProducts([created]));
+                }
             } catch (e) {
                 if (newId) dispatch(removeProduct(newId));
                 toast.show(String(e?.message || 'Failed to add product'), { type: 'error' });
