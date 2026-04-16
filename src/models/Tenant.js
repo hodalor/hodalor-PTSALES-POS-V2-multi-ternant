@@ -11,7 +11,9 @@ const TenantSchema = new mongoose.Schema({
   clientAppName: { type: String, default: '' },
   logo: { type: String, default: '' },
   themeColor: { type: String, default: '' },
-  subscriptionExpiresAt: { type: Date, default: null }
+  subscriptionExpiresAt: { type: Date, default: null },
+  maxUserAccountsOverride: { type: Number, default: null },
+  maxActiveUsersOverride: { type: Number, default: null }
 }, { timestamps: true });
 
 export function modelFor(conn) {

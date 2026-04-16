@@ -7,6 +7,7 @@ import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
 import { getMasterConnection, getTenantConnection, getTenantDbName, normalizeTenantId } from '../config/tenancy.js';
 import { hashPin } from '../utils/pin.js';
 import { ALL_FEATURES, normalizePlan, normalizeFeatureList, featureFlagsFromEnabled } from '../config/tenantAccess.js';
+import { getTenantLimitDefaults, normalizeLimitDefaults, normalizeLimitValue, saveTenantLimitDefaults } from '../utils/tenantLimits.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -86,8 +87,21 @@ r.get('/', requireSuperAdmin, async (_req, res) => {
   res.json(rows);
 });
 
+r.get('/limits', requireSuperAdmin, async (_req, res) => {
+  const master = await getMasterConnection();
+  const defaults = await getTenantLimitDefaults(master);
+  res.json(defaults);
+});
+
+r.patch('/limits', requireSuperAdmin, async (req, res) => {
+  const master = await getMasterConnection();
+  const defaults = normalizeLimitDefaults(req.body || {});
+  const saved = await saveTenantLimitDefaults(master, defaults);
+  res.json(saved);
+});
+
 r.post('/', requireSuperAdmin, async (req, res) => {
-  const { tenantId, name, subscriptionPlan, features, adminName, adminPin, clientAppName, logo, themeColor, subscriptionExpiresAt } = req.body || {};
+  const { tenantId, name, subscriptionPlan, features, adminName, adminPin, clientAppName, logo, themeColor, subscriptionExpiresAt, maxUserAccountsOverride, maxActiveUsersOverride } = req.body || {};
   const tid = normalizeTenantId(tenantId);
   if (!tenantId || tid.toLowerCase() === 'master') return res.status(400).json({ error: 'Invalid tenantId' });
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'Tenant name is required' });
@@ -108,7 +122,9 @@ r.post('/', requireSuperAdmin, async (req, res) => {
     clientAppName: String(clientAppName || name).trim(),
     logo: String(logo || ''),
     themeColor: String(themeColor || ''),
-    subscriptionExpiresAt: subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null
+    subscriptionExpiresAt: subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null,
+    maxUserAccountsOverride: normalizeLimitValue(maxUserAccountsOverride),
+    maxActiveUsersOverride: normalizeLimitValue(maxActiveUsersOverride)
   });
   await ensureTenantBootstrap(tid, {
     name: String(name).trim(),
@@ -144,6 +160,12 @@ r.patch('/:tenantId', requireSuperAdmin, async (req, res) => {
         clientAppName: patch.clientAppName != null ? String(patch.clientAppName || '') : before.clientAppName,
         logo: patch.logo != null ? String(patch.logo || '') : before.logo,
         themeColor: patch.themeColor != null ? String(patch.themeColor || '') : before.themeColor,
+        maxUserAccountsOverride: Object.prototype.hasOwnProperty.call(patch, 'maxUserAccountsOverride')
+          ? normalizeLimitValue(patch.maxUserAccountsOverride)
+          : before.maxUserAccountsOverride,
+        maxActiveUsersOverride: Object.prototype.hasOwnProperty.call(patch, 'maxActiveUsersOverride')
+          ? normalizeLimitValue(patch.maxActiveUsersOverride)
+          : before.maxActiveUsersOverride,
         subscriptionExpiresAt: Object.prototype.hasOwnProperty.call(patch, 'subscriptionExpiresAt')
           ? (patch.subscriptionExpiresAt ? new Date(patch.subscriptionExpiresAt) : null)
           : before.subscriptionExpiresAt

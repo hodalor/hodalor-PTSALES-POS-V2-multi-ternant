@@ -4,6 +4,10 @@ import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireAdmin, requireRoleOrPerm } from '../middleware/auth.js';
 import { hashPin } from '../utils/pin.js';
+import { getMasterConnection } from '../config/tenancy.js';
+import Tenant from '../models/Tenant.js';
+import { modelFor as TenantSessionModelFor } from '../models/TenantSession.js';
+import { getEffectiveTenantLimits, getTenantLimitDefaults } from '../utils/tenantLimits.js';
 
 const r = Router();
 
@@ -26,6 +30,19 @@ r.post('/', requireAdmin, async (req, res) => {
   const { name, role, pin, branchId, assignedBranches } = req.body || {};
   if (!name || !role || !/^\d{4,6}$/.test(String(pin || ''))) {
     return res.status(400).json({ error: 'Invalid input' });
+  }
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master');
+  if (tenantId.toLowerCase() !== 'master') {
+    const master = await getMasterConnection();
+    const tenant = await Tenant.findOne({ tenantId }).lean();
+    const defaults = await getTenantLimitDefaults(master);
+    const limits = getEffectiveTenantLimits(tenant, defaults);
+    if (limits.maxUserAccounts) {
+      const totalUsers = await User.countDocuments();
+      if (totalUsers >= limits.maxUserAccounts) {
+        return res.status(403).json({ error: 'User account creation limit reached. Please upgrade package or contact admin for more user account creation.' });
+      }
+    }
   }
   const exists = await User.findOne({ name });
   if (exists) return res.status(409).json({ error: 'User already exists' });
@@ -106,6 +123,14 @@ r.put('/:name', requireAdmin, async (req, res) => {
     u.pinHash = await hashPin(String(pin));
   }
   await u.save();
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master');
+  if (tenantId.toLowerCase() !== 'master' && typeof active === 'boolean' && active === false) {
+    try {
+      const master = await getMasterConnection();
+      const TenantSession = TenantSessionModelFor(master);
+      await TenantSession.deleteMany({ tenantId, userName: String(u.name || '') });
+    } catch {}
+  }
   const changed = [];
   const payload = { name: newName, role, branchId, assignedBranches, active };
   Object.keys(payload).forEach(k => {
@@ -140,6 +165,14 @@ r.delete('/:name', requireAdmin, async (req, res) => {
   const name = req.params.name;
   const u = await User.findOne({ name });
   if (!u) return res.json({ ok: true });
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master');
+  if (tenantId.toLowerCase() !== 'master') {
+    try {
+      const master = await getMasterConnection();
+      const TenantSession = TenantSessionModelFor(master);
+      await TenantSession.deleteMany({ tenantId, userName: String(u.name || '') });
+    } catch {}
+  }
   await User.deleteOne({ _id: u._id });
   res.json({ ok: true });
   void Audit.create({

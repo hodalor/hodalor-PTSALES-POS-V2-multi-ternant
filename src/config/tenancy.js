@@ -2,6 +2,8 @@ import mongoose from 'mongoose';
 
 const tenantConnections = new Map();
 let masterConnectionPromise = null;
+const resolvedTenantCache = new Map();
+const RESOLVED_TENANT_TTL_MS = 30_000;
 
 export function normalizeTenantId(value) {
   const raw = String(value || 'master').trim();
@@ -40,11 +42,15 @@ export async function getMasterConnection() {
 export async function resolveStoredTenantId(tenantId) {
   const tid = normalizeTenantId(tenantId);
   if (!tid || tid.toLowerCase() === 'master') return 'master';
+  const cached = resolvedTenantCache.get(tid.toLowerCase());
+  if (cached && (Date.now() - cached.ts) < RESOLVED_TENANT_TTL_MS) return cached.value;
   const master = await getMasterConnection();
   const row = await master.db.collection('tenants').findOne({
     tenantId: { $regex: `^${tid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' }
   }, { projection: { tenantId: 1 } });
-  return row?.tenantId ? String(row.tenantId) : tid;
+  const value = row?.tenantId ? String(row.tenantId) : tid;
+  resolvedTenantCache.set(tid.toLowerCase(), { ts: Date.now(), value });
+  return value;
 }
 
 export async function getTenantConnection(tenantId) {

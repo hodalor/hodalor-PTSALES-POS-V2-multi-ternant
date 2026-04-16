@@ -13,6 +13,8 @@ import Settings from './models/Settings.js';
 dotenv.config();
 
 const app = express();
+const featureFlagCache = new Map();
+const FEATURE_FLAG_CACHE_TTL_MS = 10_000;
 app.use(cors());
 app.use(express.json({ limit: '2mb' }));
 if (process.env.NODE_ENV !== 'production') {
@@ -35,8 +37,16 @@ app.use('/api', async (req, res, next) => {
   const feature = featureForApiPath(req.path || '');
   if (!feature) return next();
   try {
-    const doc = await Settings.findOne({ key: 'default' });
-    const flags = doc?.data?.featureFlags || {};
+    const tenantKey = String(req.user?.tenantId || req.tenantId || 'master');
+    const cached = featureFlagCache.get(tenantKey);
+    let flags = null;
+    if (cached && (Date.now() - cached.ts) < FEATURE_FLAG_CACHE_TTL_MS) {
+      flags = cached.flags;
+    } else {
+      const doc = await Settings.findOne({ key: 'default' });
+      flags = doc?.data?.featureFlags || {};
+      featureFlagCache.set(tenantKey, { ts: Date.now(), flags });
+    }
     if (flags[feature] === false) {
       return res.status(403).json({ error: 'Feature not enabled for this tenant' });
     }

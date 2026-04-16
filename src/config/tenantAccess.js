@@ -17,6 +17,8 @@ export const TENANT_GRANT_KEYS = [
 export const GRANT_FEATURE_KEYS = TENANT_GRANT_KEYS.map((key) => `grants.${key}`);
 
 export const ALL_FEATURES = [
+  'sections.primary', 'sections.retail', 'sections.distribution', 'sections.warehouse',
+  'sections.credit', 'sections.expense', 'sections.partners', 'sections.admin', 'sections.tabsRuntime',
   'modules.dashboard', 'modules.pos', 'modules.wholesalePos', 'modules.invoices', 'modules.sales',
   'modules.products', 'modules.inventory', 'modules.labels', 'modules.purchases', 'modules.expenses',
   'modules.transfers', 'modules.adjustments', 'modules.suppliers', 'modules.customers',
@@ -31,6 +33,7 @@ export const ALL_FEATURES = [
 
 export const PLAN_FEATURES = {
   basic: [
+    'sections.primary', 'sections.retail', 'sections.partners', 'sections.admin', 'sections.tabsRuntime',
     'modules.dashboard', 'modules.pos', 'modules.invoices', 'modules.sales', 'modules.products',
     'modules.inventory', 'modules.labels', 'modules.purchases', 'modules.suppliers',
     'modules.customers', 'modules.backup', 'admin.users', 'admin.audit',
@@ -43,6 +46,8 @@ export const PLAN_FEATURES = {
     'grants.add_customers', 'grants.view_cashdrawer', 'grants.view_users', 'grants.view_config'
   ],
   pro: [
+    'sections.primary', 'sections.retail', 'sections.distribution', 'sections.warehouse',
+    'sections.credit', 'sections.expense', 'sections.partners', 'sections.admin', 'sections.tabsRuntime',
     'modules.dashboard', 'modules.pos', 'modules.wholesalePos', 'modules.invoices', 'modules.sales',
     'modules.products', 'modules.inventory', 'modules.labels', 'modules.purchases', 'modules.expenses',
     'modules.transfers', 'modules.adjustments', 'modules.suppliers', 'modules.customers',
@@ -54,6 +59,18 @@ export const PLAN_FEATURES = {
     ...GRANT_FEATURE_KEYS.filter((key) => !['grants.approve_credit_director', 'grants.approve_wholesale_director'].includes(key))
   ],
   enterprise: ALL_FEATURES.slice()
+};
+
+const SECTION_FALLBACKS = {
+  'sections.primary': ['modules.dashboard', 'modules.sales', 'modules.invoices', 'modules.products', 'modules.inventory', 'modules.labels', 'modules.reports', 'modules.backup'],
+  'sections.retail': ['modules.pos', 'modules.purchases', 'modules.transfers', 'modules.adjustments', 'modules.refunds'],
+  'sections.distribution': ['modules.wholesalePos', 'grants.view_wholesale_invoices'],
+  'sections.warehouse': ['grants.view_warehouse_invoices', 'grants.view_warehouse_approvals'],
+  'sections.credit': ['modules.creditControl', 'grants.view_credit_control', 'grants.view_credit_repayment_approvals'],
+  'sections.expense': ['modules.expenses', 'modules.expenseApprovals'],
+  'sections.partners': ['modules.suppliers', 'modules.customers'],
+  'sections.admin': ['admin.users', 'admin.config', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords', 'admin.cashDrawer', 'admin.manual', 'admin.docs', 'admin.godhand'],
+  'sections.tabsRuntime': ['features.offlineBackup', 'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords']
 };
 
 export function normalizePlan(plan) {
@@ -77,6 +94,11 @@ export function normalizeFeatureList(plan, features) {
 
 export function featureFlagsFromEnabled(enabledList) {
   const enabled = new Set((enabledList || []).map((x) => String(x)));
+  Object.entries(SECTION_FALLBACKS).forEach(([sectionKey, fallbackKeys]) => {
+    if (!enabled.has(sectionKey) && fallbackKeys.some((key) => enabled.has(key))) {
+      enabled.add(sectionKey);
+    }
+  });
   const flags = {};
   ALL_FEATURES.forEach((key) => {
     if (!enabled.has(key)) flags[key] = false;
