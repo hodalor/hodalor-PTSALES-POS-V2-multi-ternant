@@ -7,9 +7,10 @@ import { requireAuth } from '../middleware/auth.js';
 import { modelFor as SettingsModelFor } from '../models/Settings.js';
 import Tenant from '../models/Tenant.js';
 import { filterGrantsByFeatureFlags } from '../config/tenantAccess.js';
-import { getMasterConnection } from '../config/tenancy.js';
+import { getMasterConnection, getTenantConnection, resolveStoredTenantId } from '../config/tenancy.js';
 import { modelFor as TenantSessionModelFor } from '../models/TenantSession.js';
 import { cleanupExpiredTenantSessions, countActiveTenantSessions, getEffectiveTenantLimits, getTenantLimitDefaults, hasActiveTenantSession } from '../utils/tenantLimits.js';
+import { activateTenantSubscription, ensureTenantActivationCode } from '../utils/tenantActivation.js';
 
 const r = Router();
 const tenantMetaCache = new Map();
@@ -22,6 +23,23 @@ async function getTenantMetaCached(tenantId) {
   const meta = await Tenant.findOne({ tenantId });
   tenantMetaCache.set(key, { ts: Date.now(), value: meta || null });
   return meta || null;
+}
+
+function sanitizeTenantMeta(meta) {
+  const plain = meta?.toObject?.() || meta || {};
+  return {
+    ...plain,
+    activationCode: undefined,
+    activationCodeIssuedAt: undefined,
+    activationCodeExpiresAt: undefined,
+    activationLastUsedAt: undefined
+  };
+}
+
+function isTenantExpired(meta) {
+  if (!meta || meta.subscriptionPermanent) return false;
+  if (!meta.subscriptionExpiresAt) return false;
+  return new Date(meta.subscriptionExpiresAt).getTime() <= Date.now();
 }
 
 function toLanding(role) {
@@ -41,10 +59,11 @@ r.post('/login', async (req, res) => {
   const Settings = SettingsModelFor(req.db);
   let meta = null;
   if (String(loginTenantId).toLowerCase() !== 'master') {
-    meta = await getTenantMetaCached(loginTenantId);
+    meta = await Tenant.findOne({ tenantId: loginTenantId });
+    tenantMetaCache.set(String(loginTenantId || '').toLowerCase(), { ts: Date.now(), value: meta || null });
     if (!meta) return res.status(404).json({ error: 'Tenant not found' });
     if (meta.disabled) return res.status(403).json({ error: 'Tenant disabled' });
-    if (meta.subscriptionExpiresAt && new Date(meta.subscriptionExpiresAt).getTime() < Date.now()) {
+    if (isTenantExpired(meta)) {
       return res.status(403).json({ error: 'Subscription expired' });
     }
   }
@@ -104,6 +123,40 @@ r.post('/login', async (req, res) => {
     grants,
     landing: toLanding(u.role),
     user: { name: u.name, tenantId: loginTenantId, branchId: u.branchId || 'main', assignedBranches: u.assignedBranches || (u.branchId ? [u.branchId] : []) }
+  });
+});
+
+r.post('/activate-subscription', async (req, res) => {
+  const { tenantId, username, pin, activationCode } = req.body || {};
+  const resolvedTenantId = await resolveStoredTenantId(String(tenantId || ''));
+  if (!resolvedTenantId || resolvedTenantId.toLowerCase() === 'master') return res.status(400).json({ error: 'Invalid tenant' });
+  if (!username || !/^\d{4,6}$/.test(String(pin || '')) || !activationCode) return res.status(400).json({ error: 'Invalid input' });
+  const master = await getMasterConnection();
+  const meta = await ensureTenantActivationCode(master, await Tenant.findOne({ tenantId: resolvedTenantId }));
+  if (!meta) return res.status(404).json({ error: 'Tenant not found' });
+  if (meta.disabled) return res.status(403).json({ error: 'Tenant disabled' });
+  if (meta.subscriptionPermanent) return res.status(400).json({ error: 'This tenant already has permanent access' });
+  const code = String(activationCode || '').trim().toUpperCase();
+  if (!meta.activationCode || String(meta.activationCode).trim().toUpperCase() !== code) {
+    return res.status(403).json({ error: 'Invalid activation code' });
+  }
+  if (!meta.activationCodeExpiresAt || new Date(meta.activationCodeExpiresAt).getTime() < Date.now()) {
+    return res.status(403).json({ error: 'Activation code expired. Please request a new code.' });
+  }
+  const tenantConn = await getTenantConnection(resolvedTenantId);
+  const User = UserModelFor(tenantConn);
+  const user = await User.findOne({ name: String(username || '').trim() });
+  if (!user || !user.active) return res.status(401).json({ error: 'Invalid tenant admin credentials' });
+  const role = String(user.role || '').toLowerCase();
+  if (role !== 'admin' && role !== 'superadmin') return res.status(403).json({ error: 'Only tenant admin can activate subscription' });
+  const ok = await verifyPin(String(pin), user.pinHash);
+  if (!ok) return res.status(401).json({ error: 'Invalid tenant admin credentials' });
+  const updated = await activateTenantSubscription(master, tenantConn, meta);
+  tenantMetaCache.delete(String(resolvedTenantId || '').toLowerCase());
+  res.json({
+    ok: true,
+    tenant: sanitizeTenantMeta(updated),
+    message: 'Subscription extended for 30 days'
   });
 });
 

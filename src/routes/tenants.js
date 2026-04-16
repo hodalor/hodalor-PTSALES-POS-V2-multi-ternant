@@ -8,6 +8,7 @@ import { getMasterConnection, getTenantConnection, getTenantDbName, normalizeTen
 import { hashPin } from '../utils/pin.js';
 import { ALL_FEATURES, normalizePlan, normalizeFeatureList, featureFlagsFromEnabled } from '../config/tenantAccess.js';
 import { getTenantLimitDefaults, normalizeLimitDefaults, normalizeLimitValue, saveTenantLimitDefaults } from '../utils/tenantLimits.js';
+import { ensureTenantActivationCode, refreshTenantActivationCode, syncTenantSubscriptionSnapshot } from '../utils/tenantActivation.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -30,7 +31,8 @@ async function ensureTenantBootstrap(tenantId, payload = {}) {
     themeColor: payload.themeColor || current?.data?.themeColor || '',
     featureFlags: featureFlagsFromEnabled(payload.features || []),
     subscriptionPlan: payload.subscriptionPlan || current?.data?.subscriptionPlan || 'basic',
-    subscriptionExpiresAt: payload.subscriptionExpiresAt || current?.data?.subscriptionExpiresAt || null
+    subscriptionExpiresAt: payload.subscriptionPermanent ? null : (payload.subscriptionExpiresAt || current?.data?.subscriptionExpiresAt || null),
+    subscriptionPermanent: !!payload.subscriptionPermanent
   };
   await Settings.findOneAndUpdate(
     { key: 'default' },
@@ -75,16 +77,26 @@ async function wipeTenantDb(tenantId) {
 r.get('/me', async (req, res) => {
   const tid = String(req.user?.tenantId || req.tenantId || 'master');
   if (!tid || tid.toLowerCase() === 'master') return res.json({});
-  const meta = await Tenant.findOne({ tenantId: tid });
+  const master = await getMasterConnection();
+  const meta = await ensureTenantActivationCode(master, await Tenant.findOne({ tenantId: tid }));
   if (!meta) return res.json({});
-  res.json(meta);
+  res.json({
+    ...meta.toObject?.() || meta,
+    activationCode: undefined,
+    activationCodeIssuedAt: undefined,
+    activationCodeExpiresAt: undefined,
+    activationLastUsedAt: undefined
+  });
 });
 
 r.get('/', requireSuperAdmin, async (_req, res) => {
   const master = await getMasterConnection();
   const TenantModel = TenantModelFor(master);
-  const rows = await TenantModel.find().sort({ createdAt: -1 }).lean();
-  res.json(rows);
+  const rows = await TenantModel.find().sort({ createdAt: -1 });
+  const ensured = [];
+  for (const row of rows) ensured.push(await ensureTenantActivationCode(master, row));
+  const plain = ensured.map((row) => row?.toObject?.() || row);
+  res.json(plain);
 });
 
 r.get('/limits', requireSuperAdmin, async (_req, res) => {
@@ -152,7 +164,7 @@ r.patch('/limits', requireSuperAdmin, async (req, res) => {
 });
 
 r.post('/', requireSuperAdmin, async (req, res) => {
-  const { tenantId, name, subscriptionPlan, features, adminName, adminPin, clientAppName, logo, themeColor, subscriptionExpiresAt, maxUserAccountsOverride, maxActiveUsersOverride } = req.body || {};
+  const { tenantId, name, subscriptionPlan, features, adminName, adminPin, clientAppName, logo, themeColor, subscriptionExpiresAt, subscriptionPermanent, maxUserAccountsOverride, maxActiveUsersOverride } = req.body || {};
   const tid = normalizeTenantId(tenantId);
   if (!tenantId || tid.toLowerCase() === 'master') return res.status(400).json({ error: 'Invalid tenantId' });
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'Tenant name is required' });
@@ -173,10 +185,12 @@ r.post('/', requireSuperAdmin, async (req, res) => {
     clientAppName: String(clientAppName || name).trim(),
     logo: String(logo || ''),
     themeColor: String(themeColor || ''),
-    subscriptionExpiresAt: subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null,
+    subscriptionExpiresAt: subscriptionPermanent ? null : (subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null),
+    subscriptionPermanent: !!subscriptionPermanent,
     maxUserAccountsOverride: normalizeLimitValue(maxUserAccountsOverride),
     maxActiveUsersOverride: normalizeLimitValue(maxActiveUsersOverride)
   });
+  const withCode = await ensureTenantActivationCode(master, doc);
   await ensureTenantBootstrap(tid, {
     name: String(name).trim(),
     subscriptionPlan: plan,
@@ -186,9 +200,10 @@ r.post('/', requireSuperAdmin, async (req, res) => {
     clientAppName: String(clientAppName || name).trim(),
     logo: String(logo || ''),
     themeColor: String(themeColor || ''),
-    subscriptionExpiresAt: subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null
+    subscriptionExpiresAt: subscriptionPermanent ? null : (subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null),
+    subscriptionPermanent: !!subscriptionPermanent
   });
-  res.json(doc);
+  res.json(withCode);
 });
 
 r.patch('/:tenantId', requireSuperAdmin, async (req, res) => {
@@ -200,6 +215,15 @@ r.patch('/:tenantId', requireSuperAdmin, async (req, res) => {
   const patch = req.body || {};
   const plan = normalizePlan(patch.subscriptionPlan || before.subscriptionPlan);
   const enabledFeatures = normalizeFeatureList(plan, patch.features || before.features);
+  const nextPermanent = Object.prototype.hasOwnProperty.call(patch, 'subscriptionPermanent')
+    ? !!patch.subscriptionPermanent
+    : !!before.subscriptionPermanent;
+  const explicitExpiryProvided = Object.prototype.hasOwnProperty.call(patch, 'subscriptionExpiresAt');
+  const nextExpiry = nextPermanent
+    ? null
+    : explicitExpiryProvided
+      ? (patch.subscriptionExpiresAt ? new Date(patch.subscriptionExpiresAt) : new Date())
+      : (before.subscriptionPermanent ? new Date() : before.subscriptionExpiresAt);
   const updated = await TenantModel.findOneAndUpdate(
     { tenantId: tid },
     {
@@ -211,15 +235,14 @@ r.patch('/:tenantId', requireSuperAdmin, async (req, res) => {
         clientAppName: patch.clientAppName != null ? String(patch.clientAppName || '') : before.clientAppName,
         logo: patch.logo != null ? String(patch.logo || '') : before.logo,
         themeColor: patch.themeColor != null ? String(patch.themeColor || '') : before.themeColor,
+        subscriptionPermanent: nextPermanent,
         maxUserAccountsOverride: Object.prototype.hasOwnProperty.call(patch, 'maxUserAccountsOverride')
           ? normalizeLimitValue(patch.maxUserAccountsOverride)
           : before.maxUserAccountsOverride,
         maxActiveUsersOverride: Object.prototype.hasOwnProperty.call(patch, 'maxActiveUsersOverride')
           ? normalizeLimitValue(patch.maxActiveUsersOverride)
           : before.maxActiveUsersOverride,
-        subscriptionExpiresAt: Object.prototype.hasOwnProperty.call(patch, 'subscriptionExpiresAt')
-          ? (patch.subscriptionExpiresAt ? new Date(patch.subscriptionExpiresAt) : null)
-          : before.subscriptionExpiresAt
+        subscriptionExpiresAt: nextExpiry
       }
     },
     { new: true }
@@ -231,8 +254,17 @@ r.patch('/:tenantId', requireSuperAdmin, async (req, res) => {
     clientAppName: updated.clientAppName,
     logo: updated.logo,
     themeColor: updated.themeColor,
-    subscriptionExpiresAt: updated.subscriptionExpiresAt
+    subscriptionExpiresAt: updated.subscriptionExpiresAt,
+    subscriptionPermanent: updated.subscriptionPermanent
   });
+  res.json(updated);
+});
+
+r.post('/:tenantId/activation-code/refresh', requireSuperAdmin, async (req, res) => {
+  const tid = normalizeTenantId(req.params.tenantId);
+  const master = await getMasterConnection();
+  const updated = await refreshTenantActivationCode(master, tid);
+  if (!updated) return res.status(404).json({ error: 'Tenant not found' });
   res.json(updated);
 });
 

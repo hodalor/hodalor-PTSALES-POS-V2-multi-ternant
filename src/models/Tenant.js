@@ -12,6 +12,11 @@ const TenantSchema = new mongoose.Schema({
   logo: { type: String, default: '' },
   themeColor: { type: String, default: '' },
   subscriptionExpiresAt: { type: Date, default: null },
+  subscriptionPermanent: { type: Boolean, default: false },
+  activationCode: { type: String, default: '' },
+  activationCodeIssuedAt: { type: Date, default: null },
+  activationCodeExpiresAt: { type: Date, default: null },
+  activationLastUsedAt: { type: Date, default: null },
   maxUserAccountsOverride: { type: Number, default: null },
   maxActiveUsersOverride: { type: Number, default: null }
 }, { timestamps: true });
