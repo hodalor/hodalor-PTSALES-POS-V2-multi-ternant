@@ -363,7 +363,7 @@ function App() {
           section('sections.partners') && allow('modules.suppliers', ['Admin','Manager','Inventory Staff'], ['view_suppliers','see_suppliers']) ? suppliersApi.list() : Promise.resolve([]),
           section('sections.partners') && allow('modules.customers', ['Admin','Manager','Cashier'], ['view_customers','see_customers']) ? customersApi.list() : Promise.resolve([]),
           section('sections.admin') && allow('admin.config', ['Admin'], ['view_config','see_config']) ? branchesApi.list() : Promise.resolve([]),
-          section('sections.retail') && allow('modules.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']) ? refundsApi.listRequests() : Promise.resolve([]),
+          section('sections.retail') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']) ? refundsApi.listRequests() : Promise.resolve([]),
           allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? salesApi.list() : Promise.resolve([])
         ]);
         if (alive && p.status === 'fulfilled' && Array.isArray(p.value)) dispatch(setProducts(p.value));
@@ -447,10 +447,10 @@ function App() {
           section('sections.admin') && allow('admin.users', ['Admin'], ['view_users','see_users']) ? usersApi.list() : Promise.resolve([]),
           section('sections.admin') && allow('admin.audit', ['Admin'], ['view_audit','see_audit']) ? auditsApi.list() : Promise.resolve([]),
           allow('modules.invoices', ['Admin','Manager','Cashier'], ['view_invoices','see_invoices','view_wholesale_invoices','view_warehouse_invoices']) ? invoicesApi.list() : Promise.resolve([]),
-          section('sections.retail') && allow('modules.purchases', ['Admin','Manager','Inventory Staff','Director'], ['approve_purchases','view_purchases','see_purchases']) ? purchasesApi.listRequests({ status: 'pending_director', limit: 200 }) : Promise.resolve([]),
-          section('sections.retail') && allow('modules.transfers', ['Admin','Manager','Inventory Staff','Director'], ['approve_transfers','view_transfers','see_transfers']) ? transfersApi.listRequests({ status: 'pending_director', limit: 200 }) : Promise.resolve([]),
+          section('sections.retail') && allow('pages.retail.purchases', ['Admin','Manager','Inventory Staff','Director'], ['approve_purchases','view_purchases','see_purchases']) ? purchasesApi.listRequests({ status: 'pending_director', limit: 200 }) : Promise.resolve([]),
+          section('sections.retail') && allow('pages.retail.transfers', ['Admin','Manager','Inventory Staff','Director'], ['approve_transfers','view_transfers','see_transfers']) ? transfersApi.listRequests({ status: 'pending_director', limit: 200 }) : Promise.resolve([]),
           section('sections.expense') && (allow('modules.expenses', ['Admin','Manager'], ['view_expenses','see_expenses','add_expenses']) || allow('modules.expenseApprovals', ['Admin','Manager'], ['approve_expenses'])) ? expensesApi.listRequests({ status: 'pending', limit: 200 }) : Promise.resolve([]),
-          section('sections.retail') && allow('modules.adjustments', ['Admin','Manager','Inventory Staff','Director'], ['approve_adjustments','view_adjustments','see_adjustments']) ? adjustmentsApi.listRequests({ status: 'pending_director', limit: 200 }) : Promise.resolve([])
+          section('sections.retail') && allow('pages.retail.adjustments', ['Admin','Manager','Inventory Staff','Director'], ['approve_adjustments','view_adjustments','see_adjustments']) ? adjustmentsApi.listRequests({ status: 'pending_director', limit: 200 }) : Promise.resolve([])
         ]);
         if (alive && p.status === 'fulfilled' && Array.isArray(p.value)) dispatch(setProducts(p.value));
         if (alive && s.status === 'fulfilled' && Array.isArray(s.value)) dispatch(setSuppliers(s.value));
@@ -499,30 +499,30 @@ function App() {
           <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
             <Route path="/" element={<Navigate to="/pos" replace />} />
             <Route path="/dashboard" element={<ProtectedRoute feature="modules.dashboard" roles={['Admin','Manager']} grant={['view_dashboard','see_dashboard']}><DashboardPage /></ProtectedRoute>} />
-            <Route path="/pos" element={<ProtectedRoute feature="modules.pos" roles={['Admin','Manager','Cashier']} grant={['view_pos','see_pos']}><PosPage mode="retail" /></ProtectedRoute>} />
-            <Route path="/wholesale-pos" element={<ProtectedRoute feature="sections.distribution" roles={['Admin','Manager','Cashier']} grant={['view_wholesale_pos']}><PosPage mode="wholesale" /></ProtectedRoute>} />
-            <Route path="/wholesale-goods" element={<ProtectedRoute feature="sections.distribution" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['view_wholesale_pos']}><WholesaleGoodsPage /></ProtectedRoute>} />
-            <Route path="/wholesale-invoices" element={<ProtectedRoute feature="sections.distribution" roles={['Admin','Manager','Cashier']} grant={['view_invoices','see_invoices','view_wholesale_pos','view_wholesale_invoices']}><WholesaleInvoicesPage /></ProtectedRoute>} />
-            <Route path="/wholesale-purchase" element={<ProtectedRoute feature="sections.distribution" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['view_wholesale_pos']}><WholesalePurchasePage /></ProtectedRoute>} />
-            <Route path="/wholesale-transfer" element={<ProtectedRoute feature="sections.distribution" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['view_wholesale_pos']}><WholesaleTransferPage /></ProtectedRoute>} />
-            <Route path="/wholesale-adjustment" element={<ProtectedRoute feature="sections.distribution" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['view_wholesale_pos']}><WholesaleAdjustmentPage /></ProtectedRoute>} />
-            <Route path="/wholesale-refund" element={<ProtectedRoute feature="sections.distribution" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['view_wholesale_pos']}><WholesaleRefundPage /></ProtectedRoute>} />
-            <Route path="/warehouse-purchase" element={<ProtectedRoute feature="sections.warehouse" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['view_wholesale_pos']}><WarehousePurchasePage /></ProtectedRoute>} />
-            <Route path="/warehouse-transfer" element={<ProtectedRoute feature="sections.warehouse" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['view_wholesale_pos']}><WarehouseTransferPage /></ProtectedRoute>} />
-            <Route path="/warehouse-adjustment" element={<ProtectedRoute feature="sections.warehouse" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['view_wholesale_pos']}><WarehouseAdjustmentPage /></ProtectedRoute>} />
-            <Route path="/warehouse-goods" element={<ProtectedRoute feature="sections.warehouse" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['view_wholesale_pos']}><WarehouseGoodsPage /></ProtectedRoute>} />
-            <Route path="/warehouse-invoices" element={<ProtectedRoute feature="sections.warehouse" roles={['Admin','Manager','Cashier']} grant={['view_invoices','see_invoices','view_wholesale_pos','view_warehouse_invoices']}><WarehouseInvoicesPage /></ProtectedRoute>} />
-            <Route path="/warehouse-approvals" element={<ProtectedRoute feature="sections.warehouse" roles={['Admin','Manager','SuperAdmin']} grant={['approve_wholesale_director','approve_wholesale_manager','view_wholesale_pos','view_warehouse_approvals']}><WarehouseApprovalsPage /></ProtectedRoute>} />
+            <Route path="/pos" element={<ProtectedRoute feature="pages.retail.pos" roles={['Admin','Manager','Cashier']} grant={['view_pos','see_pos']}><PosPage mode="retail" /></ProtectedRoute>} />
+            <Route path="/wholesale-pos" element={<ProtectedRoute feature="pages.distribution.pos" roles={['Admin','Manager','Cashier']}><PosPage mode="wholesale" /></ProtectedRoute>} />
+            <Route path="/wholesale-goods" element={<ProtectedRoute feature="pages.distribution.goods" roles={['Admin','Manager','Inventory Staff','Cashier']}><WholesaleGoodsPage /></ProtectedRoute>} />
+            <Route path="/wholesale-invoices" element={<ProtectedRoute feature="pages.distribution.invoices" roles={['Admin','Manager','Cashier']}><WholesaleInvoicesPage /></ProtectedRoute>} />
+            <Route path="/wholesale-purchase" element={<ProtectedRoute feature="pages.distribution.purchase" roles={['Admin','Manager','Inventory Staff','Cashier']}><WholesalePurchasePage /></ProtectedRoute>} />
+            <Route path="/wholesale-transfer" element={<ProtectedRoute feature="pages.distribution.transfer" roles={['Admin','Manager','Inventory Staff','Cashier']}><WholesaleTransferPage /></ProtectedRoute>} />
+            <Route path="/wholesale-adjustment" element={<ProtectedRoute feature="pages.distribution.adjustment" roles={['Admin','Manager','Inventory Staff','Cashier']}><WholesaleAdjustmentPage /></ProtectedRoute>} />
+            <Route path="/wholesale-refund" element={<ProtectedRoute feature="pages.distribution.refund" roles={['Admin','Manager','Inventory Staff','Cashier']}><WholesaleRefundPage /></ProtectedRoute>} />
+            <Route path="/warehouse-purchase" element={<ProtectedRoute feature="pages.warehouse.purchase" roles={['Admin','Manager','Inventory Staff','Cashier']}><WarehousePurchasePage /></ProtectedRoute>} />
+            <Route path="/warehouse-transfer" element={<ProtectedRoute feature="pages.warehouse.transfer" roles={['Admin','Manager','Inventory Staff','Cashier']}><WarehouseTransferPage /></ProtectedRoute>} />
+            <Route path="/warehouse-adjustment" element={<ProtectedRoute feature="pages.warehouse.adjustment" roles={['Admin','Manager','Inventory Staff','Cashier']}><WarehouseAdjustmentPage /></ProtectedRoute>} />
+            <Route path="/warehouse-goods" element={<ProtectedRoute feature="pages.warehouse.goods" roles={['Admin','Manager','Inventory Staff','Cashier']}><WarehouseGoodsPage /></ProtectedRoute>} />
+            <Route path="/warehouse-invoices" element={<ProtectedRoute feature="pages.warehouse.invoices" roles={['Admin','Manager','Cashier']}><WarehouseInvoicesPage /></ProtectedRoute>} />
+            <Route path="/warehouse-approvals" element={<ProtectedRoute feature="pages.warehouse.approvals" roles={['Admin','Manager','SuperAdmin']}><WarehouseApprovalsPage /></ProtectedRoute>} />
             <Route path="/sales" element={<ProtectedRoute feature="modules.sales" roles={['Admin','Manager','Cashier']} grant={['view_sales','see_sales']}><SalesPage /></ProtectedRoute>} />
             <Route path="/invoices" element={<ProtectedRoute feature="modules.invoices" roles={['Admin','Manager','Cashier']} grant={['view_invoices','see_invoices']}><InvoicesPage /></ProtectedRoute>} />
             <Route path="/products" element={<ProtectedRoute feature="modules.products" roles={['Admin','Manager','Inventory Staff']} grant={['view_products','see_products']}><ProductsPage /></ProtectedRoute>} />
             <Route path="/inventory" element={<ProtectedRoute feature="modules.inventory" roles={['Admin','Manager','Inventory Staff']} grant={['view_inventory','see_inventory']}><InventoryPage /></ProtectedRoute>} />
             <Route path="/serialized-inventory" element={<ProtectedRoute feature="modules.inventory" roles={['Admin','Manager','Inventory Staff']} grant={['view_inventory','see_inventory','view_serialized_inventory']}><SerializedInventoryPage /></ProtectedRoute>} />
-            <Route path="/purchases" element={<ProtectedRoute feature="modules.purchases" roles={['Admin','Manager','Inventory Staff']} grant={['view_purchases','see_purchases']}><PurchasesPage /></ProtectedRoute>} />
+            <Route path="/purchases" element={<ProtectedRoute feature="pages.retail.purchases" roles={['Admin','Manager','Inventory Staff']} grant={['view_purchases','see_purchases']}><PurchasesPage /></ProtectedRoute>} />
             <Route path="/expenses" element={<ProtectedRoute feature="sections.expense" roles={['Admin','Manager']} grant={['view_expenses','see_expenses','add_expenses']}><ExpensesPage /></ProtectedRoute>} />
           <Route path="/expense-approvals" element={<ProtectedRoute feature="sections.expense" roles={['Admin','Manager','SuperAdmin']} grant={['approve_expenses']}><ExpenseApprovalsPage /></ProtectedRoute>} />
-            <Route path="/transfers" element={<ProtectedRoute feature="modules.transfers" roles={['Admin','Manager','Inventory Staff']} grant={['view_transfers','see_transfers']}><TransfersPage /></ProtectedRoute>} />
-            <Route path="/adjustments" element={<ProtectedRoute feature="modules.adjustments" roles={['Admin','Manager','Inventory Staff']} grant={['view_adjustments','see_adjustments']}><AdjustmentsPage /></ProtectedRoute>} />
+            <Route path="/transfers" element={<ProtectedRoute feature="pages.retail.transfers" roles={['Admin','Manager','Inventory Staff']} grant={['view_transfers','see_transfers']}><TransfersPage /></ProtectedRoute>} />
+            <Route path="/adjustments" element={<ProtectedRoute feature="pages.retail.adjustments" roles={['Admin','Manager','Inventory Staff']} grant={['view_adjustments','see_adjustments']}><AdjustmentsPage /></ProtectedRoute>} />
             <Route path="/suppliers" element={<ProtectedRoute feature="sections.partners" roles={['Admin','Manager','Inventory Staff']} grant={['view_suppliers','see_suppliers']}><SuppliersPage /></ProtectedRoute>} />
             <Route path="/labels" element={<ProtectedRoute feature="modules.labels" roles={['Admin','Manager','Inventory Staff']} grant={['view_labels','see_labels']}><LabelsPage /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute feature="modules.reports" roles={['Admin','Manager','Auditor']} grant={['view_reports','see_reports']}><ReportsPage /></ProtectedRoute>} />
@@ -534,7 +534,7 @@ function App() {
             <Route path="/easybuy/defaulters" element={<ProtectedRoute feature="modules.creditControl" roles={['Admin','Manager','Cashier']} grant={['view_credit_control']}><EasyBuyDefaultersPage /></ProtectedRoute>} />
             <Route path="/easybuy/repayment-approvals" element={<ProtectedRoute feature="modules.creditControl" roles={['Admin','Manager','SuperAdmin']} grant={['approve_credit_director','approve_credit_manager','view_credit_control','view_credit_repayment_approvals']}><EasyBuyRepaymentApprovalsPage /></ProtectedRoute>} />
             <Route path="/approvals-center" element={<ProtectedRoute feature="modules.approvalsCenter" roles={['Admin','Manager','SuperAdmin']} grant={['view_approvals','approve_wholesale_director','approve_wholesale_manager','approve_credit_director','approve_credit_manager']}><ApprovalsPage /></ProtectedRoute>} />
-            <Route path="/refunds" element={<ProtectedRoute feature="modules.refunds" roles={['Admin','Manager','Cashier']} grant={['view_refunds','see_refunds']}><RefundsPage /></ProtectedRoute>} />
+            <Route path="/refunds" element={<ProtectedRoute feature="pages.retail.refunds" roles={['Admin','Manager','Cashier']} grant={['view_refunds','see_refunds']}><RefundsPage /></ProtectedRoute>} />
             <Route path="/refund-approvals" element={<ProtectedRoute feature="modules.refundApprovals" roles={['Admin','Manager','SuperAdmin']} grant="approve_refunds"><RefundApprovalsPage /></ProtectedRoute>} />
             <Route path="/stock-records" element={<ProtectedRoute feature="sections.admin" roles={['Admin','SuperAdmin']} grant={['view_stock_records','see_stock_records']}><StockRecordsPage /></ProtectedRoute>} />
             <Route path="/users" element={<ProtectedRoute feature="sections.admin" roles={['Admin','SuperAdmin']} grant={['view_users','see_users']}><UsersPage /></ProtectedRoute>} />

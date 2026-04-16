@@ -163,11 +163,11 @@ export const TENANT_SIDEBAR_SECTIONS = [
     title: 'Retail',
     description: 'Matches the Retail group on the sidebar.',
     items: [
-      { label: 'POS', keys: ['modules.pos', 'grants.view_pos'] },
-      { label: 'Purchases', keys: ['modules.purchases', 'grants.view_purchases', 'grants.add_purchases', 'grants.edit_purchases', 'grants.approve_purchases'] },
-      { label: 'Transfers', keys: ['modules.transfers', 'grants.view_transfers', 'grants.add_transfers', 'grants.edit_transfers', 'grants.approve_transfers'] },
-      { label: 'Adjustments', keys: ['modules.adjustments', 'grants.view_adjustments', 'grants.add_adjustments', 'grants.edit_adjustments', 'grants.approve_adjustments'] },
-      { label: 'Refunds', keys: ['modules.refunds', 'grants.view_refunds', 'grants.add_refunds', 'grants.approve_refunds'] }
+      { label: 'POS', keys: ['pages.retail.pos'] },
+      { label: 'Purchases', keys: ['pages.retail.purchases'] },
+      { label: 'Transfers', keys: ['pages.retail.transfers'] },
+      { label: 'Adjustments', keys: ['pages.retail.adjustments'] },
+      { label: 'Refunds', keys: ['pages.retail.refunds'] }
     ]
   },
   {
@@ -176,14 +176,14 @@ export const TENANT_SIDEBAR_SECTIONS = [
     title: 'Distribution',
     description: 'Matches the Distribution sidebar group and includes approval capabilities by default.',
     items: [
-      { label: 'Distribution Goods', keys: ['modules.wholesalePos', 'grants.view_wholesale_pos'] },
-      { label: 'Distribution POS', keys: ['modules.wholesalePos', 'grants.view_wholesale_pos'] },
-      { label: 'Distribution Invoices', keys: ['modules.invoices', 'grants.view_wholesale_invoices'] },
-      { label: 'Distribution Purchase', keys: ['modules.purchases', 'grants.view_purchases', 'grants.add_purchases', 'grants.edit_purchases', 'grants.approve_purchases'] },
-      { label: 'Distribution Transfer', keys: ['modules.transfers', 'grants.view_transfers', 'grants.add_transfers', 'grants.edit_transfers', 'grants.approve_transfers'] },
-      { label: 'Distribution Adjustment', keys: ['modules.adjustments', 'grants.view_adjustments', 'grants.add_adjustments', 'grants.edit_adjustments', 'grants.approve_adjustments'] },
-      { label: 'Distribution Refund', keys: ['modules.refunds', 'grants.view_refunds', 'grants.add_refunds', 'grants.approve_refunds'] },
-      { label: 'Director / Manager Approvals', keys: ['grants.approve_wholesale_director', 'grants.approve_wholesale_manager'] }
+      { label: 'Distribution Goods', keys: ['pages.distribution.goods'] },
+      { label: 'Distribution POS', keys: ['pages.distribution.pos'] },
+      { label: 'Distribution Invoices', keys: ['pages.distribution.invoices'] },
+      { label: 'Distribution Purchase', keys: ['pages.distribution.purchase'] },
+      { label: 'Distribution Transfer', keys: ['pages.distribution.transfer'] },
+      { label: 'Distribution Adjustment', keys: ['pages.distribution.adjustment'] },
+      { label: 'Distribution Refund', keys: ['pages.distribution.refund'] },
+      { label: 'Director / Manager Approvals', keys: ['pages.distribution.approvals'] }
     ]
   },
   {
@@ -192,12 +192,12 @@ export const TENANT_SIDEBAR_SECTIONS = [
     title: 'Warehouse',
     description: 'Matches the Warehouse sidebar group with warehouse-specific approvals.',
     items: [
-      { label: 'Warehouse Goods', keys: ['modules.wholesalePos', 'grants.view_wholesale_pos'] },
-      { label: 'Warehouse Invoices', keys: ['modules.invoices', 'grants.view_warehouse_invoices'] },
-      { label: 'Warehouse Purchase', keys: ['modules.purchases', 'grants.view_purchases', 'grants.add_purchases', 'grants.edit_purchases', 'grants.approve_purchases'] },
-      { label: 'Warehouse Transfer', keys: ['modules.transfers', 'grants.view_transfers', 'grants.add_transfers', 'grants.edit_transfers', 'grants.approve_transfers'] },
-      { label: 'Warehouse Adjustment', keys: ['modules.adjustments', 'grants.view_adjustments', 'grants.add_adjustments', 'grants.edit_adjustments', 'grants.approve_adjustments'] },
-      { label: 'Warehouse Approvals', keys: ['grants.view_warehouse_approvals', 'grants.approve_wholesale_director', 'grants.approve_wholesale_manager'] }
+      { label: 'Warehouse Goods', keys: ['pages.warehouse.goods'] },
+      { label: 'Warehouse Invoices', keys: ['pages.warehouse.invoices'] },
+      { label: 'Warehouse Purchase', keys: ['pages.warehouse.purchase'] },
+      { label: 'Warehouse Transfer', keys: ['pages.warehouse.transfer'] },
+      { label: 'Warehouse Adjustment', keys: ['pages.warehouse.adjustment'] },
+      { label: 'Warehouse Approvals', keys: ['pages.warehouse.approvals'] }
     ]
   },
   {
