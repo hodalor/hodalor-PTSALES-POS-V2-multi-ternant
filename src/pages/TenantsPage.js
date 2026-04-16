@@ -13,8 +13,10 @@ const EMPTY_FORM = {
   themeColor: '#16a34a',
   subscriptionExpiresAt: '',
   subscriptionPermanent: false,
+  subscriptionAmount: '',
   activationCode: '',
   activationCodeExpiresAt: '',
+  renewalHistory: [],
   adminName: '',
   adminPin: '',
   maxUserAccountsOverride: '',
@@ -123,6 +125,7 @@ function TenantsPage() {
         themeColor: form.themeColor,
         subscriptionExpiresAt: form.subscriptionExpiresAt || null,
         subscriptionPermanent: !!form.subscriptionPermanent,
+        subscriptionAmount: form.subscriptionAmount === '' ? null : Number(form.subscriptionAmount),
         adminName: form.adminName,
         adminPin: form.adminPin,
         maxUserAccountsOverride: form.maxUserAccountsOverride === '' ? null : Number(form.maxUserAccountsOverride),
@@ -158,8 +161,10 @@ function TenantsPage() {
       themeColor: String(row.themeColor || '#16a34a'),
       subscriptionExpiresAt: row.subscriptionExpiresAt ? String(row.subscriptionExpiresAt).slice(0, 10) : '',
       subscriptionPermanent: !!row.subscriptionPermanent,
+      subscriptionAmount: row.subscriptionAmount ?? '',
       activationCode: String(row.activationCode || ''),
       activationCodeExpiresAt: row.activationCodeExpiresAt ? String(row.activationCodeExpiresAt) : '',
+      renewalHistory: Array.isArray(row.renewalHistory) ? row.renewalHistory : [],
       adminName: '',
       adminPin: '',
       maxUserAccountsOverride: row.maxUserAccountsOverride ?? '',
@@ -456,6 +461,10 @@ function TenantsPage() {
                 Expiry Date
                 <input className="input" type="date" value={form.subscriptionExpiresAt || ''} onChange={(e) => setValue('subscriptionExpiresAt', e.target.value)} disabled={!!form.subscriptionPermanent} />
               </label>
+              <label>
+                Subscription Amount
+                <input className="input" type="number" min="0" step="0.01" value={form.subscriptionAmount} onChange={(e) => setValue('subscriptionAmount', e.target.value)} placeholder="Optional amount" />
+              </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 24 }}>
                 <input type="checkbox" checked={!!form.subscriptionPermanent} onChange={(e) => setValue('subscriptionPermanent', e.target.checked)} />
                 <span>Permanent Subscription</span>
@@ -502,6 +511,10 @@ function TenantsPage() {
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <label>
+                    Subscription Amount
+                    <input className="input" value={form.subscriptionAmount === '' ? '' : String(form.subscriptionAmount)} readOnly />
+                  </label>
+                  <label>
                     Current Activation Code
                     <input className="input" value={form.activationCode || ''} readOnly />
                   </label>
@@ -510,6 +523,35 @@ function TenantsPage() {
                     <input className="input" value={form.activationCodeExpiresAt ? new Date(form.activationCodeExpiresAt).toLocaleString() : ''} readOnly />
                   </label>
                 </div>
+              </div>
+            )}
+            {editing && (
+              <div className="card" style={{ padding: 14, border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a' }}>
+                <div style={{ fontWeight: 800, marginBottom: 8 }}>Renewal History</div>
+                {(form.renewalHistory || []).length === 0 ? (
+                  <div style={{ color: '#64748b', fontSize: 13 }}>No renewal history yet.</div>
+                ) : (
+                  <div style={{ display: 'grid', gap: 8, maxHeight: 260, overflow: 'auto' }}>
+                    {(form.renewalHistory || []).slice().reverse().map((entry, index) => (
+                      <div key={`${entry.createdAt || index}:${index}`} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: '#f8fafc' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+                          <span style={{ fontWeight: 700 }}>{String(entry.source || 'renewal').replace(/_/g, ' ')}</span>
+                          <span style={{ color: '#64748b', fontSize: 12 }}>{entry.createdAt ? new Date(entry.createdAt).toLocaleString() : ''}</span>
+                        </div>
+                        <div style={{ color: '#475569', fontSize: 12 }}>
+                          Amount: {entry.amount == null ? 'Not set' : Number(entry.amount).toLocaleString()}
+                          {' • '}
+                          Previous Expiry: {entry.previousExpiry ? new Date(entry.previousExpiry).toLocaleString() : 'None'}
+                          {' • '}
+                          New Expiry: {entry.newExpiry ? new Date(entry.newExpiry).toLocaleString() : (entry.permanentAfter ? 'Permanent' : 'None')}
+                        </div>
+                        <div style={{ color: '#64748b', fontSize: 12 }}>
+                          Actor: {entry.actorName || 'System'} • Note: {entry.note || 'Subscription updated'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             <div>
