@@ -14,3 +14,10 @@ export function me() {
 export function logout() {
   return fetchJson('/api/auth/logout', { method: 'POST' });
 }
+
+export function activateSubscription(payload) {
+  return fetchJson('/api/auth/activate-subscription', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}

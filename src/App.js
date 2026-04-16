@@ -244,7 +244,8 @@ function App() {
                 clientLogoUrl: remote?.clientLogoUrl || meta?.logo || '',
                 themeColor: remote?.themeColor || meta?.themeColor || '',
                 subscriptionPlan: remote?.subscriptionPlan || meta?.subscriptionPlan || 'basic',
-                subscriptionExpiresAt: remote?.subscriptionExpiresAt || meta?.subscriptionExpiresAt || null
+                subscriptionExpiresAt: remote?.subscriptionExpiresAt || meta?.subscriptionExpiresAt || null,
+                subscriptionPermanent: remote?.subscriptionPermanent ?? meta?.subscriptionPermanent ?? false
               };
           dispatch(setAllSettings(merged));
           try {
@@ -266,7 +267,8 @@ function App() {
             clientLogoUrl: '',
             themeColor: '',
             subscriptionPlan: 'enterprise',
-            subscriptionExpiresAt: null
+            subscriptionExpiresAt: null,
+            subscriptionPermanent: false
           }));
           try {
             const root = document.documentElement;

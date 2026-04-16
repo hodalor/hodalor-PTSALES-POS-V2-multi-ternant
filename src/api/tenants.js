@@ -39,3 +39,7 @@ export function runUserAudit() {
 export function cleanupUserAuditRecord(payload) {
   return fetchJson('/api/tenants/user-audit/cleanup', { method: 'POST', body: JSON.stringify(payload) });
 }
+
+export function refreshActivationCode(tenantId) {
+  return fetchJson(`/api/tenants/${encodeURIComponent(tenantId)}/activation-code/refresh`, { method: 'POST' });
+}

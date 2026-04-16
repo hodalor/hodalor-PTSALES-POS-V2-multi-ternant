@@ -13,8 +13,9 @@ function ProtectedRoute({ roles, grant, feature, children }) {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
   const expiryTs = settings?.subscriptionExpiresAt ? new Date(settings.subscriptionExpiresAt).getTime() : 0;
+  const isPermanent = !!settings?.subscriptionPermanent;
   const isSuper = String(auth.role || '').toLowerCase() === 'superadmin' && String(auth.user?.tenantId || '').toLowerCase() === 'master';
-  if (!isSuper && expiryTs && expiryTs < Date.now()) {
+  if (!isSuper && !isPermanent && expiryTs && expiryTs < Date.now()) {
     return (
       <div style={{ padding: 24, display: 'grid', gap: 12 }}>
         <div style={{ fontSize: 24, fontWeight: 800, color: '#991b1b' }}>Subscription Expired</div>

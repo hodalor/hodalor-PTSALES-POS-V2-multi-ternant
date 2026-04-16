@@ -96,6 +96,7 @@ function Layout() {
     }
   }
   const expiryTs = settings?.subscriptionExpiresAt ? new Date(settings.subscriptionExpiresAt).getTime() : 0;
+  const isPermanent = !!settings?.subscriptionPermanent;
   const isMaster = String(auth.user?.tenantId || '').toLowerCase() === 'master';
   const daysLeft = expiryTs ? Math.ceil((expiryTs - Date.now()) / (24 * 3600 * 1000)) : null;
   return (
@@ -137,11 +138,11 @@ function Layout() {
             </div>
           </div>
         )}
-        {!isMaster && daysLeft != null && (
+        {!isMaster && (isPermanent || daysLeft != null) && (
           <div className="card" style={{ margin: '8px 16px', padding: 12, background: daysLeft < 0 ? '#fee2e2' : daysLeft <= 14 ? '#fef3c7' : '#ecfeff' }}>
             <div style={{ fontWeight: 700 }}>Subscription</div>
             <div style={{ color: '#475569', fontSize: 13 }}>
-              {daysLeft < 0 ? `Subscription expired ${Math.abs(daysLeft)} day(s) ago. Contact your super admin.` : `Plan: ${String(settings.subscriptionPlan || 'basic')} • ${daysLeft} day(s) left`}
+              {isPermanent ? `Plan: ${String(settings.subscriptionPlan || 'basic')} • Permanent access enabled` : (daysLeft < 0 ? `Subscription expired ${Math.abs(daysLeft)} day(s) ago. Contact your super admin.` : `Plan: ${String(settings.subscriptionPlan || 'basic')} • ${daysLeft} day(s) left`)}
             </div>
           </div>
         )}

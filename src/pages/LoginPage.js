@@ -19,6 +19,13 @@ function LoginPage() {
   const [captcha, setCaptcha] = useState('');
   const [expiresAt, setExpiresAt] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [activationOpen, setActivationOpen] = useState(false);
+  const [activationTenantId, setActivationTenantId] = useState('');
+  const [activationAdminName, setActivationAdminName] = useState('');
+  const [activationAdminPin, setActivationAdminPin] = useState('');
+  const [activationCode, setActivationCode] = useState('');
+  const [activationLoading, setActivationLoading] = useState(false);
+  const [expiredTenantNotice, setExpiredTenantNotice] = useState('');
   const [resetOpen, setResetOpen] = useState(false);
   const [resetAdminName, setResetAdminName] = useState('');
   const [resetAdminPin, setResetAdminPin] = useState('');
@@ -42,6 +49,10 @@ function LoginPage() {
       if (savedTenantId) setTenantId(savedTenantId);
     } catch {}
   }, []);
+
+  useEffect(() => {
+    setExpiredTenantNotice('');
+  }, [tenantId, name, pin]);
 
   const regenerateCaptcha = useCallback(() => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -138,6 +149,43 @@ function LoginPage() {
     }
   }
 
+  async function onActivateSubscription() {
+    if (activationLoading) return;
+    const nextTenantId = activationTenantId.trim();
+    const adminName = activationAdminName.trim();
+    const adminPin = activationAdminPin.trim();
+    const code = activationCode.trim().toUpperCase();
+    if (!nextTenantId || !adminName || !adminPin || !code) {
+      toast.show('Fill all activation fields', { type: 'error' });
+      return;
+    }
+    if (!/^\d{4,6}$/.test(adminPin)) {
+      toast.show('Admin PIN must be 4-6 digits', { type: 'error' });
+      return;
+    }
+    setActivationLoading(true);
+    try {
+      await authApi.activateSubscription({
+        tenantId: nextTenantId,
+        username: adminName,
+        pin: adminPin,
+        activationCode: code
+      });
+      setActivationOpen(false);
+      setTenantId(nextTenantId);
+      setName(adminName);
+      setPin('');
+      setActivationAdminPin('');
+      setActivationCode('');
+      setExpiredTenantNotice('');
+      toast.show('Subscription extended for 30 days. You can log in now.', { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to activate subscription'), { type: 'error' });
+    } finally {
+      setActivationLoading(false);
+    }
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     if (loading) return;
@@ -175,8 +223,20 @@ function LoginPage() {
       const m = msg.toLowerCase();
       const isNetwork = m.includes('failed to fetch') || m.includes('network') || m.includes('timeout');
       const isUnauthorized = m.includes('401') || m.includes('unauthorized') || m.includes('invalid');
+      const isExpired = m.includes('subscription expired');
       if (!isNetwork && isUnauthorized) {
         toast.show('Invalid username or PIN', { type: 'error' });
+        regenerateCaptcha();
+        setLoading(false);
+        return;
+      }
+      if (isExpired) {
+        try { localStorage.removeItem('ptSales:authToken'); } catch {}
+        setActivationTenantId(String(tenantId || ''));
+        setActivationAdminName(String(name || ''));
+        setExpiredTenantNotice('Subscription expired. This tenant cannot log in until it is renewed or activated.');
+        setActivationOpen(true);
+        toast.show('Subscription expired. Login denied until renewal.', { type: 'error' });
         regenerateCaptcha();
         setLoading(false);
         return;
@@ -252,9 +312,57 @@ function LoginPage() {
             {loading ? 'Logging in...' : 'Log In'}
           </button>
         </form>
+        {expiredTenantNotice ? (
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: 13 }}>
+            <div style={{ fontWeight: 800, marginBottom: 4 }}>Subscription Expired</div>
+            <div>{expiredTenantNotice}</div>
+          </div>
+        ) : null}
         
         <button className="outline" type="button" onClick={() => setResetOpen(true)}>Reset PIN (Admin)</button>
+        {expiredTenantNotice ? (
+          <button className="outline" type="button" onClick={() => { setActivationTenantId(String(tenantId || '')); setActivationAdminName(String(name || '')); setActivationOpen(true); }}>Activate Subscription</button>
+        ) : null}
       </div>
+      {activationOpen && (
+        <Modal
+          title="Activate Subscription"
+          onClose={() => { if (!activationLoading) setActivationOpen(false); }}
+          footer={
+            <>
+              <button className="btn" onClick={() => setActivationOpen(false)} disabled={activationLoading}>Cancel</button>
+              <button className="btn btn-primary" onClick={onActivateSubscription} disabled={activationLoading}>
+                {activationLoading ? 'Activating…' : 'Activate For 30 Days'}
+              </button>
+            </>
+          }
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
+            <div style={{ padding: 12, borderRadius: 12, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+              <div style={{ fontWeight: 800, color: '#1d4ed8', marginBottom: 4 }}>30-Day Renewal</div>
+              <div style={{ color: '#475569', fontSize: 13 }}>
+                Enter the tenant admin credentials and the current activation code sent by superadmin. If everything matches, this tenant will be extended for 30 days.
+              </div>
+            </div>
+            <label>
+              Tenant ID
+              <input className="input" value={activationTenantId} onChange={e => setActivationTenantId(e.target.value)} disabled={activationLoading} />
+            </label>
+            <label>
+              Admin Username
+              <input className="input" value={activationAdminName} onChange={e => setActivationAdminName(e.target.value)} disabled={activationLoading} />
+            </label>
+            <label>
+              Admin PIN
+              <input className="input" type="password" value={activationAdminPin} onChange={e => setActivationAdminPin(e.target.value)} disabled={activationLoading} />
+            </label>
+            <label>
+              Activation Code
+              <input className="input" value={activationCode} onChange={e => setActivationCode(e.target.value.toUpperCase())} disabled={activationLoading} />
+            </label>
+          </div>
+        </Modal>
+      )}
       {resetOpen && (
         <Modal
           title="Reset PIN (Admin)"

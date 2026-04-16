@@ -12,6 +12,9 @@ const EMPTY_FORM = {
   clientAppName: '',
   themeColor: '#16a34a',
   subscriptionExpiresAt: '',
+  subscriptionPermanent: false,
+  activationCode: '',
+  activationCodeExpiresAt: '',
   adminName: '',
   adminPin: '',
   maxUserAccountsOverride: '',
@@ -27,6 +30,7 @@ function TenantsPage() {
   const [savingDefaults, setSavingDefaults] = useState(false);
   const [runningAudit, setRunningAudit] = useState(false);
   const [cleaningAuditKey, setCleaningAuditKey] = useState('');
+  const [refreshingActivation, setRefreshingActivation] = useState(false);
   const [editing, setEditing] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -118,6 +122,7 @@ function TenantsPage() {
         clientAppName: form.clientAppName,
         themeColor: form.themeColor,
         subscriptionExpiresAt: form.subscriptionExpiresAt || null,
+        subscriptionPermanent: !!form.subscriptionPermanent,
         adminName: form.adminName,
         adminPin: form.adminPin,
         maxUserAccountsOverride: form.maxUserAccountsOverride === '' ? null : Number(form.maxUserAccountsOverride),
@@ -152,6 +157,9 @@ function TenantsPage() {
       clientAppName: String(row.clientAppName || ''),
       themeColor: String(row.themeColor || '#16a34a'),
       subscriptionExpiresAt: row.subscriptionExpiresAt ? String(row.subscriptionExpiresAt).slice(0, 10) : '',
+      subscriptionPermanent: !!row.subscriptionPermanent,
+      activationCode: String(row.activationCode || ''),
+      activationCodeExpiresAt: row.activationCodeExpiresAt ? String(row.activationCodeExpiresAt) : '',
       adminName: '',
       adminPin: '',
       maxUserAccountsOverride: row.maxUserAccountsOverride ?? '',
@@ -245,6 +253,25 @@ function TenantsPage() {
       toast.show(String(e?.message || 'Failed to clean audit record'), { type: 'error' });
     } finally {
       setCleaningAuditKey('');
+    }
+  }
+
+  async function refreshActivationCodeForCurrentTenant() {
+    if (!editing || refreshingActivation) return;
+    setRefreshingActivation(true);
+    try {
+      const updated = await tenantsApi.refreshActivationCode(editing);
+      setForm((prev) => ({
+        ...prev,
+        activationCode: String(updated?.activationCode || ''),
+        activationCodeExpiresAt: updated?.activationCodeExpiresAt ? String(updated.activationCodeExpiresAt) : ''
+      }));
+      setRows((prev) => prev.map((row) => String(row.tenantId) === String(editing) ? { ...row, ...updated } : row));
+      toast.show('Activation code refreshed', { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to refresh activation code'), { type: 'error' });
+    } finally {
+      setRefreshingActivation(false);
     }
   }
 
@@ -427,7 +454,11 @@ function TenantsPage() {
               </label>
               <label>
                 Expiry Date
-                <input className="input" type="date" value={form.subscriptionExpiresAt || ''} onChange={(e) => setValue('subscriptionExpiresAt', e.target.value)} />
+                <input className="input" type="date" value={form.subscriptionExpiresAt || ''} onChange={(e) => setValue('subscriptionExpiresAt', e.target.value)} disabled={!!form.subscriptionPermanent} />
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 24 }}>
+                <input type="checkbox" checked={!!form.subscriptionPermanent} onChange={(e) => setValue('subscriptionPermanent', e.target.checked)} />
+                <span>Permanent Subscription</span>
               </label>
               <label>
                 Default Admin Username
@@ -455,9 +486,32 @@ function TenantsPage() {
               </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, color: '#64748b', fontSize: 13 }}>
-              <span>Subscription status: {daysLeftLabel(form.subscriptionExpiresAt)}</span>
+              <span>Subscription status: {form.subscriptionPermanent ? 'Permanent access enabled' : daysLeftLabel(form.subscriptionExpiresAt)}</span>
               <button className="btn" type="button" onClick={applyPlanDefaults}>Reset Features To Plan Default</button>
             </div>
+            {editing && (
+              <div className="card" style={{ padding: 14, border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontWeight: 800 }}>Tenant Activation Code</div>
+                    <div style={{ color: '#64748b', fontSize: 12 }}>Only superadmin can view and refresh this code. Share it with the tenant after payment.</div>
+                  </div>
+                  <button className="btn" type="button" onClick={refreshActivationCodeForCurrentTenant} disabled={refreshingActivation}>
+                    {refreshingActivation ? 'Refreshing…' : 'Refresh Code'}
+                  </button>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <label>
+                    Current Activation Code
+                    <input className="input" value={form.activationCode || ''} readOnly />
+                  </label>
+                  <label>
+                    Code Expires At
+                    <input className="input" value={form.activationCodeExpiresAt ? new Date(form.activationCodeExpiresAt).toLocaleString() : ''} readOnly />
+                  </label>
+                </div>
+              </div>
+            )}
             <div>
               <div style={{ fontWeight: 700, marginBottom: 8 }}>Feature Overrides</div>
               <div style={{ fontSize: 13, color: '#475569', marginBottom: 10 }}>
