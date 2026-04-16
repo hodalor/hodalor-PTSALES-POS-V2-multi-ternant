@@ -10,6 +10,47 @@ import { getApiBase } from '../api/client';
 import { clearTenantState } from '../store/persist';
 import { resetTenantAppState } from '../store';
 
+const COUNTRY_LABELS = {
+  GH: 'Ghana',
+  ZM: 'Zambia',
+  MW: 'Malawi'
+};
+
+function detectCardBrand(input) {
+  const digits = String(input || '').replace(/\D/g, '');
+  if (/^4/.test(digits)) return 'Visa';
+  if (/^(5[1-5]|2[2-7])/.test(digits)) return 'Mastercard';
+  if (/^(506|6500)/.test(digits)) return 'Verve';
+  if (/^3[47]/.test(digits)) return 'Amex';
+  if (/^(6011|65)/.test(digits)) return 'Discover';
+  return digits ? 'Card' : 'Unknown';
+}
+
+function formatCardNumber(input) {
+  const digits = String(input || '').replace(/\D/g, '').slice(0, 19);
+  return digits.replace(/(.{4})/g, '$1 ').trim();
+}
+
+function formatCardExpiry(input) {
+  const digits = String(input || '').replace(/\D/g, '').slice(0, 4);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+}
+
+function maskEmail(value) {
+  const raw = String(value || '').trim();
+  const [left, domain] = raw.split('@');
+  if (!left || !domain) return raw;
+  const safeLeft = left.length <= 2 ? `${left[0] || ''}*` : `${left.slice(0, 2)}${'*'.repeat(Math.max(1, left.length - 2))}`;
+  return `${safeLeft}@${domain}`;
+}
+
+function maskPhone(value) {
+  const raw = String(value || '').replace(/\s+/g, '');
+  if (raw.length <= 4) return raw;
+  return `${raw.slice(0, 3)}${'*'.repeat(Math.max(2, raw.length - 5))}${raw.slice(-2)}`;
+}
+
 function LoginPage() {
   const [name, setName] = useState('');
   const [tenantId, setTenantId] = useState('master');
@@ -25,6 +66,21 @@ function LoginPage() {
   const [activationAdminPin, setActivationAdminPin] = useState('');
   const [activationCode, setActivationCode] = useState('');
   const [activationLoading, setActivationLoading] = useState(false);
+  const [paymentOpen, setPaymentOpen] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentInfo, setPaymentInfo] = useState(null);
+  const [paymentProvider, setPaymentProvider] = useState('paypal');
+  const [paymentMethod, setPaymentMethod] = useState('mobile_money');
+  const [paymentMonths, setPaymentMonths] = useState('1');
+  const [paymentNetwork, setPaymentNetwork] = useState('');
+  const [paymentPhone, setPaymentPhone] = useState('');
+  const [paymentEmail, setPaymentEmail] = useState('');
+  const [paymentAddress, setPaymentAddress] = useState('');
+  const [paymentCardName, setPaymentCardName] = useState('');
+  const [paymentCardNumber, setPaymentCardNumber] = useState('');
+  const [paymentCardExpiry, setPaymentCardExpiry] = useState('');
+  const [paymentCardCvv, setPaymentCardCvv] = useState('');
+  const [paymentSuccess, setPaymentSuccess] = useState(null);
   const [expiredTenantNotice, setExpiredTenantNotice] = useState('');
   const [resetOpen, setResetOpen] = useState(false);
   const [resetAdminName, setResetAdminName] = useState('');
@@ -54,6 +110,35 @@ function LoginPage() {
     setExpiredTenantNotice('');
   }, [tenantId, name, pin]);
 
+  function formatCurrency(amount, info = paymentInfo) {
+    if (amount == null || !info) return '';
+    const numeric = Number(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return info.currencyPosition === 'suffix'
+      ? `${numeric} ${info.currencySymbol || info.currencyCode || ''}`.trim()
+      : `${info.currencySymbol || info.currencyCode || ''}${numeric}`.trim();
+  }
+
+  async function loadRenewalInfo(nextTenantId) {
+    const value = String(nextTenantId || '').trim();
+    if (!value) return null;
+    const info = await authApi.getRenewalInfo(value);
+    setPaymentInfo(info);
+    setPaymentPhone(String(info?.billingPhone || ''));
+    setPaymentEmail(String(info?.billingEmail || ''));
+    setPaymentAddress(String(info?.billingAddress || ''));
+    setPaymentNetwork(String((info?.mobileMoneyNetworks || [])[0] || ''));
+    return info;
+  }
+
+  const cardBrand = detectCardBrand(paymentCardNumber);
+  const paymentTotal = paymentInfo?.subscriptionAmount != null
+    ? Number(paymentInfo.subscriptionAmount) * Number(paymentMonths || 0)
+    : null;
+  const countryLabel = COUNTRY_LABELS[String(paymentInfo?.billingCountry || '')] || String(paymentInfo?.billingCountry || '');
+  const maskedEmail = maskEmail(paymentEmail || paymentInfo?.billingEmail || '');
+  const maskedPhone = maskPhone(paymentPhone || paymentInfo?.billingPhone || '');
+  const isPayPalProvider = paymentProvider === 'paypal';
+
   const regenerateCaptcha = useCallback(() => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let str = '';
@@ -73,6 +158,47 @@ function LoginPage() {
     }, 1000);
     return () => clearInterval(id);
   }, [expiresAt, regenerateCaptcha]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search || '');
+    const storedProvider = localStorage.getItem('ptSales:renewalPaymentProvider') || 'dpo_pay';
+    const storedTxRef = localStorage.getItem('ptSales:renewalPaymentTxRef') || '';
+    const txRef = storedProvider === 'paypal'
+      ? (storedTxRef || params.get('token') || '')
+      : (params.get('CompanyRef') || params.get('companyRef') || storedTxRef);
+    const transactionToken = storedProvider === 'paypal'
+      ? (params.get('token') || '')
+      : (params.get('TransactionToken') || params.get('TransID') || '');
+    if (!txRef || !transactionToken) return;
+    let ignore = false;
+    (async () => {
+      try {
+        const storedTenantId = localStorage.getItem('ptSales:renewalPaymentTenantId') || '';
+        if (!storedTenantId) return;
+        const result = await authApi.verifyRenewalPayment({
+          tenantId: storedTenantId,
+          provider: storedProvider,
+          transactionToken: storedProvider === 'paypal' ? '' : transactionToken,
+          orderId: storedProvider === 'paypal' ? transactionToken : '',
+          txRef: storedProvider === 'paypal' ? storedTxRef : txRef
+        });
+        if (ignore) return;
+        setPaymentSuccess(result);
+        setPaymentOpen(true);
+        setPaymentInfo((prev) => prev ? { ...prev, subscriptionAmount: prev.subscriptionAmount } : prev);
+        setExpiredTenantNotice('');
+        setTenantId(storedTenantId);
+        try { localStorage.removeItem('ptSales:renewalPaymentTenantId'); } catch {}
+        try { localStorage.removeItem('ptSales:renewalPaymentProvider'); } catch {}
+        try { localStorage.removeItem('ptSales:renewalPaymentTxRef'); } catch {}
+        navigate('/login', { replace: true });
+        toast.show('Payment verified. Activation code is ready and email has been sent.', { type: 'success' });
+      } catch (e) {
+        if (!ignore) toast.show(String(e?.message || 'Failed to verify payment'), { type: 'error' });
+      }
+    })();
+    return () => { ignore = true; };
+  }, [location.search, navigate, toast]);
 
   async function doServerLogin(u, p) {
     const resp = await authApi.login({ username: u, pin: p, tenantId });
@@ -183,6 +309,61 @@ function LoginPage() {
       toast.show(String(e?.message || 'Failed to activate subscription'), { type: 'error' });
     } finally {
       setActivationLoading(false);
+    }
+  }
+
+  async function openPaymentModal() {
+    const nextTenantId = String(tenantId || activationTenantId || '').trim();
+    if (!nextTenantId) {
+      toast.show('Enter tenant ID first', { type: 'error' });
+      return;
+    }
+    setPaymentLoading(true);
+    try {
+      const info = await loadRenewalInfo(nextTenantId);
+      setPaymentMonths(String((info?.periods || [1])[0] || 1));
+      setPaymentProvider('paypal');
+      setPaymentOpen(true);
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to load renewal details'), { type: 'error' });
+    } finally {
+      setPaymentLoading(false);
+    }
+  }
+
+  async function onStartPayment() {
+    if (paymentLoading) return;
+    const activeTenantId = String(paymentInfo?.tenantId || tenantId || activationTenantId || '').trim();
+    const months = Number(paymentMonths || 0);
+    if (!activeTenantId || !months) {
+      toast.show('Choose tenant and renewal period', { type: 'error' });
+      return;
+    }
+    if (!isPayPalProvider && paymentMethod === 'mobile_money' && (!paymentPhone.trim() || !paymentNetwork.trim())) {
+      toast.show('Enter phone number and select mobile money network', { type: 'error' });
+      return;
+    }
+    setPaymentLoading(true);
+    try {
+      const result = await authApi.startRenewalPayment({
+        tenantId: activeTenantId,
+        provider: paymentProvider,
+        months,
+        method: paymentMethod,
+        network: paymentMethod === 'mobile_money' ? paymentNetwork : '',
+        phone: paymentPhone.trim(),
+        email: paymentEmail.trim(),
+        address: paymentAddress.trim(),
+        customerName: paymentCardName.trim() || activationAdminName.trim() || name.trim()
+      });
+      try { localStorage.setItem('ptSales:renewalPaymentTenantId', activeTenantId); } catch {}
+      try { localStorage.setItem('ptSales:renewalPaymentProvider', paymentProvider); } catch {}
+      try { localStorage.setItem('ptSales:renewalPaymentTxRef', result.txRef || ''); } catch {}
+      window.location.assign(result.checkoutUrl);
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to start payment'), { type: 'error' });
+    } finally {
+      setPaymentLoading(false);
     }
   }
 
@@ -318,10 +499,21 @@ function LoginPage() {
             <div>{expiredTenantNotice}</div>
           </div>
         ) : null}
+        {paymentSuccess ? (
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: '#ecfdf5', border: '1px solid #86efac', color: '#166534', fontSize: 13 }}>
+            <div style={{ fontWeight: 800, marginBottom: 4 }}>Payment Confirmed</div>
+            <div>Activation Code: <strong>{paymentSuccess.activationCode}</strong></div>
+            <div>Code Expires At: {paymentSuccess.activationCodeExpiresAt ? new Date(paymentSuccess.activationCodeExpiresAt).toLocaleString() : 'Not set'}</div>
+            <div>Renewal Amount: {paymentInfo ? formatCurrency(paymentSuccess.amount) : paymentSuccess.amount}</div>
+          </div>
+        ) : null}
         
         <button className="outline" type="button" onClick={() => setResetOpen(true)}>Reset PIN (Admin)</button>
         {expiredTenantNotice ? (
-          <button className="outline" type="button" onClick={() => { setActivationTenantId(String(tenantId || '')); setActivationAdminName(String(name || '')); setActivationOpen(true); }}>Activate Subscription</button>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
+            <button className="outline" type="button" onClick={() => { setActivationTenantId(String(tenantId || '')); setActivationAdminName(String(name || '')); setActivationOpen(true); }}>Activate Subscription</button>
+            <button className="outline" type="button" onClick={openPaymentModal} disabled={paymentLoading}>Make Payment</button>
+          </div>
         ) : null}
       </div>
       {activationOpen && (
@@ -360,6 +552,206 @@ function LoginPage() {
               Activation Code
               <input className="input" value={activationCode} onChange={e => setActivationCode(e.target.value.toUpperCase())} disabled={activationLoading} />
             </label>
+          </div>
+        </Modal>
+      )}
+      {paymentOpen && (
+        <Modal
+          title="Subscription Payment"
+          onClose={() => { if (!paymentLoading) setPaymentOpen(false); }}
+          footer={
+            <>
+              <button className="btn" onClick={() => setPaymentOpen(false)} disabled={paymentLoading}>Cancel</button>
+              <button className="btn btn-primary" onClick={onStartPayment} disabled={paymentLoading || !paymentInfo?.subscriptionAmount}>
+                {paymentLoading ? 'Preparing…' : (isPayPalProvider ? 'Continue To PayPal Checkout' : 'Continue To DPO Checkout')}
+              </button>
+            </>
+          }
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ padding: 12, borderRadius: 12, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
+              <div style={{ fontWeight: 800, color: '#1d4ed8', marginBottom: 4 }}>Self-Service Renewal</div>
+              <div style={{ color: '#475569', fontSize: 13 }}>
+                Renewal amount follows the tenant currency and plan amount configured by superadmin. Secure payment continues on the payment provider page.
+              </div>
+            </div>
+            {paymentInfo ? (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                  <div style={{ padding: 12, border: '1px solid #e2e8f0', borderRadius: 12 }}>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>Tenant</div>
+                    <div style={{ fontWeight: 800 }}>{paymentInfo.tenantName || paymentInfo.tenantId}</div>
+                    <div style={{ color: '#64748b', fontSize: 12 }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '2px 8px', borderRadius: 999, background: '#eff6ff', color: '#1d4ed8', fontWeight: 700 }}>
+                        {paymentInfo.billingCountry || 'GH'}
+                      </span>
+                      <span style={{ marginLeft: 8 }}>{countryLabel}</span>
+                    </div>
+                  </div>
+                  <div style={{ padding: 12, border: '1px solid #e2e8f0', borderRadius: 12 }}>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>Monthly Amount</div>
+                    <div style={{ fontWeight: 800 }}>{paymentInfo.subscriptionAmount != null ? formatCurrency(paymentInfo.subscriptionAmount, paymentInfo) : 'Not configured'}</div>
+                  </div>
+                  <div style={{ padding: 12, border: '1px solid #e2e8f0', borderRadius: 12 }}>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>Billing Contact</div>
+                    <div style={{ fontWeight: 700 }}>{maskedEmail || 'No email set'}</div>
+                    <div style={{ color: '#64748b', fontSize: 12 }}>{maskedPhone || 'No phone set'}</div>
+                  </div>
+                </div>
+                <div style={{ padding: 12, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Billing Address</div>
+                  <div style={{ color: '#64748b', fontSize: 13 }}>{paymentAddress || paymentInfo.billingAddress || 'No billing address set'}</div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <label>
+                    Renewal Period
+                    <select className="input" value={paymentMonths} onChange={(e) => setPaymentMonths(e.target.value)} disabled={paymentLoading}>
+                      {(paymentInfo.periods || []).map((period) => <option key={period} value={period}>{period} month(s)</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    Total To Pay
+                    <input className="input" readOnly value={paymentTotal != null ? formatCurrency(paymentTotal, paymentInfo) : 'Not configured'} />
+                  </label>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <button
+                    type="button"
+                    className="btn"
+                    style={{ borderColor: paymentProvider === 'paypal' ? '#1d4ed8' : undefined, color: paymentProvider === 'paypal' ? '#1d4ed8' : undefined, background: paymentProvider === 'paypal' ? '#eff6ff' : undefined }}
+                    onClick={() => setPaymentProvider('paypal')}
+                  >
+                    PayPal / Card
+                  </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    style={{ borderColor: paymentProvider === 'dpo_pay' ? '#1d4ed8' : undefined, color: paymentProvider === 'dpo_pay' ? '#1d4ed8' : undefined, background: paymentProvider === 'dpo_pay' ? '#eff6ff' : undefined }}
+                    onClick={() => setPaymentProvider('dpo_pay')}
+                  >
+                    DPO Pay
+                  </button>
+                </div>
+                {isPayPalProvider ? (
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    <div style={{ borderRadius: 16, padding: 16, background: 'linear-gradient(135deg, #003087 0%, #009cde 100%)', color: '#fff' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                        <span style={{ fontWeight: 800, letterSpacing: 0.8 }}>PayPal Checkout</span>
+                        <span style={{ fontWeight: 700 }}>PayPal</span>
+                      </div>
+                      <div style={{ fontSize: 14, opacity: 0.92 }}>
+                        You will continue to secure PayPal checkout to complete payment with PayPal balance or eligible credit/debit card checkout.
+                      </div>
+                      <div style={{ marginTop: 14, fontSize: 18, fontWeight: 800 }}>
+                        {paymentTotal != null ? formatCurrency(paymentTotal, paymentInfo) : 'Not configured'}
+                      </div>
+                    </div>
+                    <div style={{ padding: 12, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b', fontSize: 12 }}>
+                      Use PayPal for PayPal wallet and card checkout. Mobile money remains under DPO Pay because PayPal does not offer the same country-specific MoMo network flow we configured for Ghana, Zambia, and Malawi.
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <button type="button" className="btn" style={{ borderColor: paymentMethod === 'mobile_money' ? '#2563eb' : undefined, color: paymentMethod === 'mobile_money' ? '#2563eb' : undefined, background: paymentMethod === 'mobile_money' ? '#eff6ff' : undefined }} onClick={() => setPaymentMethod('mobile_money')}>Mobile Money</button>
+                  <button type="button" className="btn" style={{ borderColor: paymentMethod === 'card' ? '#2563eb' : undefined, color: paymentMethod === 'card' ? '#2563eb' : undefined, background: paymentMethod === 'card' ? '#eff6ff' : undefined }} onClick={() => setPaymentMethod('card')}>Card</button>
+                </div>
+                {paymentMethod === 'mobile_money' ? (
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    <div style={{ padding: 12, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>Mobile Money Checkout</div>
+                      <div style={{ color: '#64748b', fontSize: 12 }}>
+                        Supported networks for {countryLabel}: {(paymentInfo.mobileMoneyNetworks || []).join(', ')}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {(paymentInfo.mobileMoneyNetworks || []).map((network) => (
+                        <button
+                          key={network}
+                          type="button"
+                          className="btn"
+                          style={{ borderColor: paymentNetwork === network ? '#16a34a' : undefined, color: paymentNetwork === network ? '#16a34a' : undefined, background: paymentNetwork === network ? '#ecfdf5' : undefined }}
+                          onClick={() => setPaymentNetwork(network)}
+                        >
+                          {network}
+                        </button>
+                      ))}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <label>
+                      Mobile Number
+                      <input className="input" value={paymentPhone} onChange={(e) => setPaymentPhone(e.target.value)} disabled={paymentLoading} />
+                    </label>
+                    <label>
+                      Network
+                      <select className="input" value={paymentNetwork} onChange={(e) => setPaymentNetwork(e.target.value)} disabled={paymentLoading}>
+                        {(paymentInfo.mobileMoneyNetworks || []).map((network) => <option key={network} value={network}>{network}</option>)}
+                      </select>
+                    </label>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    <div style={{ borderRadius: 18, padding: 18, background: 'linear-gradient(135deg, #1d4ed8 0%, #312e81 100%)', color: '#fff', minHeight: 180 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 26 }}>
+                        <span style={{ fontWeight: 800, letterSpacing: 1 }}>Secure Card Preview</span>
+                        <span style={{ fontWeight: 700 }}>{cardBrand}</span>
+                      </div>
+                      <div style={{ fontSize: 22, letterSpacing: 3, marginBottom: 22 }}>{formatCardNumber(paymentCardNumber || '#### #### #### ####') || '#### #### #### ####'}</div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                        <div>
+                          <div style={{ fontSize: 11, opacity: 0.8 }}>Card Holder</div>
+                          <div style={{ fontWeight: 700 }}>{paymentCardName || 'YOUR NAME'}</div>
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 11, opacity: 0.8 }}>Expiry</div>
+                          <div style={{ fontWeight: 700 }}>{paymentCardExpiry || 'MM/YY'}</div>
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ padding: 12, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b', fontSize: 12 }}>
+                      Card details here are for a guided UI only. Final secure card entry happens on the provider checkout page.
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <label>
+                      Name On Card
+                      <input className="input" value={paymentCardName} onChange={(e) => setPaymentCardName(e.target.value)} disabled={paymentLoading} />
+                    </label>
+                    <label>
+                      Card Number
+                      <input className="input" value={formatCardNumber(paymentCardNumber)} onChange={(e) => setPaymentCardNumber(formatCardNumber(e.target.value))} placeholder="4111 1111 1111 1111" disabled={paymentLoading} />
+                    </label>
+                    <label>
+                      Expiry
+                      <input className="input" value={paymentCardExpiry} onChange={(e) => setPaymentCardExpiry(formatCardExpiry(e.target.value))} placeholder="MM/YY" disabled={paymentLoading} />
+                    </label>
+                    <label>
+                      Security Code
+                      <input className="input" type="password" value={paymentCardCvv} onChange={(e) => setPaymentCardCvv(e.target.value)} placeholder="CVV" disabled={paymentLoading} />
+                    </label>
+                    </div>
+                  </div>
+                )}
+                  </>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+                  <label>
+                    Receipt Email
+                    <input className="input" type="email" value={paymentEmail} onChange={(e) => setPaymentEmail(e.target.value)} disabled={paymentLoading} />
+                  </label>
+                  <label>
+                    Billing Phone
+                    <input className="input" value={paymentPhone} onChange={(e) => setPaymentPhone(e.target.value)} disabled={paymentLoading} />
+                  </label>
+                  <label>
+                    Billing Address
+                    <input className="input" value={paymentAddress} onChange={(e) => setPaymentAddress(e.target.value)} disabled={paymentLoading} />
+                  </label>
+                </div>
+              </>
+            ) : (
+              <div style={{ color: '#64748b' }}>Loading renewal details…</div>
+            )}
           </div>
         </Modal>
       )}

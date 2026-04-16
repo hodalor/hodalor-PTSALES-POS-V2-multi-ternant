@@ -17,6 +17,11 @@ const EMPTY_FORM = {
   activationCode: '',
   activationCodeExpiresAt: '',
   renewalHistory: [],
+  paymentHistory: [],
+  billingEmail: '',
+  billingPhone: '',
+  billingAddress: '',
+  billingCountry: 'GH',
   adminName: '',
   adminPin: '',
   maxUserAccountsOverride: '',
@@ -126,6 +131,10 @@ function TenantsPage() {
         subscriptionExpiresAt: form.subscriptionExpiresAt || null,
         subscriptionPermanent: !!form.subscriptionPermanent,
         subscriptionAmount: form.subscriptionAmount === '' ? null : Number(form.subscriptionAmount),
+        billingEmail: form.billingEmail,
+        billingPhone: form.billingPhone,
+        billingAddress: form.billingAddress,
+        billingCountry: form.billingCountry,
         adminName: form.adminName,
         adminPin: form.adminPin,
         maxUserAccountsOverride: form.maxUserAccountsOverride === '' ? null : Number(form.maxUserAccountsOverride),
@@ -165,6 +174,11 @@ function TenantsPage() {
       activationCode: String(row.activationCode || ''),
       activationCodeExpiresAt: row.activationCodeExpiresAt ? String(row.activationCodeExpiresAt) : '',
       renewalHistory: Array.isArray(row.renewalHistory) ? row.renewalHistory : [],
+      paymentHistory: Array.isArray(row.paymentHistory) ? row.paymentHistory : [],
+      billingEmail: String(row.billingEmail || ''),
+      billingPhone: String(row.billingPhone || ''),
+      billingAddress: String(row.billingAddress || ''),
+      billingCountry: String(row.billingCountry || 'GH'),
       adminName: '',
       adminPin: '',
       maxUserAccountsOverride: row.maxUserAccountsOverride ?? '',
@@ -449,6 +463,28 @@ function TenantsPage() {
                 Theme Color
                 <input className="input" type="color" value={form.themeColor || '#16a34a'} onChange={(e) => setValue('themeColor', e.target.value)} style={{ height: 44 }} />
               </label>
+              <label>
+                Billing Email
+                <input className="input" type="email" value={form.billingEmail} onChange={(e) => setValue('billingEmail', e.target.value)} />
+              </label>
+              <label>
+                Billing Phone
+                <input className="input" value={form.billingPhone} onChange={(e) => setValue('billingPhone', e.target.value)} />
+              </label>
+              <label>
+                Billing Country
+                <select className="input" value={form.billingCountry} onChange={(e) => setValue('billingCountry', e.target.value)}>
+                  <option value="GH">Ghana</option>
+                  <option value="ZM">Zambia</option>
+                  <option value="MW">Malawi</option>
+                </select>
+              </label>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
+              <label>
+                Billing Address
+                <input className="input" value={form.billingAddress} onChange={(e) => setValue('billingAddress', e.target.value)} />
+              </label>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12 }}>
               <label>
@@ -523,6 +559,34 @@ function TenantsPage() {
                     <input className="input" value={form.activationCodeExpiresAt ? new Date(form.activationCodeExpiresAt).toLocaleString() : ''} readOnly />
                   </label>
                 </div>
+              </div>
+            )}
+            {editing && (
+              <div className="card" style={{ padding: 14, border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a' }}>
+                <div style={{ fontWeight: 800, marginBottom: 8 }}>Payment Records</div>
+                {(form.paymentHistory || []).length === 0 ? (
+                  <div style={{ color: '#64748b', fontSize: 13 }}>No payment records yet. Records will appear here after live payment checkout is configured and used.</div>
+                ) : (
+                  <div style={{ display: 'grid', gap: 8, maxHeight: 240, overflow: 'auto' }}>
+                    {(form.paymentHistory || []).slice().reverse().map((entry, index) => (
+                      <div key={`${entry.transactionRef || index}:${index}`} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: '#f8fafc' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
+                          <span style={{ fontWeight: 700 }}>{entry.provider || 'payment'} • {entry.method || 'method'}</span>
+                          <span style={{ color: '#64748b', fontSize: 12 }}>{entry.createdAt ? new Date(entry.createdAt).toLocaleString() : ''}</span>
+                        </div>
+                        <div style={{ color: '#475569', fontSize: 12 }}>
+                          Status: {entry.status || 'unknown'} • Amount: {entry.amount == null ? 'Not set' : Number(entry.amount).toLocaleString()} {entry.currencyCode || ''}
+                          {' • '}
+                          Months: {entry.months || '-'}
+                          {entry.network ? ` • Network: ${entry.network}` : ''}
+                        </div>
+                        <div style={{ color: '#64748b', fontSize: 12 }}>
+                          Ref: {entry.transactionRef || '-'} • Provider Txn: {entry.providerTransactionId || '-'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
             {editing && (

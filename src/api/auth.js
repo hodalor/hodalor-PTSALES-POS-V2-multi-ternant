@@ -21,3 +21,21 @@ export function activateSubscription(payload) {
     body: JSON.stringify(payload)
   });
 }
+
+export function getRenewalInfo(tenantId) {
+  return fetchJson(`/api/auth/renewal-info?tenantId=${encodeURIComponent(tenantId)}`);
+}
+
+export function startRenewalPayment(payload) {
+  return fetchJson('/api/auth/start-renewal-payment', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
+export function verifyRenewalPayment(payload) {
+  return fetchJson('/api/auth/verify-renewal-payment', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
