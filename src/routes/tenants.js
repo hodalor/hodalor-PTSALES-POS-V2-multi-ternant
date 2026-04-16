@@ -8,7 +8,7 @@ import { getMasterConnection, getTenantConnection, getTenantDbName, normalizeTen
 import { hashPin } from '../utils/pin.js';
 import { ALL_FEATURES, normalizePlan, normalizeFeatureList, featureFlagsFromEnabled } from '../config/tenantAccess.js';
 import { getTenantLimitDefaults, normalizeLimitDefaults, normalizeLimitValue, saveTenantLimitDefaults } from '../utils/tenantLimits.js';
-import { ensureTenantActivationCode, refreshTenantActivationCode, syncTenantSubscriptionSnapshot } from '../utils/tenantActivation.js';
+import { buildRenewalHistoryEntry, ensureTenantActivationCode, normalizeSubscriptionAmount, refreshTenantActivationCode, syncTenantSubscriptionSnapshot } from '../utils/tenantActivation.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -32,7 +32,8 @@ async function ensureTenantBootstrap(tenantId, payload = {}) {
     featureFlags: featureFlagsFromEnabled(payload.features || []),
     subscriptionPlan: payload.subscriptionPlan || current?.data?.subscriptionPlan || 'basic',
     subscriptionExpiresAt: payload.subscriptionPermanent ? null : (payload.subscriptionExpiresAt || current?.data?.subscriptionExpiresAt || null),
-    subscriptionPermanent: !!payload.subscriptionPermanent
+    subscriptionPermanent: !!payload.subscriptionPermanent,
+    subscriptionAmount: normalizeSubscriptionAmount(payload.subscriptionAmount)
   };
   await Settings.findOneAndUpdate(
     { key: 'default' },
@@ -164,7 +165,7 @@ r.patch('/limits', requireSuperAdmin, async (req, res) => {
 });
 
 r.post('/', requireSuperAdmin, async (req, res) => {
-  const { tenantId, name, subscriptionPlan, features, adminName, adminPin, clientAppName, logo, themeColor, subscriptionExpiresAt, subscriptionPermanent, maxUserAccountsOverride, maxActiveUsersOverride } = req.body || {};
+  const { tenantId, name, subscriptionPlan, features, adminName, adminPin, clientAppName, logo, themeColor, subscriptionExpiresAt, subscriptionPermanent, subscriptionAmount, maxUserAccountsOverride, maxActiveUsersOverride } = req.body || {};
   const tid = normalizeTenantId(tenantId);
   if (!tenantId || tid.toLowerCase() === 'master') return res.status(400).json({ error: 'Invalid tenantId' });
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'Tenant name is required' });
@@ -187,6 +188,17 @@ r.post('/', requireSuperAdmin, async (req, res) => {
     themeColor: String(themeColor || ''),
     subscriptionExpiresAt: subscriptionPermanent ? null : (subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null),
     subscriptionPermanent: !!subscriptionPermanent,
+    subscriptionAmount: normalizeSubscriptionAmount(subscriptionAmount),
+    renewalHistory: [buildRenewalHistoryEntry({
+      source: 'tenant_created',
+      amount: subscriptionAmount,
+      previousExpiry: null,
+      newExpiry: subscriptionPermanent ? null : (subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null),
+      permanentBefore: false,
+      permanentAfter: !!subscriptionPermanent,
+      note: 'Initial tenant subscription setup',
+      actorName: String(req.user?.name || '')
+    })],
     maxUserAccountsOverride: normalizeLimitValue(maxUserAccountsOverride),
     maxActiveUsersOverride: normalizeLimitValue(maxActiveUsersOverride)
   });
@@ -201,7 +213,8 @@ r.post('/', requireSuperAdmin, async (req, res) => {
     logo: String(logo || ''),
     themeColor: String(themeColor || ''),
     subscriptionExpiresAt: subscriptionPermanent ? null : (subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null),
-    subscriptionPermanent: !!subscriptionPermanent
+    subscriptionPermanent: !!subscriptionPermanent,
+    subscriptionAmount: normalizeSubscriptionAmount(subscriptionAmount)
   });
   res.json(withCode);
 });
@@ -224,6 +237,23 @@ r.patch('/:tenantId', requireSuperAdmin, async (req, res) => {
     : explicitExpiryProvided
       ? (patch.subscriptionExpiresAt ? new Date(patch.subscriptionExpiresAt) : new Date())
       : (before.subscriptionPermanent ? new Date() : before.subscriptionExpiresAt);
+  const nextAmount = Object.prototype.hasOwnProperty.call(patch, 'subscriptionAmount')
+    ? normalizeSubscriptionAmount(patch.subscriptionAmount)
+    : normalizeSubscriptionAmount(before.subscriptionAmount);
+  const shouldLogRenewalChange =
+    Object.prototype.hasOwnProperty.call(patch, 'subscriptionExpiresAt') ||
+    Object.prototype.hasOwnProperty.call(patch, 'subscriptionPermanent') ||
+    Object.prototype.hasOwnProperty.call(patch, 'subscriptionAmount');
+  const renewalHistoryEntry = shouldLogRenewalChange ? buildRenewalHistoryEntry({
+    source: 'superadmin_update',
+    amount: nextAmount,
+    previousExpiry: before.subscriptionExpiresAt || null,
+    newExpiry: nextExpiry || null,
+    permanentBefore: !!before.subscriptionPermanent,
+    permanentAfter: !!nextPermanent,
+    note: 'Superadmin updated subscription settings',
+    actorName: String(req.user?.name || '')
+  }) : null;
   const updated = await TenantModel.findOneAndUpdate(
     { tenantId: tid },
     {
@@ -236,6 +266,7 @@ r.patch('/:tenantId', requireSuperAdmin, async (req, res) => {
         logo: patch.logo != null ? String(patch.logo || '') : before.logo,
         themeColor: patch.themeColor != null ? String(patch.themeColor || '') : before.themeColor,
         subscriptionPermanent: nextPermanent,
+        subscriptionAmount: nextAmount,
         maxUserAccountsOverride: Object.prototype.hasOwnProperty.call(patch, 'maxUserAccountsOverride')
           ? normalizeLimitValue(patch.maxUserAccountsOverride)
           : before.maxUserAccountsOverride,
@@ -243,7 +274,8 @@ r.patch('/:tenantId', requireSuperAdmin, async (req, res) => {
           ? normalizeLimitValue(patch.maxActiveUsersOverride)
           : before.maxActiveUsersOverride,
         subscriptionExpiresAt: nextExpiry
-      }
+      },
+      ...(renewalHistoryEntry ? { $push: { renewalHistory: renewalHistoryEntry } } : {})
     },
     { new: true }
   );
@@ -255,7 +287,8 @@ r.patch('/:tenantId', requireSuperAdmin, async (req, res) => {
     logo: updated.logo,
     themeColor: updated.themeColor,
     subscriptionExpiresAt: updated.subscriptionExpiresAt,
-    subscriptionPermanent: updated.subscriptionPermanent
+    subscriptionPermanent: updated.subscriptionPermanent,
+    subscriptionAmount: updated.subscriptionAmount
   });
   res.json(updated);
 });

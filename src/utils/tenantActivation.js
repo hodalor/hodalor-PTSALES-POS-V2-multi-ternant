@@ -26,6 +26,32 @@ export function computeExtendedSubscriptionDate(currentValue, now = Date.now()) 
   return new Date(start + (ACTIVATION_EXTENSION_DAYS * 24 * 3600 * 1000));
 }
 
+export function normalizeSubscriptionAmount(value) {
+  if (value === '' || value == null) return null;
+  const num = Number(value);
+  return Number.isFinite(num) ? num : null;
+}
+
+export function buildRenewalHistoryEntry(payload = {}) {
+  const beforeTs = payload.previousExpiry ? new Date(payload.previousExpiry).getTime() : 0;
+  const afterTs = payload.newExpiry ? new Date(payload.newExpiry).getTime() : 0;
+  const daysAdded = beforeTs && afterTs
+    ? Math.round((afterTs - beforeTs) / (24 * 3600 * 1000))
+    : (afterTs ? Math.round((afterTs - Date.now()) / (24 * 3600 * 1000)) : null);
+  return {
+    source: String(payload.source || ''),
+    amount: normalizeSubscriptionAmount(payload.amount),
+    daysAdded: payload.daysAdded != null ? Number(payload.daysAdded) : daysAdded,
+    previousExpiry: payload.previousExpiry || null,
+    newExpiry: payload.newExpiry || null,
+    permanentBefore: !!payload.permanentBefore,
+    permanentAfter: !!payload.permanentAfter,
+    note: String(payload.note || ''),
+    actorName: String(payload.actorName || ''),
+    createdAt: payload.createdAt || new Date()
+  };
+}
+
 export async function generateUniqueTenantActivationCode(masterConn) {
   const TenantModel = TenantModelFor(masterConn);
   for (let attempt = 0; attempt < 20; attempt += 1) {
@@ -68,7 +94,8 @@ export async function syncTenantSubscriptionSnapshot(conn, payload = {}) {
     ...(current?.data || {}),
     subscriptionPlan: payload.subscriptionPlan || current?.data?.subscriptionPlan || 'basic',
     subscriptionExpiresAt: payload.subscriptionExpiresAt || null,
-    subscriptionPermanent: !!payload.subscriptionPermanent
+    subscriptionPermanent: !!payload.subscriptionPermanent,
+    subscriptionAmount: normalizeSubscriptionAmount(payload.subscriptionAmount)
   };
   await Settings.findOneAndUpdate(
     { key: 'default' },
@@ -77,8 +104,19 @@ export async function syncTenantSubscriptionSnapshot(conn, payload = {}) {
   );
 }
 
-export async function activateTenantSubscription(masterConn, conn, tenantDoc) {
+export async function activateTenantSubscription(masterConn, conn, tenantDoc, payload = {}) {
   const nextExpiry = computeExtendedSubscriptionDate(tenantDoc?.subscriptionExpiresAt);
+  const historyEntry = buildRenewalHistoryEntry({
+    source: 'activation',
+    amount: tenantDoc?.subscriptionAmount,
+    daysAdded: ACTIVATION_EXTENSION_DAYS,
+    previousExpiry: tenantDoc?.subscriptionExpiresAt || null,
+    newExpiry: nextExpiry,
+    permanentBefore: !!tenantDoc?.subscriptionPermanent,
+    permanentAfter: false,
+    note: 'Tenant self-service activation',
+    actorName: payload.actorName || ''
+  });
   const updated = await TenantModelFor(masterConn).findOneAndUpdate(
     { tenantId: String(tenantDoc?.tenantId || '') },
     {
@@ -86,14 +124,16 @@ export async function activateTenantSubscription(masterConn, conn, tenantDoc) {
         subscriptionExpiresAt: nextExpiry,
         subscriptionPermanent: false,
         activationLastUsedAt: new Date()
-      }
+      },
+      $push: { renewalHistory: historyEntry }
     },
     { new: true }
   );
   await syncTenantSubscriptionSnapshot(conn, {
     subscriptionPlan: updated?.subscriptionPlan || tenantDoc?.subscriptionPlan || 'basic',
     subscriptionExpiresAt: updated?.subscriptionExpiresAt || nextExpiry,
-    subscriptionPermanent: false
+    subscriptionPermanent: false,
+    subscriptionAmount: updated?.subscriptionAmount ?? tenantDoc?.subscriptionAmount ?? null
   });
   await refreshTenantActivationCode(masterConn, tenantDoc?.tenantId);
   return updated;
