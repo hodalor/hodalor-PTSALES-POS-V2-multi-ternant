@@ -19,6 +19,20 @@ const refundsSlice = createSlice({
       const offline = state.requests.filter(r => r && r.offline && !serverIds.has(String(r.id)) && (!r.clientId || !serverClientIds.has(String(r.clientId))));
       state.requests = server.concat(offline);
     },
+    mergeRequests(state, action) {
+      const list = Array.isArray(action.payload) ? action.payload : [];
+      list.forEach((row) => {
+        const id = String(row?.id || row?._id || '');
+        const clientId = String(row?.clientId || '');
+        const index = state.requests.findIndex((item) =>
+          (id && String(item?.id || item?._id || '') === id) ||
+          (clientId && String(item?.clientId || '') === clientId)
+        );
+        const next = { ...row, id: id || String(row?.clientId || nanoid()) };
+        if (index >= 0) state.requests[index] = { ...state.requests[index], ...next, offline: false };
+        else state.requests.push(next);
+      });
+    },
     createRefundRequest: {
       reducer(state, action) {
         state.requests.push(action.payload);
@@ -70,5 +84,5 @@ const refundsSlice = createSlice({
   }
 });
 
-export const { setRequests, createRefundRequest, approveRefund, rejectRefund } = refundsSlice.actions;
+export const { setRequests, mergeRequests, createRefundRequest, approveRefund, rejectRefund } = refundsSlice.actions;
 export default refundsSlice.reducer;

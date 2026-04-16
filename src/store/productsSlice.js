@@ -27,39 +27,71 @@ const initialState = {
   categories: []
 };
 
+function normalizeVariant(v, parent, idx) {
+  return {
+    id: v.id || v.label || String(idx),
+    label: v.label,
+    sku: v.sku || '',
+    price: v.price,
+    retailPrice: v.retailPrice != null ? Number(v.retailPrice) : (v.price != null ? Number(v.price) : Number(parent.retailPrice != null ? parent.retailPrice : parent.price || 0)),
+    wholesalePrice: v.wholesalePrice != null ? Number(v.wholesalePrice) : (v.retailPrice != null ? Number(v.retailPrice) : Number(parent.wholesalePrice != null ? parent.wholesalePrice : parent.price || 0)),
+    agentPrice: v.agentPrice != null ? Number(v.agentPrice) : (v.wholesalePrice != null ? Number(v.wholesalePrice) : Number(parent.agentPrice != null ? parent.agentPrice : parent.price || 0)),
+    stockByBranch: v.stockByBranch || {},
+    wholesaleStockByBranch: v.wholesaleStockByBranch || {},
+    warehouseStockByBranch: v.warehouseStockByBranch || {}
+  };
+}
+
+function normalizeProduct(p) {
+  const rawId = p.id || p._id || null;
+  const id = rawId != null ? String(rawId) : null;
+  const variants = Array.isArray(p.variants) ? p.variants.map((v, idx) => normalizeVariant(v, p, idx)) : [];
+  return {
+    ...p,
+    id,
+    trackType: p.trackType || 'quantity',
+    retailPrice: p.retailPrice != null ? Number(p.retailPrice) : Number(p.price || 0),
+    wholesalePrice: p.wholesalePrice != null ? Number(p.wholesalePrice) : Number(p.retailPrice != null ? p.retailPrice : p.price || 0),
+    agentPrice: p.agentPrice != null ? Number(p.agentPrice) : Number(p.wholesalePrice != null ? p.wholesalePrice : (p.retailPrice != null ? p.retailPrice : p.price || 0)),
+    stockByBranch: p.stockByBranch || {},
+    wholesaleStockByBranch: p.wholesaleStockByBranch || {},
+    warehouseStockByBranch: p.warehouseStockByBranch || {},
+    variants
+  };
+}
+
+function withPreservedLocalStock(serverProduct, localProduct) {
+  const next = {
+    ...serverProduct,
+    stockByBranch: localProduct?.stockByBranch || serverProduct.stockByBranch || {},
+    wholesaleStockByBranch: localProduct?.wholesaleStockByBranch || serverProduct.wholesaleStockByBranch || {},
+    warehouseStockByBranch: localProduct?.warehouseStockByBranch || serverProduct.warehouseStockByBranch || {},
+    syncPending: true
+  };
+  if (Array.isArray(next.variants) && Array.isArray(localProduct?.variants)) {
+    next.variants = next.variants.map((variant) => {
+      const localVariant = localProduct.variants.find((item) => String(item.id) === String(variant.id));
+      if (!localVariant) return variant;
+      return {
+        ...variant,
+        stockByBranch: localVariant.stockByBranch || variant.stockByBranch || {},
+        wholesaleStockByBranch: localVariant.wholesaleStockByBranch || variant.wholesaleStockByBranch || {},
+        warehouseStockByBranch: localVariant.warehouseStockByBranch || variant.warehouseStockByBranch || {}
+      };
+    });
+  }
+  return next;
+}
+
 const productsSlice = createSlice({
   name: 'products',
   initialState,
   reducers: {
     setProducts(state, action) {
       const list = Array.isArray(action.payload) ? action.payload : [];
-      const mapped = list.map(p => {
-        const rawId = p.id || p._id || null;
-        const id = rawId != null ? String(rawId) : null;
-        const variants = Array.isArray(p.variants) ? p.variants.map((v, idx) => ({
-          id: v.id || v.label || String(idx),
-          label: v.label,
-          sku: v.sku || '',
-          price: v.price,
-          retailPrice: v.retailPrice != null ? Number(v.retailPrice) : (v.price != null ? Number(v.price) : Number(p.retailPrice != null ? p.retailPrice : p.price || 0)),
-          wholesalePrice: v.wholesalePrice != null ? Number(v.wholesalePrice) : (v.retailPrice != null ? Number(v.retailPrice) : Number(p.wholesalePrice != null ? p.wholesalePrice : p.price || 0)),
-          agentPrice: v.agentPrice != null ? Number(v.agentPrice) : (v.wholesalePrice != null ? Number(v.wholesalePrice) : Number(p.agentPrice != null ? p.agentPrice : p.price || 0)),
-          stockByBranch: v.stockByBranch || {},
-          wholesaleStockByBranch: v.wholesaleStockByBranch || {},
-          warehouseStockByBranch: v.warehouseStockByBranch || {}
-        })) : [];
-        return {
-          ...p,
-          id,
-          trackType: p.trackType || 'quantity',
-          retailPrice: p.retailPrice != null ? Number(p.retailPrice) : Number(p.price || 0),
-          wholesalePrice: p.wholesalePrice != null ? Number(p.wholesalePrice) : Number(p.retailPrice != null ? p.retailPrice : p.price || 0),
-          agentPrice: p.agentPrice != null ? Number(p.agentPrice) : Number(p.wholesalePrice != null ? p.wholesalePrice : (p.retailPrice != null ? p.retailPrice : p.price || 0)),
-          stockByBranch: p.stockByBranch || {},
-          wholesaleStockByBranch: p.wholesaleStockByBranch || {},
-          warehouseStockByBranch: p.warehouseStockByBranch || {},
-          variants
-        };
+      const mapped = list.map(normalizeProduct).map((serverProduct) => {
+        const local = state.products.find((item) => item.id === serverProduct.id);
+        return local?.syncPending ? withPreservedLocalStock(serverProduct, local) : serverProduct;
       });
       const seen = new Set(mapped.map(p => p.id).filter(Boolean));
       const localPending = state.products.filter(p => p && (p.offline || p.syncPending) && !seen.has(p.id));
@@ -69,38 +101,26 @@ const productsSlice = createSlice({
     },
     mergeProducts(state, action) {
       const list = Array.isArray(action.payload) ? action.payload : [];
-      const mapped = list.map(p => {
-        const rawId = p.id || p._id || null;
-        const id = rawId != null ? String(rawId) : null;
-        const variants = Array.isArray(p.variants) ? p.variants.map((v, idx) => ({
-          id: v.id || v.label || String(idx),
-          label: v.label,
-          sku: v.sku || '',
-          price: v.price,
-          retailPrice: v.retailPrice != null ? Number(v.retailPrice) : (v.price != null ? Number(v.price) : Number(p.retailPrice != null ? p.retailPrice : p.price || 0)),
-          wholesalePrice: v.wholesalePrice != null ? Number(v.wholesalePrice) : (v.retailPrice != null ? Number(v.retailPrice) : Number(p.wholesalePrice != null ? p.wholesalePrice : p.price || 0)),
-          agentPrice: v.agentPrice != null ? Number(v.agentPrice) : (v.wholesalePrice != null ? Number(v.wholesalePrice) : Number(p.agentPrice != null ? p.agentPrice : p.price || 0)),
-          stockByBranch: v.stockByBranch || {},
-          wholesaleStockByBranch: v.wholesaleStockByBranch || {},
-          warehouseStockByBranch: v.warehouseStockByBranch || {}
-        })) : [];
-        return {
-          ...p,
-          id,
-          trackType: p.trackType || 'quantity',
-          retailPrice: p.retailPrice != null ? Number(p.retailPrice) : Number(p.price || 0),
-          wholesalePrice: p.wholesalePrice != null ? Number(p.wholesalePrice) : Number(p.retailPrice != null ? p.retailPrice : p.price || 0),
-          agentPrice: p.agentPrice != null ? Number(p.agentPrice) : Number(p.wholesalePrice != null ? p.wholesalePrice : (p.retailPrice != null ? p.retailPrice : p.price || 0)),
-          stockByBranch: p.stockByBranch || {},
-          wholesaleStockByBranch: p.wholesaleStockByBranch || {},
-          warehouseStockByBranch: p.warehouseStockByBranch || {},
-          variants
-        };
+      const mapped = list.map(normalizeProduct).map((serverProduct) => {
+        const local = state.products.find((item) => item.id === serverProduct.id);
+        return local?.syncPending ? withPreservedLocalStock(serverProduct, local) : serverProduct;
       });
       mapped.forEach(next => {
         const index = state.products.findIndex(p => p.id === next.id);
         if (index >= 0) state.products[index] = { ...state.products[index], ...next };
         else state.products.push(next);
+      });
+      const cats = Array.from(new Set(state.products.map(p => p.category).filter(Boolean)));
+      state.categories = cats.length > 0 ? cats : state.categories;
+    },
+    replaceProducts(state, action) {
+      const list = Array.isArray(action.payload) ? action.payload : [];
+      const mapped = list.map(normalizeProduct);
+      mapped.forEach((next) => {
+        const index = state.products.findIndex((p) => p.id === next.id);
+        const committed = { ...next, syncPending: false, offline: false };
+        if (index >= 0) state.products[index] = { ...state.products[index], ...committed };
+        else state.products.push(committed);
       });
       const cats = Array.from(new Set(state.products.map(p => p.category).filter(Boolean)));
       state.categories = cats.length > 0 ? cats : state.categories;
@@ -146,9 +166,10 @@ const productsSlice = createSlice({
       state.products = state.products.filter(p => p.id !== action.payload);
     },
     setStock(state, action) {
-      const { productId, branchId, quantity, variantId, inventoryType = 'retail' } = action.payload;
+      const { productId, branchId, quantity, variantId, inventoryType = 'retail', syncPending = false } = action.payload;
       const p = state.products.find(x => x.id === productId);
       if (!p) return;
+      p.syncPending = !!syncPending;
       const stockField = inventoryType === 'wholesale' ? 'wholesaleStockByBranch' : inventoryType === 'warehouse' ? 'warehouseStockByBranch' : 'stockByBranch';
       if (variantId && Array.isArray(p.variants)) {
         const v = p.variants.find(vv => vv.id === variantId);
@@ -161,9 +182,10 @@ const productsSlice = createSlice({
       p[stockField][branchId] = quantity;
     },
     adjustStock(state, action) {
-      const { productId, branchId, delta, variantId, inventoryType = 'retail' } = action.payload;
+      const { productId, branchId, delta, variantId, inventoryType = 'retail', syncPending = true } = action.payload;
       const p = state.products.find(x => x.id === productId);
       if (!p) return;
+      p.syncPending = !!syncPending;
       const stockField = inventoryType === 'wholesale' ? 'wholesaleStockByBranch' : inventoryType === 'warehouse' ? 'warehouseStockByBranch' : 'stockByBranch';
       if (variantId && Array.isArray(p.variants)) {
         const v = p.variants.find(vv => vv.id === variantId);
@@ -183,5 +205,5 @@ const productsSlice = createSlice({
   }
 });
 
-export const { setProducts, mergeProducts, addProduct, updateProduct, removeProduct, setStock, adjustStock, addCategory } = productsSlice.actions;
+export const { setProducts, mergeProducts, replaceProducts, addProduct, updateProduct, removeProduct, setStock, adjustStock, addCategory } = productsSlice.actions;
 export default productsSlice.reducer;

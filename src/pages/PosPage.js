@@ -21,6 +21,7 @@ import Modal from '../components/Modal';
 import BarcodeScannerModal from '../components/BarcodeScannerModal';
 import { getAllowedPriceTiers, getDisplayPrice, getPreferredPriceTier, getPriceTierLabel } from '../utils/priceVisibility';
 import InlineSpinner from '../components/InlineSpinner';
+import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 
 function PosPage({ mode = 'retail' }) {
   const cart = useSelector(state => state.cart);
@@ -630,6 +631,7 @@ function PosPage({ mode = 'retail' }) {
     const receiptHtml = buildBrandedReceiptHtml({ settings, sale: saleForUi });
     const skuToRef = new Map();
     sellables.forEach(p => skuToRef.set(p.sku, { productId: p.productId || p.id, variantId: p.variantId || null }));
+    const affectedProductIds = Array.from(new Set(cart.items.map(i => skuToRef.get(i.sku)?.productId).filter(Boolean)));
     cart.items.forEach(i => {
       const ref = skuToRef.get(i.sku);
       if (ref) {
@@ -737,6 +739,7 @@ function PosPage({ mode = 'retail' }) {
           // no-op: printed already; server holds the official refs
         }
         productUnitsApi.markSoldProductUnits(cart.items.map(item => item.unitId).filter(Boolean));
+        void refreshAffectedProducts(dispatch, affectedProductIds);
         toast.show('Sale recorded', { type: 'success' });
       } catch (e) {
         try {
@@ -748,7 +751,7 @@ function PosPage({ mode = 'retail' }) {
           cart.items.forEach(i => {
             const ref = skuToRef.get(i.sku);
             if (ref) {
-              dispatch(adjustStock({ productId: ref.productId, variantId: ref.variantId, branchId: activeBranchId, inventoryType: isWholesale ? 'wholesale' : 'retail', delta: i.quantity }));
+              dispatch(adjustStock({ productId: ref.productId, variantId: ref.variantId, branchId: activeBranchId, inventoryType: isWholesale ? 'wholesale' : 'retail', delta: i.quantity, syncPending: false }));
             }
           });
           toast.show(String(e?.message || 'Failed to record sale'), { type: 'error' });

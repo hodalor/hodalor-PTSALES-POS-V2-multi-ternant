@@ -1,6 +1,6 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { useMemo, useState } from 'react';
-import { approveRefund, rejectRefund } from '../store/refundsSlice';
+import { approveRefund, rejectRefund, mergeRequests } from '../store/refundsSlice';
 import { addAudit } from '../store/auditSlice';
 import { recordSale } from '../store/salesSlice';
 import { adjustStock } from '../store/productsSlice';
@@ -11,6 +11,7 @@ import { exportCsv, exportTablePdf } from '../utils/exporters';
 import * as refundsApi from '../api/refunds';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
+import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 
 function RefundApprovalsPage() {
   const dispatch = useDispatch();
@@ -120,8 +121,9 @@ function RefundApprovalsPage() {
       }
     } else {
       try {
-        await refundsApi.reject(payload);
+        const saved = await refundsApi.reject(payload);
         dispatch(rejectRefund(payload));
+        if (saved) dispatch(mergeRequests([saved]));
       } catch (e) {
         toast.show('Failed to sync to server', { type: 'error' });
         return;
@@ -187,8 +189,9 @@ function RefundApprovalsPage() {
       }
     } else {
       try {
-        await refundsApi.approve(payload);
+        const saved = await refundsApi.approve(payload);
         dispatch(approveRefund(payload));
+        if (saved?.request) dispatch(mergeRequests([saved.request]));
       } catch {
         toast.show('Failed to sync to server', { type: 'error' });
         return;
@@ -233,6 +236,7 @@ function RefundApprovalsPage() {
             dispatch(adjustStock({ productId: ref.productId, variantId: ref.variantId, branchId: saleRef.branchId, delta: x.qty }));
           }
         });
+        void refreshAffectedProducts(dispatch, itemsToRestock.map(x => x.productId).filter(Boolean));
         const totalUnits = itemsToRestock.reduce((s, x) => s + (Number(x.qty) || 0), 0);
         dispatch(addAudit({
           actor: auth.user?.name || 'unknown',

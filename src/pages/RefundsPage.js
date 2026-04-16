@@ -1,6 +1,6 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { useEffect, useMemo, useState } from 'react';
-import { createRefundRequest } from '../store/refundsSlice';
+import { createRefundRequest, mergeRequests } from '../store/refundsSlice';
 import { addAudit } from '../store/auditSlice';
 import { formatCurrency } from '../utils/currency';
 import { useToast } from '../components/ToastProvider';
@@ -160,9 +160,11 @@ function RefundsPage() {
       }
       toast.show('Saved offline. Will backup when online.', { type: 'success' });
     } else {
-      dispatch(createRefundRequest(payload));
+      const clientId = crypto.randomUUID();
+      dispatch(createRefundRequest({ ...payload, clientId }));
       try {
-        await refundsApi.createRequest({ ...payload, clientId: crypto.randomUUID() });
+        const saved = await refundsApi.createRequest({ ...payload, clientId });
+        if (saved) dispatch(mergeRequests([saved]));
       } catch (e) {
         toast.show('Failed to sync to server', { type: 'error' });
       }
