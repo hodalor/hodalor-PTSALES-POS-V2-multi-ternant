@@ -75,8 +75,8 @@ export const PLAN_FEATURES = {
 const SECTION_FALLBACKS = {
   'sections.primary': ['modules.dashboard', 'modules.sales', 'modules.invoices', 'modules.products', 'modules.inventory', 'modules.labels', 'modules.reports', 'modules.backup'],
   'sections.retail': ['modules.pos', 'modules.purchases', 'modules.transfers', 'modules.adjustments', 'modules.refunds'],
-  'sections.distribution': ['modules.wholesalePos', 'grants.view_wholesale_invoices'],
-  'sections.warehouse': ['grants.view_warehouse_invoices', 'grants.view_warehouse_approvals'],
+  'sections.distribution': ['pages.distribution.goods', 'pages.distribution.pos', 'pages.distribution.invoices', 'pages.distribution.purchase', 'pages.distribution.transfer', 'pages.distribution.adjustment', 'pages.distribution.refund', 'pages.distribution.approvals'],
+  'sections.warehouse': ['pages.warehouse.goods', 'pages.warehouse.invoices', 'pages.warehouse.purchase', 'pages.warehouse.transfer', 'pages.warehouse.adjustment', 'pages.warehouse.approvals'],
   'sections.credit': ['modules.creditControl', 'grants.view_credit_control', 'grants.view_credit_repayment_approvals'],
   'sections.expense': ['modules.expenses', 'modules.expenseApprovals'],
   'sections.partners': ['modules.suppliers', 'modules.customers'],
@@ -90,21 +90,51 @@ const PAGE_FALLBACKS = {
   'pages.retail.transfers': ['sections.retail', 'modules.transfers'],
   'pages.retail.adjustments': ['sections.retail', 'modules.adjustments'],
   'pages.retail.refunds': ['sections.retail', 'modules.refunds'],
-  'pages.distribution.goods': ['sections.distribution', 'modules.wholesalePos'],
-  'pages.distribution.pos': ['sections.distribution', 'modules.wholesalePos'],
-  'pages.distribution.invoices': ['sections.distribution', 'modules.invoices'],
-  'pages.distribution.purchase': ['sections.distribution', 'modules.purchases'],
-  'pages.distribution.transfer': ['sections.distribution', 'modules.transfers'],
-  'pages.distribution.adjustment': ['sections.distribution', 'modules.adjustments'],
-  'pages.distribution.refund': ['sections.distribution', 'modules.refunds'],
+  'pages.distribution.invoices': ['sections.distribution', 'grants.view_wholesale_invoices'],
   'pages.distribution.approvals': ['sections.distribution', 'grants.approve_wholesale_manager'],
-  'pages.warehouse.goods': ['sections.warehouse', 'modules.wholesalePos'],
   'pages.warehouse.invoices': ['sections.warehouse', 'grants.view_warehouse_invoices'],
-  'pages.warehouse.purchase': ['sections.warehouse', 'modules.purchases'],
-  'pages.warehouse.transfer': ['sections.warehouse', 'modules.transfers'],
-  'pages.warehouse.adjustment': ['sections.warehouse', 'modules.adjustments'],
   'pages.warehouse.approvals': ['sections.warehouse', 'grants.view_warehouse_approvals']
 };
+
+const FEATURE_DEPENDENCIES = {
+  'pages.retail.pos': ['modules.pos', 'grants.view_pos'],
+  'pages.retail.purchases': ['modules.purchases', 'grants.view_purchases', 'grants.add_purchases', 'grants.edit_purchases', 'grants.approve_purchases'],
+  'pages.retail.transfers': ['modules.transfers', 'grants.view_transfers', 'grants.add_transfers', 'grants.edit_transfers', 'grants.approve_transfers'],
+  'pages.retail.adjustments': ['modules.adjustments', 'grants.view_adjustments', 'grants.add_adjustments', 'grants.edit_adjustments', 'grants.approve_adjustments'],
+  'pages.retail.refunds': ['modules.refunds', 'grants.view_refunds', 'grants.add_refunds', 'grants.approve_refunds'],
+  'pages.distribution.goods': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config'],
+  'pages.distribution.pos': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config'],
+  'pages.distribution.invoices': ['modules.invoices', 'grants.view_wholesale_invoices'],
+  'pages.distribution.purchase': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config', 'grants.add_purchases'],
+  'pages.distribution.transfer': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config', 'grants.add_transfers'],
+  'pages.distribution.adjustment': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config', 'grants.add_adjustments'],
+  'pages.distribution.refund': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config', 'grants.add_refunds'],
+  'pages.distribution.approvals': ['modules.wholesalePos', 'modules.products', 'admin.config', 'modules.approvalsCenter', 'grants.view_products', 'grants.view_config', 'grants.approve_wholesale_director', 'grants.approve_wholesale_manager'],
+  'pages.warehouse.goods': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config'],
+  'pages.warehouse.invoices': ['modules.invoices', 'grants.view_warehouse_invoices'],
+  'pages.warehouse.purchase': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config', 'grants.add_purchases'],
+  'pages.warehouse.transfer': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config', 'grants.add_transfers'],
+  'pages.warehouse.adjustment': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_products', 'grants.view_config', 'grants.add_adjustments'],
+  'pages.warehouse.approvals': ['modules.wholesalePos', 'modules.products', 'admin.config', 'modules.approvalsCenter', 'grants.view_products', 'grants.view_config', 'grants.view_warehouse_approvals', 'grants.approve_wholesale_director', 'grants.approve_wholesale_manager']
+};
+
+function expandFeatureDependencies(inputKeys = []) {
+  const expanded = new Set((inputKeys || []).map((key) => String(key || '').trim()).filter(Boolean));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    Array.from(expanded).forEach((key) => {
+      const deps = FEATURE_DEPENDENCIES[key] || [];
+      deps.forEach((dep) => {
+        if (ALL_FEATURES.includes(dep) && !expanded.has(dep)) {
+          expanded.add(dep);
+          changed = true;
+        }
+      });
+    });
+  }
+  return expanded;
+}
 
 export function normalizePlan(plan) {
   const value = String(plan || 'basic').trim().toLowerCase();
@@ -113,7 +143,7 @@ export function normalizePlan(plan) {
 
 export function normalizeFeatureList(plan, features) {
   if (Array.isArray(features)) {
-    const explicit = new Set(features.map((key) => String(key || '').trim()).filter((key) => ALL_FEATURES.includes(key)));
+    const explicit = expandFeatureDependencies(features);
     return ALL_FEATURES.filter((key) => explicit.has(key));
   }
   const base = new Set(PLAN_FEATURES[normalizePlan(plan)] || PLAN_FEATURES.basic);
@@ -126,7 +156,7 @@ export function normalizeFeatureList(plan, features) {
 }
 
 export function featureFlagsFromEnabled(enabledList) {
-  const enabled = new Set((enabledList || []).map((x) => String(x)));
+  const enabled = expandFeatureDependencies(enabledList);
   Object.entries(SECTION_FALLBACKS).forEach(([sectionKey, fallbackKeys]) => {
     if (!enabled.has(sectionKey) && fallbackKeys.some((key) => enabled.has(key))) {
       enabled.add(sectionKey);
