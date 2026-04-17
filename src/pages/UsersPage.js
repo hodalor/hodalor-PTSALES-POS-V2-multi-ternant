@@ -12,6 +12,7 @@ import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import InlineSpinner from '../components/InlineSpinner';
 import { TENANT_GRANT_CATALOG, TENANT_SIDEBAR_SECTIONS, filterGrantsByTenantFlags } from '../utils/tenantAccess';
+import { isFeatureEnabled } from '../utils/featureFlags';
 
 const ALL_GRANTS = TENANT_GRANT_CATALOG;
 const ALL_GRANTS_KEYS = ALL_GRANTS.map(g => g.key);
@@ -98,16 +99,43 @@ function UsersPage() {
     const scoped = ALL_GRANTS.filter((item) => manageableGrantKeys.includes(item.key));
     return canManageAuditGrant ? scoped : scoped.filter(g => !AUDIT_GRANT_KEYS.has(String(g.key)));
   }, [canManageAuditGrant, manageableGrantKeys]);
+  const visibleGrantKeys = useMemo(() => {
+    const byKey = new Map(grantOptions.map((item) => [item.key, item]));
+    const sectionMappedKeys = new Set();
+    const enabledKeys = new Set();
+    for (const section of TENANT_SIDEBAR_SECTIONS) {
+      if (!isFeatureEnabled(settings, section.sectionKey)) continue;
+      for (const menuItem of section.items || []) {
+        const grantKeys = Array.from(new Set((menuItem.keys || [])
+          .filter((key) => String(key).startsWith('grants.'))
+          .map((key) => String(key).slice(7))
+          .filter((key) => byKey.has(key))));
+        grantKeys.forEach((key) => sectionMappedKeys.add(key));
+        const requiredFeatures = (menuItem.keys || []).filter((key) => !String(key).startsWith('grants.'));
+        if (!requiredFeatures.every((key) => isFeatureEnabled(settings, key))) continue;
+        grantKeys.forEach((key) => enabledKeys.add(key));
+      }
+    }
+    for (const item of grantOptions) {
+      if (!sectionMappedKeys.has(item.key)) enabledKeys.add(item.key);
+    }
+    return Array.from(enabledKeys);
+  }, [grantOptions, settings]);
+  const visibleGrantKeySet = useMemo(() => new Set(visibleGrantKeys), [visibleGrantKeys]);
   const groupedGrantOptions = useMemo(() => {
     const byKey = new Map(grantOptions.map((item) => [item.key, item]));
+    const visible = new Set(visibleGrantKeys);
     const used = new Set();
     const sections = TENANT_SIDEBAR_SECTIONS.map((section) => {
+      if (!isFeatureEnabled(settings, section.sectionKey)) return null;
       const items = [];
       for (const menuItem of section.items || []) {
+        const requiredFeatures = (menuItem.keys || []).filter((key) => !String(key).startsWith('grants.'));
+        if (!requiredFeatures.every((key) => isFeatureEnabled(settings, key))) continue;
         const related = Array.from(new Set((menuItem.keys || [])
           .filter((key) => String(key).startsWith('grants.'))
           .map((key) => String(key).slice(7))
-          .filter((key) => byKey.has(key))))
+          .filter((key) => byKey.has(key) && visible.has(key))))
           .map((key) => {
             used.add(key);
             return byKey.get(key);
@@ -115,8 +143,8 @@ function UsersPage() {
         if (related.length > 0) items.push({ label: menuItem.label, grants: related });
       }
       return { id: section.id, title: section.title, description: section.description, items };
-    }).filter((section) => section.items.length > 0);
-    const leftovers = grantOptions.filter((item) => !used.has(item.key));
+    }).filter((section) => section && section.items.length > 0);
+    const leftovers = grantOptions.filter((item) => visible.has(item.key) && !used.has(item.key));
     if (leftovers.length > 0) {
       sections.push({
         id: 'other',
@@ -126,12 +154,13 @@ function UsersPage() {
       });
     }
     return sections;
-  }, [grantOptions]);
+  }, [grantOptions, settings, visibleGrantKeys]);
   // auto-apply defaults when role is selected on Create User
   useEffect(() => {
     const next = defaultsForRole(role);
-    setGrants(canManageAuditGrant ? filterGrantsByTenantFlags(next, settings) : stripAuditGrants(filterGrantsByTenantFlags(next, settings)));
-  }, [role, defaultsForRole, canManageAuditGrant, settings]);
+    const scoped = filterGrantsByTenantFlags(next, settings).filter((key) => visibleGrantKeySet.has(key));
+    setGrants(canManageAuditGrant ? scoped : stripAuditGrants(scoped));
+  }, [role, defaultsForRole, canManageAuditGrant, settings, visibleGrantKeySet]);
   // if editing role changed to SuperAdmin, ensure all grants are checked
   useEffect(() => {
     if (String(editRole || '').toLowerCase() === 'superadmin') {
@@ -168,7 +197,7 @@ function UsersPage() {
       return;
     }
     const forceAll = role === 'SuperAdmin' || role === 'Admin';
-    const baseScopedCreateGrants = filterGrantsByTenantFlags(grants, settings).filter((key) => manageableGrantKeys.includes(key));
+    const baseScopedCreateGrants = filterGrantsByTenantFlags(grants, settings).filter((key) => manageableGrantKeys.includes(key) && visibleGrantKeySet.has(key));
     const safeCreateGrants = canManageAuditGrant ? baseScopedCreateGrants : stripAuditGrants(baseScopedCreateGrants);
     const assigned = forceAll || allBranches ? 'all' : (selectedBranches.length > 0 ? selectedBranches : [branchId]);
     const primaryBranch = allBranches ? 'main' : (assigned[0] || 'main');
@@ -256,7 +285,7 @@ function UsersPage() {
     setEditBranchId(u.branchId || branches[0]?.id || 'main');
     setEditActive(u.active !== false);
     setEditRemark('');
-    const g = filterGrantsByTenantFlags(existingGrants?.[u.name] || [], settings);
+    const g = filterGrantsByTenantFlags(existingGrants?.[u.name] || [], settings).filter((key) => visibleGrantKeySet.has(key));
     setEditGrants(canManageAuditGrant ? (Array.isArray(g) ? g : []) : stripAuditGrants(g));
   }
 
@@ -303,7 +332,7 @@ function UsersPage() {
     }
     const prevName = target?.name || editName;
     const payload = { name: fields.name, role: fields.role, active: fields.active, branchId: fields.branchId, assignedBranches: fields.assignedBranches };
-    const baseScopedEditGrants = filterGrantsByTenantFlags(editGrants, settings).filter((key) => manageableGrantKeys.includes(key));
+    const baseScopedEditGrants = filterGrantsByTenantFlags(editGrants, settings).filter((key) => manageableGrantKeys.includes(key) && visibleGrantKeySet.has(key));
     const safeEditGrants = canManageAuditGrant ? baseScopedEditGrants : stripAuditGrants(baseScopedEditGrants);
     if (fields.pin) payload.pin = fields.pin;
     if (!navigator.onLine) {
