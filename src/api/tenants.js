@@ -51,3 +51,11 @@ export function getPaymentManagement() {
 export function updatePaymentManagement(payload) {
   return fetchJson('/api/tenants/payment-management', { method: 'PATCH', body: JSON.stringify(payload) });
 }
+
+export function getSubscriptionManagement() {
+  return fetchJson('/api/tenants/subscription-management');
+}
+
+export function updateSubscriptionManagement(payload) {
+  return fetchJson('/api/tenants/subscription-management', { method: 'PATCH', body: JSON.stringify(payload) });
+}

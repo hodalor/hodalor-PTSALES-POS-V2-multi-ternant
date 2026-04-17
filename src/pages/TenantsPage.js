@@ -1,10 +1,43 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSelector } from 'react-redux';
 import * as tenantsApi from '../api/tenants';
 import { useToast } from '../components/ToastProvider';
 import Modal from '../components/Modal';
-import { getPlanDefaultFeatures, TENANT_SIDEBAR_SECTIONS } from '../utils/tenantAccess';
+import { TENANT_SIDEBAR_SECTIONS } from '../utils/tenantAccess';
 
-const PLAN_OPTIONS = ['basic', 'pro', 'enterprise'];
+const DEFAULT_SUBSCRIPTION_MANAGEMENT = {
+  plans: [
+    { key: 'basic', label: 'Basic', monthlyAmount: 0, features: [] },
+    { key: 'pro', label: 'Pro', monthlyAmount: 0, features: [] },
+    { key: 'enterprise', label: 'Enterprise', monthlyAmount: 0, features: [] }
+  ],
+  periods: [
+    { months: 1, discountPercent: 0 },
+    { months: 3, discountPercent: 0 },
+    { months: 6, discountPercent: 0 },
+    { months: 12, discountPercent: 0 }
+  ]
+};
+
+function calculateDiscountedAmount(monthlyAmount, months, discountPercent) {
+  const base = Number(monthlyAmount || 0) * Number(months || 0);
+  const discount = Number(discountPercent || 0);
+  const amount = base - ((base * discount) / 100);
+  return Number.isFinite(amount) ? Number(amount.toFixed(2)) : 0;
+}
+
+function calculateDiscountPercent(monthlyAmount, months, amount) {
+  const base = Number(monthlyAmount || 0) * Number(months || 0);
+  const total = Number(amount || 0);
+  if (!base || !Number.isFinite(total)) return 0;
+  return Number((((base - total) / base) * 100).toFixed(4));
+}
+
+function getPlanFeaturesFromConfig(config, planKey) {
+  const key = String(planKey || '').trim().toLowerCase();
+  return (config?.plans || []).find((plan) => String(plan.key) === key)?.features || [];
+}
+
 const EMPTY_FORM = {
   tenantId: '',
   name: '',
@@ -26,11 +59,12 @@ const EMPTY_FORM = {
   adminPin: '',
   maxUserAccountsOverride: '',
   maxActiveUsersOverride: '',
-  features: getPlanDefaultFeatures('basic')
+  features: []
 };
 
 function TenantsPage() {
   const toast = useToast();
+  const settings = useSelector((s) => s.settings);
   const [activeTab, setActiveTab] = useState('tenants');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -51,6 +85,9 @@ function TenantsPage() {
   const [paymentManagement, setPaymentManagement] = useState({ gateways: [], enabledGateways: [], paymentHistory: [], summary: { totalCollected: 0, transactionCount: 0, cardCollected: 0, mobileMoneyCollected: 0, gatewayCount: 0 } });
   const [savingPaymentManagement, setSavingPaymentManagement] = useState(false);
   const [paymentFilters, setPaymentFilters] = useState({ provider: 'all', channel: 'all', tenantId: 'all', search: '' });
+  const [subscriptionManagement, setSubscriptionManagement] = useState(DEFAULT_SUBSCRIPTION_MANAGEMENT);
+  const [savingSubscriptionManagement, setSavingSubscriptionManagement] = useState(false);
+  const [selectedPlanKey, setSelectedPlanKey] = useState('basic');
 
   const sections = useMemo(() => TENANT_SIDEBAR_SECTIONS, []);
   const filteredPaymentRows = useMemo(() => {
@@ -84,10 +121,16 @@ function TenantsPage() {
     };
   }, [filteredPaymentRows]);
 
+  const planOptions = useMemo(() => (subscriptionManagement?.plans || []).map((plan) => plan.key), [subscriptionManagement]);
+  const selectedPlan = useMemo(() => (subscriptionManagement?.plans || []).find((plan) => String(plan.key) === String(selectedPlanKey)) || subscriptionManagement.plans?.[0] || null, [selectedPlanKey, subscriptionManagement]);
+  const subscriptionCurrencyCode = String(settings?.activeCurrencyCode || settings?.currencyCode || 'GHS');
+  const subscriptionCurrencySymbol = String(settings?.currencySymbol || '');
+  const subscriptionCurrencyPosition = String(settings?.currencyPosition || 'prefix');
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [tenantRows, defaults, paymentData] = await Promise.all([tenantsApi.list(), tenantsApi.getLimitDefaults(), tenantsApi.getPaymentManagement()]);
+      const [tenantRows, defaults, paymentData, subscriptionData] = await Promise.all([tenantsApi.list(), tenantsApi.getLimitDefaults(), tenantsApi.getPaymentManagement(), tenantsApi.getSubscriptionManagement()]);
       setRows(tenantRows);
       setLimitDefaults({
         basic: { maxUserAccounts: defaults?.basic?.maxUserAccounts ?? '', maxActiveUsers: defaults?.basic?.maxActiveUsers ?? '' },
@@ -95,6 +138,9 @@ function TenantsPage() {
         enterprise: { maxUserAccounts: defaults?.enterprise?.maxUserAccounts ?? '', maxActiveUsers: defaults?.enterprise?.maxActiveUsers ?? '' }
       });
       setPaymentManagement(paymentData || { gateways: [], enabledGateways: [], paymentHistory: [], summary: { totalCollected: 0, transactionCount: 0, cardCollected: 0, mobileMoneyCollected: 0, gatewayCount: 0 } });
+      const nextSubscription = subscriptionData || DEFAULT_SUBSCRIPTION_MANAGEMENT;
+      setSubscriptionManagement(nextSubscription);
+      setSelectedPlanKey(String(nextSubscription?.plans?.[0]?.key || 'basic'));
     } catch (e) {
       toast.show(String(e?.message || 'Failed to load tenants'), { type: 'error' });
     } finally {
@@ -106,23 +152,34 @@ function TenantsPage() {
     load();
   }, [load]);
 
+  function formatSubscriptionMoney(value) {
+    const numeric = Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return subscriptionCurrencyPosition === 'suffix'
+      ? `${numeric} ${subscriptionCurrencySymbol || subscriptionCurrencyCode}`.trim()
+      : `${subscriptionCurrencySymbol || subscriptionCurrencyCode}${numeric}`.trim();
+  }
+
   function setValue(key, value) {
-    setForm((prev) => ({ ...prev, [key]: value }));
+    setForm((prev) => ({
+      ...prev,
+      [key]: value,
+      ...(key === 'subscriptionPlan' ? { features: getPlanFeaturesFromConfig(subscriptionManagement, value) } : {})
+    }));
   }
 
   function resetForm(nextPlan = 'basic') {
     setEditing('');
-    setForm({ ...EMPTY_FORM, themeColor: '#16a34a', subscriptionPlan: nextPlan, features: getPlanDefaultFeatures(nextPlan) });
+    setForm({ ...EMPTY_FORM, themeColor: '#16a34a', subscriptionPlan: nextPlan, features: getPlanFeaturesFromConfig(subscriptionManagement, nextPlan) });
   }
 
   function openCreateModal() {
-    resetForm('basic');
+    resetForm(planOptions[0] || 'basic');
     setShowForm(true);
   }
 
   function closeModal() {
     setShowForm(false);
-    resetForm('basic');
+    resetForm(planOptions[0] || 'basic');
   }
 
   function daysLeftLabel(value) {
@@ -330,7 +387,7 @@ function TenantsPage() {
   }
 
   function applyPlanDefaults() {
-    setForm((prev) => ({ ...prev, features: getPlanDefaultFeatures(prev.subscriptionPlan) }));
+    setForm((prev) => ({ ...prev, features: getPlanFeaturesFromConfig(subscriptionManagement, prev.subscriptionPlan) }));
   }
 
   async function togglePaymentGateway(gatewayKey, enabled) {
@@ -355,6 +412,116 @@ function TenantsPage() {
     setPaymentFilters((prev) => ({ ...prev, [key]: value }));
   }
 
+  function updateSubscriptionPlanField(planKey, field, value) {
+    setSubscriptionManagement((prev) => ({
+      ...prev,
+      plans: (prev.plans || []).map((plan) => String(plan.key) === String(planKey) ? { ...plan, [field]: field === 'monthlyAmount' ? value : value } : plan)
+    }));
+  }
+
+  function hasPlanAll(planKey, keys) {
+    const plan = (subscriptionManagement.plans || []).find((item) => String(item.key) === String(planKey));
+    const set = new Set(plan?.features || []);
+    return (Array.isArray(keys) ? keys : []).every((key) => set.has(key));
+  }
+
+  function togglePlanKeys(planKey, keys, checked) {
+    setSubscriptionManagement((prev) => ({
+      ...prev,
+      plans: (prev.plans || []).map((plan) => {
+        if (String(plan.key) !== String(planKey)) return plan;
+        const set = new Set(plan.features || []);
+        const list = Array.isArray(keys) ? keys.filter(Boolean) : [];
+        const shouldEnable = typeof checked === 'boolean' ? checked : !list.every((key) => set.has(key));
+        list.forEach((key) => {
+          if (shouldEnable) set.add(key);
+          else set.delete(key);
+        });
+        return { ...plan, features: Array.from(set) };
+      })
+    }));
+  }
+
+  function addSubscriptionPlan() {
+    const nextKey = `plan_${Date.now()}`;
+    setSubscriptionManagement((prev) => ({
+      ...prev,
+      plans: [...(prev.plans || []), { key: nextKey, label: 'New Plan', monthlyAmount: 0, features: [] }]
+    }));
+    setSelectedPlanKey(nextKey);
+  }
+
+  function removeSubscriptionPlan(planKey) {
+    setSubscriptionManagement((prev) => ({
+      ...prev,
+      plans: (prev.plans || []).filter((plan) => String(plan.key) !== String(planKey))
+    }));
+    if (selectedPlanKey === planKey) {
+      const remaining = (subscriptionManagement.plans || []).filter((plan) => String(plan.key) !== String(planKey));
+      setSelectedPlanKey(String(remaining[0]?.key || ''));
+    }
+  }
+
+  function updateSubscriptionPeriod(monthsValue, patch) {
+    setSubscriptionManagement((prev) => ({
+      ...prev,
+      periods: (prev.periods || []).map((period) => Number(period.months) === Number(monthsValue) ? { ...period, ...patch } : period)
+    }));
+  }
+
+  function addSubscriptionPeriod() {
+    setSubscriptionManagement((prev) => ({
+      ...prev,
+      periods: [...(prev.periods || []), { months: (prev.periods || []).length + 1, discountPercent: 0 }]
+    }));
+  }
+
+  function removeSubscriptionPeriod(monthsValue) {
+    setSubscriptionManagement((prev) => ({
+      ...prev,
+      periods: (prev.periods || []).filter((period) => Number(period.months) !== Number(monthsValue))
+    }));
+  }
+
+  async function saveSubscriptionManagement() {
+    if (savingSubscriptionManagement) return;
+    const months = (subscriptionManagement.periods || []).map((period) => Number(period.months || 0));
+    const monthSet = new Set(months);
+    if (months.some((value) => !Number.isFinite(value) || value < 1)) {
+      toast.show('Each subscription period must have a valid month value', { type: 'error' });
+      return;
+    }
+    if (monthSet.size !== months.length) {
+      toast.show('Duplicate month rows are not allowed', { type: 'error' });
+      return;
+    }
+    setSavingSubscriptionManagement(true);
+    try {
+      const payload = {
+        plans: (subscriptionManagement.plans || []).map((plan) => ({
+          key: plan.key,
+          label: plan.label,
+          monthlyAmount: plan.monthlyAmount === '' ? 0 : Number(plan.monthlyAmount || 0),
+          features: Array.isArray(plan.features) ? plan.features : []
+        })),
+        periods: (subscriptionManagement.periods || []).map((period) => ({
+          months: Number(period.months || 0),
+          discountPercent: Number(period.discountPercent || 0)
+        }))
+      };
+      const saved = await tenantsApi.updateSubscriptionManagement(payload);
+      setSubscriptionManagement(saved || DEFAULT_SUBSCRIPTION_MANAGEMENT);
+      if (!saved?.plans?.some((plan) => String(plan.key) === String(selectedPlanKey))) {
+        setSelectedPlanKey(String(saved?.plans?.[0]?.key || ''));
+      }
+      toast.show('Subscription management updated', { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to update subscription management'), { type: 'error' });
+    } finally {
+      setSavingSubscriptionManagement(false);
+    }
+  }
+
   return (
     <div style={{ padding: 16, display: 'grid', gap: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
@@ -367,10 +534,135 @@ function TenantsPage() {
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
         <button className="btn" type="button" style={{ background: activeTab === 'tenants' ? '#eff6ff' : undefined, borderColor: activeTab === 'tenants' ? '#1d4ed8' : undefined, color: activeTab === 'tenants' ? '#1d4ed8' : undefined }} onClick={() => setActiveTab('tenants')}>Tenants</button>
+        <button className="btn" type="button" style={{ background: activeTab === 'subscription_management' ? '#eff6ff' : undefined, borderColor: activeTab === 'subscription_management' ? '#1d4ed8' : undefined, color: activeTab === 'subscription_management' ? '#1d4ed8' : undefined }} onClick={() => setActiveTab('subscription_management')}>Subscription Management</button>
         <button className="btn" type="button" style={{ background: activeTab === 'payment_management' ? '#eff6ff' : undefined, borderColor: activeTab === 'payment_management' ? '#1d4ed8' : undefined, color: activeTab === 'payment_management' ? '#1d4ed8' : undefined }} onClick={() => setActiveTab('payment_management')}>Payment Management</button>
       </div>
 
-      {activeTab === 'payment_management' ? (
+      {activeTab === 'subscription_management' ? (
+        <>
+          <div className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <div>
+                <h2 className="section-title">Subscription Plans</h2>
+                <div style={{ color: '#64748b' }}>Create plans, control default monthly amount, and edit plan features.</div>
+              </div>
+              <button className="btn btn-primary" type="button" onClick={addSubscriptionPlan}>Add Plan</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 16, alignItems: 'start' }}>
+              <div style={{ display: 'grid', gap: 8, alignContent: 'start' }}>
+                {(subscriptionManagement.plans || []).map((plan) => (
+                  <button
+                    key={plan.key}
+                    type="button"
+                    className="btn"
+                    style={{ textAlign: 'left', justifyContent: 'flex-start', alignItems: 'flex-start', padding: '12px 14px', minHeight: 'unset', height: 'auto', background: selectedPlanKey === plan.key ? '#eff6ff' : '#fff', borderColor: selectedPlanKey === plan.key ? '#1d4ed8' : '#e2e8f0', color: '#0f172a' }}
+                    onClick={() => setSelectedPlanKey(plan.key)}
+                  >
+                    <span>
+                      <strong>{plan.label}</strong><br />
+                      <span style={{ color: '#64748b', fontSize: 12 }}>{plan.key} • {formatSubscriptionMoney(plan.monthlyAmount || 0)} / month</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="card" style={{ padding: 14, border: '1px solid #e2e8f0' }}>
+                {selectedPlan ? (
+                  <>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 12, marginBottom: 14 }}>
+                      <label>
+                        Plan Key
+                        <input className="input" value={selectedPlan.key} onChange={(e) => updateSubscriptionPlanField(selectedPlan.key, 'key', e.target.value)} />
+                      </label>
+                      <label>
+                        Plan Label
+                        <input className="input" value={selectedPlan.label} onChange={(e) => updateSubscriptionPlanField(selectedPlan.key, 'label', e.target.value)} />
+                      </label>
+                      <div style={{ alignSelf: 'end' }}>
+                        <button className="btn" type="button" style={{ color: '#b91c1c' }} onClick={() => removeSubscriptionPlan(selectedPlan.key)}>Remove</button>
+                      </div>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: 12, marginBottom: 14 }}>
+                      <label>
+                        Monthly Amount
+                        <input className="input" type="number" min="0" step="0.01" value={selectedPlan.monthlyAmount} onChange={(e) => updateSubscriptionPlanField(selectedPlan.key, 'monthlyAmount', e.target.value)} />
+                      </label>
+                    </div>
+                    <div style={{ display: 'grid', gap: 10 }}>
+                      {sections.map((section) => {
+                        const sectionKeys = Array.from(new Set([section.sectionKey, ...section.items.flatMap((item) => item.keys || [])].filter(Boolean)));
+                        const hasAllFeatures = hasPlanAll(selectedPlan.key, sectionKeys);
+                        const hasSomeFeatures = (sectionKeys || []).some((key) => (selectedPlan.features || []).includes(key));
+                        return (
+                          <div key={section.title} className="card" style={{ padding: 12, border: '1px solid #e2e8f0' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+                              <span style={{ fontWeight: 700 }}>{section.title}</span>
+                              <div style={{ display: 'flex', gap: 8 }}>
+                                <button className="btn" type="button" onClick={() => togglePlanKeys(selectedPlan.key, sectionKeys, true)} disabled={hasAllFeatures}>Select All</button>
+                                <button className="btn" type="button" onClick={() => togglePlanKeys(selectedPlan.key, sectionKeys, false)} disabled={!hasSomeFeatures}>Clear All</button>
+                              </div>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
+                              {(section.items || []).map((item) => {
+                                const itemKeys = item.keys || [];
+                                const checked = hasPlanAll(selectedPlan.key, itemKeys);
+                                return (
+                                  <label key={`${section.id}:${item.label}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', border: checked ? '1px solid #1d4ed8' : '1px solid #e2e8f0', borderRadius: 10, background: checked ? '#eff6ff' : '#fff' }}>
+                                    <input type="checkbox" checked={checked} onChange={(e) => togglePlanKeys(selectedPlan.key, itemKeys, e.target.checked)} />
+                                    <span>{item.label}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : <div style={{ color: '#64748b' }}>Select a plan to edit.</div>}
+              </div>
+            </div>
+          </div>
+          <div className="card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <div>
+                <h2 className="section-title">Renewal Periods</h2>
+                <div style={{ color: '#64748b' }}>Set months and discount %. You can also edit the payable amount directly and the discount will auto-adjust from the selected plan monthly amount.</div>
+              </div>
+              <button className="btn" type="button" onClick={addSubscriptionPeriod}>Add Period</button>
+            </div>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th align="left">Months</th>
+                  <th align="left">Discount %</th>
+                  <th align="left">Amount After Discount</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {(subscriptionManagement.periods || []).map((period, index) => {
+                  const monthlyAmount = Number(selectedPlan?.monthlyAmount || 0);
+                  const amount = calculateDiscountedAmount(monthlyAmount, period.months, period.discountPercent);
+                  return (
+                    <tr key={`${period.months}:${index}`}>
+                      <td><input className="input" type="number" min="1" value={period.months} onChange={(e) => updateSubscriptionPeriod(period.months, { months: Number(e.target.value || 1) })} /></td>
+                      <td><input className="input" type="number" step="0.0001" value={period.discountPercent} onChange={(e) => updateSubscriptionPeriod(period.months, { discountPercent: Number(e.target.value || 0) })} /></td>
+                      <td>
+                        <input className="input" type="number" min="0" step="0.01" value={amount} onChange={(e) => updateSubscriptionPeriod(period.months, { discountPercent: calculateDiscountPercent(monthlyAmount, period.months, Number(e.target.value || 0)) })} />
+                        <div style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>{formatSubscriptionMoney(amount)}</div>
+                      </td>
+                      <td><button className="btn" type="button" style={{ color: '#b91c1c' }} onClick={() => removeSubscriptionPeriod(period.months)}>Remove</button></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+              <button className="btn btn-primary" type="button" onClick={saveSubscriptionManagement} disabled={savingSubscriptionManagement}>{savingSubscriptionManagement ? 'Saving…' : 'Save Subscription Management'}</button>
+            </div>
+          </div>
+        </>
+      ) : activeTab === 'payment_management' ? (
         <>
           <div className="card">
             <h2 className="section-title">Payment Gateway Controls</h2>
@@ -480,7 +772,7 @@ function TenantsPage() {
           Set general limits for each package. Leave blank for unlimited. Each tenant can still override these values individually.
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
-          {PLAN_OPTIONS.map((plan) => (
+          {Object.keys(limitDefaults).map((plan) => (
             <div key={plan} className="card" style={{ padding: 14, border: '1px solid #e2e8f0' }}>
               <div style={{ fontWeight: 800, marginBottom: 10, textTransform: 'capitalize' }}>{plan}</div>
               <div style={{ display: 'grid', gap: 10 }}>
@@ -658,7 +950,7 @@ function TenantsPage() {
               <label>
                 Plan
                 <select className="input" value={form.subscriptionPlan} onChange={(e) => setValue('subscriptionPlan', e.target.value)}>
-                  {PLAN_OPTIONS.map((plan) => <option key={plan} value={plan}>{plan}</option>)}
+                  {planOptions.map((plan) => <option key={plan} value={plan}>{plan}</option>)}
                 </select>
               </label>
               <label>

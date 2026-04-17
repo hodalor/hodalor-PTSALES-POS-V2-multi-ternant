@@ -182,15 +182,15 @@ function LoginPage() {
     setPaymentEmail(String(info?.billingEmail || ''));
     setPaymentAddress(String(info?.billingAddress || ''));
     setPaymentNetwork(String((info?.mobileMoneyNetworks || [])[0] || ''));
+    setPaymentMonths(String(info?.periods?.[0]?.months || 1));
     const enabled = Array.isArray(info?.enabledGateways) && info.enabledGateways.length > 0 ? info.enabledGateways : ['paypal', 'paystack', 'dpo_pay'];
     setPaymentProvider(enabled.includes(paymentProvider) ? paymentProvider : enabled[0]);
     return info;
   }
 
   const cardBrand = detectCardBrand(paymentCardNumber);
-  const paymentTotal = paymentInfo?.subscriptionAmount != null
-    ? Number(paymentInfo.subscriptionAmount) * Number(paymentMonths || 0)
-    : null;
+  const selectedPeriod = (paymentInfo?.periods || []).find((period) => Number(period?.months) === Number(paymentMonths || 0)) || null;
+  const paymentTotal = selectedPeriod?.amount ?? null;
   const countryLabel = COUNTRY_LABELS[String(paymentInfo?.billingCountry || '')] || String(paymentInfo?.billingCountry || '');
   const maskedEmail = maskEmail(paymentEmail || paymentInfo?.billingEmail || '');
   const maskedPhone = maskPhone(paymentPhone || paymentInfo?.billingPhone || '');
@@ -687,7 +687,11 @@ function LoginPage() {
                   <label>
                     Renewal Period
                     <select className="input" value={paymentMonths} onChange={(e) => setPaymentMonths(e.target.value)} disabled={paymentLoading}>
-                      {(paymentInfo.periods || []).map((period) => <option key={period} value={period}>{period} month(s)</option>)}
+                      {(paymentInfo.periods || []).map((period) => (
+                        <option key={period.months} value={period.months}>
+                          {period.months} month(s){Number(period.discountPercent || 0) > 0 ? ` • ${period.discountPercent}% off` : ''}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <label>
