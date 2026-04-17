@@ -1,5 +1,6 @@
 import { useDispatch, useSelector, useStore } from 'react-redux';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { logout } from '../store/authSlice';
 import { setCurrentBranch } from '../store/settingsSlice';
 import BranchSelect from './BranchSelect';
@@ -16,6 +17,7 @@ function Header({ onToggleSidebar }) {
   const currentBranchId = useSelector(state => state.settings.currentBranchId);
   const dispatch = useDispatch();
   const store = useStore();
+  const navigate = useNavigate();
   const toast = useToast();
   const [syncing, setSyncing] = useState(false);
 
@@ -81,9 +83,14 @@ function Header({ onToggleSidebar }) {
             <button className="btn" onClick={async () => {
               const tenantId = String(auth.user?.tenantId || 'default');
               try { if (navigator.onLine) await authApi.logout(); } catch {}
-              try { localStorage.removeItem('ptSales:authToken'); localStorage.removeItem('ptSales:tenantId'); } catch {}
+              try {
+                localStorage.removeItem('ptSales:authToken');
+                localStorage.removeItem('ptSales:tenantId');
+                sessionStorage.removeItem('ptSales:sessionPin');
+              } catch {}
               dispatch(resetTenantAppState(tenantId));
               dispatch(logout());
+              navigate('/login', { replace: true });
             }}>Logout</button>
           </>
         ) : (

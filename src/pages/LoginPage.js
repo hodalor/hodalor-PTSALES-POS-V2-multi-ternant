@@ -389,7 +389,7 @@ function LoginPage() {
     }
   }
 
-  async function openPaymentModal() {
+  async function openPaymentModal(options = {}) {
     const nextTenantId = String(tenantId || activationTenantId || '').trim();
     if (!nextTenantId) {
       toast.show('Enter tenant ID first', { type: 'error' });
@@ -398,8 +398,9 @@ function LoginPage() {
     setPaymentLoading(true);
     try {
       const info = await loadRenewalInfo(nextTenantId);
-      setPaymentMonths(String((info?.periods || [1])[0] || 1));
+      setPaymentMonths(String(info?.periods?.[0]?.months || 1));
       setPaymentProvider('paypal');
+      if (options.closeActivation) setActivationOpen(false);
       setPaymentOpen(true);
     } catch (e) {
       toast.show(String(e?.message || 'Failed to load renewal details'), { type: 'error' });
@@ -603,8 +604,11 @@ function LoginPage() {
           onClose={() => { if (!activationLoading) setActivationOpen(false); }}
           footer={
             <>
-              <button className="btn" onClick={() => setActivationOpen(false)} disabled={activationLoading}>Cancel</button>
-              <button className="btn btn-primary" onClick={onActivateSubscription} disabled={activationLoading}>
+              <button className="btn" onClick={() => setActivationOpen(false)} disabled={activationLoading || paymentLoading}>Cancel</button>
+              <button className="btn" onClick={() => openPaymentModal({ closeActivation: true })} disabled={activationLoading || paymentLoading}>
+                {paymentLoading ? 'Opening Payment…' : 'Make Payment Instead'}
+              </button>
+              <button className="btn btn-primary" onClick={onActivateSubscription} disabled={activationLoading || paymentLoading}>
                 {activationLoading ? 'Activating…' : 'Activate For 30 Days'}
               </button>
             </>
@@ -617,22 +621,27 @@ function LoginPage() {
                 Enter the tenant admin credentials and the current activation code sent by superadmin. If everything matches, this tenant will be extended for 30 days.
               </div>
             </div>
-            <label>
-              Tenant ID
-              <input className="input" value={activationTenantId} onChange={e => setActivationTenantId(e.target.value)} disabled={activationLoading} />
-            </label>
-            <label>
-              Admin Username
-              <input className="input" value={activationAdminName} onChange={e => setActivationAdminName(e.target.value)} disabled={activationLoading} />
-            </label>
-            <label>
-              Admin PIN
-              <input className="input" type="password" value={activationAdminPin} onChange={e => setActivationAdminPin(e.target.value)} disabled={activationLoading} />
-            </label>
-            <label>
-              Activation Code
-              <input className="input" value={activationCode} onChange={e => setActivationCode(e.target.value.toUpperCase())} disabled={activationLoading} />
-            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+              <label>
+                Tenant ID
+                <input className="input" value={activationTenantId} onChange={e => setActivationTenantId(e.target.value)} disabled={activationLoading || paymentLoading} />
+              </label>
+              <label>
+                Admin Username
+                <input className="input" value={activationAdminName} onChange={e => setActivationAdminName(e.target.value)} disabled={activationLoading || paymentLoading} />
+              </label>
+              <label>
+                Admin PIN
+                <input className="input" type="password" value={activationAdminPin} onChange={e => setActivationAdminPin(e.target.value)} disabled={activationLoading || paymentLoading} />
+              </label>
+              <label>
+                Activation Code
+                <input className="input" value={activationCode} onChange={e => setActivationCode(e.target.value.toUpperCase())} disabled={activationLoading || paymentLoading} />
+              </label>
+            </div>
+            <div style={{ color: '#64748b', fontSize: 13 }}>
+              If you do not have the activation code, choose <strong>Make Payment Instead</strong> to continue with self-service renewal.
+            </div>
           </div>
         </Modal>
       )}
