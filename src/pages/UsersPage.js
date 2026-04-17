@@ -49,6 +49,8 @@ function UsersPage() {
   const [editActive, setEditActive] = useState(true);
   const [editRemark, setEditRemark] = useState('');
   const [savingEdit, setSavingEdit] = useState(false);
+  const [savingCreate, setSavingCreate] = useState(false);
+  const [createError, setCreateError] = useState('');
   const [workingUserName, setWorkingUserName] = useState('');
   const isSuper = String(auth.role || '').toLowerCase() === 'superadmin';
   const superAdminsCount = users.filter(u => u.role === 'SuperAdmin' && u.active !== false).length;
@@ -71,10 +73,6 @@ function UsersPage() {
   const existingGrants = settings?.userGrants || {};
   const [grants, setGrants] = useState([]);
   const canManageAuditGrant = isSuper;
-  const grantOptions = useMemo(() => {
-    const scoped = ALL_GRANTS.filter((item) => filterGrantsByTenantFlags([item.key], settings).includes(item.key));
-    return canManageAuditGrant ? scoped : scoped.filter(g => !AUDIT_GRANT_KEYS.has(String(g.key)));
-  }, [canManageAuditGrant, settings]);
   const allGrantKeys = useMemo(() => filterGrantsByTenantFlags(ALL_GRANTS_KEYS, settings), [settings]);
   const defaultsForRole = useCallback((r) => {
     const rl = String(r || '').toLowerCase();
@@ -90,6 +88,16 @@ function UsersPage() {
     if (rl === 'auditor') return ['view_reports'];
     return [];
   }, [allGrantKeys]);
+  const manageableGrantKeys = useMemo(() => {
+    const enabled = filterGrantsByTenantFlags(ALL_GRANTS_KEYS, settings);
+    if (isSuper) return enabled;
+    const viewerDefaults = filterGrantsByTenantFlags(defaultsForRole(viewerRole), settings);
+    return Array.from(new Set([...viewerDefaults, ...(Array.isArray(auth.grants) ? auth.grants : [])].filter((key) => enabled.includes(key))));
+  }, [settings, isSuper, viewerRole, auth.grants, defaultsForRole]);
+  const grantOptions = useMemo(() => {
+    const scoped = ALL_GRANTS.filter((item) => manageableGrantKeys.includes(item.key));
+    return canManageAuditGrant ? scoped : scoped.filter(g => !AUDIT_GRANT_KEYS.has(String(g.key)));
+  }, [canManageAuditGrant, manageableGrantKeys]);
   // auto-apply defaults when role is selected on Create User
   useEffect(() => {
     const next = defaultsForRole(role);
@@ -112,25 +120,31 @@ function UsersPage() {
   async function add() {
     const canCreate = ['Admin','SuperAdmin'].includes(viewerRole);
     if (!canCreate) {
+      setCreateError('Not authorized to create users');
       toast.show('Not authorized to create users', { type: 'error' });
       return;
     }
+    setCreateError('');
     const cleanName = name.trim();
     const cleanPin = pin.trim();
     if (!cleanName || !cleanPin) return;
     if (!/^\d{4,6}$/.test(cleanPin)) {
+      setCreateError('PIN must be 4-6 digits');
       toast.show('PIN must be 4-6 digits', { type: 'error' });
       return;
     }
     if (!remark.trim()) {
+      setCreateError('Please enter a remark for audit logging');
       toast.show('Please enter a remark for audit logging', { type: 'error' });
       return;
     }
     const forceAll = role === 'SuperAdmin' || role === 'Admin';
-    const safeCreateGrants = canManageAuditGrant ? filterGrantsByTenantFlags(grants, settings) : stripAuditGrants(filterGrantsByTenantFlags(grants, settings));
+    const baseScopedCreateGrants = filterGrantsByTenantFlags(grants, settings).filter((key) => manageableGrantKeys.includes(key));
+    const safeCreateGrants = canManageAuditGrant ? baseScopedCreateGrants : stripAuditGrants(baseScopedCreateGrants);
     const assigned = forceAll || allBranches ? 'all' : (selectedBranches.length > 0 ? selectedBranches : [branchId]);
     const primaryBranch = allBranches ? 'main' : (assigned[0] || 'main');
     if (viewerRole === 'Admin' && role === 'SuperAdmin') {
+      setCreateError('Admins cannot create SuperAdmin');
       toast.show('Admins cannot create SuperAdmin', { type: 'error' });
       return;
     }
@@ -161,21 +175,27 @@ function UsersPage() {
       setAllBranches(false);
       setSelectedBranches([]);
       toast.show('Saved offline. Will backup when online.', { type: 'success' });
+      setCreateError('');
       return;
     }
     try {
-      await usersApi.create({ name: cleanName, role, pin: cleanPin, branchId: primaryBranch, assignedBranches: assigned });
-      const next = { ...(settings || {}), userGrants: { ...(existingGrants || {}), [cleanName]: safeCreateGrants } };
-      const saved = await settingsApi.save(next);
+      setSavingCreate(true);
+      const created = await usersApi.create({ name: cleanName, role, pin: cleanPin, branchId: primaryBranch, assignedBranches: assigned });
+      const nextUserGrants = { ...(existingGrants || {}), [cleanName]: safeCreateGrants };
+      const saved = await settingsApi.save({ userGrants: nextUserGrants });
       dispatch(setAllSettings(saved));
+      if (created && typeof created === 'object') {
+        dispatch(addUser(created));
+      }
       if ((auth.user?.name || '') === cleanName) {
         dispatch(setAuthGrants(saved?.userGrants?.[cleanName] || []));
       }
-      const latest = await usersApi.list().catch(() => null);
-      if (Array.isArray(latest)) dispatch(setUsers(latest));
     } catch (e) {
+      setCreateError(String(e?.message || 'Failed to save user to server'));
       toast.show(String(e?.message || 'Failed to save user to server'), { type: 'error' });
       return;
+    } finally {
+      setSavingCreate(false);
     }
     dispatch(addAudit({
       actor: auth.user?.name || 'unknown',
@@ -188,6 +208,8 @@ function UsersPage() {
     setRemark('');
     setAllBranches(false);
     setSelectedBranches([]);
+    setCreateError('');
+    toast.show('User created successfully', { type: 'success' });
   }
 
   function startEdit(u) {
@@ -252,7 +274,8 @@ function UsersPage() {
     }
     const prevName = target?.name || editName;
     const payload = { name: fields.name, role: fields.role, active: fields.active, branchId: fields.branchId, assignedBranches: fields.assignedBranches };
-    const safeEditGrants = canManageAuditGrant ? filterGrantsByTenantFlags(editGrants, settings) : stripAuditGrants(filterGrantsByTenantFlags(editGrants, settings));
+    const baseScopedEditGrants = filterGrantsByTenantFlags(editGrants, settings).filter((key) => manageableGrantKeys.includes(key));
+    const safeEditGrants = canManageAuditGrant ? baseScopedEditGrants : stripAuditGrants(baseScopedEditGrants);
     if (fields.pin) payload.pin = fields.pin;
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) {
@@ -445,7 +468,13 @@ function UsersPage() {
             </div>
           </div>
           <input placeholder="Remark (required)" value={remark} onChange={e => setRemark(e.target.value)} style={{ display: 'block', width: '100%', padding: 10, marginBottom: 8 }} />
-          <button onClick={add}>Add User</button>
+          <button className="btn btn-primary" onClick={add} disabled={savingCreate}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {savingCreate && <InlineSpinner />}
+              {savingCreate ? 'Creating…' : 'Add User'}
+            </span>
+          </button>
+          {createError ? <div style={{ marginTop: 8, color: '#b91c1c', fontSize: 13 }}>{createError}</div> : null}
         </div>
         <div style={{ background: '#fff', borderRadius: 12, padding: 16 }}>
           <h2>Existing Users</h2>

@@ -48,7 +48,13 @@ function ProtectedRoute({ roles, grant, feature, children }) {
     return false;
   }
   const hasGrant = Array.isArray(grant) ? grant.some(has) : has(grant);
-  if (!isSuper && !hasGrant && roles && roles.length > 0 && roles.indexOf(auth.role) === -1) {
+  const roleLower = String(auth.role || '').toLowerCase();
+  const roleAllowed = roles && roles.length > 0 && roles.indexOf(auth.role) !== -1;
+  const enforceGrantForRole = grant && !['superadmin', 'admin'].includes(roleLower);
+  if (!isSuper && enforceGrantForRole && !hasGrant) {
+    return <Navigate to="/pos" replace />;
+  }
+  if (!isSuper && !enforceGrantForRole && !hasGrant && roles && roles.length > 0 && !roleAllowed) {
     return <Navigate to="/pos" replace />;
   }
   return children;
