@@ -3,7 +3,7 @@ import Settings from '../models/Settings.js';
 import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { filterGrantsByFeatureFlags, featureFlagsFromEnabled } from '../config/tenantAccess.js';
+import { filterGrantsByFeatureFlags, featureFlagsFromEnabled, TENANT_GRANT_KEYS } from '../config/tenantAccess.js';
 import { modelFor as TenantModelFor } from '../models/Tenant.js';
 import { getMasterConnection } from '../config/tenancy.js';
 
@@ -90,12 +90,15 @@ r.put('/', requireAdmin, async (req, res) => {
     const prevMap = before?.userGrants && typeof before.userGrants === 'object' ? before.userGrants : {};
     const incomingMap = data.userGrants;
     const protectedKeys = new Set(['view_audit', 'see_audit']);
+    const manageableGrantKeys = isMasterSuperAdmin
+      ? filterGrantsByFeatureFlags(TENANT_GRANT_KEYS, (data.featureFlags || before.featureFlags || {}))
+      : filterGrantsByFeatureFlags(TENANT_GRANT_KEYS, (data.featureFlags || before.featureFlags || {})).filter((key) => !protectedKeys.has(String(key)));
     const mergedMap = { ...prevMap };
     Object.keys(incomingMap || {}).forEach(name => {
       const incoming = filterGrantsByFeatureFlags(Array.isArray(incomingMap[name]) ? incomingMap[name] : [], (data.featureFlags || before.featureFlags || {}));
       const previous = Array.isArray(prevMap[name]) ? prevMap[name] : [];
       const keepProtected = previous.filter(g => protectedKeys.has(String(g)));
-      const nextUnprotected = incoming.filter(g => !protectedKeys.has(String(g)));
+      const nextUnprotected = incoming.filter(g => !protectedKeys.has(String(g)) && manageableGrantKeys.includes(String(g)));
       mergedMap[name] = Array.from(new Set([...(isMasterSuperAdmin ? [] : keepProtected), ...nextUnprotected]));
     });
     data.userGrants = mergedMap;

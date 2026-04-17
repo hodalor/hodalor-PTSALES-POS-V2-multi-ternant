@@ -5,7 +5,7 @@ import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireAdmin, requireRoleOrPerm } from '../middleware/auth.js';
 import { hashPin } from '../utils/pin.js';
 import { getMasterConnection } from '../config/tenancy.js';
-import Tenant from '../models/Tenant.js';
+import Tenant, { modelFor as TenantModelFor } from '../models/Tenant.js';
 import { modelFor as TenantSessionModelFor } from '../models/TenantSession.js';
 import { getEffectiveTenantLimits, getTenantLimitDefaults } from '../utils/tenantLimits.js';
 
@@ -37,7 +37,8 @@ r.post('/', requireAdmin, async (req, res) => {
   const tenantId = String(req.user?.tenantId || req.tenantId || 'master');
   if (tenantId.toLowerCase() !== 'master') {
     const master = await getMasterConnection();
-    const tenant = await Tenant.findOne({ tenantId }).lean();
+    const TenantModel = TenantModelFor(master);
+    const tenant = await TenantModel.findOne({ tenantId }).lean();
     const defaults = await getTenantLimitDefaults(master);
     const limits = getEffectiveTenantLimits(tenant, defaults);
     if (limits.maxUserAccounts) {

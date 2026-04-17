@@ -51,7 +51,8 @@ export function requireRoleOrPerm(roles = [], perm = '') {
   return async (req, res, next) => {
     const role = String(req.user?.role || '').toLowerCase();
     if (role === 'superadmin') return next();
-    if (set.has(role)) return next();
+    if (!p && set.has(role)) return next();
+    if (p && role === 'admin' && set.has(role)) return next();
     const grants = Array.isArray(req.user?.grants) ? req.user.grants : [];
     if (p && grants.includes(p)) return next();
     if (p) {
