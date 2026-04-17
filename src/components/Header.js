@@ -1,4 +1,4 @@
-import { useDispatch, useSelector } from 'react-redux';
+import { useDispatch, useSelector, useStore } from 'react-redux';
 import { useState } from 'react';
 import { logout } from '../store/authSlice';
 import { setCurrentBranch } from '../store/settingsSlice';
@@ -15,6 +15,7 @@ function Header({ onToggleSidebar }) {
   const settings = useSelector(state => state.settings);
   const currentBranchId = useSelector(state => state.settings.currentBranchId);
   const dispatch = useDispatch();
+  const store = useStore();
   const toast = useToast();
   const [syncing, setSyncing] = useState(false);
 
@@ -60,7 +61,7 @@ function Header({ onToggleSidebar }) {
                 setSyncing(true);
                 try {
                   await ensureOnlineJwt();
-                  await refreshAllData(dispatch);
+                  await refreshAllData(dispatch, store.getState);
                   toast.show('Sync completed', { type: 'success' });
                 } catch (e) {
                   toast.show(String(e?.message || 'Sync failed'), { type: 'error' });

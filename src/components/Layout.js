@@ -3,7 +3,7 @@ import Header from './Header';
 import OfflineBanner from './OfflineBanner';
 import Sidebar from './Sidebar';
 import Breadcrumbs from './Breadcrumbs';
-import { useDispatch, useSelector } from 'react-redux';
+import { useDispatch, useSelector, useStore } from 'react-redux';
 import { useEffect, useState } from 'react';
 import { setBeforeInstallPromptEvent } from '../pwa/installPrompt';
 import { setQueueSummary } from '../store/offlineQueueSlice';
@@ -15,6 +15,7 @@ import { refreshAllData } from '../offline/refreshAll';
 
 function Layout() {
   const dispatch = useDispatch();
+  const store = useStore();
   const footer = useSelector(s => s.settings.footerText);
   const settings = useSelector(s => s.settings);
   const [installEvt, setInstallEvt] = useState(null);
@@ -48,7 +49,7 @@ function Layout() {
           if (alive) dispatch(setQueueSummary(after));
         }
         if (navigator.onLine) {
-          await refreshAllData(dispatch);
+          await refreshAllData(dispatch, store.getState);
         }
       } catch {}
     }
@@ -82,7 +83,7 @@ function Layout() {
       window.removeEventListener('beforeinstallprompt', onBip);
       window.removeEventListener('appinstalled', onInstalled);
     };
-  }, [dispatch, settings]);
+  }, [dispatch, settings, store]);
   function toggleSidebar() {
     const isMobile = window.matchMedia && window.matchMedia('(max-width: 992px)').matches;
     if (isMobile) {

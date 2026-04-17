@@ -5,6 +5,7 @@ import { formatCurrency } from '../utils/currency';
 import { Chart, BarElement, LineElement, PointElement, CategoryScale, LinearScale, ArcElement, Tooltip, Legend, Filler } from 'chart.js';
 import * as expensesApi from '../api/expenses';
 import { listOperations } from '../api/wholesale';
+import { isFeatureEnabled } from '../utils/featureFlags';
 
 Chart.register(BarElement, LineElement, PointElement, CategoryScale, LinearScale, ArcElement, Tooltip, Legend, Filler);
 
@@ -16,6 +17,11 @@ function DashboardPage() {
   const auth = useSelector(s => s.auth);
   const roleLower = String(auth.role || '').toLowerCase();
   const canViewFinancials = roleLower === 'superadmin' || roleLower === 'admin' || (Array.isArray(auth.grants) && auth.grants.includes('view_financials'));
+  const canUseExpenses = isFeatureEnabled(settings, 'modules.expenses') && (
+    roleLower === 'superadmin' ||
+    roleLower === 'admin' ||
+    (Array.isArray(auth.grants) && ['view_expenses', 'see_expenses', 'add_expenses'].some((key) => auth.grants.includes(key)))
+  );
   const [heatMode, setHeatMode] = useState('week'); // day, week, month
   const [expenses, setExpenses] = useState([]);
   const [warehousePending, setWarehousePending] = useState(0);
@@ -24,6 +30,10 @@ function DashboardPage() {
   useEffect(() => {
     let alive = true;
     (async () => {
+      if (!canUseExpenses) {
+        if (alive) setExpenses([]);
+        return;
+      }
       const to = new Date().toISOString().slice(0, 10);
       const from = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
       try {
@@ -36,7 +46,7 @@ function DashboardPage() {
       }
     })();
     return () => { alive = false; };
-  }, [settings.currentBranchId, roleLower]);
+  }, [settings.currentBranchId, roleLower, canUseExpenses]);
 
   useEffect(() => {
     let alive = true;

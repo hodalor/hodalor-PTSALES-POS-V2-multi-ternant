@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { useSelector, useStore } from 'react-redux';
 import { useToast } from '../components/ToastProvider';
 import { attemptSync, removeMany } from '../offline/queue';
 import { COLLECTIONS, getQueueSummary, listQueuedByCollection } from '../offline/offlineBackup';
@@ -17,6 +17,7 @@ function BackupPage() {
   const summary = useSelector(s => s.offlineQueue);
   const auth = useSelector(s => s.auth);
   const dispatch = useDispatch();
+  const store = useStore();
   const [selected, setSelected] = useState('sales');
   const [loading, setLoading] = useState(false);
   const [itemsByCollection, setItemsByCollection] = useState(new Map());
@@ -90,7 +91,7 @@ function BackupPage() {
         toast.show(`Some items failed to backup (${failed}/${total})${err}`, { type: 'error' });
       }
       try {
-        await refreshAllData(dispatch);
+        await refreshAllData(dispatch, store.getState);
       } catch {}
     } catch {
       toast.show('Backup failed', { type: 'error' });
@@ -108,7 +109,7 @@ function BackupPage() {
     setLoading(true);
     try {
       await ensureOnlineJwt();
-      await refreshAllData(dispatch);
+      await refreshAllData(dispatch, store.getState);
       const map = await listQueuedByCollection();
       setItemsByCollection(map);
       toast.show('Sync completed', { type: 'success' });

@@ -24,8 +24,19 @@ import * as expensesApi from '../api/expenses';
 import * as adjustmentsApi from '../api/adjustments';
 import { setPurchaseRequests } from '../store/purchasesSlice';
 import { setTransferRequests } from '../store/transfersSlice';
+import { isFeatureEnabled } from '../utils/featureFlags';
 
-export async function refreshAllData(dispatch) {
+export async function refreshAllData(dispatch, getState) {
+  const state = typeof getState === 'function' ? getState() : {};
+  const settings = state?.settings || {};
+  const auth = state?.auth || {};
+  const roleLower = String(auth?.role || '').toLowerCase();
+  const grants = Array.isArray(auth?.grants) ? auth.grants : [];
+  const canUseExpenses = isFeatureEnabled(settings, 'modules.expenses') && (
+    roleLower === 'superadmin' ||
+    roleLower === 'admin' ||
+    ['view_expenses', 'see_expenses', 'add_expenses'].some((key) => grants.includes(key))
+  );
   const results = await Promise.allSettled([
     productsApi.list(),
     suppliersApi.list(),
@@ -34,7 +45,7 @@ export async function refreshAllData(dispatch) {
     refundsApi.listRequests(),
     purchasesApi.listRequests({ status: 'pending_approval', limit: 200 }),
     transfersApi.listRequests({ status: 'pending_approval', limit: 200 }),
-    expensesApi.listRequests(),
+    canUseExpenses ? expensesApi.listRequests() : Promise.resolve([]),
     adjustmentsApi.listRequests(),
     salesApi.list(),
     usersApi.list(),

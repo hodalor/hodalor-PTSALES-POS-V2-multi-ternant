@@ -8,6 +8,7 @@ import { useToast } from '../components/ToastProvider';
 import * as expensesApi from '../api/expenses';
 import { formatCurrency } from '../utils/currency';
 import { listOperations } from '../api/wholesale';
+import { isFeatureEnabled } from '../utils/featureFlags';
 
 Chart.register(BarElement, ArcElement, CategoryScale, LinearScale, Tooltip, Legend);
 
@@ -21,6 +22,11 @@ function ReportsPage() {
   const auth = useSelector(s => s.auth);
   const roleLower = String(auth.role || '').toLowerCase();
   const canViewFinancials = roleLower === 'superadmin' || roleLower === 'admin' || (Array.isArray(auth.grants) && auth.grants.includes('view_financials'));
+  const canUseExpenses = isFeatureEnabled(settings, 'modules.expenses') && (
+    roleLower === 'superadmin' ||
+    roleLower === 'admin' ||
+    (Array.isArray(auth.grants) && ['view_expenses', 'see_expenses', 'add_expenses'].some((key) => auth.grants.includes(key)))
+  );
 
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -37,6 +43,10 @@ function ReportsPage() {
   useEffect(() => {
     let alive = true;
     (async () => {
+      if (!canUseExpenses) {
+        if (alive) setExpenses([]);
+        return;
+      }
       try {
         const list = await expensesApi.list({ branchId, from: dateFrom || undefined, to: dateTo || undefined });
         if (!alive) return;
@@ -48,7 +58,7 @@ function ReportsPage() {
       }
     })();
     return () => { alive = false; };
-  }, [branchId, dateFrom, dateTo, toast]);
+  }, [branchId, dateFrom, dateTo, toast, canUseExpenses]);
 
   const byId = useMemo(() => {
     const map = new Map();
