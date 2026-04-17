@@ -32,25 +32,42 @@ export async function refreshAllData(dispatch, getState) {
   const auth = state?.auth || {};
   const roleLower = String(auth?.role || '').toLowerCase();
   const grants = Array.isArray(auth?.grants) ? auth.grants : [];
+  const hasGrant = (grant) => {
+    const value = String(grant || '');
+    if (!value) return false;
+    if (grants.includes(value)) return true;
+    if (value.startsWith('view_')) return grants.includes(`see_${value.slice(5)}`);
+    if (value.startsWith('see_')) return grants.includes(`view_${value.slice(4)}`);
+    return false;
+  };
+  const allow = (feature, roles = [], requestedGrants = []) => {
+    if (!feature || !isFeatureEnabled(settings, feature)) return false;
+    if (roleLower === 'superadmin') return true;
+    const roleOk = (roles || []).map((item) => String(item || '').toLowerCase()).includes(roleLower);
+    const required = Array.isArray(requestedGrants) ? requestedGrants : [requestedGrants];
+    if (required.length === 0 || required.every((item) => !item)) return roleOk;
+    if (roleLower !== 'admin') return required.some(hasGrant);
+    return roleOk || required.some(hasGrant);
+  };
   const canUseExpenses = isFeatureEnabled(settings, 'modules.expenses') && (
     roleLower === 'superadmin' ||
     roleLower === 'admin' ||
     ['view_expenses', 'see_expenses', 'add_expenses'].some((key) => grants.includes(key))
   );
   const results = await Promise.allSettled([
-    productsApi.list(),
-    suppliersApi.list(),
-    customersApi.list(),
-    branchesApi.list(),
-    refundsApi.listRequests(),
-    purchasesApi.listRequests({ status: 'pending_approval', limit: 200 }),
-    transfersApi.listRequests({ status: 'pending_approval', limit: 200 }),
+    allow('modules.products', ['Admin','Manager','Inventory Staff'], ['view_products','see_products']) ? productsApi.list() : Promise.resolve([]),
+    isFeatureEnabled(settings, 'modules.suppliers') && allow('modules.suppliers', ['Admin','Manager','Inventory Staff'], ['view_suppliers','see_suppliers']) ? suppliersApi.list() : Promise.resolve([]),
+    isFeatureEnabled(settings, 'modules.customers') && allow('modules.customers', ['Admin','Manager','Cashier'], ['view_customers','see_customers']) ? customersApi.list() : Promise.resolve([]),
+    isFeatureEnabled(settings, 'admin.config') && allow('admin.config', ['Admin'], ['view_config','see_config']) ? branchesApi.list() : Promise.resolve([]),
+    isFeatureEnabled(settings, 'pages.retail.refunds') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']) ? refundsApi.listRequests() : Promise.resolve([]),
+    isFeatureEnabled(settings, 'pages.retail.purchases') && allow('pages.retail.purchases', ['Admin','Manager','Inventory Staff','Director'], ['approve_purchases','view_purchases','see_purchases']) ? purchasesApi.listRequests({ status: 'pending_approval', limit: 200 }) : Promise.resolve([]),
+    isFeatureEnabled(settings, 'pages.retail.transfers') && allow('pages.retail.transfers', ['Admin','Manager','Inventory Staff','Director'], ['approve_transfers','view_transfers','see_transfers']) ? transfersApi.listRequests({ status: 'pending_approval', limit: 200 }) : Promise.resolve([]),
     canUseExpenses ? expensesApi.listRequests() : Promise.resolve([]),
-    adjustmentsApi.listRequests(),
-    salesApi.list(),
-    usersApi.list(),
-    auditsApi.list(),
-    invoicesApi.list()
+    isFeatureEnabled(settings, 'pages.retail.adjustments') && allow('pages.retail.adjustments', ['Admin','Manager','Inventory Staff','Director'], ['approve_adjustments','view_adjustments','see_adjustments']) ? adjustmentsApi.listRequests() : Promise.resolve([]),
+    allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? salesApi.list() : Promise.resolve([]),
+    isFeatureEnabled(settings, 'admin.users') && allow('admin.users', ['Admin'], ['view_users','see_users']) ? usersApi.list() : Promise.resolve([]),
+    isFeatureEnabled(settings, 'admin.audit') && allow('admin.audit', ['Admin'], ['view_audit','see_audit']) ? auditsApi.list() : Promise.resolve([]),
+    isFeatureEnabled(settings, 'modules.invoices') && allow('modules.invoices', ['Admin','Manager','Cashier'], ['view_invoices','see_invoices','view_wholesale_invoices','view_warehouse_invoices']) ? invoicesApi.list() : Promise.resolve([])
   ]);
   const [p, s, c, b, r, pr, tr, er, ar, sl, u, au, invs] = results;
   if (p.status === 'fulfilled' && Array.isArray(p.value)) dispatch(setProducts(p.value));

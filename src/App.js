@@ -443,6 +443,7 @@ function App() {
           const roleOk = (roles || []).map(x => String(x).toLowerCase()).includes(roleLower);
           if (!grant) return roleOk;
           const requested = Array.isArray(grant) ? grant : [grant];
+          if (roleLower !== 'admin') return requested.some(hasGrant);
           return roleOk || requested.some(hasGrant);
         };
         const [p, s, c, b, r, sl, u, au, invs, pr, tr, exr, adr] = await Promise.allSettled([

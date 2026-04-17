@@ -11,7 +11,7 @@ import { setGrants as setAuthGrants } from '../store/authSlice';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import InlineSpinner from '../components/InlineSpinner';
-import { TENANT_GRANT_CATALOG, filterGrantsByTenantFlags } from '../utils/tenantAccess';
+import { TENANT_GRANT_CATALOG, TENANT_SIDEBAR_SECTIONS, filterGrantsByTenantFlags } from '../utils/tenantAccess';
 
 const ALL_GRANTS = TENANT_GRANT_CATALOG;
 const ALL_GRANTS_KEYS = ALL_GRANTS.map(g => g.key);
@@ -99,13 +99,33 @@ function UsersPage() {
     return canManageAuditGrant ? scoped : scoped.filter(g => !AUDIT_GRANT_KEYS.has(String(g.key)));
   }, [canManageAuditGrant, manageableGrantKeys]);
   const groupedGrantOptions = useMemo(() => {
-    const map = new Map();
-    for (const item of grantOptions) {
-      const group = String(item.group || 'Other');
-      if (!map.has(group)) map.set(group, []);
-      map.get(group).push(item);
+    const byKey = new Map(grantOptions.map((item) => [item.key, item]));
+    const used = new Set();
+    const sections = TENANT_SIDEBAR_SECTIONS.map((section) => {
+      const items = [];
+      for (const menuItem of section.items || []) {
+        const related = Array.from(new Set((menuItem.keys || [])
+          .filter((key) => String(key).startsWith('grants.'))
+          .map((key) => String(key).slice(7))
+          .filter((key) => byKey.has(key))))
+          .map((key) => {
+            used.add(key);
+            return byKey.get(key);
+          });
+        if (related.length > 0) items.push({ label: menuItem.label, grants: related });
+      }
+      return { id: section.id, title: section.title, description: section.description, items };
+    }).filter((section) => section.items.length > 0);
+    const leftovers = grantOptions.filter((item) => !used.has(item.key));
+    if (leftovers.length > 0) {
+      sections.push({
+        id: 'other',
+        title: 'Other Permissions',
+        description: 'Available permissions not mapped to a sidebar section.',
+        items: [{ label: 'Additional Permissions', grants: leftovers }]
+      });
     }
-    return Array.from(map.entries()).map(([group, items]) => ({ group, items }));
+    return sections;
   }, [grantOptions]);
   // auto-apply defaults when role is selected on Create User
   useEffect(() => {
@@ -457,26 +477,34 @@ function UsersPage() {
           <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, marginBottom: 8 }}>
             <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Feature Access</div>
             <div style={{ display: 'grid', gap: 12 }}>
-              {groupedGrantOptions.map(({ group, items }) => (
-                <div key={group}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 6 }}>{group}</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
-                    {items.map(g => (
-                      <label key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <input
-                          type="checkbox"
-                          checked={grants.includes(g.key)}
-                          onChange={e => {
-                            const checked = e.target.checked;
-                            setGrants(prev => {
-                              const set = new Set(prev);
-                              if (checked) set.add(g.key); else set.delete(g.key);
-                              return Array.from(set);
-                            });
-                          }}
-                        />
-                        <span>{g.label}</span>
-                      </label>
+              {groupedGrantOptions.map((section) => (
+                <div key={section.id} className="card" style={{ padding: 12, border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', marginBottom: 4 }}>{section.title}</div>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>{section.description}</div>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    {section.items.map((item) => (
+                      <div key={`${section.id}:${item.label}`}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 6 }}>{item.label}</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                          {item.grants.map((g) => (
+                            <label key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <input
+                                type="checkbox"
+                                checked={grants.includes(g.key)}
+                                onChange={e => {
+                                  const checked = e.target.checked;
+                                  setGrants(prev => {
+                                    const set = new Set(prev);
+                                    if (checked) set.add(g.key); else set.delete(g.key);
+                                    return Array.from(set);
+                                  });
+                                }}
+                              />
+                              <span>{g.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -649,26 +677,34 @@ function UsersPage() {
                 <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, marginBottom: 8 }}>
                   <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Feature Access</div>
                   <div style={{ display: 'grid', gap: 12, maxHeight: '50vh', overflowY: 'auto', paddingRight: 4 }}>
-                    {groupedGrantOptions.map(({ group, items }) => (
-                      <div key={group}>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 6 }}>{group}</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 6 }}>
-                          {items.map(g => (
-                            <label key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                              <input
-                                type="checkbox"
-                                checked={editGrants.includes(g.key)}
-                                onChange={e => {
-                                  const checked = e.target.checked;
-                                  setEditGrants(prev => {
-                                    const set = new Set(prev);
-                                    if (checked) set.add(g.key); else set.delete(g.key);
-                                    return Array.from(set);
-                                  });
-                                }}
-                              />
-                              <span>{g.label}</span>
-                            </label>
+                    {groupedGrantOptions.map((section) => (
+                      <div key={section.id} className="card" style={{ padding: 12, border: '1px solid #e2e8f0' }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', marginBottom: 4 }}>{section.title}</div>
+                        <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>{section.description}</div>
+                        <div style={{ display: 'grid', gap: 10 }}>
+                          {section.items.map((item) => (
+                            <div key={`${section.id}:${item.label}`}>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 6 }}>{item.label}</div>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 6 }}>
+                                {item.grants.map(g => (
+                                  <label key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                    <input
+                                      type="checkbox"
+                                      checked={editGrants.includes(g.key)}
+                                      onChange={e => {
+                                        const checked = e.target.checked;
+                                        setEditGrants(prev => {
+                                          const set = new Set(prev);
+                                          if (checked) set.add(g.key); else set.delete(g.key);
+                                          return Array.from(set);
+                                        });
+                                      }}
+                                    />
+                                    <span>{g.label}</span>
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
                           ))}
                         </div>
                       </div>
