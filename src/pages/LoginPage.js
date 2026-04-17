@@ -189,7 +189,8 @@ function LoginPage() {
   }
 
   const cardBrand = detectCardBrand(paymentCardNumber);
-  const selectedPeriod = (paymentInfo?.periods || []).find((period) => Number(period?.months) === Number(paymentMonths || 0)) || null;
+  const availablePeriods = useMemo(() => paymentInfo?.periods || [], [paymentInfo?.periods]);
+  const selectedPeriod = availablePeriods.find((period) => Number(period?.months) === Number(paymentMonths || 0)) || availablePeriods[0] || null;
   const paymentTotal = selectedPeriod?.amount ?? null;
   const countryLabel = COUNTRY_LABELS[String(paymentInfo?.billingCountry || '')] || String(paymentInfo?.billingCountry || '');
   const maskedEmail = maskEmail(paymentEmail || paymentInfo?.billingEmail || '');
@@ -217,6 +218,14 @@ function LoginPage() {
   useEffect(() => {
     regenerateCaptcha();
   }, [regenerateCaptcha]);
+
+  useEffect(() => {
+    if (!availablePeriods.length) return;
+    const hasCurrent = availablePeriods.some((period) => Number(period?.months) === Number(paymentMonths || 0));
+    if (!hasCurrent) {
+      setPaymentMonths(String(availablePeriods[0]?.months || 1));
+    }
+  }, [availablePeriods, paymentMonths]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -412,9 +421,13 @@ function LoginPage() {
   async function onStartPayment() {
     if (paymentLoading) return;
     const activeTenantId = String(paymentInfo?.tenantId || tenantId || activationTenantId || '').trim();
-    const months = Number(paymentMonths || 0);
+    const months = Number(selectedPeriod?.months || paymentMonths || 0);
     if (!activeTenantId || !months) {
       toast.show('Choose tenant and renewal period', { type: 'error' });
+      return;
+    }
+    if (paymentTotal == null) {
+      toast.show('Unable to resolve payable amount for the selected period', { type: 'error' });
       return;
     }
     if (isDpoProvider && paymentMethod === 'mobile_money' && (!paymentPhone.trim() || !paymentNetwork.trim())) {
@@ -652,7 +665,7 @@ function LoginPage() {
           footer={
             <>
               <button className="btn" onClick={() => setPaymentOpen(false)} disabled={paymentLoading}>Cancel</button>
-              <button className="btn btn-primary" onClick={onStartPayment} disabled={paymentLoading || !paymentInfo?.subscriptionAmount || enabledProviders.length === 0 || !enabledProviders.includes(paymentProvider)}>
+              <button className="btn btn-primary" onClick={onStartPayment} disabled={paymentLoading || !selectedPeriod || paymentTotal == null || enabledProviders.length === 0 || !enabledProviders.includes(paymentProvider)}>
                 {paymentLoading ? 'Preparing…' : providerCheckoutLabel}
               </button>
             </>
