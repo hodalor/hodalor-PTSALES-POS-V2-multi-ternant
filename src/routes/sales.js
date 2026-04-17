@@ -27,7 +27,12 @@ function productLookupQuery(productId) {
 }
 
 r.get('/', async (req, res) => {
-  const rows = await Sale.find().sort({ created_at: -1 }).limit(500);
+  const role = String(req.user?.role || '').toLowerCase();
+  const query = {};
+  if (role === 'cashier') {
+    query.sellerName = String(req.user?.name || '').trim();
+  }
+  const rows = await Sale.find(query).sort({ created_at: -1 }).limit(500);
   res.json(rows);
 });
 

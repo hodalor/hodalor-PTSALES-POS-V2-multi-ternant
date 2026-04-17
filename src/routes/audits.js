@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import Audit from '../models/Audit.js';
-import { requireAuth, requireAdmin, requireRoleOrPerm } from '../middleware/auth.js';
+import { requireAuth, requireAdmin, requireFeature, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
 import { getMasterConnection, getTenantConnection, resolveStoredTenantId } from '../config/tenancy.js';
 import { modelFor as TenantModelFor } from '../models/Tenant.js';
@@ -8,7 +8,7 @@ import { modelFor as TenantModelFor } from '../models/Tenant.js';
 const r = Router();
 r.use(requireAuth);
 
-r.get('/', requireRoleOrPerm(['SuperAdmin'], 'view_audit'), async (req, res) => {
+r.get('/', requireFeature('admin.audit'), requireRoleOrPerm(['SuperAdmin', 'Admin'], 'view_audit'), async (req, res) => {
   const limit = Math.min(1000, Math.max(50, Number(req.query.limit) || 500));
   const role = String(req.user?.role || '').toLowerCase();
   const currentTenantId = String(req.user?.tenantId || req.tenantId || 'master');
