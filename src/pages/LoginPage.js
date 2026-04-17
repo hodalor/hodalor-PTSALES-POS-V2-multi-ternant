@@ -75,9 +75,9 @@ function renderNetworkBadge(network, active) {
   const palette = label === 'MTN'
     ? { bg: '#fef08a', fg: '#854d0e' }
     : label === 'AIRTELTIGO'
-      ? { bg: '#fee2e2', fg: '#991b1b' }
+      ? { bg: '#fee2e2', fg: '#1b5299ff' }
       : label === 'TELECEL'
-        ? { bg: '#dcfce7', fg: '#166534' }
+        ? { bg: '#dcfce7', fg: '#991b1b' }
         : label === 'AIRTEL'
           ? { bg: '#fee2e2', fg: '#991b1b' }
           : label === 'ZAMTEL'
@@ -789,7 +789,7 @@ function LoginPage() {
                         </div>
                       </div>
                     </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.05fr) minmax(0, 1.25fr) 78px 78px', gap: 10, alignItems: 'end' }}>
+                    <div style={{ display: 'flex', gridTemplateColumns: 'minmax(0, 1.05fr) minmax(0, 1.25fr) 78px 78px', gap: 10, alignItems: 'end' }}>
                       <label style={{ minWidth: 0 }}>
                         Name On Card
                         <input className="input" value={paymentCardName} onChange={(e) => setPaymentCardName(e.target.value)} disabled={paymentLoading} />
@@ -800,11 +800,11 @@ function LoginPage() {
                       </label>
                       <label style={{ minWidth: 0 }}>
                         Expiry
-                        <input className="input" value={paymentCardExpiry} onChange={(e) => setPaymentCardExpiry(formatCardExpiry(e.target.value))} placeholder="MM/YY" disabled={paymentLoading} />
+                        <input className="input" value={paymentCardExpiry} onChange={(e) => setPaymentCardExpiry(formatCardExpiry(e.target.value))} placeholder="MM/YY" disabled={paymentLoading} style={{width:"70px"}}/>
                       </label>
                       <label style={{ minWidth: 0 }}>
                         Security Code
-                        <input className="input" type="password" value={paymentCardCvv} onChange={(e) => setPaymentCardCvv(e.target.value)} placeholder="CVV" disabled={paymentLoading} />
+                        <input className="input" type="password" value={paymentCardCvv} onChange={(e) => setPaymentCardCvv(e.target.value)} placeholder="CVV" disabled={paymentLoading} style={{width:"70px"}}/>
                       </label>
                     </div>
                   </div>
