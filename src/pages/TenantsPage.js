@@ -31,6 +31,7 @@ const EMPTY_FORM = {
 
 function TenantsPage() {
   const toast = useToast();
+  const [activeTab, setActiveTab] = useState('tenants');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -47,19 +48,53 @@ function TenantsPage() {
     pro: { maxUserAccounts: '', maxActiveUsers: '' },
     enterprise: { maxUserAccounts: '', maxActiveUsers: '' }
   });
+  const [paymentManagement, setPaymentManagement] = useState({ gateways: [], enabledGateways: [], paymentHistory: [], summary: { totalCollected: 0, transactionCount: 0, cardCollected: 0, mobileMoneyCollected: 0, gatewayCount: 0 } });
+  const [savingPaymentManagement, setSavingPaymentManagement] = useState(false);
+  const [paymentFilters, setPaymentFilters] = useState({ provider: 'all', channel: 'all', tenantId: 'all', search: '' });
 
   const sections = useMemo(() => TENANT_SIDEBAR_SECTIONS, []);
+  const filteredPaymentRows = useMemo(() => {
+    const rowsList = Array.isArray(paymentManagement.paymentHistory) ? paymentManagement.paymentHistory : [];
+    const provider = String(paymentFilters.provider || 'all');
+    const channel = String(paymentFilters.channel || 'all');
+    const tenantId = String(paymentFilters.tenantId || 'all');
+    const search = String(paymentFilters.search || '').trim().toLowerCase();
+    return rowsList.filter((row) => {
+      if (provider !== 'all' && String(row.provider || '') !== provider) return false;
+      if (channel !== 'all' && String(row.channel || '') !== channel) return false;
+      if (tenantId !== 'all' && String(row.tenantId || '') !== tenantId) return false;
+      if (search) {
+        const hay = `${row.tenantId || ''} ${row.tenantName || ''} ${row.transactionRef || ''} ${row.provider || ''}`.toLowerCase();
+        if (!hay.includes(search)) return false;
+      }
+      return true;
+    });
+  }, [paymentFilters, paymentManagement.paymentHistory]);
+
+  const paymentSummary = useMemo(() => {
+    const totalCollected = filteredPaymentRows.reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+    const cardCollected = filteredPaymentRows.filter((row) => row.channel === 'card').reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+    const mobileMoneyCollected = filteredPaymentRows.filter((row) => row.channel === 'mobile_money').reduce((sum, row) => sum + (Number(row.amount) || 0), 0);
+    return {
+      totalCollected,
+      transactionCount: filteredPaymentRows.length,
+      cardCollected,
+      mobileMoneyCollected,
+      gatewayCount: Array.from(new Set(filteredPaymentRows.map((row) => row.provider).filter(Boolean))).length
+    };
+  }, [filteredPaymentRows]);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [tenantRows, defaults] = await Promise.all([tenantsApi.list(), tenantsApi.getLimitDefaults()]);
+      const [tenantRows, defaults, paymentData] = await Promise.all([tenantsApi.list(), tenantsApi.getLimitDefaults(), tenantsApi.getPaymentManagement()]);
       setRows(tenantRows);
       setLimitDefaults({
         basic: { maxUserAccounts: defaults?.basic?.maxUserAccounts ?? '', maxActiveUsers: defaults?.basic?.maxActiveUsers ?? '' },
         pro: { maxUserAccounts: defaults?.pro?.maxUserAccounts ?? '', maxActiveUsers: defaults?.pro?.maxActiveUsers ?? '' },
         enterprise: { maxUserAccounts: defaults?.enterprise?.maxUserAccounts ?? '', maxActiveUsers: defaults?.enterprise?.maxActiveUsers ?? '' }
       });
+      setPaymentManagement(paymentData || { gateways: [], enabledGateways: [], paymentHistory: [], summary: { totalCollected: 0, transactionCount: 0, cardCollected: 0, mobileMoneyCollected: 0, gatewayCount: 0 } });
     } catch (e) {
       toast.show(String(e?.message || 'Failed to load tenants'), { type: 'error' });
     } finally {
@@ -298,6 +333,28 @@ function TenantsPage() {
     setForm((prev) => ({ ...prev, features: getPlanDefaultFeatures(prev.subscriptionPlan) }));
   }
 
+  async function togglePaymentGateway(gatewayKey, enabled) {
+    if (savingPaymentManagement) return;
+    const current = Array.isArray(paymentManagement.enabledGateways) ? paymentManagement.enabledGateways : [];
+    const next = enabled
+      ? Array.from(new Set([...current, gatewayKey]))
+      : current.filter((item) => String(item) !== String(gatewayKey));
+    setSavingPaymentManagement(true);
+    try {
+      const updated = await tenantsApi.updatePaymentManagement({ enabledGateways: next });
+      setPaymentManagement(updated);
+      toast.show('Payment management updated', { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to update payment management'), { type: 'error' });
+    } finally {
+      setSavingPaymentManagement(false);
+    }
+  }
+
+  function setPaymentFilter(key, value) {
+    setPaymentFilters((prev) => ({ ...prev, [key]: value }));
+  }
+
   return (
     <div style={{ padding: 16, display: 'grid', gap: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
@@ -305,9 +362,118 @@ function TenantsPage() {
         <h1 style={{ marginBottom: 6 }}>Tenants</h1>
         <div style={{ color: '#64748b' }}>Create companies, assign plans, and override features from one master control.</div>
         </div>
-        <button className="btn btn-primary" onClick={openCreateModal}>Add Tenant</button>
+        {activeTab === 'tenants' ? <button className="btn btn-primary" onClick={openCreateModal}>Add Tenant</button> : null}
       </div>
 
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <button className="btn" type="button" style={{ background: activeTab === 'tenants' ? '#eff6ff' : undefined, borderColor: activeTab === 'tenants' ? '#1d4ed8' : undefined, color: activeTab === 'tenants' ? '#1d4ed8' : undefined }} onClick={() => setActiveTab('tenants')}>Tenants</button>
+        <button className="btn" type="button" style={{ background: activeTab === 'payment_management' ? '#eff6ff' : undefined, borderColor: activeTab === 'payment_management' ? '#1d4ed8' : undefined, color: activeTab === 'payment_management' ? '#1d4ed8' : undefined }} onClick={() => setActiveTab('payment_management')}>Payment Management</button>
+      </div>
+
+      {activeTab === 'payment_management' ? (
+        <>
+          <div className="card">
+            <h2 className="section-title">Payment Gateway Controls</h2>
+            <div style={{ color: '#64748b', marginBottom: 12 }}>
+              Enable only the gateways you want tenants to see on the expired subscription payment modal.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+              {(paymentManagement.gateways || []).map((gateway) => (
+                <div key={gateway.key} className="card" style={{ padding: 14, border: '1px solid #e2e8f0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
+                    <div>
+                      <div style={{ fontWeight: 800 }}>{gateway.label}</div>
+                      <div style={{ color: '#64748b', fontSize: 12 }}>{gateway.description}</div>
+                    </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <input type="checkbox" checked={!!gateway.enabled} disabled={savingPaymentManagement} onChange={(e) => togglePaymentGateway(gateway.key, e.target.checked)} />
+                      <span>{gateway.enabled ? 'On' : 'Off'}</span>
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12 }}>
+            <div className="card" style={{ padding: 14 }}>
+              <div style={{ color: '#64748b', fontSize: 12 }}>Total Collected</div>
+              <div style={{ fontSize: 24, fontWeight: 800 }}>{Number(paymentSummary.totalCollected || 0).toLocaleString()}</div>
+            </div>
+            <div className="card" style={{ padding: 14 }}>
+              <div style={{ color: '#64748b', fontSize: 12 }}>Transactions</div>
+              <div style={{ fontSize: 24, fontWeight: 800 }}>{paymentSummary.transactionCount}</div>
+            </div>
+            <div className="card" style={{ padding: 14 }}>
+              <div style={{ color: '#64748b', fontSize: 12 }}>Card Collected</div>
+              <div style={{ fontSize: 24, fontWeight: 800 }}>{Number(paymentSummary.cardCollected || 0).toLocaleString()}</div>
+            </div>
+            <div className="card" style={{ padding: 14 }}>
+              <div style={{ color: '#64748b', fontSize: 12 }}>Mobile Money Collected</div>
+              <div style={{ fontSize: 24, fontWeight: 800 }}>{Number(paymentSummary.mobileMoneyCollected || 0).toLocaleString()}</div>
+            </div>
+          </div>
+          <div className="card">
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 12, marginBottom: 12 }}>
+              <label>
+                Provider
+                <select className="input" value={paymentFilters.provider} onChange={(e) => setPaymentFilter('provider', e.target.value)}>
+                  <option value="all">All</option>
+                  {(paymentManagement.gateways || []).map((gateway) => <option key={gateway.key} value={gateway.key}>{gateway.label}</option>)}
+                </select>
+              </label>
+              <label>
+                Channel
+                <select className="input" value={paymentFilters.channel} onChange={(e) => setPaymentFilter('channel', e.target.value)}>
+                  <option value="all">All</option>
+                  <option value="card">Card</option>
+                  <option value="mobile_money">Mobile Money</option>
+                  <option value="other">Other</option>
+                </select>
+              </label>
+              <label>
+                Tenant
+                <select className="input" value={paymentFilters.tenantId} onChange={(e) => setPaymentFilter('tenantId', e.target.value)}>
+                  <option value="all">All</option>
+                  {rows.map((row) => <option key={row.tenantId} value={row.tenantId}>{row.tenantId}</option>)}
+                </select>
+              </label>
+              <label>
+                Search
+                <input className="input" value={paymentFilters.search} onChange={(e) => setPaymentFilter('search', e.target.value)} placeholder="Tenant, ref, provider" />
+              </label>
+            </div>
+            <h2 className="section-title">All Tenant Payment History</h2>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th align="left">Date</th>
+                  <th align="left">Tenant</th>
+                  <th align="left">Provider</th>
+                  <th align="left">Channel</th>
+                  <th align="left">Amount</th>
+                  <th align="left">Status</th>
+                  <th align="left">Reference</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPaymentRows.map((row) => (
+                  <tr key={row.id}>
+                    <td>{row.createdAt ? new Date(row.createdAt).toLocaleString() : ''}</td>
+                    <td>{row.tenantName || row.tenantId}</td>
+                    <td>{row.provider}</td>
+                    <td>{row.channel}</td>
+                    <td>{Number(row.amount || 0).toLocaleString()} {row.currencyCode || ''}</td>
+                    <td>{row.status || ''}</td>
+                    <td>{row.transactionRef || row.providerTransactionId || ''}</td>
+                  </tr>
+                ))}
+                {filteredPaymentRows.length === 0 ? <tr><td colSpan="7" style={{ color: '#64748b', padding: 12 }}>No payment records match the current filter.</td></tr> : null}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        <>
       <div className="card">
         <h2 className="section-title">Default User Limits By Plan</h2>
         <div style={{ color: '#64748b', marginBottom: 12 }}>
@@ -433,6 +599,8 @@ function TenantsPage() {
           </div>
         )}
       </div>
+        </>
+      )}
       {showForm && (
         <Modal
           title={editing ? `Edit Tenant: ${editing}` : 'Add Tenant'}

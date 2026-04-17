@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { loginSuccess } from '../store/authSlice';
@@ -49,6 +49,61 @@ function maskPhone(value) {
   const raw = String(value || '').replace(/\s+/g, '');
   if (raw.length <= 4) return raw;
   return `${raw.slice(0, 3)}${'*'.repeat(Math.max(2, raw.length - 5))}${raw.slice(-2)}`;
+}
+
+function renderCardBrandLogo(brand) {
+  const next = String(brand || '').toLowerCase();
+  if (next === 'visa') {
+    return <span style={{ fontWeight: 900, fontStyle: 'italic', letterSpacing: 1.2, color: '#f5f5f4' }}>VISA</span>;
+  }
+  if (next === 'mastercard') {
+    return (
+      <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', width: 42, height: 24 }}>
+        <span style={{ position: 'absolute', left: 0, width: 22, height: 22, borderRadius: 999, background: '#eb001b', opacity: 0.95 }} />
+        <span style={{ position: 'absolute', left: 12, width: 22, height: 22, borderRadius: 999, background: '#f79e1b', opacity: 0.95 }} />
+      </span>
+    );
+  }
+  if (next === 'verve') {
+    return <span style={{ fontWeight: 900, letterSpacing: 1, color: '#f5f5f4' }}>VERVE</span>;
+  }
+  return <span style={{ fontWeight: 800, letterSpacing: 1.1, color: '#e5e7eb', textTransform: 'uppercase' }}>{brand}</span>;
+}
+
+function renderNetworkBadge(network, active) {
+  const label = String(network || '').toUpperCase();
+  const palette = label === 'MTN'
+    ? { bg: '#fef08a', fg: '#854d0e' }
+    : label === 'AIRTELTIGO'
+      ? { bg: '#fee2e2', fg: '#991b1b' }
+      : label === 'TELECEL'
+        ? { bg: '#dcfce7', fg: '#166534' }
+        : label === 'AIRTEL'
+          ? { bg: '#fee2e2', fg: '#991b1b' }
+          : label === 'ZAMTEL'
+            ? { bg: '#e0f2fe', fg: '#075985' }
+            : label === 'TNM'
+              ? { bg: '#fae8ff', fg: '#86198f' }
+              : { bg: '#e2e8f0', fg: '#334155' };
+  return (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6,
+      minWidth: 92,
+      padding: '10px 14px',
+      borderRadius: 14,
+      fontWeight: 800,
+      letterSpacing: 0.4,
+      background: active ? palette.bg : '#0f172a',
+      color: active ? palette.fg : '#e2e8f0',
+      border: active ? `1px solid ${palette.fg}22` : '1px solid #334155'
+    }}>
+      {active ? <span style={{ fontSize: 13, fontWeight: 900 }}>✓</span> : null}
+      {label}
+    </span>
+  );
 }
 
 function LoginPage() {
@@ -127,6 +182,8 @@ function LoginPage() {
     setPaymentEmail(String(info?.billingEmail || ''));
     setPaymentAddress(String(info?.billingAddress || ''));
     setPaymentNetwork(String((info?.mobileMoneyNetworks || [])[0] || ''));
+    const enabled = Array.isArray(info?.enabledGateways) && info.enabledGateways.length > 0 ? info.enabledGateways : ['paypal', 'paystack', 'dpo_pay'];
+    setPaymentProvider(enabled.includes(paymentProvider) ? paymentProvider : enabled[0]);
     return info;
   }
 
@@ -138,6 +195,15 @@ function LoginPage() {
   const maskedEmail = maskEmail(paymentEmail || paymentInfo?.billingEmail || '');
   const maskedPhone = maskPhone(paymentPhone || paymentInfo?.billingPhone || '');
   const isPayPalProvider = paymentProvider === 'paypal';
+  const isPaystackProvider = paymentProvider === 'paystack';
+  const isDpoProvider = paymentProvider === 'dpo_pay';
+  const enabledProviders = useMemo(() => (
+    Array.isArray(paymentInfo?.enabledGateways) && paymentInfo.enabledGateways.length > 0
+      ? paymentInfo.enabledGateways
+      : ['paypal', 'paystack', 'dpo_pay']
+  ), [paymentInfo?.enabledGateways]);
+  const showProviderChooser = enabledProviders.length > 1;
+  const providerCheckoutLabel = isPayPalProvider ? 'Continue To PayPal Checkout' : isPaystackProvider ? 'Continue To Paystack Checkout' : 'Continue To DPO Checkout';
 
   const regenerateCaptcha = useCallback(() => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -165,10 +231,14 @@ function LoginPage() {
     const storedTxRef = localStorage.getItem('ptSales:renewalPaymentTxRef') || '';
     const txRef = storedProvider === 'paypal'
       ? (storedTxRef || params.get('token') || '')
-      : (params.get('CompanyRef') || params.get('companyRef') || storedTxRef);
+      : storedProvider === 'paystack'
+        ? (params.get('reference') || params.get('trxref') || storedTxRef)
+        : (params.get('CompanyRef') || params.get('companyRef') || storedTxRef);
     const transactionToken = storedProvider === 'paypal'
       ? (params.get('token') || '')
-      : (params.get('TransactionToken') || params.get('TransID') || '');
+      : storedProvider === 'paystack'
+        ? (params.get('reference') || params.get('trxref') || '')
+        : (params.get('TransactionToken') || params.get('TransID') || '');
     if (!txRef || !transactionToken) return;
     let ignore = false;
     (async () => {
@@ -178,8 +248,9 @@ function LoginPage() {
         const result = await authApi.verifyRenewalPayment({
           tenantId: storedTenantId,
           provider: storedProvider,
-          transactionToken: storedProvider === 'paypal' ? '' : transactionToken,
+          transactionToken: storedProvider === 'paypal' || storedProvider === 'paystack' ? '' : transactionToken,
           orderId: storedProvider === 'paypal' ? transactionToken : '',
+          reference: storedProvider === 'paystack' ? transactionToken : '',
           txRef: storedProvider === 'paypal' ? storedTxRef : txRef
         });
         if (ignore) return;
@@ -199,6 +270,12 @@ function LoginPage() {
     })();
     return () => { ignore = true; };
   }, [location.search, navigate, toast]);
+
+  useEffect(() => {
+    if (!enabledProviders.includes(paymentProvider)) {
+      setPaymentProvider(enabledProviders[0] || 'paypal');
+    }
+  }, [enabledProviders, paymentProvider]);
 
   async function doServerLogin(u, p) {
     const resp = await authApi.login({ username: u, pin: p, tenantId });
@@ -339,8 +416,12 @@ function LoginPage() {
       toast.show('Choose tenant and renewal period', { type: 'error' });
       return;
     }
-    if (!isPayPalProvider && paymentMethod === 'mobile_money' && (!paymentPhone.trim() || !paymentNetwork.trim())) {
+    if (isDpoProvider && paymentMethod === 'mobile_money' && (!paymentPhone.trim() || !paymentNetwork.trim())) {
       toast.show('Enter phone number and select mobile money network', { type: 'error' });
+      return;
+    }
+    if (isPaystackProvider && paymentMethod === 'mobile_money' && !paymentPhone.trim()) {
+      toast.show('Enter phone number for mobile money checkout', { type: 'error' });
       return;
     }
     setPaymentLoading(true);
@@ -562,8 +643,8 @@ function LoginPage() {
           footer={
             <>
               <button className="btn" onClick={() => setPaymentOpen(false)} disabled={paymentLoading}>Cancel</button>
-              <button className="btn btn-primary" onClick={onStartPayment} disabled={paymentLoading || !paymentInfo?.subscriptionAmount}>
-                {paymentLoading ? 'Preparing…' : (isPayPalProvider ? 'Continue To PayPal Checkout' : 'Continue To DPO Checkout')}
+              <button className="btn btn-primary" onClick={onStartPayment} disabled={paymentLoading || !paymentInfo?.subscriptionAmount || enabledProviders.length === 0 || !enabledProviders.includes(paymentProvider)}>
+                {paymentLoading ? 'Preparing…' : providerCheckoutLabel}
               </button>
             </>
           }
@@ -614,43 +695,47 @@ function LoginPage() {
                     <input className="input" readOnly value={paymentTotal != null ? formatCurrency(paymentTotal, paymentInfo) : 'Not configured'} />
                   </label>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <button
-                    type="button"
-                    className="btn"
-                    style={{ borderColor: paymentProvider === 'paypal' ? '#1d4ed8' : undefined, color: paymentProvider === 'paypal' ? '#1d4ed8' : undefined, background: paymentProvider === 'paypal' ? '#eff6ff' : undefined }}
-                    onClick={() => setPaymentProvider('paypal')}
-                  >
-                    PayPal / Card
-                  </button>
-                  <button
-                    type="button"
-                    className="btn"
-                    style={{ borderColor: paymentProvider === 'dpo_pay' ? '#1d4ed8' : undefined, color: paymentProvider === 'dpo_pay' ? '#1d4ed8' : undefined, background: paymentProvider === 'dpo_pay' ? '#eff6ff' : undefined }}
-                    onClick={() => setPaymentProvider('dpo_pay')}
-                  >
-                    DPO Pay
-                  </button>
-                </div>
-                {isPayPalProvider ? (
-                  <div style={{ display: 'grid', gap: 12 }}>
-                    <div style={{ borderRadius: 16, padding: 16, background: 'linear-gradient(135deg, #003087 0%, #009cde 100%)', color: '#fff' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                        <span style={{ fontWeight: 800, letterSpacing: 0.8 }}>PayPal Checkout</span>
-                        <span style={{ fontWeight: 700 }}>PayPal</span>
-                      </div>
-                      <div style={{ fontSize: 14, opacity: 0.92 }}>
-                        You will continue to secure PayPal checkout to complete payment with PayPal balance or eligible credit/debit card checkout.
-                      </div>
-                      <div style={{ marginTop: 14, fontSize: 18, fontWeight: 800 }}>
-                        {paymentTotal != null ? formatCurrency(paymentTotal, paymentInfo) : 'Not configured'}
-                      </div>
-                    </div>
-                    <div style={{ padding: 12, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b', fontSize: 12 }}>
-                      Use PayPal for PayPal wallet and card checkout. Mobile money remains under DPO Pay because PayPal does not offer the same country-specific MoMo network flow we configured for Ghana, Zambia, and Malawi.
-                    </div>
+                {enabledProviders.length > 0 && showProviderChooser ? (
+                  <div style={{ display: 'grid', gridTemplateColumns: `repeat(${enabledProviders.length}, minmax(0, 1fr))`, gap: 12 }}>
+                    {enabledProviders.includes('paypal') ? (
+                      <button
+                        type="button"
+                        className="btn"
+                        style={{ borderColor: paymentProvider === 'paypal' ? '#1d4ed8' : undefined, color: paymentProvider === 'paypal' ? '#1d4ed8' : undefined, background: paymentProvider === 'paypal' ? '#eff6ff' : undefined }}
+                        onClick={() => setPaymentProvider('paypal')}
+                      >
+                        PayPal / Card
+                      </button>
+                    ) : null}
+                    {enabledProviders.includes('paystack') ? (
+                      <button
+                        type="button"
+                        className="btn"
+                        style={{ borderColor: paymentProvider === 'paystack' ? '#1d4ed8' : undefined, color: paymentProvider === 'paystack' ? '#1d4ed8' : undefined, background: paymentProvider === 'paystack' ? '#eff6ff' : undefined }}
+                        onClick={() => setPaymentProvider('paystack')}
+                      >
+                        Paystack
+                      </button>
+                    ) : null}
+                    {enabledProviders.includes('dpo_pay') ? (
+                      <button
+                        type="button"
+                        className="btn"
+                        style={{ borderColor: paymentProvider === 'dpo_pay' ? '#1d4ed8' : undefined, color: paymentProvider === 'dpo_pay' ? '#1d4ed8' : undefined, background: paymentProvider === 'dpo_pay' ? '#eff6ff' : undefined }}
+                        onClick={() => setPaymentProvider('dpo_pay')}
+                      >
+                        DPO Pay
+                      </button>
+                    ) : null}
                   </div>
                 ) : (
+                  enabledProviders.length === 0 ? (
+                    <div style={{ padding: 12, borderRadius: 12, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: 13 }}>
+                      No payment gateway is currently enabled by superadmin.
+                    </div>
+                  ) : null
+                )}
+                {isPayPalProvider ? null : (
                   <>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <button type="button" className="btn" style={{ borderColor: paymentMethod === 'mobile_money' ? '#2563eb' : undefined, color: paymentMethod === 'mobile_money' ? '#2563eb' : undefined, background: paymentMethod === 'mobile_money' ? '#eff6ff' : undefined }} onClick={() => setPaymentMethod('mobile_money')}>Mobile Money</button>
@@ -658,77 +743,69 @@ function LoginPage() {
                 </div>
                 {paymentMethod === 'mobile_money' ? (
                   <div style={{ display: 'grid', gap: 12 }}>
-                    <div style={{ padding: 12, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                      <div style={{ fontWeight: 700, marginBottom: 4 }}>Mobile Money Checkout</div>
-                      <div style={{ color: '#64748b', fontSize: 12 }}>
-                        Supported networks for {countryLabel}: {(paymentInfo.mobileMoneyNetworks || []).join(', ')}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {(paymentInfo.mobileMoneyNetworks || []).map((network) => (
-                        <button
-                          key={network}
-                          type="button"
-                          className="btn"
-                          style={{ borderColor: paymentNetwork === network ? '#16a34a' : undefined, color: paymentNetwork === network ? '#16a34a' : undefined, background: paymentNetwork === network ? '#ecfdf5' : undefined }}
-                          onClick={() => setPaymentNetwork(network)}
-                        >
-                          {network}
-                        </button>
-                      ))}
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    <label>
-                      Mobile Number
-                      <input className="input" value={paymentPhone} onChange={(e) => setPaymentPhone(e.target.value)} disabled={paymentLoading} />
-                    </label>
-                    <label>
-                      Network
-                      <select className="input" value={paymentNetwork} onChange={(e) => setPaymentNetwork(e.target.value)} disabled={paymentLoading}>
-                        {(paymentInfo.mobileMoneyNetworks || []).map((network) => <option key={network} value={network}>{network}</option>)}
-                      </select>
-                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.7fr 1fr', gap: 12, alignItems: 'end' }}>
+                      <label>
+                        Network
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                          {(paymentInfo.mobileMoneyNetworks || []).map((network) => (
+                            <button
+                              key={network}
+                              type="button"
+                              className="btn"
+                              style={{ padding: 0, border: 'none', background: 'transparent' }}
+                              onClick={() => setPaymentNetwork(network)}
+                            >
+                              {renderNetworkBadge(network, paymentNetwork === network)}
+                            </button>
+                          ))}
+                        </div>
+                      </label>
+                      <label>
+                        MoMo Number
+                        <input className="input" value={paymentPhone} onChange={(e) => setPaymentPhone(e.target.value)} disabled={paymentLoading} />
+                      </label>
                     </div>
                   </div>
                 ) : (
                   <div style={{ display: 'grid', gap: 12 }}>
-                    <div style={{ borderRadius: 18, padding: 18, background: 'linear-gradient(135deg, #1d4ed8 0%, #312e81 100%)', color: '#fff', minHeight: 180 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 26 }}>
-                        <span style={{ fontWeight: 800, letterSpacing: 1 }}>Secure Card Preview</span>
-                        <span style={{ fontWeight: 700 }}>{cardBrand}</span>
+                    <div style={{ position: 'relative', overflow: 'hidden', borderRadius: 22, padding: 22, background: 'linear-gradient(145deg, #050505 0%, #151515 40%, #232323 60%, #090909 100%)', color: '#d1d5db', minHeight: 220, boxShadow: '0 18px 40px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08)' }}>
+                      <div style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle at 18% 16%, rgba(255,255,255,0.18), transparent 30%), radial-gradient(circle at 82% 78%, rgba(255,255,255,0.10), transparent 22%)' }} />
+                      <div style={{ position: 'absolute', top: -40, left: -120, width: 180, height: 320, transform: 'rotate(24deg)', background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.10) 48%, rgba(255,255,255,0.24) 50%, rgba(255,255,255,0.08) 54%, rgba(255,255,255,0) 100%)', animation: 'payment-card-shine 3.8s linear infinite' }} />
+                      <style>{`@keyframes payment-card-shine { 0% { transform: translateX(-140px) rotate(24deg); opacity: 0; } 18% { opacity: 0.7; } 50% { opacity: 1; } 100% { transform: translateX(420px) rotate(24deg); opacity: 0; } }`}</style>
+                      <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 26 }}>
+                        <span style={{ fontWeight: 800, letterSpacing: 1.4, color: '#f3f4f6', textTransform: 'uppercase' }}>Premium Card</span>
+                        {renderCardBrandLogo(cardBrand)}
                       </div>
-                      <div style={{ fontSize: 22, letterSpacing: 3, marginBottom: 22 }}>{formatCardNumber(paymentCardNumber || '#### #### #### ####') || '#### #### #### ####'}</div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                      <div style={{ position: 'relative', width: 54, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, #f5f5f4 0%, #a8a29e 45%, #fafaf9 100%)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 6px 12px rgba(0,0,0,0.28)', marginBottom: 28 }} />
+                      <div style={{ position: 'relative', fontSize: 28, letterSpacing: 4, marginBottom: 28, color: '#f5f5f4', textShadow: '0 1px 1px rgba(255,255,255,0.15)' }}>{formatCardNumber(paymentCardNumber || '#### #### #### ####') || '#### #### #### ####'}</div>
+                      <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                         <div>
-                          <div style={{ fontSize: 11, opacity: 0.8 }}>Card Holder</div>
-                          <div style={{ fontWeight: 700 }}>{paymentCardName || 'YOUR NAME'}</div>
+                          <div style={{ fontSize: 11, color: '#a3a3a3', letterSpacing: 1.2, textTransform: 'uppercase' }}>Card Holder</div>
+                          <div style={{ fontWeight: 800, color: '#f3f4f6', letterSpacing: 0.8, textTransform: 'uppercase' }}>{paymentCardName || 'YOUR NAME'}</div>
                         </div>
                         <div>
-                          <div style={{ fontSize: 11, opacity: 0.8 }}>Expiry</div>
-                          <div style={{ fontWeight: 700 }}>{paymentCardExpiry || 'MM/YY'}</div>
+                          <div style={{ fontSize: 11, color: '#a3a3a3', letterSpacing: 1.2, textTransform: 'uppercase' }}>Expiry</div>
+                          <div style={{ fontWeight: 800, color: '#f3f4f6', letterSpacing: 0.8 }}>{paymentCardExpiry || 'MM/YY'}</div>
                         </div>
                       </div>
                     </div>
-                    <div style={{ padding: 12, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0', color: '#64748b', fontSize: 12 }}>
-                      Card details here are for a guided UI only. Final secure card entry happens on the provider checkout page.
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                    <label>
-                      Name On Card
-                      <input className="input" value={paymentCardName} onChange={(e) => setPaymentCardName(e.target.value)} disabled={paymentLoading} />
-                    </label>
-                    <label>
-                      Card Number
-                      <input className="input" value={formatCardNumber(paymentCardNumber)} onChange={(e) => setPaymentCardNumber(formatCardNumber(e.target.value))} placeholder="4111 1111 1111 1111" disabled={paymentLoading} />
-                    </label>
-                    <label>
-                      Expiry
-                      <input className="input" value={paymentCardExpiry} onChange={(e) => setPaymentCardExpiry(formatCardExpiry(e.target.value))} placeholder="MM/YY" disabled={paymentLoading} />
-                    </label>
-                    <label>
-                      Security Code
-                      <input className="input" type="password" value={paymentCardCvv} onChange={(e) => setPaymentCardCvv(e.target.value)} placeholder="CVV" disabled={paymentLoading} />
-                    </label>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.05fr) minmax(0, 1.25fr) 78px 78px', gap: 10, alignItems: 'end' }}>
+                      <label style={{ minWidth: 0 }}>
+                        Name On Card
+                        <input className="input" value={paymentCardName} onChange={(e) => setPaymentCardName(e.target.value)} disabled={paymentLoading} />
+                      </label>
+                      <label style={{ minWidth: 0 }}>
+                        Card Number
+                        <input className="input" value={formatCardNumber(paymentCardNumber)} onChange={(e) => setPaymentCardNumber(formatCardNumber(e.target.value))} placeholder="4111 1111 1111 1111" disabled={paymentLoading} />
+                      </label>
+                      <label style={{ minWidth: 0 }}>
+                        Expiry
+                        <input className="input" value={paymentCardExpiry} onChange={(e) => setPaymentCardExpiry(formatCardExpiry(e.target.value))} placeholder="MM/YY" disabled={paymentLoading} />
+                      </label>
+                      <label style={{ minWidth: 0 }}>
+                        Security Code
+                        <input className="input" type="password" value={paymentCardCvv} onChange={(e) => setPaymentCardCvv(e.target.value)} placeholder="CVV" disabled={paymentLoading} />
+                      </label>
                     </div>
                   </div>
                 )}

@@ -43,3 +43,11 @@ export function cleanupUserAuditRecord(payload) {
 export function refreshActivationCode(tenantId) {
   return fetchJson(`/api/tenants/${encodeURIComponent(tenantId)}/activation-code/refresh`, { method: 'POST' });
 }
+
+export function getPaymentManagement() {
+  return fetchJson('/api/tenants/payment-management');
+}
+
+export function updatePaymentManagement(payload) {
+  return fetchJson('/api/tenants/payment-management', { method: 'PATCH', body: JSON.stringify(payload) });
+}
