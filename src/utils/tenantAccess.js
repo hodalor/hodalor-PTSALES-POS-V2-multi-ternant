@@ -46,6 +46,7 @@ export const TENANT_GRANT_CATALOG = [
   { key: 'add_expenses', label: 'Create or Delete Expenses' },
   { key: 'approve_expenses', label: 'Approve or Reject Expenses' },
   { key: 'view_reports', label: 'Open Reports' },
+  { key: 'view_financials', label: 'See Revenue / Profit Figures' },
   { key: 'view_stock_records', label: 'Open Stock Records' },
   { key: 'view_wholesale_invoices', label: 'Open Wholesale Invoices' },
   { key: 'view_warehouse_invoices', label: 'Open Warehouse Invoices' },
@@ -307,7 +308,7 @@ export const TENANT_FEATURE_CATALOG = [
 
   ...TENANT_GRANT_CATALOG.map((item) => {
     let group = 'Permissions / Retail Actions';
-    if (['view_retail_price', 'view_wholesale_price', 'view_agent_price'].includes(item.key)) {
+    if (['view_retail_price', 'view_wholesale_price', 'view_agent_price', 'view_financials'].includes(item.key)) {
       group = 'Permissions / Pricing & Visibility';
     } else if (['view_wholesale_pos', 'view_purchases', 'add_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'edit_adjustments', 'approve_adjustments', 'view_credit_control', 'approve_credit_director', 'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_wholesale_director', 'approve_wholesale_manager', 'view_wholesale_invoices', 'view_warehouse_invoices', 'view_warehouse_approvals'].includes(item.key)) {
       group = 'Permissions / Distribution Actions';

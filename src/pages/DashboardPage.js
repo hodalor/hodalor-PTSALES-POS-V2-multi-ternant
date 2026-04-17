@@ -15,6 +15,7 @@ function DashboardPage() {
   const settings = useSelector(s => s.settings);
   const auth = useSelector(s => s.auth);
   const roleLower = String(auth.role || '').toLowerCase();
+  const canViewFinancials = roleLower === 'superadmin' || roleLower === 'admin' || (Array.isArray(auth.grants) && auth.grants.includes('view_financials'));
   const [heatMode, setHeatMode] = useState('week'); // day, week, month
   const [expenses, setExpenses] = useState([]);
   const [warehousePending, setWarehousePending] = useState(0);
@@ -244,6 +245,14 @@ function DashboardPage() {
     return { expenseTotal, net, projected30 };
   }, [expenses, metrics.last30Revenue]);
 
+  function maskMoney(value) {
+    return canViewFinancials ? formatCurrency(value, settings) : '******';
+  }
+
+  function maskText(value) {
+    return canViewFinancials ? value : '***';
+  }
+
   const branchComparison = useMemo(() => {
     if (!(roleLower === 'admin' || roleLower === 'superadmin')) return [];
     const byId = new Map(branches.map(b => [b.id, b.name || b.code || b.id]));
@@ -319,7 +328,7 @@ function DashboardPage() {
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>Today Profit</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{formatCurrency(metrics.todayProfit, settings)}</div>
+          <div style={{ fontSize: 28, fontWeight: 700 }}>{maskMoney(metrics.todayProfit)}</div>
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>Items Sold</div>
@@ -331,18 +340,32 @@ function DashboardPage() {
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>30d Margin</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{metrics.marginPct}%</div>
+          <div style={{ fontSize: 28, fontWeight: 700 }}>{maskText(`${metrics.marginPct}%`)}</div>
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>30d Net Cashflow</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{formatCurrency(finance.net, settings)}</div>
+          <div style={{ fontSize: 28, fontWeight: 700 }}>{maskMoney(finance.net)}</div>
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <h2 style={{ marginTop: 0 }}>Revenue (Last 30 days)</h2>
           <div style={{ height: 260 }}>
-            <Line data={metrics.lineData} options={metrics.lineOptions} />
+            <Line data={metrics.lineData} options={{
+              ...metrics.lineOptions,
+              scales: {
+                ...(metrics.lineOptions.scales || {}),
+                y: { ...((metrics.lineOptions.scales || {}).y || {}), ticks: { callback: (value) => (canViewFinancials ? value : '***') } }
+              },
+              plugins: {
+                ...(metrics.lineOptions.plugins || {}),
+                tooltip: {
+                  callbacks: {
+                    label: (ctx) => (canViewFinancials ? `${ctx.dataset.label}: ${formatCurrency(ctx.parsed.y || 0, settings)}` : `${ctx.dataset.label}: ***`)
+                  }
+                }
+              }
+            }} />
           </div>
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
@@ -353,21 +376,21 @@ function DashboardPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginTop: 16 }}>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>30d Revenue</div>
-          <div style={{ fontSize: 22, fontWeight: 800 }}>{formatCurrency(metrics.last30Revenue, settings)}</div>
-          <div style={{ marginTop: 6, color: '#64748b' }}>COGS: {formatCurrency(metrics.last30Cost, settings)}</div>
-          <div style={{ marginTop: 2, color: '#64748b' }}>Profit: {formatCurrency(metrics.last30Profit, settings)}</div>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>{maskMoney(metrics.last30Revenue)}</div>
+          <div style={{ marginTop: 6, color: '#64748b' }}>COGS: {maskMoney(metrics.last30Cost)}</div>
+          <div style={{ marginTop: 2, color: '#64748b' }}>Profit: {maskMoney(metrics.last30Profit)}</div>
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>30d Expenses</div>
-          <div style={{ fontSize: 22, fontWeight: 800 }}>{formatCurrency(finance.expenseTotal, settings)}</div>
-          <div style={{ marginTop: 6, color: '#64748b' }}>Projection (30d): {formatCurrency(finance.projected30, settings)}</div>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>{maskMoney(finance.expenseTotal)}</div>
+          <div style={{ marginTop: 6, color: '#64748b' }}>Projection (30d): {maskMoney(finance.projected30)}</div>
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>Cashflow</div>
           <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Inflow</span><strong>{formatCurrency(metrics.last30Revenue, settings)}</strong></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Outflow</span><strong>{formatCurrency(finance.expenseTotal, settings)}</strong></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Net</span><strong>{formatCurrency(finance.net, settings)}</strong></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Inflow</span><strong>{maskMoney(metrics.last30Revenue)}</strong></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Outflow</span><strong>{maskMoney(finance.expenseTotal)}</strong></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Net</span><strong>{maskMoney(finance.net)}</strong></div>
           </div>
         </div>
       </div>
@@ -475,7 +498,7 @@ function DashboardPage() {
                   {r.hours.map((v, i) => {
                     const t = metrics.heatmap.max > 0 ? v / metrics.heatmap.max : 0;
                     const bg = `rgba(14,165,233,${Math.min(0.9, Math.max(0, t))})`;
-                    return <td key={i} title={formatCurrency(v, settings)} style={{ width: 18, height: 18, background: v > 0 ? bg : '#f8fafc', border: '1px solid #eef2f7' }} />;
+                    return <td key={i} title={canViewFinancials ? formatCurrency(v, settings) : '***'} style={{ width: 18, height: 18, background: v > 0 ? bg : '#f8fafc', border: '1px solid #eef2f7' }} />;
                   })}
                 </tr>
               ))}
@@ -486,7 +509,7 @@ function DashboardPage() {
       <div style={{ background: '#fff', padding: 16, borderRadius: 12, marginTop: 16 }}>
         <h2 style={{ marginTop: 0 }}>Cashier Performance (30d revenue)</h2>
         <div style={{ height: 240 }}>
-          <Bar data={metrics.cashierBar} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }} />
+          <Bar data={metrics.cashierBar} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => (canViewFinancials ? formatCurrency(ctx.parsed.x ?? ctx.parsed.y ?? 0, settings) : '***') } } }, scales: { x: { ticks: { callback: () => (canViewFinancials ? undefined : '***') } } } }} />
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
@@ -505,7 +528,7 @@ function DashboardPage() {
                 <tr key={p.key}>
                   <td>{p.name}</td>
                   <td>{p.units}</td>
-                  <td>{formatCurrency(p.profit, settings)}</td>
+                  <td>{maskMoney(p.profit)}</td>
                 </tr>
               ))}
               {metrics.topProfitProducts.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>No data</td></tr>}
@@ -526,8 +549,8 @@ function DashboardPage() {
               {metrics.cashierLeaderboard.map(x => (
                 <tr key={x.seller}>
                   <td>{x.seller}</td>
-                  <td>{formatCurrency(x.revenue, settings)}</td>
-                  <td>{formatCurrency(x.profit, settings)}</td>
+                  <td>{maskMoney(x.revenue)}</td>
+                  <td>{maskMoney(x.profit)}</td>
                 </tr>
               ))}
               {metrics.cashierLeaderboard.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>No data</td></tr>}
@@ -552,8 +575,8 @@ function DashboardPage() {
                 <tr key={b.branchId}>
                   <td>{b.name}</td>
                   <td>{b.sales}</td>
-                  <td>{formatCurrency(b.revenue, settings)}</td>
-                  <td>{formatCurrency(b.profit, settings)}</td>
+                  <td>{maskMoney(b.revenue)}</td>
+                  <td>{maskMoney(b.profit)}</td>
                 </tr>
               ))}
               {branchComparison.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No data</td></tr>}

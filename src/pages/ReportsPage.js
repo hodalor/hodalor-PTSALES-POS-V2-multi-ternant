@@ -18,6 +18,9 @@ function ReportsPage() {
   const products = useSelector(s => s.products.products);
   const branches = useSelector(s => s.branches.branches);
   const settings = useSelector(s => s.settings);
+  const auth = useSelector(s => s.auth);
+  const roleLower = String(auth.role || '').toLowerCase();
+  const canViewFinancials = roleLower === 'superadmin' || roleLower === 'admin' || (Array.isArray(auth.grants) && auth.grants.includes('view_financials'));
 
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -145,6 +148,20 @@ function ReportsPage() {
 
   const show = (key) => reportType === 'all' || reportType === key;
 
+  function maskMoney(value) {
+    return canViewFinancials ? formatCurrency(value, settings) : '******';
+  }
+
+  function maskText(value) {
+    return canViewFinancials ? value : '***';
+  }
+
+  function ensureFinancialExport() {
+    if (canViewFinancials) return true;
+    toast.show('You are not allowed to export financial figures', { type: 'error' });
+    return false;
+  }
+
   function exportTopProducts(type) {
     const rows = analytics.topEntries.map(([sku, units]) => {
       const p = products.find(pp => pp.sku === sku);
@@ -168,6 +185,7 @@ function ReportsPage() {
     else exportTablePdf('Category Performance', headers, rows);
   }
   function exportCashiers(type) {
+    if (!ensureFinancialExport()) return;
     const rows = Object.keys(analytics.cashierRevenue).map(name => ({ cashier: name, revenue: +(analytics.cashierRevenue[name]||0).toFixed(2) }))
       .sort((a,b)=>b.revenue-a.revenue);
     const headers = [
@@ -179,6 +197,7 @@ function ReportsPage() {
   }
 
   function exportSales(type) {
+    if (!ensureFinancialExport()) return;
     const rows = sales.filter(s => inRange(s.created_at) && matchBranch(s.branchId));
     const headers = [
       { key: 'id', label: 'Sale ID' },
@@ -211,6 +230,7 @@ function ReportsPage() {
   }
 
   function exportPurchases(type) {
+    if (!ensureFinancialExport()) return;
     const list = audit.filter(e => e.actionType === 'stock_receive' && inRange(e.ts) && matchBranch(e.branchId));
     const headers = [
       { key: 'ts', label: 'Timestamp', value: e => new Date(e.ts).toLocaleString() },
@@ -295,6 +315,7 @@ function ReportsPage() {
   }
 
   function exportRefunds(type) {
+    if (!ensureFinancialExport()) return;
     const list = refunds.filter(r => inRange(r.created_at) && matchBranch(r.branchId));
     const headers = [
       { key: 'ref', label: 'Ref', value: r => r.invoiceSerial || r.receiptNumber || r.saleId },
@@ -311,6 +332,7 @@ function ReportsPage() {
   }
 
   function exportWarehouseOperations(type) {
+    if (!ensureFinancialExport()) return;
     const rows = warehouseOperations.map(row => ({
       type: row.operationType,
       status: row.status,
@@ -468,8 +490,8 @@ function ReportsPage() {
         <div>
           <h2 className="section-title">Sales</h2>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn" onClick={() => exportSales('csv')}>Export CSV</button>
-            <button className="btn" onClick={() => exportSales('pdf')}>Export PDF</button>
+            <button className="btn" onClick={() => exportSales('csv')} disabled={!canViewFinancials}>Export CSV</button>
+            <button className="btn" onClick={() => exportSales('pdf')} disabled={!canViewFinancials}>Export PDF</button>
           </div>
         </div>
         )}
@@ -477,8 +499,8 @@ function ReportsPage() {
         <div>
           <h2 className="section-title">Purchases</h2>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn" onClick={() => exportPurchases('csv')}>Export CSV</button>
-            <button className="btn" onClick={() => exportPurchases('pdf')}>Export PDF</button>
+            <button className="btn" onClick={() => exportPurchases('csv')} disabled={!canViewFinancials}>Export CSV</button>
+            <button className="btn" onClick={() => exportPurchases('pdf')} disabled={!canViewFinancials}>Export PDF</button>
           </div>
         </div>
         )}
@@ -513,8 +535,8 @@ function ReportsPage() {
         <div>
           <h2 className="section-title">Refunds</h2>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn" onClick={() => exportRefunds('csv')}>Export CSV</button>
-            <button className="btn" onClick={() => exportRefunds('pdf')}>Export PDF</button>
+            <button className="btn" onClick={() => exportRefunds('csv')} disabled={!canViewFinancials}>Export CSV</button>
+            <button className="btn" onClick={() => exportRefunds('pdf')} disabled={!canViewFinancials}>Export PDF</button>
           </div>
         </div>
         )}
@@ -522,8 +544,8 @@ function ReportsPage() {
         <div>
           <h2 className="section-title">Warehouse Operations</h2>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn" onClick={() => exportWarehouseOperations('csv')}>Export CSV</button>
-            <button className="btn" onClick={() => exportWarehouseOperations('pdf')}>Export PDF</button>
+            <button className="btn" onClick={() => exportWarehouseOperations('csv')} disabled={!canViewFinancials}>Export CSV</button>
+            <button className="btn" onClick={() => exportWarehouseOperations('pdf')} disabled={!canViewFinancials}>Export PDF</button>
           </div>
         </div>
         )}
@@ -613,12 +635,12 @@ function ReportsPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div style={{ fontWeight: 600 }}>Cashier Performance</div>
               <div style={{ display: 'flex', gap: 6 }}>
-                <button className="btn" onClick={() => exportCashiers('csv')}>CSV</button>
-                <button className="btn" onClick={() => exportCashiers('pdf')}>PDF</button>
+                <button className="btn" onClick={() => exportCashiers('csv')} disabled={!canViewFinancials}>CSV</button>
+                <button className="btn" onClick={() => exportCashiers('pdf')} disabled={!canViewFinancials}>PDF</button>
               </div>
             </div>
             <div style={{ height: 220, marginTop: 8 }}>
-              <Bar data={analytics.cashierBar} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, indexAxis: 'y' }} />
+              <Bar data={analytics.cashierBar} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => (canViewFinancials ? formatCurrency(ctx.parsed.x ?? ctx.parsed.y ?? 0, settings) : '***') } } }, indexAxis: 'y', scales: { x: { ticks: { callback: (value) => (canViewFinancials ? value : '***') } } } }} />
             </div>
           </div>
           )}
@@ -631,13 +653,13 @@ function ReportsPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
           <div className="card">
             <div style={{ fontWeight: 700, marginBottom: 6 }}>Summary</div>
-            <div className="sp"><span className="muted">Revenue</span><span>{formatCurrency(money.revenue, settings)}</span></div>
-            <div className="sp"><span className="muted">COGS</span><span>{formatCurrency(money.cost, settings)}</span></div>
-            <div className="sp"><span className="muted">Profit</span><span>{formatCurrency(money.profit, settings)}</span></div>
-            <div className="sp"><span className="muted">Margin</span><span>{money.marginPct}%</span></div>
-            <div className="sp"><span className="muted">Expenses</span><span>{formatCurrency(money.expenseTotal, settings)}</span></div>
-            <div className="sp"><strong>Net</strong><strong>{formatCurrency(money.net, settings)}</strong></div>
-            <div className="sp"><span className="muted">Projected (30d)</span><span>{formatCurrency(money.projected30, settings)}</span></div>
+            <div className="sp"><span className="muted">Revenue</span><span>{maskMoney(money.revenue)}</span></div>
+            <div className="sp"><span className="muted">COGS</span><span>{maskMoney(money.cost)}</span></div>
+            <div className="sp"><span className="muted">Profit</span><span>{maskMoney(money.profit)}</span></div>
+            <div className="sp"><span className="muted">Margin</span><span>{maskText(`${money.marginPct}%`)}</span></div>
+            <div className="sp"><span className="muted">Expenses</span><span>{maskMoney(money.expenseTotal)}</span></div>
+            <div className="sp"><strong>Net</strong><strong>{maskMoney(money.net)}</strong></div>
+            <div className="sp"><span className="muted">Projected (30d)</span><span>{maskMoney(money.projected30)}</span></div>
           </div>
 
           <div className="card">
@@ -655,7 +677,7 @@ function ReportsPage() {
                   <tr key={String(r._id || r.id)}>
                     <td>{new Date(r.date).toLocaleDateString()}</td>
                     <td>{r.category}</td>
-                    <td>{formatCurrency(Number(r.amount) || 0, settings)}</td>
+                    <td>{maskMoney(Number(r.amount) || 0)}</td>
                   </tr>
                 ))}
                 {expenses.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>No expenses in range</td></tr>}
@@ -680,7 +702,7 @@ function ReportsPage() {
                       {r.hours.map((v, i) => {
                         const t = heatmap.max > 0 ? v / heatmap.max : 0;
                         const bg = `rgba(14,165,233,${Math.min(0.9, Math.max(0, t))})`;
-                        return <td key={i} title={formatCurrency(v, settings)} style={{ width: 18, height: 18, background: v > 0 ? bg : '#f8fafc', border: '1px solid #eef2f7' }} />;
+                        return <td key={i} title={canViewFinancials ? formatCurrency(v, settings) : '***'} style={{ width: 18, height: 18, background: v > 0 ? bg : '#f8fafc', border: '1px solid #eef2f7' }} />;
                       })}
                     </tr>
                   ))}
