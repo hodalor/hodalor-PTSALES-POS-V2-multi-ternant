@@ -429,7 +429,7 @@ function ReportsPage() {
         </label>
         <label>
           Branch
-          <BranchSelect value={branchId} onChange={setBranchId} />
+          <BranchSelect value={branchId} onChange={setBranchId} includeAll allLabel="All Branches" />
         </label>
       </div>
       <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>

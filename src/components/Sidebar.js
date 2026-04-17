@@ -527,7 +527,7 @@ function AdminGroup() {
   const grants = useSelector(s => s.auth.grants);
   const settings = useSelector(s => s.settings);
   const allowed = (
-    isFeatureEnabled(settings, 'sections.admin') && (
+    (isFeatureEnabled(settings, 'sections.admin') || isFeatureEnabled(settings, 'admin.audit')) && (
     ['Admin', 'SuperAdmin'].includes(role) ||
     (Array.isArray(grants) && (
       grants.includes('view_users') || grants.includes('see_users') ||

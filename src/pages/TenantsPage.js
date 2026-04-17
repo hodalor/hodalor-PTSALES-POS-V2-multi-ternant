@@ -661,6 +661,32 @@ function TenantsPage() {
               <button className="btn btn-primary" type="button" onClick={saveSubscriptionManagement} disabled={savingSubscriptionManagement}>{savingSubscriptionManagement ? 'Saving…' : 'Save Subscription Management'}</button>
             </div>
           </div>
+          <div className="card">
+            <h2 className="section-title">Default User Limits By Plan</h2>
+            <div style={{ color: '#64748b', marginBottom: 12 }}>
+              Set general limits for each package. Leave blank for unlimited. Each tenant can still override these values individually.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+              {Object.keys(limitDefaults).map((plan) => (
+                <div key={plan} className="card" style={{ padding: 14, border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontWeight: 800, marginBottom: 10, textTransform: 'capitalize' }}>{plan}</div>
+                  <div style={{ display: 'grid', gap: 10 }}>
+                    <label>
+                      Max User Accounts
+                      <input className="input" type="number" min="1" value={limitDefaults[plan]?.maxUserAccounts ?? ''} onChange={(e) => setLimitDefault(plan, 'maxUserAccounts', e.target.value)} placeholder="Unlimited" />
+                    </label>
+                    <label>
+                      Max Active Users
+                      <input className="input" type="number" min="1" value={limitDefaults[plan]?.maxActiveUsers ?? ''} onChange={(e) => setLimitDefault(plan, 'maxActiveUsers', e.target.value)} placeholder="Unlimited" />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+              <button className="btn btn-primary" type="button" onClick={saveLimitDefaults} disabled={savingDefaults}>{savingDefaults ? 'Saving…' : 'Save Limit Defaults'}</button>
+            </div>
+          </div>
         </>
       ) : activeTab === 'payment_management' ? (
         <>
@@ -766,33 +792,6 @@ function TenantsPage() {
         </>
       ) : (
         <>
-      <div className="card">
-        <h2 className="section-title">Default User Limits By Plan</h2>
-        <div style={{ color: '#64748b', marginBottom: 12 }}>
-          Set general limits for each package. Leave blank for unlimited. Each tenant can still override these values individually.
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
-          {Object.keys(limitDefaults).map((plan) => (
-            <div key={plan} className="card" style={{ padding: 14, border: '1px solid #e2e8f0' }}>
-              <div style={{ fontWeight: 800, marginBottom: 10, textTransform: 'capitalize' }}>{plan}</div>
-              <div style={{ display: 'grid', gap: 10 }}>
-                <label>
-                  Max User Accounts
-                  <input className="input" type="number" min="1" value={limitDefaults[plan]?.maxUserAccounts ?? ''} onChange={(e) => setLimitDefault(plan, 'maxUserAccounts', e.target.value)} placeholder="Unlimited" />
-                </label>
-                <label>
-                  Max Active Users
-                  <input className="input" type="number" min="1" value={limitDefaults[plan]?.maxActiveUsers ?? ''} onChange={(e) => setLimitDefault(plan, 'maxActiveUsers', e.target.value)} placeholder="Unlimited" />
-                </label>
-              </div>
-            </div>
-          ))}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
-          <button className="btn btn-primary" type="button" onClick={saveLimitDefaults} disabled={savingDefaults}>{savingDefaults ? 'Saving…' : 'Save Limit Defaults'}</button>
-        </div>
-      </div>
-
       <div className="card">
         <h2 className="section-title">Tenant Directory</h2>
         {loading ? <div>Loading…</div> : (
