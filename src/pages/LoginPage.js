@@ -204,7 +204,7 @@ function LoginPage() {
       : ['paypal', 'paystack', 'dpo_pay']
   ), [paymentInfo?.enabledGateways]);
   const showProviderChooser = enabledProviders.length > 1;
-  const providerCheckoutLabel = isPayPalProvider ? 'Continue To PayPal Checkout' : isPaystackProvider ? 'Continue To Paystack Checkout' : 'Continue To DPO Checkout';
+  const providerCheckoutLabel = isPayPalProvider ? 'Continue Checkout' : isPaystackProvider ? 'Continue To Paystack Checkout' : 'Continue To DPO Checkout';
 
   const regenerateCaptcha = useCallback(() => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
