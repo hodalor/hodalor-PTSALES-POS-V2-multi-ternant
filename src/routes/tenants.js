@@ -6,10 +6,11 @@ import { modelFor as SettingsModelFor } from '../models/Settings.js';
 import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
 import { getMasterConnection, getTenantConnection, getTenantDbName, normalizeTenantId } from '../config/tenancy.js';
 import { hashPin } from '../utils/pin.js';
-import { ALL_FEATURES, normalizePlan, normalizeFeatureList, featureFlagsFromEnabled } from '../config/tenantAccess.js';
+import { ALL_FEATURES, featureFlagsFromEnabled } from '../config/tenantAccess.js';
 import { getTenantLimitDefaults, normalizeLimitDefaults, normalizeLimitValue, saveTenantLimitDefaults } from '../utils/tenantLimits.js';
 import { buildRenewalHistoryEntry, ensureTenantActivationCode, normalizeSubscriptionAmount, refreshTenantActivationCode, syncTenantSubscriptionSnapshot } from '../utils/tenantActivation.js';
 import { getPaymentManagementDashboard, savePaymentManagementConfig } from '../utils/paymentManagement.js';
+import { getSubscriptionManagementConfig, resolveSubscriptionPlan, saveSubscriptionManagementConfig } from '../utils/subscriptionManagement.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -124,6 +125,18 @@ r.patch('/payment-management', requireSuperAdmin, async (req, res) => {
   res.json({ ...dashboard, gateways: saved.gateways, enabledGateways: saved.enabledGateways });
 });
 
+r.get('/subscription-management', requireSuperAdmin, async (_req, res) => {
+  const master = await getMasterConnection();
+  const config = await getSubscriptionManagementConfig(master);
+  res.json(config);
+});
+
+r.patch('/subscription-management', requireSuperAdmin, async (req, res) => {
+  const master = await getMasterConnection();
+  const saved = await saveSubscriptionManagementConfig(master, req.body || {});
+  res.json(saved);
+});
+
 r.get('/user-audit', requireSuperAdmin, async (_req, res) => {
   const master = await getMasterConnection();
   const TenantModel = TenantModelFor(master);
@@ -192,8 +205,11 @@ r.post('/', requireSuperAdmin, async (req, res) => {
   const TenantModel = TenantModelFor(master);
   const exists = await TenantModel.findOne({ tenantId: tid });
   if (exists) return res.status(409).json({ error: 'Tenant already exists' });
-  const plan = normalizePlan(subscriptionPlan);
-  const enabledFeatures = normalizeFeatureList(plan, features);
+  const planConfig = await resolveSubscriptionPlan(master, subscriptionPlan);
+  const plan = String(planConfig?.key || 'basic');
+  const enabledFeatures = Array.isArray(features) && features.length > 0
+    ? features.map((item) => String(item || '').trim()).filter((item) => ALL_FEATURES.includes(item))
+    : (Array.isArray(planConfig?.features) ? planConfig.features : []);
   await wipeTenantDb(tid);
   const doc = await TenantModel.create({
     tenantId: tid,
@@ -252,8 +268,13 @@ r.patch('/:tenantId', requireSuperAdmin, async (req, res) => {
   const before = await TenantModel.findOne({ tenantId: tid });
   if (!before) return res.status(404).json({ error: 'Tenant not found' });
   const patch = req.body || {};
-  const plan = normalizePlan(patch.subscriptionPlan || before.subscriptionPlan);
-  const enabledFeatures = normalizeFeatureList(plan, patch.features || before.features);
+  const planConfig = await resolveSubscriptionPlan(master, patch.subscriptionPlan || before.subscriptionPlan);
+  const plan = String(planConfig?.key || before.subscriptionPlan || 'basic');
+  const enabledFeatures = Array.isArray(patch.features)
+    ? patch.features.map((item) => String(item || '').trim()).filter((item) => ALL_FEATURES.includes(item))
+    : (Array.isArray(before.features) && before.features.length > 0
+        ? before.features
+        : (Array.isArray(planConfig?.features) ? planConfig.features : []));
   const nextPermanent = Object.prototype.hasOwnProperty.call(patch, 'subscriptionPermanent')
     ? !!patch.subscriptionPermanent
     : !!before.subscriptionPermanent;

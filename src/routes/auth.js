@@ -11,7 +11,7 @@ import { getMasterConnection, getTenantConnection, resolveStoredTenantId } from 
 import { modelFor as TenantSessionModelFor } from '../models/TenantSession.js';
 import { cleanupExpiredTenantSessions, countActiveTenantSessions, getEffectiveTenantLimits, getTenantLimitDefaults, hasActiveTenantSession } from '../utils/tenantLimits.js';
 import { activateTenantSubscription, ensureTenantActivationCode } from '../utils/tenantActivation.js';
-import { createDpoRenewalPayment, createPayPalRenewalPayment, createPaystackRenewalPayment, getMobileMoneyNetworks, getTenantRenewalInfo, SUPPORTED_PAYMENT_PERIODS, verifyDpoRenewalPayment, verifyPayPalRenewalPayment, verifyPaystackRenewalPayment } from '../utils/subscriptionPayments.js';
+import { createDpoRenewalPayment, createPayPalRenewalPayment, createPaystackRenewalPayment, getMobileMoneyNetworks, getTenantRenewalInfo, verifyDpoRenewalPayment, verifyPayPalRenewalPayment, verifyPaystackRenewalPayment } from '../utils/subscriptionPayments.js';
 import { getPaymentManagementConfig } from '../utils/paymentManagement.js';
 
 const r = Router();
@@ -169,13 +169,13 @@ r.get('/renewal-info', async (req, res) => {
   const meta = await ensureTenantActivationCode(master, await Tenant.findOne({ tenantId: resolvedTenantId }));
   if (!meta) return res.status(404).json({ error: 'Tenant not found' });
   const tenantConn = await getTenantConnection(resolvedTenantId);
+  meta._masterConn = master;
   const info = await getTenantRenewalInfo(tenantConn, meta);
   const paymentConfig = await getPaymentManagementConfig(master);
   res.json({
     ...info,
     enabledGateways: paymentConfig.enabledGateways,
-    mobileMoneyNetworks: getMobileMoneyNetworks(info.billingCountry),
-    periods: SUPPORTED_PAYMENT_PERIODS
+    mobileMoneyNetworks: getMobileMoneyNetworks(info.billingCountry)
   });
 });
 
@@ -188,6 +188,7 @@ r.post('/start-renewal-payment', async (req, res) => {
   if (meta.disabled) return res.status(403).json({ error: 'Tenant disabled' });
   if (!isTenantExpired(meta)) return res.status(400).json({ error: 'Renewal payment is only available for expired tenants' });
   const tenantConn = await getTenantConnection(resolvedTenantId);
+  meta._masterConn = master;
   const info = await getTenantRenewalInfo(tenantConn, meta);
   const provider = String(req.body?.provider || 'dpo_pay').trim().toLowerCase();
   const paymentConfig = await getPaymentManagementConfig(master);

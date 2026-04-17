@@ -2,8 +2,7 @@ import { modelFor as SettingsModelFor } from '../models/Settings.js';
 import { ACTIVATION_EXTENSION_DAYS, buildRenewalHistoryEntry, computeExtendedSubscriptionDate, normalizeSubscriptionAmount, refreshTenantActivationCode, syncTenantSubscriptionSnapshot } from './tenantActivation.js';
 import { sendActivationCodeEmail } from './mailer.js';
 import { modelFor as TenantModelFor } from '../models/Tenant.js';
-
-export const SUPPORTED_PAYMENT_PERIODS = [1, 3, 6, 12];
+import { getEffectiveMonthlyAmount, getSubscriptionManagementConfig, getSubscriptionPeriodsForAmount } from './subscriptionManagement.js';
 
 export const MOBILE_MONEY_NETWORKS = {
   GH: ['MTN', 'AIRTELTIGO', 'TELECEL'],
@@ -26,6 +25,13 @@ export async function getTenantRenewalInfo(conn, tenantDoc) {
   const currencies = Array.isArray(settings?.data?.currencies) ? settings.data.currencies : [];
   const activeCurrencyCode = String(settings?.data?.activeCurrencyCode || settings?.data?.currencyCode || 'GHS');
   const selected = currencies.find((item) => String(item.code) === activeCurrencyCode) || currencies[0] || null;
+  const masterConn = tenantDoc?._masterConn;
+  const subscriptionAmount = masterConn
+    ? await getEffectiveMonthlyAmount(masterConn, tenantDoc)
+    : normalizeSubscriptionAmount(tenantDoc?.subscriptionAmount);
+  const periods = masterConn
+    ? await getSubscriptionPeriodsForAmount(masterConn, subscriptionAmount)
+    : [];
   return {
     tenantId: String(tenantDoc?.tenantId || ''),
     tenantName: String(tenantDoc?.name || ''),
@@ -33,20 +39,28 @@ export async function getTenantRenewalInfo(conn, tenantDoc) {
     currencyCode: String(selected?.code || activeCurrencyCode || 'GHS'),
     currencySymbol: String(selected?.symbol || settings?.data?.currencySymbol || ''),
     currencyPosition: String(selected?.position || settings?.data?.currencyPosition || 'prefix'),
-    subscriptionAmount: normalizeSubscriptionAmount(tenantDoc?.subscriptionAmount),
+    subscriptionAmount,
     billingEmail: String(tenantDoc?.billingEmail || ''),
     billingPhone: String(tenantDoc?.billingPhone || ''),
     billingAddress: String(tenantDoc?.billingAddress || ''),
     billingCountry: normalizeCountryCode(tenantDoc?.billingCountry),
-    periods: SUPPORTED_PAYMENT_PERIODS
+    periods
   };
 }
 
-export function calculateRenewalAmount(subscriptionAmount, months) {
-  const amount = normalizeSubscriptionAmount(subscriptionAmount);
+export async function calculateRenewalAmount(masterConn, tenantDoc, months, fallbackAmount) {
+  const amount = normalizeSubscriptionAmount(fallbackAmount != null ? fallbackAmount : await getEffectiveMonthlyAmount(masterConn, tenantDoc));
+  const config = await getSubscriptionManagementConfig(masterConn);
   const period = Number(months || 0);
-  if (!amount || !SUPPORTED_PAYMENT_PERIODS.includes(period)) return null;
-  return Number((amount * period).toFixed(2));
+  const periodRow = (config.periods || []).find((item) => Number(item.months) === period);
+  if (!amount || !periodRow) return null;
+  const total = Number(amount || 0) * period;
+  return Number((total - ((total * Number(periodRow.discountPercent || 0)) / 100)).toFixed(2));
+}
+
+function calculateRenewalAmountFromInfo(info, months) {
+  const period = (Array.isArray(info?.periods) ? info.periods : []).find((item) => Number(item.months) === Number(months || 0));
+  return period ? Number(period.amount || 0) : null;
 }
 
 function getPayPalBaseUrl() {
@@ -110,7 +124,7 @@ export async function createDpoRenewalPayment(info, payload = {}) {
   const paymentUrl = String(process.env.DPO_PAYMENT_URL || 'https://secure.3gdirectpay.com/payv2.php').trim();
   const ptl = String(process.env.DPO_PTL || '15').trim();
   if (!companyToken || !serviceType) throw new Error('Payment provider is not configured yet');
-  const amount = calculateRenewalAmount(info.subscriptionAmount, payload.months);
+  const amount = calculateRenewalAmountFromInfo(info, payload.months);
   if (!amount) throw new Error('Invalid renewal period or subscription amount');
   const channel = String(payload.method || 'card').trim().toLowerCase() === 'mobile_money' ? 'mobile_money' : 'card';
   const txRef = `renewal_${info.tenantId}_${payload.months}_${channel}_${Date.now()}`;
@@ -171,7 +185,7 @@ export async function createDpoRenewalPayment(info, payload = {}) {
 }
 
 export async function createPayPalRenewalPayment(info, payload = {}) {
-  const amount = calculateRenewalAmount(info.subscriptionAmount, payload.months);
+  const amount = calculateRenewalAmountFromInfo(info, payload.months);
   if (!amount) throw new Error('Invalid renewal period or subscription amount');
   const txRef = `renewal_${info.tenantId}_${payload.months}_card_${Date.now()}`;
   const redirectUrl = String(process.env.RENEWAL_PAYMENT_REDIRECT_URL || '').trim();
@@ -232,7 +246,7 @@ export async function createPayPalRenewalPayment(info, payload = {}) {
 export async function createPaystackRenewalPayment(info, payload = {}) {
   const secretKey = String(process.env.PAYSTACK_SECRET_KEY || '').trim();
   if (!secretKey) throw new Error('Paystack is not configured yet');
-  const amount = calculateRenewalAmount(info.subscriptionAmount, payload.months);
+  const amount = calculateRenewalAmountFromInfo(info, payload.months);
   if (!amount) throw new Error('Invalid renewal period or subscription amount');
   const channel = String(payload.method || 'card').trim().toLowerCase() === 'mobile_money' ? 'mobile_money' : 'card';
   const txRef = `renewal_${info.tenantId}_${payload.months}_${channel}_${Date.now()}`;
@@ -304,7 +318,7 @@ export async function verifyDpoRenewalPayment(masterConn, tenantConn, tenantDoc,
   const metaParts = String(companyRef || '').split('_');
   const months = Number(metaParts[2] || 0);
   const channel = String(metaParts[3] || 'card');
-  const amount = calculateRenewalAmount(tenantDoc?.subscriptionAmount, months);
+  const amount = await calculateRenewalAmount(masterConn, tenantDoc, months);
   if (!amount || paymentAmount < amount) throw new Error('Payment amount does not match expected renewal amount');
   const days = months * ACTIVATION_EXTENSION_DAYS;
   const nextExpiry = computeExtendedSubscriptionDate(tenantDoc?.subscriptionExpiresAt, Date.now(), days);
@@ -393,7 +407,7 @@ export async function verifyPayPalRenewalPayment(masterConn, tenantConn, tenantD
   const metaParts = customId.split('_');
   const months = Number(metaParts[2] || 0);
   const channel = String(metaParts[3] || 'card');
-  const amount = calculateRenewalAmount(tenantDoc?.subscriptionAmount, months);
+  const amount = await calculateRenewalAmount(masterConn, tenantDoc, months);
   if (!amount || amountValue < amount) throw new Error('Payment amount does not match expected renewal amount');
   const days = months * ACTIVATION_EXTENSION_DAYS;
   const nextExpiry = computeExtendedSubscriptionDate(tenantDoc?.subscriptionExpiresAt, Date.now(), days);
@@ -478,7 +492,7 @@ export async function verifyPaystackRenewalPayment(masterConn, tenantConn, tenan
   const metaParts = txRef.split('_');
   const months = Number(metaParts[2] || 0);
   const channel = String(metaParts[3] || data.channel || data.metadata?.method || 'card');
-  const amount = calculateRenewalAmount(tenantDoc?.subscriptionAmount, months);
+  const amount = await calculateRenewalAmount(masterConn, tenantDoc, months);
   const paidAmount = Number(data.amount || 0) / 100;
   const currencyCode = String(data.currency || '');
   if (!amount || paidAmount < amount) throw new Error('Payment amount does not match expected renewal amount');
