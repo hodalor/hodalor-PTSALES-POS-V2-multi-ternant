@@ -9,6 +9,10 @@ const TenantSchema = new mongoose.Schema({
   features: { type: [String], default: [] },
   disabled: { type: Boolean, default: false },
   clientAppName: { type: String, default: '' },
+  billingEmail: { type: String, default: '' },
+  billingPhone: { type: String, default: '' },
+  billingAddress: { type: String, default: '' },
+  billingCountry: { type: String, default: 'GH' },
   logo: { type: String, default: '' },
   themeColor: { type: String, default: '' },
   subscriptionExpiresAt: { type: Date, default: null },
@@ -29,6 +33,22 @@ const TenantSchema = new mongoose.Schema({
       permanentAfter: { type: Boolean, default: false },
       note: { type: String, default: '' },
       actorName: { type: String, default: '' },
+      createdAt: { type: Date, default: Date.now }
+    }],
+    default: []
+  },
+  paymentHistory: {
+    type: [{
+      provider: { type: String, default: '' },
+      method: { type: String, default: '' },
+      channel: { type: String, default: '' },
+      status: { type: String, default: '' },
+      transactionRef: { type: String, default: '' },
+      providerTransactionId: { type: String, default: '' },
+      network: { type: String, default: '' },
+      currencyCode: { type: String, default: '' },
+      amount: { type: Number, default: null },
+      months: { type: Number, default: null },
       createdAt: { type: Date, default: Date.now }
     }],
     default: []

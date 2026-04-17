@@ -9,6 +9,7 @@ import { hashPin } from '../utils/pin.js';
 import { ALL_FEATURES, normalizePlan, normalizeFeatureList, featureFlagsFromEnabled } from '../config/tenantAccess.js';
 import { getTenantLimitDefaults, normalizeLimitDefaults, normalizeLimitValue, saveTenantLimitDefaults } from '../utils/tenantLimits.js';
 import { buildRenewalHistoryEntry, ensureTenantActivationCode, normalizeSubscriptionAmount, refreshTenantActivationCode, syncTenantSubscriptionSnapshot } from '../utils/tenantActivation.js';
+import { getPaymentManagementDashboard, savePaymentManagementConfig } from '../utils/paymentManagement.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -33,7 +34,11 @@ async function ensureTenantBootstrap(tenantId, payload = {}) {
     subscriptionPlan: payload.subscriptionPlan || current?.data?.subscriptionPlan || 'basic',
     subscriptionExpiresAt: payload.subscriptionPermanent ? null : (payload.subscriptionExpiresAt || current?.data?.subscriptionExpiresAt || null),
     subscriptionPermanent: !!payload.subscriptionPermanent,
-    subscriptionAmount: normalizeSubscriptionAmount(payload.subscriptionAmount)
+    subscriptionAmount: normalizeSubscriptionAmount(payload.subscriptionAmount),
+    billingEmail: payload.billingEmail || current?.data?.billingEmail || '',
+    billingPhone: payload.billingPhone || current?.data?.billingPhone || '',
+    billingAddress: payload.billingAddress || current?.data?.billingAddress || '',
+    billingCountry: payload.billingCountry || current?.data?.billingCountry || 'GH'
   };
   await Settings.findOneAndUpdate(
     { key: 'default' },
@@ -106,6 +111,19 @@ r.get('/limits', requireSuperAdmin, async (_req, res) => {
   res.json(defaults);
 });
 
+r.get('/payment-management', requireSuperAdmin, async (_req, res) => {
+  const master = await getMasterConnection();
+  const dashboard = await getPaymentManagementDashboard(master);
+  res.json(dashboard);
+});
+
+r.patch('/payment-management', requireSuperAdmin, async (req, res) => {
+  const master = await getMasterConnection();
+  const saved = await savePaymentManagementConfig(master, req.body || {});
+  const dashboard = await getPaymentManagementDashboard(master);
+  res.json({ ...dashboard, gateways: saved.gateways, enabledGateways: saved.enabledGateways });
+});
+
 r.get('/user-audit', requireSuperAdmin, async (_req, res) => {
   const master = await getMasterConnection();
   const TenantModel = TenantModelFor(master);
@@ -165,7 +183,7 @@ r.patch('/limits', requireSuperAdmin, async (req, res) => {
 });
 
 r.post('/', requireSuperAdmin, async (req, res) => {
-  const { tenantId, name, subscriptionPlan, features, adminName, adminPin, clientAppName, logo, themeColor, subscriptionExpiresAt, subscriptionPermanent, subscriptionAmount, maxUserAccountsOverride, maxActiveUsersOverride } = req.body || {};
+  const { tenantId, name, subscriptionPlan, features, adminName, adminPin, clientAppName, billingEmail, billingPhone, billingAddress, billingCountry, logo, themeColor, subscriptionExpiresAt, subscriptionPermanent, subscriptionAmount, maxUserAccountsOverride, maxActiveUsersOverride } = req.body || {};
   const tid = normalizeTenantId(tenantId);
   if (!tenantId || tid.toLowerCase() === 'master') return res.status(400).json({ error: 'Invalid tenantId' });
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'Tenant name is required' });
@@ -184,6 +202,10 @@ r.post('/', requireSuperAdmin, async (req, res) => {
     subscriptionPlan: plan,
     features: enabledFeatures,
     clientAppName: String(clientAppName || name).trim(),
+    billingEmail: String(billingEmail || '').trim(),
+    billingPhone: String(billingPhone || '').trim(),
+    billingAddress: String(billingAddress || '').trim(),
+    billingCountry: String(billingCountry || 'GH').trim().toUpperCase(),
     logo: String(logo || ''),
     themeColor: String(themeColor || ''),
     subscriptionExpiresAt: subscriptionPermanent ? null : (subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null),
@@ -210,6 +232,10 @@ r.post('/', requireSuperAdmin, async (req, res) => {
     adminName: String(adminName).trim(),
     adminPin: String(adminPin),
     clientAppName: String(clientAppName || name).trim(),
+    billingEmail: String(billingEmail || '').trim(),
+    billingPhone: String(billingPhone || '').trim(),
+    billingAddress: String(billingAddress || '').trim(),
+    billingCountry: String(billingCountry || 'GH').trim().toUpperCase(),
     logo: String(logo || ''),
     themeColor: String(themeColor || ''),
     subscriptionExpiresAt: subscriptionPermanent ? null : (subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null),
@@ -263,6 +289,10 @@ r.patch('/:tenantId', requireSuperAdmin, async (req, res) => {
         features: enabledFeatures,
         disabled: typeof patch.disabled === 'boolean' ? patch.disabled : before.disabled,
         clientAppName: patch.clientAppName != null ? String(patch.clientAppName || '') : before.clientAppName,
+        billingEmail: patch.billingEmail != null ? String(patch.billingEmail || '').trim() : before.billingEmail,
+        billingPhone: patch.billingPhone != null ? String(patch.billingPhone || '').trim() : before.billingPhone,
+        billingAddress: patch.billingAddress != null ? String(patch.billingAddress || '').trim() : before.billingAddress,
+        billingCountry: patch.billingCountry != null ? String(patch.billingCountry || 'GH').trim().toUpperCase() : before.billingCountry,
         logo: patch.logo != null ? String(patch.logo || '') : before.logo,
         themeColor: patch.themeColor != null ? String(patch.themeColor || '') : before.themeColor,
         subscriptionPermanent: nextPermanent,
@@ -284,6 +314,10 @@ r.patch('/:tenantId', requireSuperAdmin, async (req, res) => {
     subscriptionPlan: updated.subscriptionPlan,
     features: updated.features,
     clientAppName: updated.clientAppName,
+    billingEmail: updated.billingEmail,
+    billingPhone: updated.billingPhone,
+    billingAddress: updated.billingAddress,
+    billingCountry: updated.billingCountry,
     logo: updated.logo,
     themeColor: updated.themeColor,
     subscriptionExpiresAt: updated.subscriptionExpiresAt,

@@ -20,10 +20,10 @@ export function buildActivationWindow(now = Date.now()) {
   return { issuedAt, expiresAt };
 }
 
-export function computeExtendedSubscriptionDate(currentValue, now = Date.now()) {
+export function computeExtendedSubscriptionDate(currentValue, now = Date.now(), days = ACTIVATION_EXTENSION_DAYS) {
   const base = currentValue ? new Date(currentValue).getTime() : 0;
   const start = Number.isFinite(base) && base > now ? base : now;
-  return new Date(start + (ACTIVATION_EXTENSION_DAYS * 24 * 3600 * 1000));
+  return new Date(start + (Number(days || ACTIVATION_EXTENSION_DAYS) * 24 * 3600 * 1000));
 }
 
 export function normalizeSubscriptionAmount(value) {

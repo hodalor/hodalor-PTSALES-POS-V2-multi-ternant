@@ -11,6 +11,8 @@ import { getMasterConnection, getTenantConnection, resolveStoredTenantId } from 
 import { modelFor as TenantSessionModelFor } from '../models/TenantSession.js';
 import { cleanupExpiredTenantSessions, countActiveTenantSessions, getEffectiveTenantLimits, getTenantLimitDefaults, hasActiveTenantSession } from '../utils/tenantLimits.js';
 import { activateTenantSubscription, ensureTenantActivationCode } from '../utils/tenantActivation.js';
+import { createDpoRenewalPayment, createPayPalRenewalPayment, createPaystackRenewalPayment, getMobileMoneyNetworks, getTenantRenewalInfo, SUPPORTED_PAYMENT_PERIODS, verifyDpoRenewalPayment, verifyPayPalRenewalPayment, verifyPaystackRenewalPayment } from '../utils/subscriptionPayments.js';
+import { getPaymentManagementConfig } from '../utils/paymentManagement.js';
 
 const r = Router();
 const tenantMetaCache = new Map();
@@ -151,12 +153,82 @@ r.post('/activate-subscription', async (req, res) => {
   if (role !== 'admin' && role !== 'superadmin') return res.status(403).json({ error: 'Only tenant admin can activate subscription' });
   const ok = await verifyPin(String(pin), user.pinHash);
   if (!ok) return res.status(401).json({ error: 'Invalid tenant admin credentials' });
-  const updated = await activateTenantSubscription(master, tenantConn, meta);
+  const updated = await activateTenantSubscription(master, tenantConn, meta, { actorName: String(user.name || '') });
   tenantMetaCache.delete(String(resolvedTenantId || '').toLowerCase());
   res.json({
     ok: true,
     tenant: sanitizeTenantMeta(updated),
     message: 'Subscription extended for 30 days'
+  });
+});
+
+r.get('/renewal-info', async (req, res) => {
+  const resolvedTenantId = await resolveStoredTenantId(String(req.query?.tenantId || ''));
+  if (!resolvedTenantId || resolvedTenantId.toLowerCase() === 'master') return res.status(400).json({ error: 'Invalid tenant' });
+  const master = await getMasterConnection();
+  const meta = await ensureTenantActivationCode(master, await Tenant.findOne({ tenantId: resolvedTenantId }));
+  if (!meta) return res.status(404).json({ error: 'Tenant not found' });
+  const tenantConn = await getTenantConnection(resolvedTenantId);
+  const info = await getTenantRenewalInfo(tenantConn, meta);
+  const paymentConfig = await getPaymentManagementConfig(master);
+  res.json({
+    ...info,
+    enabledGateways: paymentConfig.enabledGateways,
+    mobileMoneyNetworks: getMobileMoneyNetworks(info.billingCountry),
+    periods: SUPPORTED_PAYMENT_PERIODS
+  });
+});
+
+r.post('/start-renewal-payment', async (req, res) => {
+  const resolvedTenantId = await resolveStoredTenantId(String(req.body?.tenantId || ''));
+  if (!resolvedTenantId || resolvedTenantId.toLowerCase() === 'master') return res.status(400).json({ error: 'Invalid tenant' });
+  const master = await getMasterConnection();
+  const meta = await ensureTenantActivationCode(master, await Tenant.findOne({ tenantId: resolvedTenantId }));
+  if (!meta) return res.status(404).json({ error: 'Tenant not found' });
+  if (meta.disabled) return res.status(403).json({ error: 'Tenant disabled' });
+  if (!isTenantExpired(meta)) return res.status(400).json({ error: 'Renewal payment is only available for expired tenants' });
+  const tenantConn = await getTenantConnection(resolvedTenantId);
+  const info = await getTenantRenewalInfo(tenantConn, meta);
+  const provider = String(req.body?.provider || 'dpo_pay').trim().toLowerCase();
+  const paymentConfig = await getPaymentManagementConfig(master);
+  if (!paymentConfig.enabledGateways.includes(provider)) {
+    return res.status(403).json({ error: 'That payment gateway is disabled by superadmin' });
+  }
+  const checkout = provider === 'paypal'
+    ? await createPayPalRenewalPayment(info, req.body || {})
+    : provider === 'paystack'
+      ? await createPaystackRenewalPayment(info, req.body || {})
+      : await createDpoRenewalPayment(info, req.body || {});
+  res.json({
+    ok: true,
+    ...checkout,
+    mobileMoneyNetworks: getMobileMoneyNetworks(info.billingCountry)
+  });
+});
+
+r.post('/verify-renewal-payment', async (req, res) => {
+  const { tenantId, transactionToken, orderId, txRef, reference, provider } = req.body || {};
+  const resolvedTenantId = await resolveStoredTenantId(String(tenantId || ''));
+  if (!resolvedTenantId || (!txRef && !reference)) return res.status(400).json({ error: 'Invalid payment verification input' });
+  const master = await getMasterConnection();
+  const meta = await ensureTenantActivationCode(master, await Tenant.findOne({ tenantId: resolvedTenantId }));
+  if (!meta) return res.status(404).json({ error: 'Tenant not found' });
+  const tenantConn = await getTenantConnection(resolvedTenantId);
+  const chosenProvider = String(provider || 'dpo_pay').trim().toLowerCase();
+  const result = chosenProvider === 'paypal'
+    ? await verifyPayPalRenewalPayment(master, tenantConn, meta, String(orderId || transactionToken || ''), txRef)
+    : chosenProvider === 'paystack'
+      ? await verifyPaystackRenewalPayment(master, tenantConn, meta, String(reference || txRef || ''))
+      : await verifyDpoRenewalPayment(master, tenantConn, meta, String(transactionToken || ''), txRef);
+  tenantMetaCache.delete(String(resolvedTenantId || '').toLowerCase());
+  res.json({
+    ok: true,
+    message: 'Payment verified and subscription renewed',
+    tenant: sanitizeTenantMeta(result.updated),
+    activationCode: result.refreshedCode,
+    activationCodeExpiresAt: result.refreshedCodeExpiresAt,
+    months: result.months,
+    amount: result.amount
   });
 });
 
