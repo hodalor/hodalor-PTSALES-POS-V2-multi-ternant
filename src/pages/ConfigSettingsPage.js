@@ -38,6 +38,33 @@ function ConfigSettingsPage() {
   const canManageBranches = roleLower === 'admin' || roleLower === 'superadmin';
   const isSuperAdmin = roleLower === 'superadmin';
   const isMasterSuperAdmin = isSuperAdmin && String(auth.user?.tenantId || '').toLowerCase() === 'master';
+  const tenantAllowedSettingKeys = useRef(new Set([
+    'clientAppName',
+    'clientLogoUrl',
+    'receiptBrandName',
+    'receiptHeader',
+    'receiptFooter',
+    'businessPhone',
+    'businessWebsite',
+    'businessTpin',
+    'receiptQrBaseUrl',
+    'invoiceCompanyAddress',
+    'invoiceFooter',
+    'invoiceDeclaration',
+    'invoiceSignatoryLabel',
+    'invoiceTitle',
+    'invoiceWordsLabel',
+    'invoiceGeneratedNote',
+    'invoicePaidStampEnabled',
+    'invoicePaidStampLabel',
+    'invoicePaidStampThankYou',
+    'invoicePaidStampShowDate',
+    'invoicePaidStampColor',
+    'themeColor',
+    'currentBranchId',
+    'categories',
+    'userGrants'
+  ]));
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);
   const setSetting = (key, value) => dispatch(setAllSettings({ ...(settings || {}), [key]: value }));
   const [apiBase, setApiBaseState] = useState(() => {
@@ -50,6 +77,24 @@ function ConfigSettingsPage() {
       initialSettingsCapturedRef.current = true;
     }
   }, [settings]);
+
+  function buildSettingsPayload() {
+    const copy = { ...(settings || {}) };
+    const baseline = initialSettingsRef.current || {};
+    const changed = {};
+    Object.keys(copy).forEach(key => {
+      if (JSON.stringify(copy[key]) !== JSON.stringify(baseline[key])) changed[key] = copy[key];
+    });
+    if (roleLower === 'admin' && changed && Object.prototype.hasOwnProperty.call(changed, 'featureFlags')) {
+      delete changed.featureFlags;
+    }
+    if (!isMasterSuperAdmin) {
+      Object.keys(changed).forEach((key) => {
+        if (!tenantAllowedSettingKeys.current.has(key)) delete changed[key];
+      });
+    }
+    return changed;
+  }
 
   function Spinner() {
     return (
@@ -859,18 +904,7 @@ function ConfigSettingsPage() {
                       toast.show('Offline: connect internet and try again.', { type: 'error' });
                       return;
                     }
-                    const payload = (() => {
-                      const copy = { ...(settings || {}) };
-                      const baseline = initialSettingsRef.current || {};
-                      const changed = {};
-                      Object.keys(copy).forEach(key => {
-                        if (JSON.stringify(copy[key]) !== JSON.stringify(baseline[key])) changed[key] = copy[key];
-                      });
-                      if (roleLower === 'admin' && changed && Object.prototype.hasOwnProperty.call(changed, 'featureFlags')) {
-                        delete changed.featureFlags;
-                      }
-                      return changed;
-                    })();
+                    const payload = buildSettingsPayload();
                     if (Object.keys(payload).length === 0) {
                       toast.show('No settings changes to save', { type: 'success' });
                       return;
@@ -879,18 +913,7 @@ function ConfigSettingsPage() {
                     toast.show('Saved offline. Will backup when online.', { type: 'success' });
                     return;
                   }
-                  const payload = (() => {
-                    const copy = { ...(settings || {}) };
-                    const baseline = initialSettingsRef.current || {};
-                    const changed = {};
-                    Object.keys(copy).forEach(key => {
-                      if (JSON.stringify(copy[key]) !== JSON.stringify(baseline[key])) changed[key] = copy[key];
-                    });
-                    if (roleLower === 'admin' && changed && Object.prototype.hasOwnProperty.call(changed, 'featureFlags')) {
-                      delete changed.featureFlags;
-                    }
-                    return changed;
-                  })();
+                  const payload = buildSettingsPayload();
                   if (Object.keys(payload).length === 0) {
                     toast.show('No settings changes to save', { type: 'success' });
                     return;
@@ -901,8 +924,8 @@ function ConfigSettingsPage() {
                   setSettingsSavedPulse(true);
                   setTimeout(() => setSettingsSavedPulse(false), 1600);
                   toast.show('Settings saved', { type: 'success' });
-                } catch {
-                  toast.show('Failed to save settings', { type: 'error' });
+                } catch (e) {
+                  toast.show(String(e?.message || 'Failed to save settings'), { type: 'error' });
                 } finally {
                   setSavingSettings(false);
                 }
