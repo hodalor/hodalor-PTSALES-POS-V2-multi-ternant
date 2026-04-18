@@ -19,6 +19,10 @@ const r = Router();
 
 r.use(requireAuth);
 
+function escapeRegex(text = '') {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function productLookupQuery(productId) {
   const pid = String(productId || '');
   const or = [{ id: pid }];
@@ -30,7 +34,7 @@ r.get('/', requireRoleOrPerm(['Admin','Manager','Cashier'], ['view_sales','see_s
   const role = String(req.user?.role || '').toLowerCase();
   const query = {};
   if (role === 'cashier') {
-    query.sellerName = String(req.user?.name || '').trim();
+    query.sellerName = new RegExp(`^${escapeRegex(String(req.user?.name || '').trim())}$`, 'i');
   }
   if (req.query.branchId) {
     query.branchId = String(req.query.branchId);
