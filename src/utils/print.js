@@ -139,11 +139,14 @@ export function buildBrandedReceiptHtml({ settings, sale }) {
     ` : ''}
     <div class="center"><img src="${logoSrc}" alt="logo" style="max-height:60px" onerror="if(this.src.endsWith('/clientlogo512.png')) this.src='/logo512.png'; else this.src='/clientlogo512.png';"/></div>
     <div class="center title">${brandName}</div>
-    <div class="center title">${branch}</div>
+    <div class="center small">BRANCH: ${branch}</div>
     ${phone ? `<div class="center small">${phone}</div>` : ''}
+    <div class="hr"></div>
+    <div class="title">SALE INFO</div>
     <div class="small">CASHIER: ${cashier}</div>
     ${customerLine}
     <div class="hr"></div>
+    <div class="title">ITEMS</div>
     <table>
       <tbody>
         ${sale.items.map(it => `

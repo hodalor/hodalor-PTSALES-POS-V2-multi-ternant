@@ -1,5 +1,5 @@
 import { useDispatch, useSelector, useStore } from 'react-redux';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { logout } from '../store/authSlice';
 import { setCurrentBranch } from '../store/settingsSlice';
@@ -15,11 +15,26 @@ function Header({ onToggleSidebar }) {
   const auth = useSelector(state => state.auth);
   const settings = useSelector(state => state.settings);
   const currentBranchId = useSelector(state => state.settings.currentBranchId);
+  const branches = useSelector(state => state.branches.branches || []);
   const dispatch = useDispatch();
   const store = useStore();
   const navigate = useNavigate();
   const toast = useToast();
   const [syncing, setSyncing] = useState(false);
+  const roleLower = String(auth.role || '').toLowerCase();
+  const canChangeBranch = ['admin', 'manager', 'branch manager', 'superadmin'].includes(roleLower);
+  const assigned = auth.user?.assignedBranches || 'all';
+  const visibleBranchName = useMemo(() => {
+    const allowedBranches = (roleLower === 'superadmin' || roleLower === 'admin' || assigned === 'all')
+      ? branches
+      : branches.filter(branch => {
+          const ids = new Set(Array.isArray(assigned) ? assigned.map(String) : [String(assigned)]);
+          return ids.has(String(branch.id));
+        });
+    const current = (branches || []).find(branch => String(branch.id) === String(currentBranchId || ''));
+    if (current?.name) return current.name;
+    return allowedBranches[0]?.name || 'Assigned Branch';
+  }, [assigned, branches, currentBranchId, roleLower]);
 
   return (
     <div className="topbar">
@@ -51,7 +66,13 @@ function Header({ onToggleSidebar }) {
         <div className="brand-title" title={settings.clientAppName || settings.appName}>
           <strong>{settings.clientAppName || settings.appName}</strong>
         </div>
-        <BranchSelect value={currentBranchId} onChange={id => dispatch(setCurrentBranch(id))} className="select topbar-branch-select" />
+        {canChangeBranch ? (
+          <BranchSelect value={currentBranchId} onChange={id => dispatch(setCurrentBranch(id))} className="select topbar-branch-select" />
+        ) : (
+          <div className="topbar-branch-badge" title={visibleBranchName}>
+            {visibleBranchName}
+          </div>
+        )}
       </div>
       <div>
         {auth.isAuthenticated ? (

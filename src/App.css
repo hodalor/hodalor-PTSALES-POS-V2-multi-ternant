@@ -551,6 +551,21 @@ html, body, #root {
   max-width: 260px;
   flex: 0 0 auto;
 }
+.topbar .topbar-branch-badge {
+  margin-left: 12px;
+  min-width: 180px;
+  max-width: 280px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #fff;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  flex: 0 0 auto;
+}
 .topbar img {
   width: 28px;
   height: 28px;
@@ -669,6 +684,11 @@ html, body, #root {
     white-space: normal;
   }
   .topbar .topbar-branch-select {
+    margin-left: 0;
+    min-width: 160px;
+    max-width: 100%;
+  }
+  .topbar .topbar-branch-badge {
     margin-left: 0;
     min-width: 160px;
     max-width: 100%;
