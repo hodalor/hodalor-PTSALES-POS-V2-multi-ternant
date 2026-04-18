@@ -45,7 +45,7 @@ export const TENANT_GRANT_CATALOG = [
   { key: 'add_refunds', label: 'Create Retail Refund Requests' },
   { key: 'view_distribution_refunds', label: 'Open Distribution Refunds' },
   { key: 'add_distribution_refunds', label: 'Create Distribution Refund Requests' },
-  { key: 'approve_refunds', label: 'Approve or Reject Refunds' },
+  { key: 'approve_refunds', label: 'Refund Approvals' },
   { key: 'view_expenses', label: 'Open Expenses' },
   { key: 'add_expenses', label: 'Create or Delete Expenses' },
   { key: 'approve_expenses', label: 'Approve or Reject Expenses' },
@@ -190,7 +190,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
       { label: 'Distribution Purchase', keys: ['pages.distribution.purchase', 'modules.wholesalePos', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_config', 'grants.add_purchases'] },
       { label: 'Distribution Transfer', keys: ['pages.distribution.transfer', 'modules.wholesalePos', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_config', 'grants.add_transfers'] },
       { label: 'Distribution Adjustment', keys: ['pages.distribution.adjustment', 'modules.wholesalePos', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_config', 'grants.add_adjustments'] },
-      { label: 'Distribution Refund', keys: ['pages.distribution.refund', 'modules.wholesalePos', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_config', 'grants.view_distribution_refunds', 'grants.add_distribution_refunds'] },
+      { label: 'Distribution Refunds', keys: ['pages.distribution.refund', 'modules.wholesalePos', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_config', 'grants.view_distribution_refunds', 'grants.add_distribution_refunds'] },
       { label: 'Director / Manager Approvals', keys: ['pages.distribution.approvals', 'modules.wholesalePos', 'admin.config', 'modules.approvalsCenter', 'grants.view_config', 'grants.approve_wholesale_director', 'grants.approve_wholesale_manager'] }
     ]
   },
