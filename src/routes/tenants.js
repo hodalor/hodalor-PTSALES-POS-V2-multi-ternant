@@ -3,7 +3,7 @@ import Tenant, { modelFor as TenantModelFor } from '../models/Tenant.js';
 import { modelFor as UserModelFor } from '../models/User.js';
 import { modelFor as BranchModelFor } from '../models/Branch.js';
 import { modelFor as SettingsModelFor } from '../models/Settings.js';
-import { requireAuth, requireSuperAdmin } from '../middleware/auth.js';
+import { requireAuth, requireFeature, requireRoleOrPerm, requireSuperAdmin } from '../middleware/auth.js';
 import { getMasterConnection, getTenantConnection, getTenantDbName, normalizeTenantId } from '../config/tenancy.js';
 import { hashPin } from '../utils/pin.js';
 import { ALL_FEATURES, featureFlagsFromEnabled } from '../config/tenantAccess.js';
@@ -11,6 +11,7 @@ import { getTenantLimitDefaults, normalizeLimitDefaults, normalizeLimitValue, sa
 import { buildRenewalHistoryEntry, ensureTenantActivationCode, normalizeSubscriptionAmount, refreshTenantActivationCode, syncTenantSubscriptionSnapshot } from '../utils/tenantActivation.js';
 import { getPaymentManagementDashboard, savePaymentManagementConfig } from '../utils/paymentManagement.js';
 import { getSubscriptionManagementConfig, resolveSubscriptionPlan, saveSubscriptionManagementConfig } from '../utils/subscriptionManagement.js';
+import { exportTenantData, importTenantData } from '../utils/tenantDataTransfer.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -94,6 +95,23 @@ r.get('/me', async (req, res) => {
     activationCodeExpiresAt: undefined,
     activationLastUsedAt: undefined
   });
+});
+
+r.get('/data-export', requireFeature('modules.backup'), requireRoleOrPerm(['Admin'], 'export_tenant_data'), async (req, res) => {
+  const tid = normalizeTenantId(req.user?.tenantId || req.tenantId || '');
+  if (!tid || tid.toLowerCase() === 'master') return res.status(400).json({ error: 'Tenant export is only available for tenant databases' });
+  const payload = await exportTenantData(tid);
+  res.json(payload);
+});
+
+r.post('/data-import', requireFeature('modules.backup'), requireRoleOrPerm(['Admin'], 'import_tenant_data'), async (req, res) => {
+  const tid = normalizeTenantId(req.user?.tenantId || req.tenantId || '');
+  if (!tid || tid.toLowerCase() === 'master') return res.status(400).json({ error: 'Tenant import is only available for tenant databases' });
+  const mode = String(req.body?.mode || 'keep_current').trim().toLowerCase() === 'overwrite' ? 'overwrite' : 'keep_current';
+  const data = req.body?.data;
+  if (!data || typeof data !== 'object') return res.status(400).json({ error: 'Import payload is required' });
+  const result = await importTenantData(tid, data, mode);
+  res.json(result);
 });
 
 r.get('/', requireSuperAdmin, async (_req, res) => {
@@ -382,6 +400,23 @@ r.post('/:tenantId/admin', requireSuperAdmin, async (req, res) => {
     adminPin: String(adminPin)
   });
   res.json({ ok: true });
+});
+
+r.get('/:tenantId/data-export', requireSuperAdmin, async (req, res) => {
+  const tid = normalizeTenantId(req.params.tenantId);
+  if (!tid || tid.toLowerCase() === 'master') return res.status(400).json({ error: 'Invalid tenantId' });
+  const payload = await exportTenantData(tid);
+  res.json(payload);
+});
+
+r.post('/:tenantId/data-import', requireSuperAdmin, async (req, res) => {
+  const tid = normalizeTenantId(req.params.tenantId);
+  if (!tid || tid.toLowerCase() === 'master') return res.status(400).json({ error: 'Invalid tenantId' });
+  const mode = String(req.body?.mode || 'keep_current').trim().toLowerCase() === 'overwrite' ? 'overwrite' : 'keep_current';
+  const data = req.body?.data;
+  if (!data || typeof data !== 'object') return res.status(400).json({ error: 'Import payload is required' });
+  const result = await importTenantData(tid, data, mode);
+  res.json(result);
 });
 
 export default r;

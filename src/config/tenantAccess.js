@@ -11,7 +11,7 @@ export const TENANT_GRANT_KEYS = [
   'approve_refunds', 'view_expenses', 'add_expenses', 'approve_expenses', 'view_reports', 'view_financials',
   'view_stock_records', 'view_wholesale_invoices', 'view_warehouse_invoices',
   'view_warehouse_approvals', 'view_imei_conflicts', 'view_cashdrawer', 'view_users',
-  'view_config', 'view_audit'
+  'view_config', 'view_audit', 'export_tenant_data', 'import_tenant_data'
 ];
 
 export const GRANT_FEATURE_KEYS = TENANT_GRANT_KEYS.map((key) => `grants.${key}`);
@@ -49,7 +49,8 @@ export const PLAN_FEATURES = {
     'grants.add_sales', 'grants.view_products', 'grants.add_products', 'grants.edit_products',
     'grants.view_inventory', 'grants.edit_inventory', 'grants.view_labels', 'grants.view_purchases',
     'grants.add_purchases', 'grants.view_suppliers', 'grants.add_suppliers', 'grants.view_customers',
-    'grants.add_customers', 'grants.view_cashdrawer', 'grants.view_users', 'grants.view_config'
+    'grants.add_customers', 'grants.view_cashdrawer', 'grants.view_users', 'grants.view_config',
+    'grants.export_tenant_data', 'grants.import_tenant_data'
   ],
   pro: [
     'sections.primary', 'sections.retail', 'sections.distribution', 'sections.warehouse',

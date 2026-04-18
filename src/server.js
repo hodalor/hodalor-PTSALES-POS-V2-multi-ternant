@@ -16,7 +16,7 @@ const app = express();
 const featureFlagCache = new Map();
 const FEATURE_FLAG_CACHE_TTL_MS = 10_000;
 app.use(cors());
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '50mb' }));
 if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev', {
     skip: (req) => req.url.includes('/api/auth/me') || req.url.includes('/api/server-logs')
