@@ -16,7 +16,7 @@ r.get('/requests', async (req, res) => {
   res.json(rows);
 });
 
-r.post('/requests', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_refunds'), async (req, res) => {
+r.post('/requests', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_refunds', 'add_distribution_refunds']), async (req, res) => {
   const payload = req.body || {};
   const clientId = String(payload.clientId || '').trim();
   if (clientId) {

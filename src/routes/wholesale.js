@@ -14,7 +14,7 @@ function permissionForOperation(type = '') {
   if (key === 'purchase') return 'add_purchases';
   if (key === 'transfer') return 'add_transfers';
   if (key === 'adjustment') return 'add_adjustments';
-  if (key === 'refund') return 'add_refunds';
+  if (key === 'refund') return 'add_distribution_refunds';
   return '';
 }
 
@@ -66,7 +66,7 @@ r.get('/operations', async (req, res) => {
   res.json(normalized);
 });
 
-r.post('/operations', requireRoleOrPerm(['Admin', 'Manager', 'Inventory Staff'], 'add_purchases'), async (req, res) => {
+r.post('/operations', requireRoleOrPerm(['Admin', 'Manager', 'Inventory Staff', 'Cashier'], ['add_purchases', 'add_transfers', 'add_adjustments', 'add_distribution_refunds']), async (req, res) => {
   const body = req.body || {};
   const operationArea = String(body.operationArea || 'wholesale').toLowerCase() === 'warehouse' ? 'warehouse' : 'wholesale';
   const operationType = String(body.operationType || '').toLowerCase();
