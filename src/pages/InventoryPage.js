@@ -76,9 +76,13 @@ function InventoryPage() {
   }, [branchId, viewInventoryType]);
 
   const getSalePrice = useCallback((product) => {
-    return Number(viewInventoryType === 'wholesale' || viewInventoryType === 'warehouse'
-      ? (product.wholesalePrice != null ? product.wholesalePrice : product.price || 0)
-      : (product.retailPrice != null ? product.retailPrice : product.price || 0));
+    return Number(
+      viewInventoryType === 'warehouse'
+        ? (product.warehousePrice != null ? product.warehousePrice : 0)
+        : viewInventoryType === 'wholesale'
+          ? (product.wholesalePrice != null ? product.wholesalePrice : product.price || 0)
+          : (product.retailPrice != null ? product.retailPrice : product.price || 0)
+    );
   }, [viewInventoryType]);
 
   const summary = useMemo(() => {
@@ -215,9 +219,11 @@ function InventoryPage() {
             {rows.map(p => {
               const low = p.lowStock ?? 0;
               const cur = (viewInventoryType === 'wholesale' ? (p.wholesaleStockByBranch || {})[branchId] : viewInventoryType === 'warehouse' ? (p.warehouseStockByBranch || {})[branchId] : (p.stockByBranch || {})[branchId]) || 0;
-              const basePrice = viewInventoryType === 'wholesale' || viewInventoryType === 'warehouse'
-                ? (p.wholesalePrice != null ? p.wholesalePrice : p.price)
-                : (p.retailPrice != null ? p.retailPrice : p.price);
+              const basePrice = viewInventoryType === 'warehouse'
+                ? (p.warehousePrice != null ? p.warehousePrice : 0)
+                : viewInventoryType === 'wholesale'
+                  ? (p.wholesalePrice != null ? p.wholesalePrice : p.price)
+                  : (p.retailPrice != null ? p.retailPrice : p.price);
               const hasVariants = Array.isArray(p.variants) && p.variants.length > 0;
               return (
                 <>

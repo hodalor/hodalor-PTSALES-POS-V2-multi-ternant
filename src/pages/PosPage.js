@@ -114,6 +114,7 @@ function PosPage({ mode = 'retail' }) {
       const basePrices = {
         retail: Number(p.retailPrice || p.price || 0),
         wholesale: Number(p.wholesalePrice || p.retailPrice || p.price || 0),
+        warehouse: Number(p.warehousePrice || 0),
         agent: Number(p.agentPrice || p.wholesalePrice || p.retailPrice || p.price || 0)
       };
       if (Array.isArray(p.variants) && p.variants.length > 0) {
@@ -483,7 +484,7 @@ function PosPage({ mode = 'retail' }) {
       sku: product.sku,
       price: product.price,
       priceTier: selectedPriceTier,
-      prices: product.prices || { retail: product.price, wholesale: product.price, agent: product.price },
+      prices: product.prices || { retail: product.price, wholesale: product.price, warehouse: product.warehousePrice || 0, agent: product.price },
       allowCredit: product.allowCredit !== false,
       minimumCreditPercentage: Number(product.minimumCreditPercentage || 0),
       spec: productSpec(product),
@@ -1323,6 +1324,7 @@ function PosPage({ mode = 'retail' }) {
                 >
                   <option value="retail">Retail</option>
                   <option value="wholesale">Wholesale</option>
+                  <option value="warehouse">Warehouse</option>
                   <option value="agent">Agent</option>
                 </select>
                 <input

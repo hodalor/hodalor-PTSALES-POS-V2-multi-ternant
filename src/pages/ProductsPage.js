@@ -163,7 +163,7 @@ function ProductsPage() {
     setSku(p.sku);
     setPrice(String(p.price || 0));
     setWholesalePrice(String(p.wholesalePrice != null ? p.wholesalePrice : (p.price || 0)));
-    setWarehousePrice(String(p.warehousePrice != null ? p.warehousePrice : (p.wholesalePrice != null ? p.wholesalePrice : (p.price || 0))));
+    setWarehousePrice(String(p.warehousePrice != null ? p.warehousePrice : 0));
     setAgentPrice(String(p.agentPrice != null ? p.agentPrice : (p.price || 0)));
     setCostPrice(p.costPrice != null ? String(p.costPrice) : '');
     setExpiryDate(p.expiryDate ? String(p.expiryDate).slice(0, 10) : '');
@@ -375,7 +375,7 @@ function ProductsPage() {
             price: Number(price),
             retailPrice: Number(price),
             wholesalePrice: Number(wholesalePrice || price || 0),
-            warehousePrice: Number(warehousePrice || wholesalePrice || price || 0),
+            warehousePrice: Number(warehousePrice || 0),
             agentPrice: Number(agentPrice || warehousePrice || wholesalePrice || price || 0),
             costPrice: Number(costPrice) || 0,
             expiryDate: expiryDate ? new Date(expiryDate).toISOString() : null,
@@ -481,7 +481,7 @@ function ProductsPage() {
             price: Number(price),
             retailPrice: Number(price),
             wholesalePrice: Number(wholesalePrice || price || 0),
-            warehousePrice: Number(warehousePrice || wholesalePrice || price || 0),
+            warehousePrice: Number(warehousePrice || 0),
             agentPrice: Number(agentPrice || warehousePrice || wholesalePrice || price || 0),
             costPrice: Number(costPrice) || 0,
             expiryDate: expiryDate ? new Date(expiryDate).toISOString() : null,
@@ -578,7 +578,7 @@ function ProductsPage() {
             if (original.sku !== sku.trim()) changed.sku = { from: original.sku, to: sku.trim() };
             if (Number(original.price) !== Number(price)) changed.price = { from: Number(original.price), to: Number(price) };
             if (Number(original.wholesalePrice || original.price || 0) !== (Number(wholesalePrice || price) || 0)) changed.wholesalePrice = { from: Number(original.wholesalePrice || original.price || 0), to: Number(wholesalePrice || price) || 0 };
-            if (Number(original.warehousePrice || original.wholesalePrice || original.price || 0) !== (Number(warehousePrice || wholesalePrice || price) || 0)) changed.warehousePrice = { from: Number(original.warehousePrice || original.wholesalePrice || original.price || 0), to: Number(warehousePrice || wholesalePrice || price) || 0 };
+            if (Number(original.warehousePrice || 0) !== (Number(warehousePrice || 0) || 0)) changed.warehousePrice = { from: Number(original.warehousePrice || 0), to: Number(warehousePrice || 0) || 0 };
             if (Number(original.agentPrice || original.price || 0) !== (Number(agentPrice || warehousePrice || wholesalePrice || price) || 0)) changed.agentPrice = { from: Number(original.agentPrice || original.price || 0), to: Number(agentPrice || warehousePrice || wholesalePrice || price) || 0 };
             if ((original.category || '') !== category) changed.category = { from: original.category || '', to: category };
             if ((original.lowStock || 0) !== Number(lowStock)) changed.lowStock = { from: original.lowStock || 0, to: Number(lowStock) };

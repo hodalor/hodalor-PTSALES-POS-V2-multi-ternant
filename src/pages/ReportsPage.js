@@ -435,6 +435,7 @@ function ReportsPage() {
       category: product.category || '',
       retailPrice: Number(product.retailPrice != null ? product.retailPrice : product.price || 0),
       distributionPrice: Number(product.wholesalePrice != null ? product.wholesalePrice : product.price || 0),
+      warehousePrice: Number(product.warehousePrice != null ? product.warehousePrice : 0),
       agentPrice: Number(product.agentPrice != null ? product.agentPrice : product.price || 0)
     }));
     const headers = [
@@ -443,6 +444,7 @@ function ReportsPage() {
       { key: 'category', label: 'Category' },
       { key: 'retailPrice', label: 'Retail Price' },
       { key: 'distributionPrice', label: 'Distribution Price' },
+      { key: 'warehousePrice', label: 'Warehouse Price' },
       { key: 'agentPrice', label: 'Agent Price' }
     ];
     if (type === 'csv') exportCsv('price-list.csv', headers, rows);

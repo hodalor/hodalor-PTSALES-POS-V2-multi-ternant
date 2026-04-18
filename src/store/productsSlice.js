@@ -35,6 +35,7 @@ function normalizeVariant(v, parent, idx) {
     price: v.price,
     retailPrice: v.retailPrice != null ? Number(v.retailPrice) : (v.price != null ? Number(v.price) : Number(parent.retailPrice != null ? parent.retailPrice : parent.price || 0)),
     wholesalePrice: v.wholesalePrice != null ? Number(v.wholesalePrice) : (v.retailPrice != null ? Number(v.retailPrice) : Number(parent.wholesalePrice != null ? parent.wholesalePrice : parent.price || 0)),
+    warehousePrice: v.warehousePrice != null ? Number(v.warehousePrice) : 0,
     agentPrice: v.agentPrice != null ? Number(v.agentPrice) : (v.wholesalePrice != null ? Number(v.wholesalePrice) : Number(parent.agentPrice != null ? parent.agentPrice : parent.price || 0)),
     stockByBranch: v.stockByBranch || {},
     wholesaleStockByBranch: v.wholesaleStockByBranch || {},
@@ -52,6 +53,7 @@ function normalizeProduct(p) {
     trackType: p.trackType || 'quantity',
     retailPrice: p.retailPrice != null ? Number(p.retailPrice) : Number(p.price || 0),
     wholesalePrice: p.wholesalePrice != null ? Number(p.wholesalePrice) : Number(p.retailPrice != null ? p.retailPrice : p.price || 0),
+    warehousePrice: p.warehousePrice != null ? Number(p.warehousePrice) : 0,
     agentPrice: p.agentPrice != null ? Number(p.agentPrice) : Number(p.wholesalePrice != null ? p.wholesalePrice : (p.retailPrice != null ? p.retailPrice : p.price || 0)),
     stockByBranch: p.stockByBranch || {},
     wholesaleStockByBranch: p.wholesaleStockByBranch || {},
@@ -147,6 +149,7 @@ const productsSlice = createSlice({
           syncPending: true,
           retailPrice: product?.retailPrice != null ? Number(product.retailPrice) : Number(product?.price || 0),
           wholesalePrice: product?.wholesalePrice != null ? Number(product.wholesalePrice) : Number(product?.retailPrice != null ? product.retailPrice : product?.price || 0),
+          warehousePrice: product?.warehousePrice != null ? Number(product.warehousePrice) : 0,
           agentPrice: product?.agentPrice != null ? Number(product.agentPrice) : Number(product?.wholesalePrice != null ? product.wholesalePrice : (product?.retailPrice != null ? product.retailPrice : product?.price || 0)),
           ...product
         };
