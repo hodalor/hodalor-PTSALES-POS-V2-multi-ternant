@@ -30,10 +30,18 @@ const TENANT_ADMIN_ALLOWED_KEYS = new Set([
   'invoicePaidStampThankYou',
   'invoicePaidStampShowDate',
   'invoicePaidStampColor',
+  'taxRate',
   'themeColor',
   'currentBranchId',
   'categories'
 ]);
+
+function normalizeSettingsData(input = {}) {
+  const next = { ...(input || {}) };
+  const parsedTax = Number(next.taxRate);
+  next.taxRate = Number.isFinite(parsedTax) ? Math.max(0, Math.min(1, parsedTax)) : 0;
+  return next;
+}
 
 r.use(requireAuth);
 
@@ -46,7 +54,7 @@ r.get('/', async (req, res) => {
       const TenantModel = TenantModelFor(master);
       const tenant = await TenantModel.findOne({ tenantId }).lean();
       if (tenant) {
-        const before = doc?.data || {};
+        const before = normalizeSettingsData(doc?.data || {});
         const nextData = {
           ...before,
           clientAppName: tenant.clientAppName || before.clientAppName || tenant.name || '',
@@ -66,8 +74,12 @@ r.get('/', async (req, res) => {
       }
     } catch {}
   }
-  if (!doc) return res.json({});
-  res.json(doc.data || {});
+  const data = normalizeSettingsData(doc?.data || {});
+  if (!doc) return res.json(data);
+  if (JSON.stringify(doc.data || {}) !== JSON.stringify(data)) {
+    doc = await Settings.findOneAndUpdate({ key: 'default' }, { key: 'default', data }, { new: true, upsert: true });
+  }
+  res.json(data);
 });
 
 r.put('/', requireAdmin, async (req, res) => {
@@ -85,7 +97,7 @@ r.put('/', requireAdmin, async (req, res) => {
     }
   }
   const prev = await Settings.findOne({ key: 'default' });
-  const before = prev && prev.data ? prev.data : {};
+  const before = normalizeSettingsData(prev && prev.data ? prev.data : {});
   if (data && Object.prototype.hasOwnProperty.call(data, 'userGrants') && data.userGrants && typeof data.userGrants === 'object') {
     const prevMap = before?.userGrants && typeof before.userGrants === 'object' ? before.userGrants : {};
     const incomingMap = data.userGrants;
@@ -103,9 +115,9 @@ r.put('/', requireAdmin, async (req, res) => {
     });
     data.userGrants = mergedMap;
   }
-  const nextData = { ...before, ...data };
+  const nextData = normalizeSettingsData({ ...before, ...data });
   let doc = await Settings.findOneAndUpdate({ key: 'default' }, { data: nextData }, { new: true, upsert: true });
-  const after = doc && doc.data ? doc.data : {};
+  const after = normalizeSettingsData(doc && doc.data ? doc.data : {});
   const tenantId = String(req.user?.tenantId || req.tenantId || '').trim();
   const changed = [];
   Object.keys(data || {}).forEach(k => {

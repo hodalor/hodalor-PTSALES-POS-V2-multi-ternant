@@ -42,6 +42,8 @@ function normalizePricingPayload(body = {}) {
   else out.retailPrice = basePrice;
   if (hasNumber(out.wholesalePrice)) out.wholesalePrice = toNumberOrZero(out.wholesalePrice);
   else out.wholesalePrice = out.retailPrice;
+  if (hasNumber(out.warehousePrice)) out.warehousePrice = toNumberOrZero(out.warehousePrice);
+  else out.warehousePrice = out.wholesalePrice;
   if (hasNumber(out.agentPrice)) out.agentPrice = toNumberOrZero(out.agentPrice);
   else out.agentPrice = out.wholesalePrice;
   out.allowCredit = out.allowCredit !== false;
@@ -61,6 +63,8 @@ function normalizePricingPayload(body = {}) {
       else next.retailPrice = variantBase || out.retailPrice || 0;
       if (hasNumber(next.wholesalePrice)) next.wholesalePrice = toNumberOrZero(next.wholesalePrice);
       else next.wholesalePrice = next.retailPrice || out.wholesalePrice || 0;
+      if (hasNumber(next.warehousePrice)) next.warehousePrice = toNumberOrZero(next.warehousePrice);
+      else next.warehousePrice = next.wholesalePrice || out.warehousePrice || 0;
       if (hasNumber(next.agentPrice)) next.agentPrice = toNumberOrZero(next.agentPrice);
       else next.agentPrice = next.wholesalePrice || out.agentPrice || 0;
       next.wholesaleStockByBranch = normalizeStockByBranch(next.wholesaleStockByBranch);
@@ -118,6 +122,7 @@ r.get('/', async (req, res) => {
     const basePrice = toNumberOrZero(obj.price || 0);
     obj.retailPrice = hasNumber(obj.retailPrice) ? toNumberOrZero(obj.retailPrice) : basePrice;
     obj.wholesalePrice = hasNumber(obj.wholesalePrice) ? toNumberOrZero(obj.wholesalePrice) : obj.retailPrice;
+    obj.warehousePrice = hasNumber(obj.warehousePrice) ? toNumberOrZero(obj.warehousePrice) : obj.wholesalePrice;
     obj.agentPrice = hasNumber(obj.agentPrice) ? toNumberOrZero(obj.agentPrice) : obj.wholesalePrice;
     obj.allowCredit = obj.allowCredit !== false;
     obj.trackType = normalizeTrackType(obj.trackType);
@@ -133,6 +138,7 @@ r.get('/', async (req, res) => {
         price: v.price,
         retailPrice: hasNumber(v.retailPrice) ? toNumberOrZero(v.retailPrice) : (hasNumber(v.price) ? toNumberOrZero(v.price) : obj.retailPrice),
         wholesalePrice: hasNumber(v.wholesalePrice) ? toNumberOrZero(v.wholesalePrice) : (hasNumber(v.retailPrice) ? toNumberOrZero(v.retailPrice) : obj.wholesalePrice),
+        warehousePrice: hasNumber(v.warehousePrice) ? toNumberOrZero(v.warehousePrice) : (hasNumber(v.wholesalePrice) ? toNumberOrZero(v.wholesalePrice) : obj.warehousePrice),
         agentPrice: hasNumber(v.agentPrice) ? toNumberOrZero(v.agentPrice) : (hasNumber(v.wholesalePrice) ? toNumberOrZero(v.wholesalePrice) : obj.agentPrice),
         stockByBranch: normalizeStockByBranch(v.stockByBranch),
         wholesaleStockByBranch: normalizeStockByBranch(v.wholesaleStockByBranch),
