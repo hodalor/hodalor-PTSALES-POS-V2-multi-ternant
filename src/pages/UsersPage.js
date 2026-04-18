@@ -54,13 +54,15 @@ function UsersPage() {
   const [createError, setCreateError] = useState('');
   const [workingUserName, setWorkingUserName] = useState('');
   const isSuper = String(auth.role || '').toLowerCase() === 'superadmin';
-  const superAdminsCount = users.filter(u => u.role === 'SuperAdmin' && u.active !== false).length;
+  const visibleUsers = useMemo(() => (isSuper ? users : users.filter(u => u.role !== 'SuperAdmin')), [isSuper, users]);
+  const superAdminsCount = useMemo(() => users.filter(u => u.role === 'SuperAdmin' && u.active !== false).length, [users]);
+  const visibleSuperAdminsCount = useMemo(() => visibleUsers.filter(u => u.role === 'SuperAdmin' && u.active !== false).length, [visibleUsers]);
   const userSummary = useMemo(() => ({
-    total: users.length,
-    active: users.filter(u => u.active !== false).length,
-    inactive: users.filter(u => u.active === false).length,
-    branches: new Set(users.flatMap(u => Array.isArray(u.assignedBranches) ? u.assignedBranches : (u.branchId ? [u.branchId] : []))).size
-  }), [users]);
+    total: visibleUsers.length,
+    active: visibleUsers.filter(u => u.active !== false).length,
+    inactive: visibleUsers.filter(u => u.active === false).length,
+    branches: new Set(visibleUsers.flatMap(u => Array.isArray(u.assignedBranches) ? u.assignedBranches : (u.branchId ? [u.branchId] : []))).size
+  }), [visibleUsers]);
   const toast = useToast();
   const [editGrants, setEditGrants] = useState([]);
   useEffect(() => {
@@ -470,7 +472,7 @@ function UsersPage() {
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Users</div><div style={{ fontSize: 28, fontWeight: 800 }}>{userSummary.total}</div></div>
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Active</div><div style={{ fontSize: 28, fontWeight: 800 }}>{userSummary.active}</div></div>
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Inactive</div><div style={{ fontSize: 28, fontWeight: 800 }}>{userSummary.inactive}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Super Admins</div><div style={{ fontSize: 28, fontWeight: 800 }}>{superAdminsCount}</div></div>
+        {isSuper ? <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Super Admins</div><div style={{ fontSize: 28, fontWeight: 800 }}>{visibleSuperAdminsCount}</div></div> : null}
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Assigned Branches</div><div style={{ fontSize: 28, fontWeight: 800 }}>{userSummary.branches}</div></div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16 }}>
@@ -575,7 +577,7 @@ function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {(isSuper ? users : users.filter(u => u.role !== 'SuperAdmin')).map(u => {
+              {visibleUsers.map(u => {
                 const access = (u.role === 'SuperAdmin' || u.role === 'Admin' || u.assignedBranches === 'all') ? 'All branches'
                   : (Array.isArray(u.assignedBranches) ? `${u.assignedBranches.length} branches` : (u.branchId || '—'));
                 const active = u.active !== false;
