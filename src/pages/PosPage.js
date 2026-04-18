@@ -23,6 +23,10 @@ import { getAllowedPriceTiers, getDisplayPrice, getPreferredPriceTier, getPriceT
 import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 
+function createReservationToken() {
+  return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `RES-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function PosPage({ mode = 'retail' }) {
   const cart = useSelector(state => state.cart);
   const heldSales = useMemo(() => cart.heldSales || [], [cart.heldSales]);
@@ -35,6 +39,7 @@ function PosPage({ mode = 'retail' }) {
   const isWholesale = String(mode || '').toLowerCase() === 'wholesale';
   const creditModeLabel = isWholesale ? 'Credit Sale' : 'EasyBuy';
   const modeLabel = isWholesale ? 'Distribution POS' : 'POS';
+  const reservationStorageKey = `ptsales:pos-reservation-token:${String(mode || 'retail').toLowerCase()}`;
   const initialPriceTier = isWholesale ? 'wholesale' : 'retail';
   const activeBranchId = useMemo(() => {
     const currentBranch = (branches || []).find(branch => String(branch.id) === String(branchId));
@@ -44,6 +49,7 @@ function PosPage({ mode = 'retail' }) {
     return fallback?.id || branchId;
   }, [branchId, branches, isWholesale]);
   const activeBranch = useMemo(() => (branches || []).find(branch => String(branch.id) === String(activeBranchId)) || null, [activeBranchId, branches]);
+  const branchNameById = useMemo(() => new Map((branches || []).map(branch => [String(branch.id), branch.name])), [branches]);
   const allowedPriceTiers = useMemo(() => getAllowedPriceTiers(auth), [auth]);
   const initialVisiblePriceTier = useMemo(() => getPreferredPriceTier(allowedPriceTiers, initialPriceTier), [allowedPriceTiers, initialPriceTier]);
   const [query, setQuery] = useState('');
@@ -55,7 +61,13 @@ function PosPage({ mode = 'retail' }) {
   const [easyBuyDueDate, setEasyBuyDueDate] = useState('');
   const [taxOverridePct, setTaxOverridePct] = useState('');
   const [taxOverrideRemark, setTaxOverrideRemark] = useState('');
-  const [reservationToken] = useState(() => (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `RES-${Date.now()}`));
+  const [reservationToken, setReservationToken] = useState(() => {
+    try {
+      return localStorage.getItem(reservationStorageKey) || createReservationToken();
+    } catch {
+      return createReservationToken();
+    }
+  });
   const [serializedPickerProduct, setSerializedPickerProduct] = useState(null);
   const [serializedUnits, setSerializedUnits] = useState([]);
   const [serializedUnitsQuery, setSerializedUnitsQuery] = useState('');
@@ -66,10 +78,13 @@ function PosPage({ mode = 'retail' }) {
   const [serializedScanInput, setSerializedScanInput] = useState('');
   const [serializedCameraOpen, setSerializedCameraOpen] = useState(false);
   const [reservingSerializedKeys, setReservingSerializedKeys] = useState([]);
+  const [liveSerializedUnits, setLiveSerializedUnits] = useState([]);
+  const [liveSerializedLoading, setLiveSerializedLoading] = useState(false);
   const [deletingHeldId, setDeletingHeldId] = useState('');
   const serializedScanInputRef = useRef(null);
   const serializedLoadSeqRef = useRef(0);
   const serializedPickerKeyRef = useRef('');
+  const liveSerializedSearchSeqRef = useRef(0);
   const [saving, setSaving] = useState(false);
   const [customerQuery, setCustomerQuery] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
@@ -82,6 +97,13 @@ function PosPage({ mode = 'retail' }) {
     try { return localStorage.getItem('ptSales:heldQuery') || ''; } catch { return ''; }
   });
   const toast = useToast();
+  useEffect(() => {
+    try { localStorage.setItem(reservationStorageKey, reservationToken); } catch {}
+  }, [reservationStorageKey, reservationToken]);
+  useEffect(() => {
+    if (cart.items.length > 0 || !reservationToken) return;
+    void productUnitsApi.releaseProductUnits({ unitIds: [], reservationToken });
+  }, [cart.items.length, reservationToken]);
   useEffect(() => {
     setSelectedPriceTier(getPreferredPriceTier(allowedPriceTiers, initialPriceTier));
     setView(isWholesale ? 'list' : 'grid');
@@ -105,6 +127,7 @@ function PosPage({ mode = 'retail' }) {
             id: `${p.id}:${v.id}`,
             productId: p.id,
             variantId: v.id,
+            trackType: p.trackType,
             name: `${p.name} (${v.label})`,
             sku: v.sku || `${p.sku}-${v.label}`,
             price: prices[selectedPriceTier] ?? prices[getPreferredPriceTier(allowedPriceTiers, initialPriceTier)] ?? prices.retail,
@@ -132,6 +155,26 @@ function PosPage({ mode = 'retail' }) {
     });
     return out;
   }, [allowedPriceTiers, initialPriceTier, isWholesale, products, selectedPriceTier]);
+  const serializedStockRefreshKey = `${cart.items.length}:${liveSerializedUnits.length}:${reservingSerializedKeys.length}`;
+  const serializedStockCountMap = useMemo(() => {
+    void serializedStockRefreshKey;
+    const inventoryType = isWholesale ? 'wholesale' : 'retail';
+    const cached = productUnitsApi.getCachedProductUnits({
+      branchId: activeBranchId,
+      inventoryType,
+      page: 1,
+      pageSize: 5000
+    });
+    const map = new Map();
+    (Array.isArray(cached?.rows) ? cached.rows : []).forEach((row) => {
+      const status = String(row.status || '');
+      const reservedForCurrentCart = status === 'reserved' && reservationToken && String(row.reservationToken || '') === String(reservationToken);
+      if (!(status === 'in_stock' || reservedForCurrentCart)) return;
+      const key = `${String(row.productId || '')}:${String(row.variantId || '')}`;
+      map.set(key, Number(map.get(key) || 0) + 1);
+    });
+    return map;
+  }, [activeBranchId, isWholesale, reservationToken, serializedStockRefreshKey]);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return sellables;
@@ -142,6 +185,27 @@ function PosPage({ mode = 'retail' }) {
       productSpec(p).toLowerCase().includes(q)
     );
   }, [sellables, query]);
+  const liveSerializedMatches = useMemo(() => {
+    const normalized = String(query || '').trim().toLowerCase();
+    return liveSerializedUnits
+      .map((unit) => {
+        const product = sellables.find((p) =>
+          String(p.productId || p.id) === String(unit.productId)
+          && String(p.variantId || '') === String(unit.variantId || '')
+        );
+        if (!product) return null;
+        const exactScore = (String(unit.imei || '').toLowerCase() === normalized || String(unit.serialNumber || '').toLowerCase() === normalized) ? 0 : 1;
+        const suffixScore = (normalized.length >= 4 && (String(unit.imei || '').toLowerCase().endsWith(normalized) || String(unit.serialNumber || '').toLowerCase().endsWith(normalized))) ? 0 : 1;
+        const matchLabel = exactScore === 0 ? 'Exact Match' : suffixScore === 0 ? 'Last Digits Match' : 'Related Match';
+        return { unit, product, exactScore, suffixScore, matchLabel };
+      })
+      .filter(Boolean)
+      .sort((a, b) => {
+        if (a.exactScore !== b.exactScore) return a.exactScore - b.exactScore;
+        if (a.suffixScore !== b.suffixScore) return a.suffixScore - b.suffixScore;
+        return String(a.unit.imei || a.unit.serialNumber || '').localeCompare(String(b.unit.imei || b.unit.serialNumber || ''));
+      });
+  }, [liveSerializedUnits, query, sellables]);
   const dispatch = useDispatch();
 
   const selectedCustomer = useMemo(() => {
@@ -209,6 +273,10 @@ function PosPage({ mode = 'retail' }) {
   }
 
   function visibleStockForProduct(p) {
+    if (String(p.trackType || 'quantity') === 'serialized') {
+      const key = `${String(p.productId || p.id || '')}:${String(p.variantId || '')}`;
+      return Number(serializedStockCountMap.get(key) || 0);
+    }
     const stockMap = isWholesale ? (p.wholesaleStockByBranch || p.stockByBranch || {}) : (p.stockByBranch || {});
     const available = Number(stockMap?.[activeBranchId] || 0);
     return available;
@@ -222,6 +290,77 @@ function PosPage({ mode = 'retail' }) {
     setHeldQuery(v);
     try { localStorage.setItem('ptSales:heldQuery', v); } catch {}
   }
+
+  useEffect(() => {
+    const normalized = String(query || '').trim();
+    if (normalized.length < 4) {
+      setLiveSerializedUnits([]);
+      setLiveSerializedLoading(false);
+      return;
+    }
+    const requestId = ++liveSerializedSearchSeqRef.current;
+    const inventoryType = isWholesale ? 'wholesale' : 'retail';
+    const cached = productUnitsApi.getCachedProductUnits({
+      branchId: activeBranchId,
+      inventoryType,
+      status: 'available',
+      reservationToken,
+      query: normalized,
+      page: 1,
+      pageSize: 12
+    });
+    setLiveSerializedUnits(Array.isArray(cached?.rows) ? cached.rows : []);
+    setLiveSerializedLoading(true);
+    const likelyExactCode = normalized.length >= 8 && !/\s/.test(normalized);
+    const timer = setTimeout(async () => {
+      const mergeUniqueUnits = (rows = []) => {
+        const seen = new Set();
+        return rows.filter((row) => {
+          const key = String(row?._id || `${row?.imei || ''}-${row?.serialNumber || ''}`);
+          if (!key || seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+      };
+      try {
+        if (likelyExactCode) {
+          try {
+            const exact = await productUnitsApi.lookupProductUnit(normalized);
+            if (requestId !== liveSerializedSearchSeqRef.current) return;
+            const validExact = exact
+              && String(exact.branchId || '') === String(activeBranchId || '')
+              && String(exact.inventoryType || 'retail') === inventoryType
+              && ['in_stock', 'reserved'].includes(String(exact.status || ''))
+              && (String(exact.status || '') !== 'reserved' || String(exact.reservationToken || '') === String(reservationToken || ''));
+            if (validExact) {
+              setLiveSerializedUnits((prev) => mergeUniqueUnits([exact, ...(Array.isArray(prev) ? prev : [])]).slice(0, 12));
+              setLiveSerializedLoading(false);
+              return;
+            }
+          } catch {}
+        }
+      } catch {}
+      try {
+        const result = await productUnitsApi.listProductUnits({
+          branchId: activeBranchId,
+          inventoryType,
+          status: 'available',
+          reservationToken,
+          query: normalized,
+          page: 1,
+          pageSize: 12
+        });
+        if (requestId !== liveSerializedSearchSeqRef.current) return;
+        setLiveSerializedUnits(Array.isArray(result?.rows) ? result.rows : []);
+      } catch {
+        if (requestId !== liveSerializedSearchSeqRef.current) return;
+        setLiveSerializedUnits([]);
+      } finally {
+        if (requestId === liveSerializedSearchSeqRef.current) setLiveSerializedLoading(false);
+      }
+    }, likelyExactCode ? 40 : 90);
+    return () => clearTimeout(timer);
+  }, [query, activeBranchId, isWholesale, reservationToken]);
 
   const subtotal = cart.items.reduce((sum, i) => sum + (i.price || 0) * (i.quantity || 1), 0);
   const manualDiscount = cart.discount || 0;
@@ -263,7 +402,8 @@ function PosPage({ mode = 'retail' }) {
       variantId: product.variantId || '',
       branchId: activeBranchId,
       inventoryType: isWholesale ? 'wholesale' : 'retail',
-      status: 'in_stock',
+      status: 'available',
+      reservationToken,
       query: search,
       page: pageValue,
       pageSize: pageSizeValue
@@ -279,7 +419,8 @@ function PosPage({ mode = 'retail' }) {
         variantId: product.variantId || '',
         branchId: activeBranchId,
         inventoryType: isWholesale ? 'wholesale' : 'retail',
-        status: 'in_stock',
+        status: 'available',
+        reservationToken,
         query: search,
         page: pageValue,
         pageSize: pageSizeValue
@@ -306,11 +447,22 @@ function PosPage({ mode = 'retail' }) {
   }
 
   async function releaseSerializedCartItems(itemsToRelease) {
+    return releaseSerializedCartItemsWithToken(itemsToRelease, reservationToken);
+  }
+
+  async function releaseSerializedCartItemsWithToken(itemsToRelease, token) {
     const unitIds = (Array.isArray(itemsToRelease) ? itemsToRelease : []).map(item => item.unitId).filter(Boolean);
     if (unitIds.length === 0) return;
     try {
-      await productUnitsApi.releaseProductUnits({ unitIds, reservationToken });
+      await productUnitsApi.releaseProductUnits({ unitIds, reservationToken: token });
     } catch {}
+  }
+
+  function rotateReservationToken() {
+    const next = createReservationToken();
+    setReservationToken(next);
+    try { localStorage.setItem(reservationStorageKey, next); } catch {}
+    return next;
   }
 
   async function addSerializedUnitToCart(product, unit) {
@@ -341,9 +493,6 @@ function PosPage({ mode = 'retail' }) {
       imei: unit?.imei || '',
       serialNumber: unit?.serialNumber || ''
     }));
-    setSerializedUnits(prev => prev.filter(row => String(row._id) !== optimisticUnitId));
-    setSerializedUnitsTotal(prev => Math.max(0, Number(prev || 0) - 1));
-    setSerializedPickerProduct(null);
     setSerializedScanInput('');
     try {
       await (unit?._id ? productUnitsApi.reserveProductUnit({
@@ -435,6 +584,7 @@ function PosPage({ mode = 'retail' }) {
       label,
       createdAt: new Date().toISOString(),
       branchId: activeBranchId,
+      reservationToken,
       items: cart.items.map(i => ({ ...i })),
       discount: manualDiscount,
       notes: cart.notes || '',
@@ -451,6 +601,7 @@ function PosPage({ mode = 'retail' }) {
     };
     dispatch(addHeld(payload));
     dispatch(clearCart());
+    rotateReservationToken();
     setSelectedCustomerId('');
     setCustomerQuery('');
     setRedeemPoints('');
@@ -470,6 +621,7 @@ function PosPage({ mode = 'retail' }) {
     }
     void releaseSerializedCartItems(cart.items);
     dispatch(clearCart());
+    rotateReservationToken();
     setSelectedCustomerId('');
     setCustomerQuery('');
     setRedeemPoints('');
@@ -488,6 +640,9 @@ function PosPage({ mode = 'retail' }) {
       if (!ok) return;
     }
     void releaseSerializedCartItems(cart.items);
+    const resumedToken = h.reservationToken || createReservationToken();
+    setReservationToken(resumedToken);
+    try { localStorage.setItem(reservationStorageKey, resumedToken); } catch {}
     dispatch(replaceCart({ items: Array.isArray(h.items) ? h.items : [], discount: h.discount || 0, notes: h.notes || '' }));
     setSelectedCustomerId(h.selectedCustomerId || '');
     setRedeemPoints(h.redeemPoints || '');
@@ -509,7 +664,7 @@ function PosPage({ mode = 'retail' }) {
     const ok = await confirmDialog('Delete this held sale?');
     if (!ok) return;
     setDeletingHeldId(String(h.id || ''));
-    void releaseSerializedCartItems(h.items || []);
+    void releaseSerializedCartItemsWithToken(h.items || [], h.reservationToken || reservationToken);
     dispatch(removeHeld(h.id));
     toast.show('Held sale removed', { type: 'success' });
     setDeletingHeldId('');
@@ -715,6 +870,7 @@ function PosPage({ mode = 'retail' }) {
       offline: !navigator.onLine
     }));
     dispatch(clearCart());
+    rotateReservationToken();
     setSelectedCustomerId('');
     setCustomerQuery('');
     setRedeemPoints('');
@@ -767,66 +923,123 @@ function PosPage({ mode = 'retail' }) {
     }
   }
 
-  async function onSearchKeyDown(e) {
-    if (e.key === 'Enter') {
-      const q = query.trim();
-      if (!q) return;
-      if (reservingSerializedKeys.includes(q)) {
-        toast.show('Serialized item is already being added', { type: 'error' });
-        return;
-      }
-      if (cart.items.some(item => String(item.imei || '').trim() === q || String(item.serialNumber || '').trim() === q)) {
-        toast.show('Serialized item already selected in cart', { type: 'error' });
-        return;
-      }
-      const exact = sellables.find(p =>
-        (p.barcode && p.barcode === q) ||
-        p.sku.toLowerCase() === q.toLowerCase()
-      );
-      if (exact) {
-        await addToCart(exact);
-        setQuery('');
-        return;
-      }
+  async function submitMainSearch() {
+    const q = query.trim();
+    if (!q) return;
+    if (reservingSerializedKeys.includes(q)) {
+      toast.show('Serialized item is already being added', { type: 'error' });
+      return;
+    }
+    if (cart.items.some(item => String(item.imei || '').trim() === q || String(item.serialNumber || '').trim() === q)) {
+      toast.show('Serialized item already selected in cart', { type: 'error' });
+      return;
+    }
+    const exact = sellables.find(p =>
+      (p.barcode && p.barcode === q) ||
+      p.sku.toLowerCase() === q.toLowerCase()
+    );
+    if (exact) {
+      await addToCart(exact);
+      setQuery('');
+      return;
+    }
+    try {
+      let unit = null;
+      let exactLookupFound = false;
       try {
-        const unit = await productUnitsApi.scanProductUnit({
-          imei: q,
-          branchId: activeBranchId,
-          inventoryType: isWholesale ? 'wholesale' : 'retail',
-          reservationToken
-        });
-        if (isSerializedAlreadyInCart(unit) || cart.items.some(item => String(item.imei || '').trim() === q || String(item.serialNumber || '').trim() === q)) {
-          toast.show('Serialized item already selected in cart', { type: 'error' });
-          void productUnitsApi.releaseProductUnits({ unitIds: [unit._id].filter(Boolean), reservationToken });
+        const lookedUp = await productUnitsApi.lookupProductUnit(q);
+        if (!lookedUp) throw new Error('Serialized unit not found');
+        exactLookupFound = true;
+        if (String(lookedUp.branchId || '') !== String(activeBranchId || '')) {
+          const unitBranch = (branches || []).find((branch) => String(branch.id) === String(lookedUp.branchId || ''));
+          toast.show(`Serialized item exists in ${unitBranch?.name || 'another branch'}, not in the current branch`, { type: 'error' });
           return;
         }
-        const product = sellables.find(p =>
-          String(p.productId || p.id) === String(unit.productId)
-          && String(p.variantId || '') === String(unit.variantId || '')
-        );
-        if (product) {
-          dispatch(addItem({
-            name: product.name,
-            sku: product.sku,
-            price: product.price,
-            priceTier: selectedPriceTier,
-            prices: product.prices || { retail: product.price, wholesale: product.price, agent: product.price },
-            allowCredit: product.allowCredit !== false,
-            minimumCreditPercentage: Number(product.minimumCreditPercentage || 0),
-            spec: productSpec(product),
-            productId: product.productId || product.id,
-            variantId: product.variantId || null,
-            unitId: unit._id,
-            imei: unit.imei || '',
-            serialNumber: unit.serialNumber || ''
-          }));
-          toast.show(`Added unit ${unit.imei || unit.serialNumber}`, { type: 'success' });
-          setQuery('');
+        const expectedInventoryType = isWholesale ? 'wholesale' : 'retail';
+        if (String(lookedUp.inventoryType || 'retail') !== expectedInventoryType) {
+          toast.show(`Serialized item exists under ${String(lookedUp.inventoryType || 'retail')} inventory, not ${expectedInventoryType}`, { type: 'error' });
+          return;
         }
-      } catch {
+        if (['sold', 'adjusted_out'].includes(String(lookedUp.status || ''))) {
+          toast.show('Serialized item is already sold or unavailable', { type: 'error' });
+          return;
+        }
+        unit = await productUnitsApi.reserveProductUnit({
+          unitId: lookedUp._id,
+          code: q,
+          branchId: activeBranchId,
+          inventoryType: expectedInventoryType,
+          reservationToken
+        });
+      } catch (exactError) {
+        if (exactLookupFound) {
+          toast.show(String(exactError?.message || 'Failed to reserve serialized item'), { type: 'error' });
+          return;
+        }
+        const result = await productUnitsApi.listProductUnits({
+          branchId: activeBranchId,
+          inventoryType: isWholesale ? 'wholesale' : 'retail',
+          status: 'in_stock',
+          query: q,
+          page: 1,
+          pageSize: 100
+        });
+        const rows = Array.isArray(result?.rows) ? result.rows : [];
+        const normalized = q.toLowerCase();
+        const exactMatches = rows.filter((row) => String(row.imei || '').toLowerCase() === normalized || String(row.serialNumber || '').toLowerCase() === normalized);
+        const suffixMatches = rows.filter((row) => normalized.length >= 4 && (String(row.imei || '').toLowerCase().endsWith(normalized) || String(row.serialNumber || '').toLowerCase().endsWith(normalized)));
+        const candidates = exactMatches.length > 0 ? exactMatches : suffixMatches.length > 0 ? suffixMatches : rows;
+        if (candidates.length === 0) {
+          toast.show('No product found for that barcode, IMEI, or serial number', { type: 'error' });
+          return;
+        }
+        if (candidates.length > 1) {
+          toast.show(`Found ${candidates.length} serialized matches. Enter more digits to narrow it down.`, { type: 'error' });
+          return;
+        }
+        [unit] = candidates;
+      }
+      const product = sellables.find(p =>
+        String(p.productId || p.id) === String(unit?.productId)
+        && String(p.variantId || '') === String(unit?.variantId || '')
+      );
+      if (!product) {
+        if (unit?._id) void productUnitsApi.releaseProductUnits({ unitIds: [unit._id].filter(Boolean), reservationToken });
+        toast.show('Serialized unit exists, but the product is not available in this POS view', { type: 'error' });
         return;
       }
+      await addSerializedUnitToCart(product, unit);
+      setQuery('');
+    } catch (e) {
+      toast.show(String(e?.message || 'No product found for that barcode, IMEI, or serial number'), { type: 'error' });
     }
+  }
+
+  async function onSearchKeyDown(e) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      await submitMainSearch();
+    }
+  }
+
+  function renderHighlightedCode(value, searchValue) {
+    const text = String(value || '');
+    const needle = String(searchValue || '').trim();
+    if (!text || !needle) return text || '—';
+    const lowerText = text.toLowerCase();
+    const lowerNeedle = needle.toLowerCase();
+    const start = lowerText.indexOf(lowerNeedle);
+    if (start === -1) return text;
+    const end = start + needle.length;
+    return (
+      <>
+        {text.slice(0, start)}
+        <span style={{ background: '#fef3c7', color: '#92400e', padding: '0 2px', borderRadius: 4, fontWeight: 700 }}>
+          {text.slice(start, end)}
+        </span>
+        {text.slice(end)}
+      </>
+    );
   }
 
   return (
@@ -840,13 +1053,14 @@ function PosPage({ mode = 'retail' }) {
           <OfflineQueueIndicator collection="sales" label="Sales queued" />
         </div>
         <div className="toolbar">
-          <input className="input" placeholder="Search name, SKU or scan barcode" value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onSearchKeyDown} style={{ width: '100%' }} />
+          <input className="input" placeholder="Search name, SKU, barcode, IMEI, or serial number" value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onSearchKeyDown} style={{ width: '100%' }} />
+          <button className="btn" onClick={submitMainSearch}>Search / Add</button>
           {isWholesale && (
           <select className="select" value={selectedPriceTier} onChange={e => setSelectedPriceTier(e.target.value)}>
             {allowedPriceTiers.map(tier => <option key={tier} value={tier}>{getPriceTierLabel(tier)}</option>)}
           </select>
           )}
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="filter-actions">
             <button className={`btn-toggle ${view === 'grid' ? 'active' : ''}`} onClick={() => setView('grid')}>
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" stroke="currentColor" strokeWidth="2"/></svg>
             </button>
@@ -855,6 +1069,78 @@ function PosPage({ mode = 'retail' }) {
             </button>
           </div>
         </div>
+        <div style={{ color: '#64748b', fontSize: 12, marginTop: 6 }}>
+          Search by name, SKU, barcode, IMEI, or serial number. If a serialized unit exists in stock for this branch, it will be added directly to cart.
+        </div>
+        {query.trim().length >= 4 && (
+          <div className="card" style={{ marginTop: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <strong>Serialized Matches</strong>
+              {liveSerializedLoading ? <InlineSpinner label="Searching IMEI / serial..." /> : null}
+            </div>
+            {liveSerializedMatches.length > 0 ? (
+              <div style={{ display: 'grid', gap: 8 }}>
+                {liveSerializedMatches.map(({ unit, product, matchLabel }) => (
+                  <div key={String(unit._id || `${unit.imei || ''}-${unit.serialNumber || ''}`)} className="card" style={{ padding: 10, border: '1px solid #e2e8f0', boxShadow: 'none', background: '#fcfdff' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start', flexWrap: 'wrap' }}>
+                      <div style={{ minWidth: 0, display: 'flex', gap: 12, alignItems: 'start', flexWrap: 'wrap' }}>
+                        {product.image ? (
+                          <img
+                            src={product.image}
+                            alt={product.name}
+                            style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 10, border: '1px solid #e2e8f0', background: '#fff', flexShrink: 0 }}
+                          />
+                        ) : null}
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 2 }}>
+                            <div style={{ fontWeight: 800 }}>{product.name}</div>
+                            <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: '#dbeafe', color: '#1d4ed8' }}>{matchLabel}</span>
+                            <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: '#ecfccb', color: '#3f6212' }}>
+                              {branchNameById.get(String(unit.branchId || '')) || activeBranch?.name || 'Branch'}
+                            </span>
+                            <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: String(unit.inventoryType || 'retail') === 'wholesale' ? '#ede9fe' : String(unit.inventoryType || 'retail') === 'warehouse' ? '#e0f2fe' : '#fee2e2', color: String(unit.inventoryType || 'retail') === 'wholesale' ? '#5b21b6' : String(unit.inventoryType || 'retail') === 'warehouse' ? '#0c4a6e' : '#991b1b' }}>
+                              {String(unit.inventoryType || 'retail')}
+                            </span>
+                          </div>
+                          {productSpec(product) ? <div style={{ color: '#64748b', fontSize: 12 }}>{productSpec(product)}</div> : null}
+                          <div style={{ color: '#64748b', fontSize: 12 }}>SKU: {product.sku}</div>
+                          {Array.isArray(product.attributes) && product.attributes.length > 0 ? (
+                            <div style={{ color: '#64748b', fontSize: 12 }}>
+                              {product.attributes
+                                .filter(attr => String(attr?.key || '').trim() && String(attr?.value || '').trim())
+                                .slice(0, 3)
+                                .map(attr => `${attr.key}: ${attr.value}`)
+                                .join(' • ')}
+                            </div>
+                          ) : null}
+                          <div style={{ color: '#64748b', fontSize: 12 }}>IMEI: {renderHighlightedCode(unit.imei || '—', query)}</div>
+                          <div style={{ color: '#64748b', fontSize: 12 }}>Serial: {renderHighlightedCode(unit.serialNumber || '—', query)}</div>
+                        </div>
+                      </div>
+                      <div style={{ display: 'grid', gap: 6, justifyItems: 'end' }}>
+                        <div style={{ fontWeight: 800, fontSize: 18 }}>{formatCurrency(product.price, settings)}</div>
+                        {isSerializedAlreadyInCart(unit) ? (
+                          <span style={{ color: '#b45309', fontSize: 12, fontWeight: 700 }}>Already in cart</span>
+                        ) : null}
+                        <button
+                          className="btn btn-primary"
+                          onClick={() => addSerializedUnitToCart(product, unit)}
+                          disabled={isSerializedAlreadyInCart(unit) || isSerializedPending(unit)}
+                        >
+                          {isSerializedAlreadyInCart(unit) ? 'Selected' : isSerializedPending(unit) ? 'Adding...' : 'Add Unit'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : !liveSerializedLoading ? (
+              <div style={{ color: '#64748b', fontSize: 13 }}>
+                No serialized matches found in the current branch yet. Keep typing more digits if needed.
+              </div>
+            ) : null}
+          </div>
+        )}
         {view === 'grid' ? (
           <div className="product-grid">
             {filtered.map(p => (
@@ -1008,6 +1294,8 @@ function PosPage({ mode = 'retail' }) {
                 <div>{item.name}</div>
                 {item.spec && <small style={{ color: '#64748b' }}>{item.spec}</small>}
                 <small>{item.sku}</small>
+                {item.imei ? <small style={{ color: '#1d4ed8', fontWeight: 700 }}>IMEI: {item.imei}</small> : null}
+                {item.serialNumber ? <small style={{ color: '#64748b' }}>Serial: {item.serialNumber}</small> : null}
               </div>
               <input
                 className="input"
@@ -1163,7 +1451,7 @@ function PosPage({ mode = 'retail' }) {
             <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>
             {saving ? 'Processing…' : 'Complete (ESC/POS)'}
           </button>
-          <button className="btn" onClick={() => { dispatch(clearCart()); void releaseSerializedCartItems(cart.items); }} style={{ marginLeft: 8 }} disabled={cart.items.length === 0}>
+          <button className="btn" onClick={() => { void releaseSerializedCartItems(cart.items); dispatch(clearCart()); rotateReservationToken(); }} style={{ marginLeft: 8 }} disabled={cart.items.length === 0}>
             <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M6 7l1 12h10l1-12M9 7l1-2h4l1 2" stroke="currentColor" strokeWidth="2"/></svg>
             Clear
           </button>

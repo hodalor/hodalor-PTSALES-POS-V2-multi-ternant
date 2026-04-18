@@ -152,7 +152,7 @@ function ExpensesPage() {
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Categories</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.categories}</div></div>
       </div>
 
-      <div className="card filter-grid" style={{ marginBottom: 12 }}>
+      <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 12 }}>
         <label>
           Period
           <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>

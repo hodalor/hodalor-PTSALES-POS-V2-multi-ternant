@@ -357,7 +357,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
             </select>
           </label>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+        <div className="summary-grid">
         <div>
           <div style={{ color: '#64748b', fontSize: 12 }}>Active Credit Sales</div>
           <div style={{ fontSize: 28, fontWeight: 800 }}>{creditSummary.activeCount}</div>

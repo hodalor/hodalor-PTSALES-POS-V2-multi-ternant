@@ -334,6 +334,11 @@ html, body, #root {
 .filter-actions-end {
   justify-content: flex-end;
 }
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
 .btn-toggle {
   padding: 8px 10px;
   border-radius: 8px;
@@ -605,6 +610,9 @@ html, body, #root {
 
 /* Responsive */
 @media (max-width: 992px) {
+  .card {
+    padding: 12px;
+  }
   .layout {
     grid-template-columns: 1fr;
   }
@@ -656,6 +664,18 @@ html, body, #root {
   }
   .toolbar .input {
     flex: 1 1 100%;
+  }
+  .filter-grid,
+  .filter-grid-wide,
+  .summary-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .filter-actions {
+    gap: 6px;
+  }
+  .btn {
+    padding: 9px 10px;
   }
   .cart-item {
     grid-template-columns: 1fr;

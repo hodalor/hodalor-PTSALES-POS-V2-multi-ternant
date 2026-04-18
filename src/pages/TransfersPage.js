@@ -644,7 +644,7 @@ function TransfersPage() {
         </div>
       )}
       <div className="card" style={{ marginTop: 12 }}>
-        <div className="filter-grid" style={{ marginBottom: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, marginBottom: 8 }}>
           <label>
             Period
             <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>

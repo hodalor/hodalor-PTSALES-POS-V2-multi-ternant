@@ -12,6 +12,7 @@ function SerializedInventoryPage() {
   const auth = useSelector(s => s.auth);
   const roleLower = String(auth?.role || '').toLowerCase();
   const canDeleteUnits = roleLower === 'superadmin';
+  const canRestoreUnits = ['superadmin', 'admin', 'manager', 'inventory staff'].includes(roleLower);
   const [productId, setProductId] = useState('');
   const [branchId, setBranchId] = useState('');
   const [status, setStatus] = useState('');
@@ -26,6 +27,7 @@ function SerializedInventoryPage() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkAction, setBulkAction] = useState('');
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [restoringId, setRestoringId] = useState('');
 
   const productNameById = useMemo(() => new Map(products.map(product => [String(product.id), product.name])), [products]);
   const branchNameById = useMemo(() => new Map(branches.map(branch => [String(branch.id), branch.name])), [branches]);
@@ -103,6 +105,27 @@ function SerializedInventoryPage() {
       toast.show(String(e?.message || 'Failed to delete serialized units'), { type: 'error' });
     } finally {
       setBulkDeleting(false);
+    }
+  }
+
+  async function restoreReservedUnit(row) {
+    if (!row?._id || String(row.status || '') !== 'reserved') return;
+    try {
+      setRestoringId(String(row._id));
+      await productUnitsApi.releaseProductUnits({ unitIds: [String(row._id)] });
+      const nextStatus = status === 'reserved' ? null : 'in_stock';
+      setRows(prev => prev
+        .map(item => String(item._id) === String(row._id) ? { ...item, status: 'in_stock', reservationToken: '', reservedAt: null, updatedAt: new Date().toISOString() } : item)
+        .filter(item => nextStatus ? true : String(item._id) !== String(row._id))
+      );
+      if (status === 'reserved') {
+        setTotal(prev => Math.max(0, Number(prev || 0) - 1));
+      }
+      toast.show('Reserved serialized item restored to in stock', { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to restore reserved serialized item'), { type: 'error' });
+    } finally {
+      setRestoringId('');
     }
   }
 
@@ -195,11 +218,12 @@ function SerializedInventoryPage() {
                 <th align="left">Inventory</th>
                 <th align="left">Status</th>
                 <th align="left">Updated</th>
+                {canRestoreUnits && <th align="right">Action</th>}
               </tr>
             </thead>
             <tbody>
               {rows.map(row => (
-                <tr key={row._id} style={bulkDeleting && selectedIds.includes(String(row._id)) ? { opacity: 0.55 } : undefined}>
+                <tr key={row._id} style={(bulkDeleting && selectedIds.includes(String(row._id))) || restoringId === String(row._id) ? { opacity: 0.55 } : undefined}>
                   {canDeleteUnits && (
                     <td>
                       <input
@@ -217,10 +241,22 @@ function SerializedInventoryPage() {
                   <td>{row.inventoryType}</td>
                   <td>{row.status}</td>
                   <td>{row.updatedAt ? new Date(row.updatedAt).toLocaleString() : '—'}</td>
+                  {canRestoreUnits && (
+                    <td align="right">
+                      {String(row.status || '') === 'reserved' ? (
+                        <button className="btn" onClick={() => void restoreReservedUnit(row)} disabled={restoringId === String(row._id)}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            {restoringId === String(row._id) && <InlineSpinner />}
+                            {restoringId === String(row._id) ? 'Restoring…' : 'Restore'}
+                          </span>
+                        </button>
+                      ) : '—'}
+                    </td>
+                  )}
                 </tr>
               ))}
-              {!loading && rows.length === 0 && <tr><td colSpan={canDeleteUnits ? 8 : 7} style={{ padding: 12, color: '#64748b' }}>No serialized units found</td></tr>}
-              {loading && <tr><td colSpan={canDeleteUnits ? 8 : 7} style={{ padding: 12, color: '#64748b' }}>Loading…</td></tr>}
+              {!loading && rows.length === 0 && <tr><td colSpan={(canDeleteUnits ? 1 : 0) + 7 + (canRestoreUnits ? 1 : 0)} style={{ padding: 12, color: '#64748b' }}>No serialized units found</td></tr>}
+              {loading && <tr><td colSpan={(canDeleteUnits ? 1 : 0) + 7 + (canRestoreUnits ? 1 : 0)} style={{ padding: 12, color: '#64748b' }}>Loading…</td></tr>}
             </tbody>
           </table>
         </div>

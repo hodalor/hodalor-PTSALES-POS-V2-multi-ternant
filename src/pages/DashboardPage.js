@@ -381,7 +381,7 @@ function DashboardPage() {
           </label>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12, marginBottom: 16 }}>
+      <div className="summary-grid" style={{ marginBottom: 16 }}>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>Sales (Filtered Range)</div>
           <div style={{ fontSize: 28, fontWeight: 700 }}>{formatCurrency(metrics.todayTotal, settings)}</div>

@@ -231,7 +231,7 @@ function SalesPage() {
               </select>
             </label>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginTop: 12 }}>
+          <div className="summary-grid" style={{ marginTop: 12 }}>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Sales Count</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.totalSales}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Revenue</div><div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(summary.totalRevenue, settings)}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Profit</div><div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(summary.totalProfit, settings)}</div></div>

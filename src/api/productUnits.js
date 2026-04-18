@@ -34,11 +34,18 @@ function findCachedByCode(code = '', params = {}) {
 }
 
 function overlayRows(nextRows = [], params = {}) {
+  const reservationToken = String(params.reservationToken || '');
   const cache = new Map(readCache().map(row => [String(row._id), row]));
   const withStatus = (Array.isArray(nextRows) ? nextRows : [])
     .map(row => cache.has(String(row?._id)) ? { ...row, ...cache.get(String(row._id)) } : row)
     .filter(Boolean);
   if (!params.status) return withStatus;
+  if (String(params.status) === 'available') {
+    return withStatus.filter(row => {
+      const status = String(row.status || '');
+      return status === 'in_stock' || (status === 'reserved' && reservationToken && String(row.reservationToken || '') === reservationToken);
+    });
+  }
   return withStatus.filter(row => String(row.status || '') === String(params.status));
 }
 
@@ -58,6 +65,7 @@ function invalidateListRequestCache() {
 
 function filterRows(params = {}) {
   const q = String(params.query || '').trim().toLowerCase();
+  const reservationToken = String(params.reservationToken || '');
   const page = Math.max(1, Number(params.page || 1));
   const pageSize = Math.max(1, Number(params.pageSize || 30));
   const rows = readCache().filter(row => {
@@ -65,7 +73,10 @@ function filterRows(params = {}) {
     if (params.variantId && String(row.variantId || '') !== String(params.variantId)) return false;
     if (params.branchId && String(row.branchId || '') !== String(params.branchId)) return false;
     if (params.inventoryType && String(row.inventoryType || '') !== String(params.inventoryType)) return false;
-    if (params.status && String(row.status || '') !== String(params.status)) return false;
+    if (params.status === 'available') {
+      const status = String(row.status || '');
+      if (!(status === 'in_stock' || (status === 'reserved' && reservationToken && String(row.reservationToken || '') === reservationToken))) return false;
+    } else if (params.status && String(row.status || '') !== String(params.status)) return false;
     if (q) {
       const hay = `${row.imei || ''} ${row.serialNumber || ''}`.toLowerCase();
       if (!hay.includes(q)) return false;
@@ -195,6 +206,9 @@ export function bulkCreateProductUnits(body) {
     method: 'POST',
     body: JSON.stringify(body),
     timeoutMs: 0
+  }).then(result => {
+    mergeRows(result?.rows || []);
+    return result;
   }).finally(() => invalidateListRequestCache());
 }
 

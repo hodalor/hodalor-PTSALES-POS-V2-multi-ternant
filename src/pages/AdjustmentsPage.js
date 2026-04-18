@@ -583,7 +583,7 @@ function AdjustmentsPage() {
         />
       )}
       <div className="card" style={{ marginTop: 12 }}>
-        <div className="filter-grid" style={{ marginBottom: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr) auto', gap: 8, marginBottom: 8 }}>
           <label>
             Period
             <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>

@@ -72,7 +72,7 @@ function Sidebar({ collapsed }) {
   }
   useEffect(() => {
     const path = String(location.pathname || '');
-    const isRetail = ['/pos','/purchases','/transfers','/adjustments','/refunds'].some(prefix => path.startsWith(prefix));
+    const isRetail = ['/pos','/purchases','/transfers','/adjustments','/refunds','/invoices'].some(prefix => path.startsWith(prefix));
     const isDistribution = ['/wholesale-goods','/wholesale-pos','/wholesale-invoices','/wholesale-purchase','/wholesale-transfer','/wholesale-adjustment','/wholesale-refund'].some(prefix => path.startsWith(prefix));
     const isWarehouse = ['/warehouse-goods','/warehouse-invoices','/warehouse-purchase','/warehouse-transfer','/warehouse-adjustment','/warehouse-approvals'].some(prefix => path.startsWith(prefix));
     const isCredit = ['/credit-control','/easybuy/'].some(prefix => path.startsWith(prefix));
@@ -133,7 +133,8 @@ function Sidebar({ collapsed }) {
           (isFeatureEnabled(settings, 'pages.retail.purchases') && can(['Admin','Manager','Inventory Staff','SuperAdmin'],['view_purchases','see_purchases'])) ||
           (isFeatureEnabled(settings, 'pages.retail.transfers') && can(['Admin','Manager','Inventory Staff','SuperAdmin'],['view_transfers','see_transfers'])) ||
           (isFeatureEnabled(settings, 'pages.retail.adjustments') && can(['Admin','Manager','Inventory Staff','SuperAdmin'],['view_adjustments','see_adjustments'])) ||
-          (isFeatureEnabled(settings, 'pages.retail.refunds') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_refunds','see_refunds']))
+          (isFeatureEnabled(settings, 'pages.retail.refunds') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_refunds','see_refunds'])) ||
+          (isFeatureEnabled(settings, 'modules.invoices') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_invoices','see_invoices']))
         )) && (
         <div>
           <button className="sidebar-group-toggle" onClick={() => toggleGroup('retail')}>
@@ -180,6 +181,11 @@ function Sidebar({ collapsed }) {
                   {adjustmentPending}
                 </span>
               )}
+            </NavLink>
+            )}
+            {isFeatureEnabled(settings, 'modules.invoices') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_invoices','see_invoices']) && (
+            <NavLink to="/invoices" className="sidebar-link" title="Retail Invoices">
+              <span className="sidebar-text">Retail Invoices</span>
             </NavLink>
             )}
             {isFeatureEnabled(settings, 'pages.retail.refunds') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_refunds','see_refunds']) && (
