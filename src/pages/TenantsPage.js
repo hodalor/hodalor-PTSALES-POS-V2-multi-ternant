@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import * as tenantsApi from '../api/tenants';
 import { useToast } from '../components/ToastProvider';
 import Modal from '../components/Modal';
 import { TENANT_SIDEBAR_SECTIONS } from '../utils/tenantAccess';
+import { formatDurationMs, importTenantTransferInSteps, parseTenantTransferFile, summarizeTenantImportResults } from '../utils/tenantTransfer';
 
 const DEFAULT_SUBSCRIPTION_MANAGEMENT = {
   plans: [
@@ -91,7 +92,11 @@ function TenantsPage() {
   const [tenantTransferLoading, setTenantTransferLoading] = useState('');
   const [tenantImportTarget, setTenantImportTarget] = useState(null);
   const [tenantImportMode, setTenantImportMode] = useState('keep_current');
-  const [tenantImportFile, setTenantImportFile] = useState(null);
+  const [tenantImportPayload, setTenantImportPayload] = useState(null);
+  const [tenantImportSummary, setTenantImportSummary] = useState(null);
+  const [tenantImportProgress, setTenantImportProgress] = useState(null);
+  const [lastTenantImportSummary, setLastTenantImportSummary] = useState(null);
+  const tenantImportInputRef = useRef(null);
 
   const sections = useMemo(() => TENANT_SIDEBAR_SECTIONS, []);
   const filteredPaymentRows = useMemo(() => {
@@ -213,24 +218,56 @@ function TenantsPage() {
   function openTenantImport(row) {
     setTenantImportTarget(row);
     setTenantImportMode('keep_current');
-    setTenantImportFile(null);
+    setTenantImportPayload(null);
+    setTenantImportSummary(null);
+    setTenantImportProgress(null);
+    setLastTenantImportSummary(null);
+    if (tenantImportInputRef.current) tenantImportInputRef.current.value = '';
+  }
+
+  async function onTenantImportFileChange(file) {
+    setTenantImportPayload(null);
+    setTenantImportSummary(null);
+    setTenantImportProgress(null);
+    if (!file) return;
+    try {
+      const parsed = await parseTenantTransferFile(file);
+      setTenantImportPayload(parsed.raw);
+      setTenantImportSummary(parsed.summary);
+      setLastTenantImportSummary(null);
+    } catch (e) {
+      toast.show(String(e?.message || 'Invalid backup file'), { type: 'error' });
+      if (tenantImportInputRef.current) tenantImportInputRef.current.value = '';
+    }
   }
 
   async function importTenantBackup() {
     if (!tenantImportTarget) return;
-    if (!tenantImportFile) {
+    if (!tenantImportPayload) {
       toast.show('Choose a backup file first', { type: 'error' });
       return;
     }
     const key = `import:${tenantImportTarget.tenantId}`;
     setTenantTransferLoading(key);
     try {
-      const raw = await tenantImportFile.text();
-      const parsed = JSON.parse(raw);
-      await tenantsApi.importTenantData(tenantImportTarget.tenantId, { mode: tenantImportMode, data: parsed });
+      const result = await importTenantTransferInSteps({
+        payload: tenantImportPayload,
+        mode: tenantImportMode,
+        importFn: (payload) => tenantsApi.importTenantData(tenantImportTarget.tenantId, payload),
+        onProgress: setTenantImportProgress
+      });
+      setLastTenantImportSummary({
+        tenantId: tenantImportTarget.tenantId,
+        mode: tenantImportMode,
+        completedAt: new Date().toISOString(),
+        summary: summarizeTenantImportResults(result.steps)
+      });
       toast.show(`Imported tenant data for ${tenantImportTarget.tenantId}`, { type: 'success' });
       setTenantImportTarget(null);
-      setTenantImportFile(null);
+      setTenantImportPayload(null);
+      setTenantImportSummary(null);
+      setTenantImportProgress(null);
+      if (tenantImportInputRef.current) tenantImportInputRef.current.value = '';
       await load();
     } catch (e) {
       toast.show(String(e?.message || 'Failed to import tenant data'), { type: 'error' });
@@ -851,6 +888,32 @@ function TenantsPage() {
         <>
       <div className="card">
         <h2 className="section-title">Tenant Directory</h2>
+        {lastTenantImportSummary ? (
+          <div className="card" style={{ padding: 16, marginBottom: 12, border: '1px solid #bbf7d0', background: '#f0fdf4' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+              <div>
+                <div style={{ fontWeight: 800, color: '#166534' }}>Last Tenant Import Summary</div>
+                <div style={{ color: '#166534', fontSize: 13 }}>
+                  Tenant: {lastTenantImportSummary.tenantId} • Mode: {lastTenantImportSummary.mode === 'overwrite' ? 'Overwrite Current Data' : 'Keep Current Data'}
+                </div>
+              </div>
+              <button className="btn" type="button" onClick={() => setLastTenantImportSummary(null)}>Dismiss</button>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 12 }}>
+              <div className="card" style={{ padding: 12 }}><div style={{ color: '#64748b', fontSize: 12 }}>Inserted</div><div style={{ fontSize: 22, fontWeight: 800 }}>{lastTenantImportSummary.summary.inserted}</div></div>
+              <div className="card" style={{ padding: 12 }}><div style={{ color: '#64748b', fontSize: 12 }}>Updated</div><div style={{ fontSize: 22, fontWeight: 800 }}>{lastTenantImportSummary.summary.updated}</div></div>
+              <div className="card" style={{ padding: 12 }}><div style={{ color: '#64748b', fontSize: 12 }}>Skipped</div><div style={{ fontSize: 22, fontWeight: 800 }}>{lastTenantImportSummary.summary.skipped}</div></div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+              {lastTenantImportSummary.summary.perCollection.map((row) => (
+                <div key={row.collection} style={{ padding: '8px 10px', border: '1px solid #d1fae5', borderRadius: 10, background: '#fff' }}>
+                  <div style={{ fontWeight: 700 }}>{row.collection}</div>
+                  <div style={{ color: '#64748b', fontSize: 12 }}>Inserted: {row.inserted} • Updated: {row.updated} • Skipped: {row.skipped}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {loading ? <div>Loading…</div> : (
           <table className="table">
             <thead>
@@ -1181,7 +1244,7 @@ function TenantsPage() {
           footer={
             <>
               <button className="btn" type="button" onClick={() => setTenantImportTarget(null)} disabled={!!tenantTransferLoading}>Cancel</button>
-              <button className="btn btn-primary" type="button" onClick={importTenantBackup} disabled={tenantTransferLoading === `import:${tenantImportTarget.tenantId}` || !tenantImportFile}>
+              <button className="btn btn-primary" type="button" onClick={importTenantBackup} disabled={tenantTransferLoading === `import:${tenantImportTarget.tenantId}` || !tenantImportPayload}>
                 {tenantTransferLoading === `import:${tenantImportTarget.tenantId}` ? 'Importing…' : 'Import Tenant Data'}
               </button>
             </>
@@ -1193,7 +1256,7 @@ function TenantsPage() {
             </div>
             <label>
               Backup File
-              <input className="input" type="file" accept="application/json,.json" onChange={(e) => setTenantImportFile(e.target.files?.[0] || null)} disabled={!!tenantTransferLoading} />
+              <input ref={tenantImportInputRef} className="input" type="file" accept="application/json,.json" onChange={(e) => onTenantImportFileChange(e.target.files?.[0] || null)} disabled={!!tenantTransferLoading} />
             </label>
             <label>
               Import Mode
@@ -1202,6 +1265,45 @@ function TenantsPage() {
                 <option value="overwrite">Overwrite Current Data</option>
               </select>
             </label>
+            {tenantImportMode === 'overwrite' ? (
+              <div className="card" style={{ padding: 12, border: '1px solid #fecaca', background: '#fef2f2', color: '#991b1b' }}>
+                <div style={{ fontWeight: 800, marginBottom: 4 }}>Warning: Overwrite Current Data</div>
+                <div>This will delete the current tenant collections for <strong>{tenantImportTarget.tenantId}</strong> before importing the backup.</div>
+              </div>
+            ) : null}
+            {tenantImportSummary ? (
+              <div className="card" style={{ padding: 12, border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 800, marginBottom: 6 }}>Import Preview</div>
+                <div style={{ color: '#64748b', marginBottom: 8 }}>
+                  Tenant: {tenantImportSummary.tenantId || 'Unknown'} • Collections: {tenantImportSummary.totalCollections} • Documents: {tenantImportSummary.totalDocuments}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, maxHeight: '36vh', overflowY: 'auto' }}>
+                  {tenantImportSummary.collectionNames.map((name) => (
+                    <div key={name} style={{ padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 10, background: '#f8fafc' }}>
+                      <div style={{ fontWeight: 700 }}>{name}</div>
+                      <div style={{ color: '#64748b', fontSize: 12 }}>{tenantImportSummary.counts[name] || 0} item(s)</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {tenantImportProgress ? (
+              <div className="card" style={{ padding: 12, border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                  <div style={{ fontWeight: 800 }}>Import Progress</div>
+                  <div style={{ color: '#2563eb', fontWeight: 800 }}>{tenantImportProgress.percentage}%</div>
+                </div>
+                <div style={{ height: 10, borderRadius: 999, background: '#e2e8f0', overflow: 'hidden', marginBottom: 8 }}>
+                  <div style={{ width: `${tenantImportProgress.percentage}%`, height: '100%', background: '#2563eb' }} />
+                </div>
+                <div style={{ color: '#475569' }}>
+                  Copying <strong>{tenantImportProgress.currentCollection}</strong> ({tenantImportProgress.currentCount || 0} item(s)) • {tenantImportProgress.completedCollections}/{tenantImportProgress.totalCollections} collection(s)
+                </div>
+                <div style={{ color: '#64748b', fontSize: 12, marginTop: 6 }}>
+                  Estimated time remaining: {tenantImportProgress.remainingMs == null ? 'Calculating…' : formatDurationMs(tenantImportProgress.remainingMs)}
+                </div>
+              </div>
+            ) : null}
           </div>
         </Modal>
       )}

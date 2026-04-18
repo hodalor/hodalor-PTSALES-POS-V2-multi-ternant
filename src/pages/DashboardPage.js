@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import { formatCurrency } from '../utils/currency';
@@ -6,6 +6,7 @@ import { Chart, BarElement, LineElement, PointElement, CategoryScale, LinearScal
 import * as expensesApi from '../api/expenses';
 import { listOperations } from '../api/wholesale';
 import { isFeatureEnabled } from '../utils/featureFlags';
+import BranchSelect from '../components/BranchSelect';
 
 Chart.register(BarElement, LineElement, PointElement, CategoryScale, LinearScale, ArcElement, Tooltip, Legend, Filler);
 
@@ -26,6 +27,28 @@ function DashboardPage() {
   const [expenses, setExpenses] = useState([]);
   const [warehousePending, setWarehousePending] = useState(0);
   const [wholesalePending, setWholesalePending] = useState(0);
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const defaultFromIso = new Date(Date.now() - 29 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const [dateFrom, setDateFrom] = useState(defaultFromIso);
+  const [dateTo, setDateTo] = useState(todayIso);
+  const [branchId, setBranchId] = useState((roleLower === 'superadmin' || roleLower === 'admin') ? '' : settings.currentBranchId);
+
+  useEffect(() => {
+    if (!(roleLower === 'superadmin' || roleLower === 'admin')) setBranchId(settings.currentBranchId);
+  }, [roleLower, settings.currentBranchId]);
+
+  const inRange = useCallback((iso) => {
+    const ts = new Date(iso).getTime();
+    if (Number.isNaN(ts)) return false;
+    const fromTs = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : -Infinity;
+    const toTs = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : Infinity;
+    return ts >= fromTs && ts <= toTs;
+  }, [dateFrom, dateTo]);
+  const matchBranch = useCallback((value) => {
+    if (!(roleLower === 'superadmin' || roleLower === 'admin')) return String(value || '') === String(settings.currentBranchId || '');
+    if (!branchId) return true;
+    return String(value || '') === String(branchId);
+  }, [roleLower, settings.currentBranchId, branchId]);
 
   useEffect(() => {
     let alive = true;
@@ -34,10 +57,10 @@ function DashboardPage() {
         if (alive) setExpenses([]);
         return;
       }
-      const to = new Date().toISOString().slice(0, 10);
-      const from = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+      const to = dateTo || todayIso;
+      const from = dateFrom || defaultFromIso;
       try {
-        const list = await expensesApi.list({ branchId: (roleLower === 'superadmin' || roleLower === 'admin') ? undefined : settings.currentBranchId, from, to });
+        const list = await expensesApi.list({ branchId: (roleLower === 'superadmin' || roleLower === 'admin') ? (branchId || undefined) : settings.currentBranchId, from, to });
         if (!alive) return;
         setExpenses(Array.isArray(list) ? list : []);
       } catch {
@@ -46,7 +69,7 @@ function DashboardPage() {
       }
     })();
     return () => { alive = false; };
-  }, [settings.currentBranchId, roleLower, canUseExpenses]);
+  }, [settings.currentBranchId, roleLower, canUseExpenses, branchId, dateFrom, dateTo, todayIso, defaultFromIso]);
 
   useEffect(() => {
     let alive = true;
@@ -93,8 +116,7 @@ function DashboardPage() {
   }, []);
 
   const metrics = useMemo(() => {
-    const sourceSales = (roleLower === 'superadmin' || roleLower === 'admin') ? sales : sales.filter(s => s.branchId === settings.currentBranchId);
-    const today = new Date().toDateString();
+    const sourceSales = sales.filter((s) => matchBranch(s.branchId) && inRange(s.created_at));
     let todayTotal = 0;
     let todayProfit = 0;
     let last30Revenue = 0;
@@ -116,8 +138,8 @@ function DashboardPage() {
         const t = pm.type || 'other';
         perDayPayments[day][t] = (perDayPayments[day][t] || 0) + (pm.amount || 0);
       });
-      if (new Date(sale.created_at).toDateString() === today) todayTotal += sale.total;
-      if (new Date(sale.created_at).toDateString() === today) todayProfit += Number(sale.profitTotal || 0);
+      todayTotal += sale.total;
+      todayProfit += Number(sale.profitTotal || 0);
       const seller = sale.sellerName || 'Unknown';
       cashierTotals[seller] = (cashierTotals[seller] || 0) + (sale.total || 0);
       cashierProfit[seller] = (cashierProfit[seller] || 0) + (Number(sale.profitTotal || 0));
@@ -141,16 +163,14 @@ function DashboardPage() {
         row.profit = row.revenue - row.cost;
       }
     }
-    const last7 = [...new Array(7)].map((_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      return d.toISOString().slice(0, 10);
-    });
-    const last30 = [...new Array(30)].map((_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (29 - i));
-      return d.toISOString().slice(0, 10);
-    });
+    const start = new Date(`${dateFrom || defaultFromIso}T00:00:00`);
+    const end = new Date(`${dateTo || todayIso}T00:00:00`);
+    const daysInRange = [];
+    for (let t = start.getTime(); t <= end.getTime(); t += 24 * 3600 * 1000) {
+      daysInRange.push(new Date(t).toISOString().slice(0, 10));
+    }
+    const last7 = daysInRange.slice(-7);
+    const last30 = daysInRange;
     const lineData = {
       labels: last30,
       datasets: [{
@@ -164,7 +184,7 @@ function DashboardPage() {
       }]
     };
     last30Revenue = last30.reduce((s, d) => s + (Number(perDay[d] || 0)), 0);
-    const last30Sales = sourceSales.filter(s => last30.includes(new Date(s.created_at).toISOString().slice(0, 10)));
+    const last30Sales = sourceSales;
     last30Profit = last30Sales.reduce((s, x) => s + (Number(x.profitTotal) || 0), 0);
     last30Cost = last30Sales.reduce((s, x) => s + (Number(x.costTotal) || 0), 0);
     const marginPct = last30Revenue > 0 ? Math.round((last30Profit / last30Revenue) * 10000) / 100 : 0;
@@ -226,12 +246,12 @@ function DashboardPage() {
 
     const topProfitProducts = Array.from(productProfit.values()).sort((a, b) => b.profit - a.profit).slice(0, 10);
 
-    const daysBack = heatMode === 'day' ? 1 : heatMode === 'month' ? 30 : 7;
-    const end = new Date();
-    const start = new Date(end.getTime() - daysBack * 24 * 3600 * 1000);
+    const daysBack = heatMode === 'day' ? 1 : heatMode === 'month' ? Math.max(30, daysInRange.length) : Math.max(7, daysInRange.length);
+    const endHeat = new Date(`${dateTo || todayIso}T00:00:00`);
+    const startHeat = new Date(Math.max(new Date(`${dateFrom || defaultFromIso}T00:00:00`).getTime(), endHeat.getTime() - daysBack * 24 * 3600 * 1000));
     const days = [];
-    const d0 = new Date(start.toISOString().slice(0, 10));
-    const d1 = new Date(end.toISOString().slice(0, 10));
+    const d0 = new Date(startHeat.toISOString().slice(0, 10));
+    const d1 = new Date(endHeat.toISOString().slice(0, 10));
     for (let t = d0.getTime(); t <= d1.getTime(); t += 24 * 3600 * 1000) days.push(new Date(t));
     const grid = days.map(d => ({ day: d.toISOString().slice(0, 10), hours: new Array(24).fill(0) }));
     const idxByDay = new Map(grid.map((r, i) => [r.day, i]));
@@ -245,8 +265,8 @@ function DashboardPage() {
     let max = 0;
     for (const r of grid) for (const v of r.hours) max = Math.max(max, v);
 
-    return { todayTotal, todayProfit, itemsSold, lineData, paymentBar, doughData, topBar, stackedOptions, lineOptions, barOptions, cashierBar, last30Revenue, last30Profit, last30Cost, marginPct, cashierLeaderboard, topProfitProducts, heatmap: { grid, max } };
-  }, [sales, products, settings.currentBranchId, roleLower, heatMode]);
+    return { todayTotal, todayProfit, itemsSold, transactionCount: sourceSales.length, lineData, paymentBar, doughData, topBar, stackedOptions, lineOptions, barOptions, cashierBar, last30Revenue, last30Profit, last30Cost, marginPct, cashierLeaderboard, topProfitProducts, heatmap: { grid, max } };
+  }, [sales, products, heatMode, dateFrom, dateTo, inRange, matchBranch, defaultFromIso, todayIso]);
 
   const finance = useMemo(() => {
     const expenseTotal = expenses.reduce((s, x) => s + (Number(x.amount) || 0), 0);
@@ -331,13 +351,29 @@ function DashboardPage() {
   return (
     <div style={{ padding: 16 }}>
       <h1>Dashboard</h1>
+      <div className="card" style={{ padding: 16, marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, alignItems: 'end' }}>
+          <label>
+            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>From</div>
+            <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+          </label>
+          <label>
+            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>To</div>
+            <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          </label>
+          <label>
+            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Branch</div>
+            <BranchSelect value={branchId} onChange={setBranchId} includeAll allLabel="All Branches" />
+          </label>
+        </div>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 12, marginBottom: 16 }}>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>Today Sales</div>
+          <div style={{ color: '#64748b' }}>Sales (Filtered Range)</div>
           <div style={{ fontSize: 28, fontWeight: 700 }}>{formatCurrency(metrics.todayTotal, settings)}</div>
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>Today Profit</div>
+          <div style={{ color: '#64748b' }}>Profit (Filtered Range)</div>
           <div style={{ fontSize: 28, fontWeight: 700 }}>{maskMoney(metrics.todayProfit)}</div>
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
@@ -346,20 +382,20 @@ function DashboardPage() {
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>Transactions</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{(String(auth.role||'').toLowerCase()==='superadmin'||String(auth.role||'').toLowerCase()==='admin') ? sales.length : sales.filter(s=>s.branchId===settings.currentBranchId).length}</div>
+          <div style={{ fontSize: 28, fontWeight: 700 }}>{metrics.transactionCount}</div>
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>30d Margin</div>
+          <div style={{ color: '#64748b' }}>Margin</div>
           <div style={{ fontSize: 28, fontWeight: 700 }}>{maskText(`${metrics.marginPct}%`)}</div>
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>30d Net Cashflow</div>
+          <div style={{ color: '#64748b' }}>Net Cashflow</div>
           <div style={{ fontSize: 28, fontWeight: 700 }}>{maskMoney(finance.net)}</div>
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <h2 style={{ marginTop: 0 }}>Revenue (Last 30 days)</h2>
+          <h2 style={{ marginTop: 0 }}>Revenue (Selected Range)</h2>
           <div style={{ height: 260 }}>
             <Line data={metrics.lineData} options={{
               ...metrics.lineOptions,
@@ -385,15 +421,15 @@ function DashboardPage() {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginTop: 16 }}>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>30d Revenue</div>
+          <div style={{ color: '#64748b' }}>Revenue</div>
           <div style={{ fontSize: 22, fontWeight: 800 }}>{maskMoney(metrics.last30Revenue)}</div>
           <div style={{ marginTop: 6, color: '#64748b' }}>COGS: {maskMoney(metrics.last30Cost)}</div>
           <div style={{ marginTop: 2, color: '#64748b' }}>Profit: {maskMoney(metrics.last30Profit)}</div>
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>30d Expenses</div>
+          <div style={{ color: '#64748b' }}>Expenses</div>
           <div style={{ fontSize: 22, fontWeight: 800 }}>{maskMoney(finance.expenseTotal)}</div>
-          <div style={{ marginTop: 6, color: '#64748b' }}>Projection (30d): {maskMoney(finance.projected30)}</div>
+          <div style={{ marginTop: 6, color: '#64748b' }}>Projection: {maskMoney(finance.projected30)}</div>
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>Cashflow</div>
@@ -478,7 +514,7 @@ function DashboardPage() {
           </div>
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <h2 style={{ marginTop: 0 }}>Payments by Day (7d)</h2>
+          <h2 style={{ marginTop: 0 }}>Payments by Day (Selected Range)</h2>
           <div style={{ height: 220 }}>
             <Bar data={metrics.paymentBar} options={metrics.stackedOptions} />
           </div>
@@ -517,7 +553,7 @@ function DashboardPage() {
         </div>
       </div>
       <div style={{ background: '#fff', padding: 16, borderRadius: 12, marginTop: 16 }}>
-        <h2 style={{ marginTop: 0 }}>Cashier Performance (30d revenue)</h2>
+        <h2 style={{ marginTop: 0 }}>Cashier Performance (Filtered Revenue)</h2>
         <div style={{ height: 240 }}>
           <Bar data={metrics.cashierBar} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => (canViewFinancials ? formatCurrency(ctx.parsed.x ?? ctx.parsed.y ?? 0, settings) : '***') } } }, scales: { x: { ticks: { callback: () => (canViewFinancials ? undefined : '***') } } } }} />
         </div>
@@ -546,7 +582,7 @@ function DashboardPage() {
           </table>
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <h2 style={{ marginTop: 0 }}>Sales Rep Leaderboard (30d)</h2>
+          <h2 style={{ marginTop: 0 }}>Sales Rep Leaderboard (Filtered)</h2>
           <table className="table">
             <thead>
               <tr>

@@ -1,5 +1,5 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { setStock } from '../store/productsSlice';
 import { addAudit } from '../store/auditSlice';
 import BranchSelect from '../components/BranchSelect';
@@ -30,14 +30,74 @@ function InventoryPage() {
   const [viewInventoryType, setViewInventoryType] = useState('retail');
   const [modalId, setModalId] = useState(null);
   const [openVariantsFor, setOpenVariantsFor] = useState(null);
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [productFilter, setProductFilter] = useState('all');
+  const [search, setSearch] = useState('');
   const dispatch = useDispatch();
   const toast = useToast();
   const visiblePriceTiers = useMemo(() => getAllowedPriceTiers(auth), [auth]);
 
   const branch = useMemo(() => branches.find(b => b.id === branchId) || branches[0], [branches, branchId]);
-  const rows = useMemo(() => products, [products]);
+  const categoryOptions = useMemo(() => Array.from(new Set(products.map((p) => String(p.category || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)), [products]);
+  const baseFilteredRows = useMemo(() => {
+    const term = String(search || '').trim().toLowerCase();
+    return products.filter((p) => {
+      if (categoryFilter !== 'all' && String(p.category || '') !== String(categoryFilter)) return false;
+      if (term) {
+        const hay = `${p.name || ''} ${p.sku || ''} ${p.barcode || ''} ${p.category || ''}`.toLowerCase();
+        if (!hay.includes(term)) return false;
+      }
+      return true;
+    });
+  }, [products, categoryFilter, search]);
+  const productOptions = useMemo(() => baseFilteredRows.map((p) => ({ id: p.id, name: p.name })).sort((a, b) => a.name.localeCompare(b.name)), [baseFilteredRows]);
+  const rows = useMemo(() => (
+    productFilter === 'all'
+      ? baseFilteredRows
+      : baseFilteredRows.filter((p) => String(p.id) === String(productFilter))
+  ), [baseFilteredRows, productFilter]);
   useEffect(() => { setBranchId(currentBranchId); }, [currentBranchId]);
+  useEffect(() => {
+    if (categoryFilter !== 'all' && !categoryOptions.includes(categoryFilter)) setCategoryFilter('all');
+  }, [categoryOptions, categoryFilter]);
+  useEffect(() => {
+    if (productFilter !== 'all' && !productOptions.some((item) => String(item.id) === String(productFilter))) setProductFilter('all');
+  }, [productFilter, productOptions]);
   const selected = useMemo(() => rows.find(p => p.id === modalId) || null, [rows, modalId]);
+
+  const getStockForProduct = useCallback((product, targetBranchId = branchId) => {
+    const source = viewInventoryType === 'wholesale'
+      ? (product.wholesaleStockByBranch || {})
+      : viewInventoryType === 'warehouse'
+        ? (product.warehouseStockByBranch || {})
+        : (product.stockByBranch || {});
+    if (!targetBranchId) return Object.values(source).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+    return Number(source[targetBranchId] || 0);
+  }, [branchId, viewInventoryType]);
+
+  const getSalePrice = useCallback((product) => {
+    return Number(viewInventoryType === 'wholesale' || viewInventoryType === 'warehouse'
+      ? (product.wholesalePrice != null ? product.wholesalePrice : product.price || 0)
+      : (product.retailPrice != null ? product.retailPrice : product.price || 0));
+  }, [viewInventoryType]);
+
+  const summary = useMemo(() => {
+    const stockTotals = rows.map((p) => getStockForProduct(p, branchId));
+    const totalStock = stockTotals.reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+    const totalCost = rows.reduce((sum, p) => sum + ((Number(p.costPrice || 0) || 0) * getStockForProduct(p, branchId)), 0);
+    const expectedProfit = rows.reduce((sum, p) => {
+      const qty = getStockForProduct(p, branchId);
+      const margin = getSalePrice(p) - Number(p.costPrice || 0);
+      return sum + (margin * qty);
+    }, 0);
+    return {
+      categories: new Set(rows.map((p) => String(p.category || 'Uncategorized'))).size,
+      totalItems: rows.length,
+      totalStock,
+      totalCost,
+      expectedProfit
+    };
+  }, [rows, branchId, getSalePrice, getStockForProduct]);
 
   function setStockWithAudit(p, variantId, bId, quantity) {
     if (String(p.trackType || 'quantity') === 'serialized') {
@@ -94,20 +154,49 @@ function InventoryPage() {
         <OfflineQueueIndicator collection="audits" label="Stock queued" />
       </div>
       <div className="card" style={{ marginBottom: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <label style={{ fontSize: 12, color: '#64748b' }}>Branch</label>
-          <BranchSelect value={branchId} onChange={setBranchId} style={{ minWidth: 220 }} />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, alignItems: 'end' }}>
+          <label>
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Branch</div>
+            <BranchSelect value={branchId} onChange={setBranchId} includeAll allLabel="All Branches" style={{ minWidth: 180 }} />
+          </label>
+          <label>
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Category</div>
+            <select className="select" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
+              <option value="all">All Categories</option>
+              {categoryOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
+          <label>
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Product</div>
+            <select className="select" value={productFilter} onChange={e => setProductFilter(e.target.value)}>
+              <option value="all">All Products</option>
+              {productOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+            </select>
+          </label>
+          <label>
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Search</div>
+            <input className="input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Name, SKU, barcode" />
+          </label>
           {branch && (
-            <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 700, ...branchTypeBadgeStyle(branch.branchType) }}>
-              {String(branch.branchType || 'retail')}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center' }}>
+              <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 700, ...branchTypeBadgeStyle(branch.branchType) }}>
+                {String(branch.branchType || 'retail')}
+              </span>
+            </div>
           )}
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
             <button className={viewInventoryType === 'retail' ? 'btn btn-primary' : 'btn'} onClick={() => setViewInventoryType('retail')}>Retail</button>
             <button className={viewInventoryType === 'wholesale' ? 'btn btn-primary' : 'btn'} onClick={() => setViewInventoryType('wholesale')}>Distribution</button>
             <button className={viewInventoryType === 'warehouse' ? 'btn btn-primary' : 'btn'} onClick={() => setViewInventoryType('warehouse')}>Warehouse</button>
           </div>
         </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Categories</div><div style={{ fontSize: 32, fontWeight: 800 }}>{summary.categories}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Total Items</div><div style={{ fontSize: 32, fontWeight: 800 }}>{summary.totalItems}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Total Stock</div><div style={{ fontSize: 32, fontWeight: 800 }}>{summary.totalStock}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Total Cost</div><div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(summary.totalCost, settings)}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Expected Profit</div><div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(summary.expectedProfit, settings)}</div></div>
       </div>
       <div className="card">
         <table className="table">
@@ -192,12 +281,13 @@ function InventoryPage() {
                 </>
               );
             })}
+            {rows.length === 0 ? <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No inventory items match the current filters.</td></tr> : null}
           </tbody>
         </table>
       </div>
       {selected && (
         <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.6)', display: 'grid', placeItems: 'center', zIndex: 1000 }} onClick={() => setModalId(null)}>
-          <div className="card" style={{ width: 720, maxWidth: '90vw' }} onClick={e => e.stopPropagation()}>
+          <div className="card" style={{ width: 920, maxWidth: '96vw', maxHeight: '88vh', overflowY: 'auto' }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 style={{ margin: 0 }}>{selected.name}</h2>
               <button className="btn" onClick={() => setModalId(null)}>
@@ -205,9 +295,9 @@ function InventoryPage() {
                 Close
               </button>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: 12, marginTop: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 140px) 1fr', gap: 12, marginTop: 12, alignItems: 'start' }}>
               <div>{selected.image ? <img src={selected.image} alt={selected.name} className="thumb" /> : <div style={{ color: '#94a3b8' }}>No image</div>}</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
                 <div><strong>SKU:</strong> {selected.sku}</div>
                 <div><strong>Category:</strong> {selected.category || '—'}</div>
                 <div><strong>Track Type:</strong> {String(selected.trackType || 'quantity') === 'serialized' ? 'Serialized' : 'Quantity'}</div>
@@ -222,42 +312,56 @@ function InventoryPage() {
                 <div><strong>{String(selected.trackType || 'quantity') === 'serialized' ? 'Serialized Warehouse Units' : 'Total Warehouse Across Branches'}:</strong> {Object.values(selected.warehouseStockByBranch || {}).reduce((a, b) => a + (b || 0), 0)}</div>
                 <div style={{ gridColumn: '1 / -1', marginTop: 8 }}>
                   <strong>Branch Breakdown</strong>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 6, marginTop: 6 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10, marginTop: 6 }}>
                     {branches.map(b => (
-                        <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                          <div style={{ width: 110, display: 'grid', gap: 4 }}>
-                            <small>{b.code || b.name}</small>
+                        <div key={b.id} style={{ border: '1px solid #e2e8f0', borderRadius: 12, padding: 10, display: 'grid', gap: 8 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'start' }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 700 }}>{b.code || b.name}</div>
+                              <div style={{ color: '#64748b', fontSize: 12 }}>{b.name || b.code}</div>
+                            </div>
                             <span style={{ display: 'inline-flex', width: 'fit-content', padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, ...branchTypeBadgeStyle(b.branchType) }}>
                               {String(b.branchType || 'retail')}
                             </span>
                           </div>
-                          <input
-                          className="input"
-                          type="number"
-                          min="0"
-                          value={selected.stockByBranch?.[b.id] || 0}
-                          onChange={e => setStockWithAudit(selected, null, b.id, Number(e.target.value))}
-                          style={{ width: 80 }}
-                          disabled
-                        />
-                          <input
-                            className="input"
-                            type="number"
-                            min="0"
-                            value={selected.wholesaleStockByBranch?.[b.id] || 0}
-                            onChange={e => setStockWithAudit(selected, null, b.id, Number(e.target.value))}
-                            style={{ width: 80, marginLeft: 4 }}
-                            disabled
-                          />
-                          <input
-                            className="input"
-                            type="number"
-                            min="0"
-                            value={selected.warehouseStockByBranch?.[b.id] || 0}
-                            onChange={e => setStockWithAudit(selected, null, b.id, Number(e.target.value))}
-                            style={{ width: 80, marginLeft: 4 }}
-                            disabled
-                          />
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+                            <label style={{ minWidth: 0 }}>
+                              <div style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Retail</div>
+                              <input
+                                className="input"
+                                type="number"
+                                min="0"
+                                value={selected.stockByBranch?.[b.id] || 0}
+                                onChange={e => setStockWithAudit(selected, null, b.id, Number(e.target.value))}
+                                style={{ width: '100%' }}
+                                disabled
+                              />
+                            </label>
+                            <label style={{ minWidth: 0 }}>
+                              <div style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Distribution</div>
+                              <input
+                                className="input"
+                                type="number"
+                                min="0"
+                                value={selected.wholesaleStockByBranch?.[b.id] || 0}
+                                onChange={e => setStockWithAudit(selected, null, b.id, Number(e.target.value))}
+                                style={{ width: '100%' }}
+                                disabled
+                              />
+                            </label>
+                            <label style={{ minWidth: 0 }}>
+                              <div style={{ color: '#64748b', fontSize: 11, marginBottom: 4 }}>Warehouse</div>
+                              <input
+                                className="input"
+                                type="number"
+                                min="0"
+                                value={selected.warehouseStockByBranch?.[b.id] || 0}
+                                onChange={e => setStockWithAudit(selected, null, b.id, Number(e.target.value))}
+                                style={{ width: '100%' }}
+                                disabled
+                              />
+                            </label>
+                          </div>
                       </div>
                     ))}
                   </div>
@@ -272,7 +376,7 @@ function InventoryPage() {
                     </div>
                     <div style={{ display: 'grid', gap: 6, marginTop: 6 }}>
                       {selected.variants.map(v => (
-                        <div key={v.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: 8, alignItems: 'center' }}>
+                        <div key={v.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 2fr) repeat(3, minmax(90px, 1fr))', gap: 8, alignItems: 'center' }}>
                           <div><strong>{v.label}</strong> <span style={{ color: '#64748b' }}>{v.sku || ''}</span></div>
                           <input
                             className="input"

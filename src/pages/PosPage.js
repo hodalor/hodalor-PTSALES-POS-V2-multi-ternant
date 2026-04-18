@@ -33,6 +33,7 @@ function PosPage({ mode = 'retail' }) {
   const settings = useSelector(s => s.settings);
   const auth = useSelector(s => s.auth);
   const isWholesale = String(mode || '').toLowerCase() === 'wholesale';
+  const creditModeLabel = isWholesale ? 'Credit Sale' : 'EasyBuy';
   const modeLabel = isWholesale ? 'Distribution POS' : 'POS';
   const initialPriceTier = isWholesale ? 'wholesale' : 'retail';
   const activeBranchId = useMemo(() => {
@@ -534,15 +535,15 @@ function PosPage({ mode = 'retail' }) {
     }
     if (easyBuyEnabled) {
       if (!easyBuyAllowed || !selectedCustomer) {
-        toast.show('Credit Sale requires a registered customer', { type: 'error' });
+        toast.show(`${creditModeLabel} requires a registered customer`, { type: 'error' });
         return;
       }
       if (easyBuyBlockedItem) {
-        toast.show(`${easyBuyBlockedItem.name} is not allowed for credit sales`, { type: 'error' });
+        toast.show(`${easyBuyBlockedItem.name} is not allowed for ${creditModeLabel.toLowerCase()}`, { type: 'error' });
         return;
       }
       if (!easyBuyDueDate) {
-        toast.show('Select a due date for Credit Sale', { type: 'error' });
+        toast.show(`Select a due date for ${creditModeLabel}`, { type: 'error' });
         return;
       }
       if ((Number(easyBuyAmountPaidNow || 0) + 0.0001) < Number(easyBuyMinimum || 0)) {
@@ -647,7 +648,7 @@ function PosPage({ mode = 'retail' }) {
           if (t === 'card') return 'Card';
           if (t === 'mobile' || t === 'momo' || t === 'mobile money') return 'Mobile Money';
           if (t === 'wallet') return 'Wallet';
-          if (t === 'easybuy') return 'Credit Sale';
+          if (t === 'easybuy') return isWholesale ? 'Credit Sale' : 'EasyBuy';
           return t ? (t[0].toUpperCase() + t.slice(1)) : 'Cash';
         })
         .join(', ');
@@ -834,7 +835,7 @@ function PosPage({ mode = 'retail' }) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <h2 style={{ marginBottom: 4 }}>{modeLabel}</h2>
-            <div style={{ color: '#64748b', fontSize: 12 }}>{isWholesale ? `Distribution inventory${activeBranch ? ` • ${activeBranch.name}` : ''}` : `Retail inventory${activeBranch ? ` • ${activeBranch.name}` : ''} with Credit Sale support`}</div>
+            <div style={{ color: '#64748b', fontSize: 12 }}>{isWholesale ? `Distribution inventory${activeBranch ? ` • ${activeBranch.name}` : ''}` : `Retail inventory${activeBranch ? ` • ${activeBranch.name}` : ''} with EasyBuy support`}</div>
           </div>
           <OfflineQueueIndicator collection="sales" label="Sales queued" />
         </div>
@@ -1094,14 +1095,14 @@ function PosPage({ mode = 'retail' }) {
                   disabled={!easyBuyAllowed}
                   onChange={e => setEasyBuyEnabled(e.target.checked)}
                 />
-                Credit Sale
+                {creditModeLabel}
               </label>
             </div>
             {easyBuyEnabled ? (
               <div style={{ display: 'grid', gap: 8 }}>
                 <div style={{ color: easyBuyBlockedItem ? '#b91c1c' : '#64748b', fontSize: 12 }}>
                   {easyBuyBlockedItem
-                    ? `${easyBuyBlockedItem.name} does not allow credit sales`
+                    ? `${easyBuyBlockedItem.name} does not allow ${creditModeLabel.toLowerCase()}`
                     : `Minimum upfront: ${formatCurrency(easyBuyMinimum, settings)}${customerMaxCreditLimit > 0 ? ` • Limit: ${formatCurrency(customerMaxCreditLimit, settings)}` : ''}`}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>

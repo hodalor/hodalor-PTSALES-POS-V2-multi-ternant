@@ -11,6 +11,8 @@ import { useDispatch } from 'react-redux';
 import { listImeiConflicts } from '../offline/imeiConflicts';
 import { setQueueSummary } from '../store/offlineQueueSlice';
 import * as tenantsApi from '../api/tenants';
+import Modal from '../components/Modal';
+import { formatDurationMs, importTenantTransferInSteps, parseTenantTransferFile, summarizeTenantImportResults } from '../utils/tenantTransfer';
 
 function BackupPage() {
   const toast = useToast();
@@ -26,6 +28,12 @@ function BackupPage() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [importMode, setImportMode] = useState('keep_current');
   const [importFile, setImportFile] = useState(null);
+  const [importPayload, setImportPayload] = useState(null);
+  const [importSummary, setImportSummary] = useState(null);
+  const [importProgress, setImportProgress] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [transferBusy, setTransferBusy] = useState('');
+  const [lastImportSummary, setLastImportSummary] = useState(null);
   const fileInputRef = useRef(null);
   const roleLower = String(auth.role || '').toLowerCase();
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
@@ -155,8 +163,8 @@ function BackupPage() {
   }
 
   async function onExportTenantData() {
-    if (loading || !canExportTenantData) return;
-    setLoading(true);
+    if (loading || transferBusy || !canExportTenantData) return;
+    setTransferBusy('export');
     try {
       const data = await tenantsApi.exportMyTenantData();
       const tenantId = String(auth.user?.tenantId || 'tenant').trim() || 'tenant';
@@ -165,29 +173,75 @@ function BackupPage() {
     } catch (e) {
       toast.show(String(e?.message || 'Failed to export tenant data'), { type: 'error' });
     } finally {
-      setLoading(false);
+      setTransferBusy('');
+    }
+  }
+
+  function openImportModal() {
+    setImportOpen(true);
+    setImportMode('keep_current');
+    setImportFile(null);
+    setImportPayload(null);
+    setImportSummary(null);
+    setImportProgress(null);
+    setLastImportSummary(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
+  async function onImportFileChange(file) {
+    setImportFile(file || null);
+    setImportPayload(null);
+    setImportSummary(null);
+    setImportProgress(null);
+    if (!file) return;
+    try {
+      const parsed = await parseTenantTransferFile(file);
+      setImportPayload(parsed.raw);
+      setImportSummary(parsed.summary);
+      setLastImportSummary(null);
+    } catch (e) {
+      setImportFile(null);
+      toast.show(String(e?.message || 'Invalid backup file'), { type: 'error' });
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }
 
   async function onImportTenantData() {
-    if (loading || !canImportTenantData) return;
+    if (loading || transferBusy || !canImportTenantData) return;
     if (!importFile) {
       toast.show('Choose a backup file first', { type: 'error' });
       return;
     }
-    setLoading(true);
+    if (!importPayload) {
+      toast.show('Backup preview is not ready yet', { type: 'error' });
+      return;
+    }
+    setTransferBusy('import');
     try {
-      const raw = await importFile.text();
-      const parsed = JSON.parse(raw);
-      await tenantsApi.importMyTenantData({ mode: importMode, data: parsed });
-      toast.show('Tenant data imported. Refreshing app…', { type: 'success' });
+      const result = await importTenantTransferInSteps({
+        payload: importPayload,
+        mode: importMode,
+        importFn: (payload) => tenantsApi.importMyTenantData(payload),
+        onProgress: setImportProgress
+      });
+      setLastImportSummary({
+        tenantId: importPayload?.tenantId || auth.user?.tenantId || '',
+        mode: importMode,
+        completedAt: new Date().toISOString(),
+        summary: summarizeTenantImportResults(result.steps)
+      });
+      setImportOpen(false);
       setImportFile(null);
+      setImportPayload(null);
+      setImportSummary(null);
+      setImportProgress(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
+      toast.show('Tenant data imported successfully', { type: 'success' });
       setTimeout(() => window.location.reload(), 500);
     } catch (e) {
       toast.show(String(e?.message || 'Failed to import tenant data'), { type: 'error' });
     } finally {
-      setLoading(false);
+      setTransferBusy('');
     }
   }
 
@@ -224,24 +278,40 @@ function BackupPage() {
           <div style={{ color: '#64748b', marginBottom: 12 }}>
             Download all tenant MongoDB collections as a backup JSON file, or import a backup into the current tenant database.
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px auto auto', gap: 12, alignItems: 'end' }}>
-            <label>
-              Backup File
-              <input ref={fileInputRef} className="input" type="file" accept="application/json,.json" onChange={(e) => setImportFile(e.target.files?.[0] || null)} disabled={loading || !canImportTenantData} />
-            </label>
-            <label>
-              Import Mode
-              <select className="input" value={importMode} onChange={(e) => setImportMode(e.target.value)} disabled={loading || !canImportTenantData}>
-                <option value="keep_current">Keep Current Data</option>
-                <option value="overwrite">Overwrite Current Data</option>
-              </select>
-            </label>
-            <button className="btn" onClick={onExportTenantData} disabled={loading || !canExportTenantData}>
-              {loading ? 'Working…' : 'Export Tenant Data'}
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn" onClick={onExportTenantData} disabled={loading || !!transferBusy || !canExportTenantData}>
+              {transferBusy === 'export' ? 'Exporting…' : 'Export Tenant Data'}
             </button>
-            <button className="btn btn-primary" onClick={onImportTenantData} disabled={loading || !canImportTenantData}>
-              {loading ? 'Importing…' : 'Import Tenant Data'}
+            <button className="btn btn-primary" onClick={openImportModal} disabled={loading || !!transferBusy || !canImportTenantData}>
+              Import Tenant Data
             </button>
+          </div>
+        </div>
+      ) : null}
+
+      {lastImportSummary ? (
+        <div className="card" style={{ padding: 16, marginBottom: 12, border: '1px solid #bbf7d0', background: '#f0fdf4' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+            <div>
+              <div style={{ fontWeight: 800, color: '#166534' }}>Last Import Summary</div>
+              <div style={{ color: '#166534', fontSize: 13 }}>
+                Tenant: {lastImportSummary.tenantId || 'Current Tenant'} • Mode: {lastImportSummary.mode === 'overwrite' ? 'Overwrite Current Data' : 'Keep Current Data'}
+              </div>
+            </div>
+            <button className="btn" type="button" onClick={() => setLastImportSummary(null)}>Dismiss</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 12 }}>
+            <div className="card" style={{ padding: 12 }}><div style={{ color: '#64748b', fontSize: 12 }}>Inserted</div><div style={{ fontSize: 22, fontWeight: 800 }}>{lastImportSummary.summary.inserted}</div></div>
+            <div className="card" style={{ padding: 12 }}><div style={{ color: '#64748b', fontSize: 12 }}>Updated</div><div style={{ fontSize: 22, fontWeight: 800 }}>{lastImportSummary.summary.updated}</div></div>
+            <div className="card" style={{ padding: 12 }}><div style={{ color: '#64748b', fontSize: 12 }}>Skipped</div><div style={{ fontSize: 22, fontWeight: 800 }}>{lastImportSummary.summary.skipped}</div></div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+            {lastImportSummary.summary.perCollection.map((row) => (
+              <div key={row.collection} style={{ padding: '8px 10px', border: '1px solid #d1fae5', borderRadius: 10, background: '#fff' }}>
+                <div style={{ fontWeight: 700 }}>{row.collection}</div>
+                <div style={{ color: '#64748b', fontSize: 12 }}>Inserted: {row.inserted} • Updated: {row.updated} • Skipped: {row.skipped}</div>
+              </div>
+            ))}
           </div>
         </div>
       ) : null}
@@ -314,6 +384,76 @@ function BackupPage() {
           </table>
         </div>
       </div>
+      {importOpen && (
+        <Modal
+          title="Import Tenant Data"
+          onClose={() => { if (transferBusy !== 'import') setImportOpen(false); }}
+          footer={
+            <>
+              <button className="btn" type="button" onClick={() => setImportOpen(false)} disabled={transferBusy === 'import'}>Cancel</button>
+              <button className="btn btn-primary" type="button" onClick={onImportTenantData} disabled={transferBusy === 'import' || !importPayload}>
+                {transferBusy === 'import' ? 'Importing…' : 'Start Import'}
+              </button>
+            </>
+          }
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ color: '#64748b' }}>
+              Import a tenant backup into the current tenant database. Choose whether to keep current data or overwrite it completely.
+            </div>
+            <label>
+              Backup File
+              <input ref={fileInputRef} className="input" type="file" accept="application/json,.json" onChange={(e) => onImportFileChange(e.target.files?.[0] || null)} disabled={transferBusy === 'import'} />
+            </label>
+            <label>
+              Import Mode
+              <select className="input" value={importMode} onChange={(e) => setImportMode(e.target.value)} disabled={transferBusy === 'import'}>
+                <option value="keep_current">Keep Current Data</option>
+                <option value="overwrite">Overwrite Current Data</option>
+              </select>
+            </label>
+            {importMode === 'overwrite' ? (
+              <div className="card" style={{ padding: 12, border: '1px solid #fecaca', background: '#fef2f2', color: '#991b1b' }}>
+                <div style={{ fontWeight: 800, marginBottom: 4 }}>Warning: Overwrite Current Data</div>
+                <div>This will delete the current tenant collections before importing the backup. Use this only when you want the backup to fully replace the current database.</div>
+              </div>
+            ) : null}
+            {importSummary ? (
+              <div className="card" style={{ padding: 12, border: '1px solid #e2e8f0' }}>
+                <div style={{ fontWeight: 800, marginBottom: 6 }}>Import Preview</div>
+                <div style={{ color: '#64748b', marginBottom: 8 }}>
+                  Tenant: {importSummary.tenantId || 'Unknown'} • Collections: {importSummary.totalCollections} • Documents: {importSummary.totalDocuments}
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+                  {importSummary.collectionNames.map((name) => (
+                    <div key={name} style={{ padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: 10, background: '#f8fafc' }}>
+                      <div style={{ fontWeight: 700 }}>{name}</div>
+                      <div style={{ color: '#64748b', fontSize: 12 }}>{importSummary.counts[name] || 0} item(s)</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {importProgress ? (
+              <div className="card" style={{ padding: 12, border: '1px solid #e2e8f0' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 6 }}>
+                  <div style={{ fontWeight: 800 }}>Import Progress</div>
+                  <div style={{ color: '#2563eb', fontWeight: 800 }}>{importProgress.percentage}%</div>
+                </div>
+                <div style={{ height: 10, borderRadius: 999, background: '#e2e8f0', overflow: 'hidden', marginBottom: 8 }}>
+                  <div style={{ width: `${importProgress.percentage}%`, height: '100%', background: '#2563eb' }} />
+                </div>
+                <div style={{ color: '#475569' }}>
+                  Copying <strong>{importProgress.currentCollection}</strong> ({importProgress.currentCount || 0} item(s)) • {importProgress.completedCollections}/{importProgress.totalCollections} collection(s)
+                </div>
+                <div style={{ color: '#64748b', fontSize: 12, marginTop: 6 }}>
+                  Estimated time remaining: {importProgress.remainingMs == null ? 'Calculating…' : formatDurationMs(importProgress.remainingMs)}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
