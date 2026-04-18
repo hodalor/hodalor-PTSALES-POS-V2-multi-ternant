@@ -40,6 +40,7 @@ function PurchasesPage() {
   const [serializedCameraOpen, setSerializedCameraOpen] = useState(false);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [periodMode, setPeriodMode] = useState('range');
   const [fActor, setFActor] = useState('');
   const [fBranch, setFBranch] = useState(currentBranchId);
   const [page, setPage] = useState(1);
@@ -103,8 +104,8 @@ function PurchasesPage() {
   const basePurchases = useMemo(() => audit.filter(e => e.actionType === 'stock_receive'), [audit]);
   const actors = useMemo(() => Array.from(new Set(basePurchases.map(e => e.actor).filter(Boolean))).sort(), [basePurchases]);
   const purchases = useMemo(() => {
-    const fromTs = dateFrom ? new Date(dateFrom).getTime() : 0;
-    const toTs = dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER;
+    const fromTs = periodMode === 'all_time' ? 0 : (dateFrom ? new Date(dateFrom).getTime() : 0);
+    const toTs = periodMode === 'all_time' ? Number.MAX_SAFE_INTEGER : (dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER);
     return basePurchases.filter(e => {
       const ts = new Date(e.ts).getTime();
       if (ts < fromTs || ts > toTs) return false;
@@ -112,7 +113,7 @@ function PurchasesPage() {
       if (fBranch && e.branchId !== fBranch) return false;
       return true;
     }).slice().reverse();
-  }, [basePurchases, dateFrom, dateTo, fActor, fBranch]);
+  }, [basePurchases, dateFrom, dateTo, fActor, fBranch, periodMode]);
 
   useEffect(() => {
     if (selectedTrackType === 'serialized') {
@@ -380,6 +381,18 @@ function PurchasesPage() {
       return true;
     });
   }, [requests, statusFilter, fBranch, allowedBranches]);
+  const summary = useMemo(() => {
+    const totalQty = purchases.reduce((sum, row) => sum + (Number(row.details?.qty || 0) || 0), 0);
+    const totalCost = purchases.reduce((sum, row) => sum + (Number(row.details?.qty || 0) * Number(row.details?.cost || 0)), 0);
+    const uniqueProducts = new Set(purchases.map((row) => String(row.details?.product || '').trim()).filter(Boolean)).size;
+    return {
+      records: purchases.length,
+      totalQty,
+      totalCost,
+      uniqueProducts,
+      pendingApprovals: pendingRequests.length
+    };
+  }, [purchases, pendingRequests]);
 
   useEffect(() => {
     let alive = true;
@@ -467,6 +480,13 @@ function PurchasesPage() {
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
         <button className={tab === 'initiate' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('initiate')}>Initiate</button>
         <button className={tab === 'approvals' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('approvals')} disabled={!canApprove}>Approvals</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Purchase Records</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.records}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Units Purchased</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.totalQty}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Purchase Value</div><div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(summary.totalCost, settings)}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Products</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.uniqueProducts}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Pending Approvals</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.pendingApprovals}</div></div>
       </div>
       {openModal && (
         <Modal title="Add Purchase" onClose={() => setOpenModal(false)} footer={
@@ -713,14 +733,21 @@ function PurchasesPage() {
         </Modal>
       )}
       <div className="card" style={{ marginTop: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr) auto', gap: 8, marginBottom: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr) auto', gap: 8, marginBottom: 8 }}>
+          <label>
+            Period
+            <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
+              <option value="range">Custom Range</option>
+              <option value="all_time">All Time</option>
+            </select>
+          </label>
           <label>
             From
-            <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
             To
-            <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+            <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
             Actor

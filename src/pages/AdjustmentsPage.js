@@ -52,6 +52,7 @@ function AdjustmentsPage() {
 
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [periodMode, setPeriodMode] = useState('range');
   const [fActor, setFActor] = useState('');
   const [fBranch, setFBranch] = useState(currentBranchId);
   const [page, setPage] = useState(1);
@@ -88,8 +89,8 @@ function AdjustmentsPage() {
   const baseRows = useMemo(() => audit.filter(e => e.actionType === 'stock_adjust' || e.actionType === 'stock_damage_remove'), [audit]);
   const actors = useMemo(() => Array.from(new Set(baseRows.map(e => e.actor).filter(Boolean))).sort(), [baseRows]);
   const rows = useMemo(() => {
-    const fromTs = dateFrom ? new Date(dateFrom).getTime() : 0;
-    const toTs = dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER;
+    const fromTs = periodMode === 'all_time' ? 0 : (dateFrom ? new Date(dateFrom).getTime() : 0);
+    const toTs = periodMode === 'all_time' ? Number.MAX_SAFE_INTEGER : (dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER);
     return baseRows.filter(e => {
       const ts = new Date(e.ts).getTime();
       if (ts < fromTs || ts > toTs) return false;
@@ -112,7 +113,14 @@ function AdjustmentsPage() {
         remark: e.remark || ''
       };
     }).slice().reverse();
-  }, [baseRows, dateFrom, dateTo, fActor, fBranch]);
+  }, [baseRows, dateFrom, dateTo, fActor, fBranch, periodMode]);
+  const summary = useMemo(() => ({
+    records: rows.length,
+    totalDelta: rows.reduce((sum, row) => sum + Math.abs(Number(row.delta || 0)), 0),
+    increaseCount: rows.filter((row) => Number(row.delta || 0) > 0).length,
+    decreaseCount: rows.filter((row) => Number(row.delta || 0) < 0).length,
+    products: new Set(rows.map((row) => String(row.product || row.details?.product || '').trim()).filter(Boolean)).size
+  }), [rows]);
 
   useEffect(() => {
     if (selectedTrackType !== 'serialized') {
@@ -378,6 +386,13 @@ function AdjustmentsPage() {
         <button className={tab === 'initiate' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('initiate')}>Initiate</button>
         <button className={tab === 'approvals' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('approvals')} disabled={!canApprove}>Approvals</button>
       </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Adjustment Records</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.records}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Total Units Adjusted</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.totalDelta}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Increases</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.increaseCount}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Decreases</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.decreaseCount}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Products</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.products}</div></div>
+      </div>
       {openModal && (
         <Modal title="Add Adjustment" onClose={() => setOpenModal(false)} footer={
           <>
@@ -568,14 +583,21 @@ function AdjustmentsPage() {
         />
       )}
       <div className="card" style={{ marginTop: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr) auto', gap: 8, marginBottom: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr) auto', gap: 8, marginBottom: 8 }}>
+          <label>
+            Period
+            <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
+              <option value="range">Custom Range</option>
+              <option value="all_time">All Time</option>
+            </select>
+          </label>
           <label>
             From
-            <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
             To
-            <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+            <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
             Actor

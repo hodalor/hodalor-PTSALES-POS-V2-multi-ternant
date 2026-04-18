@@ -39,6 +39,7 @@ function AuditLogPage() {
   const [qSeverity, setQSeverity] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
+  const [periodMode, setPeriodMode] = useState('range');
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkAction, setBulkAction] = useState('');
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -53,8 +54,8 @@ function AuditLogPage() {
   }, [branches]);
 
   const filtered = useMemo(() => {
-    const fromTs = from ? new Date(from).getTime() : 0;
-    const toTs = to ? new Date(to).getTime() : Number.MAX_SAFE_INTEGER;
+    const fromTs = periodMode === 'all_time' ? 0 : (from ? new Date(from).getTime() : 0);
+    const toTs = periodMode === 'all_time' ? Number.MAX_SAFE_INTEGER : (to ? new Date(to).getTime() : Number.MAX_SAFE_INTEGER);
     return entries.filter(e => {
       const ts = new Date(e.ts).getTime();
       if (ts < fromTs || ts > toTs) return false;
@@ -65,7 +66,14 @@ function AuditLogPage() {
       if (qSeverity && String(e.severity || 'info') !== qSeverity) return false;
       return true;
     }).map(e => ({ ...e, branchLabel: byId.get(e.branchId) || e.branchId || '—' }));
-  }, [entries, from, to, qActor, qAction, qBranch, qTenant, qSeverity, byId]);
+  }, [entries, from, to, qActor, qAction, qBranch, qTenant, qSeverity, byId, periodMode]);
+  const summary = useMemo(() => ({
+    total: filtered.length,
+    critical: filtered.filter(r => String(r.severity || 'info') === 'critical').length,
+    errors: filtered.filter(r => String(r.severity || 'info') === 'error').length,
+    actors: new Set(filtered.map(r => String(r.actor || '').trim()).filter(Boolean)).size,
+    actions: new Set(filtered.map(r => String(r.actionType || '').trim()).filter(Boolean)).size
+  }), [filtered]);
 
   useEffect(() => {
     let alive = true;
@@ -115,15 +123,29 @@ function AuditLogPage() {
   return (
     <div style={{ padding: 16 }}>
       <h1>Audit Log</h1>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Audit Records</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.total}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Critical</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.critical}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Errors</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.errors}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Actors</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.actors}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Actions</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.actions}</div></div>
+      </div>
       <div className="card" style={{ marginBottom: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: isSuper ? 'repeat(7, 1fr)' : 'repeat(6, 1fr)', gap: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isSuper ? 'repeat(8, 1fr)' : 'repeat(7, 1fr)', gap: 8 }}>
+          <label>
+            Period
+            <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
+              <option value="range">Custom Range</option>
+              <option value="all_time">All Time</option>
+            </select>
+          </label>
           <label>
             From
-            <input className="input" type="date" value={from} onChange={e => setFrom(e.target.value)} />
+            <input className="input" type="date" value={from} onChange={e => setFrom(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
             To
-            <input className="input" type="date" value={to} onChange={e => setTo(e.target.value)} />
+            <input className="input" type="date" value={to} onChange={e => setTo(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           {isSuper && (
             <label>

@@ -127,6 +127,13 @@ function CustomersPage() {
       );
     });
   }, [customers, query, customerTypeFilter]);
+  const summary = useMemo(() => ({
+    total: filtered.length,
+    retail: filtered.filter(c => String(c.customerType || 'retail') !== 'distribution').length,
+    distribution: filtered.filter(c => String(c.customerType || 'retail') === 'distribution').length,
+    vip: filtered.filter(c => Boolean(c.vip)).length,
+    businessProfiles: filtered.filter(c => String(c.businessName || '').trim() || String(c.registrationNumber || '').trim() || String(c.taxId || '').trim()).length
+  }), [filtered]);
 
   const selected = useMemo(() => {
     if (!selectedId) return null;
@@ -421,6 +428,13 @@ function CustomersPage() {
         </div>
       </div>
       <p>Manage customer profiles and purchase history.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Customers</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.total}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Retail</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.retail}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Distribution</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.distribution}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>VIP</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.vip}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Business Profiles</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.businessProfiles}</div></div>
+      </div>
 
       <div className="card">
         <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>

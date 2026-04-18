@@ -55,6 +55,12 @@ function UsersPage() {
   const [workingUserName, setWorkingUserName] = useState('');
   const isSuper = String(auth.role || '').toLowerCase() === 'superadmin';
   const superAdminsCount = users.filter(u => u.role === 'SuperAdmin' && u.active !== false).length;
+  const userSummary = useMemo(() => ({
+    total: users.length,
+    active: users.filter(u => u.active !== false).length,
+    inactive: users.filter(u => u.active === false).length,
+    branches: new Set(users.flatMap(u => Array.isArray(u.assignedBranches) ? u.assignedBranches : (u.branchId ? [u.branchId] : []))).size
+  }), [users]);
   const toast = useToast();
   const [editGrants, setEditGrants] = useState([]);
   useEffect(() => {
@@ -459,6 +465,13 @@ function UsersPage() {
           <OfflineQueueIndicator collection="users" label="Users queued" />
           <OfflineQueueIndicator collection="settings" label="Settings queued" />
         </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Users</div><div style={{ fontSize: 28, fontWeight: 800 }}>{userSummary.total}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Active</div><div style={{ fontSize: 28, fontWeight: 800 }}>{userSummary.active}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Inactive</div><div style={{ fontSize: 28, fontWeight: 800 }}>{userSummary.inactive}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Super Admins</div><div style={{ fontSize: 28, fontWeight: 800 }}>{superAdminsCount}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Assigned Branches</div><div style={{ fontSize: 28, fontWeight: 800 }}>{userSummary.branches}</div></div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16 }}>
         <div style={{ background: '#fff', borderRadius: 12, padding: 16 }}>

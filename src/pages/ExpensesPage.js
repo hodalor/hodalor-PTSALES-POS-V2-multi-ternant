@@ -23,6 +23,7 @@ function ExpensesPage() {
 
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [periodMode, setPeriodMode] = useState('range');
   const [branchId, setBranchId] = useState(currentBranchId);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -44,7 +45,7 @@ function ExpensesPage() {
     setLoading(true);
     (async () => {
       try {
-        const list = await expensesApi.list({ branchId, from: dateFrom || undefined, to: dateTo || undefined });
+        const list = await expensesApi.list({ branchId, from: periodMode === 'all_time' ? undefined : (dateFrom || undefined), to: periodMode === 'all_time' ? undefined : (dateTo || undefined) });
         if (!alive) return;
         setRows(Array.isArray(list) ? list : []);
       } catch (e) {
@@ -57,7 +58,7 @@ function ExpensesPage() {
       }
     })();
     return () => { alive = false; };
-  }, [branchId, dateFrom, dateTo, toast]);
+  }, [branchId, dateFrom, dateTo, toast, periodMode]);
 
   const byId = useMemo(() => {
     const map = new Map();
@@ -66,6 +67,12 @@ function ExpensesPage() {
   }, [branches]);
 
   const total = useMemo(() => rows.reduce((s, r) => s + (Number(r.amount) || 0), 0), [rows]);
+  const summary = useMemo(() => ({
+    totalRecords: rows.length,
+    totalAmount: total,
+    averageAmount: rows.length ? total / rows.length : 0,
+    categories: new Set(rows.map(r => String(r.category || '').trim()).filter(Boolean)).size
+  }), [rows, total]);
 
   async function addExpense() {
     if (!canManage) {
@@ -138,15 +145,28 @@ function ExpensesPage() {
           <OfflineQueueIndicator collection="expenserequests" label="Expenses queued" />
         </div>
       </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Expense Records</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.totalRecords}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Total Spent</div><div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(summary.totalAmount, settings)}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Average Expense</div><div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(summary.averageAmount, settings)}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Categories</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.categories}</div></div>
+      </div>
 
-      <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
+      <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 12 }}>
+        <label>
+          Period
+          <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
+            <option value="range">Custom Range</option>
+            <option value="all_time">All Time</option>
+          </select>
+        </label>
         <label>
           From
-          <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+          <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
         </label>
         <label>
           To
-          <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
         </label>
         <label>
           Branch

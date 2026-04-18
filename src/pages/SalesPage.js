@@ -30,6 +30,7 @@ function SalesPage() {
   const [pageSize, setPageSize] = useState(25);
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [periodMode, setPeriodMode] = useState('range');
   const [selectedBranchId, setSelectedBranchId] = useState('all');
   const [selectedSaleIds, setSelectedSaleIds] = useState([]);
   const [bulkAction, setBulkAction] = useState('');
@@ -44,11 +45,11 @@ function SalesPage() {
   }, [canSeeAll, currentBranchId, sales, selectedBranchId, showAll]);
   const filteredSales = useMemo(() => {
     let list = filteredByBranch;
-    if (dateFrom) {
+    if (periodMode !== 'all_time' && dateFrom) {
       const start = new Date(`${dateFrom}T00:00:00`);
       list = list.filter(s => new Date(s.created_at || s.createdAt || 0) >= start);
     }
-    if (dateTo) {
+    if (periodMode !== 'all_time' && dateTo) {
       const end = new Date(`${dateTo}T23:59:59.999`);
       list = list.filter(s => new Date(s.created_at || s.createdAt || 0) <= end);
     }
@@ -65,7 +66,7 @@ function SalesPage() {
       list = list.filter(s => String(s.posType || 'retail') === 'wholesale' && Array.isArray(s.payment_methods) && s.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy'));
     }
     return list;
-  }, [dateFrom, dateTo, filteredByBranch, saleKind, creditKind]);
+  }, [dateFrom, dateTo, filteredByBranch, saleKind, creditKind, periodMode]);
 
   const summary = useMemo(() => {
     const totalRevenue = filteredSales.reduce((sum, sale) => sum + (Number(sale.total) || 0), 0);
@@ -194,12 +195,19 @@ function SalesPage() {
         <>
           <div className="card" style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
             <label>
+              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Period</div>
+              <select className="select" value={periodMode} onChange={e => { setPeriodMode(e.target.value); setPage(1); }}>
+                <option value="range">Custom Range</option>
+                <option value="all_time">All Time</option>
+              </select>
+            </label>
+            <label>
               <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Period From</div>
-              <input className="input" type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} />
+              <input className="input" type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} disabled={periodMode === 'all_time'} />
             </label>
             <label>
               <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Period To</div>
-              <input className="input" type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} />
+              <input className="input" type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} disabled={periodMode === 'all_time'} />
             </label>
             <label>
               <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Branch</div>
@@ -236,12 +244,19 @@ function SalesPage() {
       {(tab === 'leaderboard' || tab === 'branches') && (
         <div className="card" style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
           <label>
+            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Period</div>
+            <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
+              <option value="range">Custom Range</option>
+              <option value="all_time">All Time</option>
+            </select>
+          </label>
+          <label>
             <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Date From</div>
-            <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
             <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Date To</div>
-            <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+            <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
             <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Branch</div>

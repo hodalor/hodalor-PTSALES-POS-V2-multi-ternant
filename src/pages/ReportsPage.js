@@ -30,6 +30,7 @@ function ReportsPage() {
 
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [periodMode, setPeriodMode] = useState('range');
   const [branchId, setBranchId] = useState(settings.currentBranchId);
   const [reportType, setReportType] = useState('all');
   const [expenses, setExpenses] = useState([]);
@@ -48,7 +49,7 @@ function ReportsPage() {
         return;
       }
       try {
-        const list = await expensesApi.list({ branchId, from: dateFrom || undefined, to: dateTo || undefined });
+        const list = await expensesApi.list({ branchId, from: periodMode === 'all_time' ? undefined : (dateFrom || undefined), to: periodMode === 'all_time' ? undefined : (dateTo || undefined) });
         if (!alive) return;
         setExpenses(Array.isArray(list) ? list : []);
       } catch (e) {
@@ -58,7 +59,7 @@ function ReportsPage() {
       }
     })();
     return () => { alive = false; };
-  }, [branchId, dateFrom, dateTo, toast, canUseExpenses]);
+  }, [branchId, dateFrom, dateTo, toast, canUseExpenses, periodMode]);
 
   const byId = useMemo(() => {
     const map = new Map();
@@ -66,11 +67,12 @@ function ReportsPage() {
     return map;
   }, [branches]);
   const inRange = useCallback((iso) => {
+    if (periodMode === 'all_time') return true;
     const ts = new Date(iso).getTime();
     const fromTs = dateFrom ? new Date(dateFrom).getTime() : 0;
     const toTs = dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER;
     return ts >= fromTs && ts <= toTs;
-  }, [dateFrom, dateTo]);
+  }, [dateFrom, dateTo, periodMode]);
   const matchBranch = useCallback((id) => !branchId || id === branchId, [branchId]);
 
   useEffect(() => {
@@ -450,14 +452,21 @@ function ReportsPage() {
   return (
     <div style={{ padding: 16 }}>
       <h1>Reports</h1>
-      <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 12 }}>
+      <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 12 }}>
+        <label>
+          Period
+          <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
+            <option value="range">Custom Range</option>
+            <option value="all_time">All Time</option>
+          </select>
+        </label>
         <label>
           From
-          <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+          <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
         </label>
         <label>
           To
-          <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
         </label>
         <label>
           Branch

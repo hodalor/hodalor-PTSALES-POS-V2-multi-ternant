@@ -129,6 +129,13 @@ function TenantsPage() {
       gatewayCount: Array.from(new Set(filteredPaymentRows.map((row) => row.provider).filter(Boolean))).length
     };
   }, [filteredPaymentRows]);
+  const tenantSummary = useMemo(() => ({
+    total: rows.length,
+    active: rows.filter((row) => row.subscriptionPermanent || !row.subscriptionExpiresAt || new Date(row.subscriptionExpiresAt).getTime() >= Date.now()).length,
+    permanent: rows.filter((row) => Boolean(row.subscriptionPermanent)).length,
+    expiringSoon: rows.filter((row) => row.subscriptionExpiresAt && !row.subscriptionPermanent && new Date(row.subscriptionExpiresAt).getTime() >= Date.now() && new Date(row.subscriptionExpiresAt).getTime() <= (Date.now() + 7 * 24 * 3600 * 1000)).length,
+    expired: rows.filter((row) => row.subscriptionExpiresAt && !row.subscriptionPermanent && new Date(row.subscriptionExpiresAt).getTime() < Date.now()).length
+  }), [rows]);
 
   const planOptions = useMemo(() => (subscriptionManagement?.plans || []).map((plan) => plan.key), [subscriptionManagement]);
   const selectedPlan = useMemo(() => (subscriptionManagement?.plans || []).find((plan) => String(plan.key) === String(selectedPlanKey)) || subscriptionManagement.plans?.[0] || null, [selectedPlanKey, subscriptionManagement]);
@@ -631,6 +638,16 @@ function TenantsPage() {
         <button className="btn" type="button" style={{ background: activeTab === 'subscription_management' ? '#eff6ff' : undefined, borderColor: activeTab === 'subscription_management' ? '#1d4ed8' : undefined, color: activeTab === 'subscription_management' ? '#1d4ed8' : undefined }} onClick={() => setActiveTab('subscription_management')}>Subscription Management</button>
         <button className="btn" type="button" style={{ background: activeTab === 'payment_management' ? '#eff6ff' : undefined, borderColor: activeTab === 'payment_management' ? '#1d4ed8' : undefined, color: activeTab === 'payment_management' ? '#1d4ed8' : undefined }} onClick={() => setActiveTab('payment_management')}>Payment Management</button>
       </div>
+
+      {activeTab === 'tenants' ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+          <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Total Tenants</div><div style={{ fontSize: 28, fontWeight: 800 }}>{tenantSummary.total}</div></div>
+          <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Active</div><div style={{ fontSize: 28, fontWeight: 800 }}>{tenantSummary.active}</div></div>
+          <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Permanent</div><div style={{ fontSize: 28, fontWeight: 800 }}>{tenantSummary.permanent}</div></div>
+          <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Expiring In 7 Days</div><div style={{ fontSize: 28, fontWeight: 800 }}>{tenantSummary.expiringSoon}</div></div>
+          <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Expired</div><div style={{ fontSize: 28, fontWeight: 800 }}>{tenantSummary.expired}</div></div>
+        </div>
+      ) : null}
 
       {activeTab === 'subscription_management' ? (
         <>

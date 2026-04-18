@@ -51,6 +51,13 @@ function RefundsPage() {
     return Math.round(v * 100) / 100;
   }, [sale]);
   const roleLower = String(auth.role || '').toLowerCase();
+  const refundSummary = useMemo(() => ({
+    total: refunds.length,
+    pending: refunds.filter(r => String(r.status || '').includes('pending')).length,
+    approved: refunds.filter(r => String(r.status || '') === 'approved').length,
+    rejected: refunds.filter(r => String(r.status || '') === 'rejected').length,
+    totalAmount: refunds.reduce((sum, r) => sum + (Number(r.amount || r.requestedAmount) || 0), 0)
+  }), [refunds]);
 
   useEffect(() => {
     if (!sale) {
@@ -229,6 +236,13 @@ function RefundsPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <h1 style={{ margin: 0 }}>Refunds</h1>
         <OfflineQueueIndicator collection="refundrequests" label="Refunds queued" />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Refund Requests</div><div style={{ fontSize: 28, fontWeight: 800 }}>{refundSummary.total}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Pending</div><div style={{ fontSize: 28, fontWeight: 800 }}>{refundSummary.pending}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Approved</div><div style={{ fontSize: 28, fontWeight: 800 }}>{refundSummary.approved}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Rejected</div><div style={{ fontSize: 28, fontWeight: 800 }}>{refundSummary.rejected}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Requested Amount</div><div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(refundSummary.totalAmount, settings)}</div></div>
       </div>
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'end' }}>

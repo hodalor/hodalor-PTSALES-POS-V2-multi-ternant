@@ -49,6 +49,12 @@ function SuppliersPage() {
       (s.email || '').toLowerCase().includes(q)
     );
   }, [suppliers, query]);
+  const summary = useMemo(() => ({
+    total: filtered.length,
+    withContact: filtered.filter(s => String(s.contact || '').trim()).length,
+    withPhone: filtered.filter(s => String(s.phone || '').trim()).length,
+    withEmail: filtered.filter(s => String(s.email || '').trim()).length
+  }), [filtered]);
 
   async function addNew() {
     if (!canAddSuppliers) { toast.show('Not authorized to add suppliers', { type: 'error' }); return; }
@@ -153,6 +159,12 @@ function SuppliersPage() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <h1 style={{ margin: 0 }}>Suppliers</h1>
         <OfflineQueueIndicator collection="suppliers" label="Suppliers queued" />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Suppliers</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.total}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>With Contact</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.withContact}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>With Phone</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.withPhone}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>With Email</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.withEmail}</div></div>
       </div>
       {canAddSuppliers && (
       <div className="card" style={{ marginBottom: 12 }}>

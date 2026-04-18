@@ -34,6 +34,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   const [branchFilter, setBranchFilter] = useState('');
   const todayIso = new Date().toISOString().slice(0, 10);
   const defaultFromIso = new Date(Date.now() - 29 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const [periodMode, setPeriodMode] = useState('range');
   const [dateFrom, setDateFrom] = useState(defaultFromIso);
   const [dateTo, setDateTo] = useState(todayIso);
 
@@ -113,12 +114,13 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       }));
   }, [saleRows]);
   const inRange = useCallback((value) => {
+    if (periodMode === 'all_time') return true;
     const ts = new Date(value).getTime();
     if (Number.isNaN(ts)) return false;
     const fromTs = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : -Infinity;
     const toTs = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : Infinity;
     return ts >= fromTs && ts <= toTs;
-  }, [dateFrom, dateTo]);
+  }, [dateFrom, dateTo, periodMode]);
   const mergedSales = useMemo(() => {
     const byId = new Map();
     [...fallbackCreditSales, ...sales].forEach(row => {
@@ -328,12 +330,19 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       <div className="card" style={{ display: 'grid', gap: 12 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
           <label>
+            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Period</div>
+            <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
+              <option value="range">Custom Range</option>
+              <option value="all_time">All Time</option>
+            </select>
+          </label>
+          <label>
             <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>From</div>
-            <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
             <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>To</div>
-            <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+            <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
             <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Branch</div>

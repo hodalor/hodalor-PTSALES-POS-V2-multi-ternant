@@ -35,6 +35,7 @@ function TransfersPage() {
   const [fTo, setFTo] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [periodMode, setPeriodMode] = useState('range');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [tab, setTab] = useState('initiate');
@@ -89,8 +90,8 @@ function TransfersPage() {
   const baseTransfers = useMemo(() => audit.filter(e => e.actionType === 'stock_transfer'), [audit]);
   const actors = useMemo(() => Array.from(new Set(baseTransfers.map(e => e.actor).filter(Boolean))).sort(), [baseTransfers]);
   const transfers = useMemo(() => {
-    const fromTs = dateFrom ? new Date(dateFrom).getTime() : 0;
-    const toTs = dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER;
+    const fromTs = periodMode === 'all_time' ? 0 : (dateFrom ? new Date(dateFrom).getTime() : 0);
+    const toTs = periodMode === 'all_time' ? Number.MAX_SAFE_INTEGER : (dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER);
     return baseTransfers.filter(e => {
       const ts = new Date(e.ts).getTime();
       if (ts < fromTs || ts > toTs) return false;
@@ -100,7 +101,7 @@ function TransfersPage() {
       if (fTo && d.to !== fTo) return false;
       return true;
     }).slice().reverse();
-  }, [baseTransfers, fActor, fFrom, fTo, dateFrom, dateTo]);
+  }, [baseTransfers, fActor, fFrom, fTo, dateFrom, dateTo, periodMode]);
 
   function onExportCsv() {
     const headers = [
@@ -299,6 +300,18 @@ function TransfersPage() {
     });
     return [...workflow, ...legacy];
   }, [requests, wholesaleInbound, statusFilter, allowedBranches]);
+  const summary = useMemo(() => {
+    const transferQty = transfers.reduce((sum, row) => sum + (Number(row.details?.qty || 0) || 0), 0);
+    const uniqueProducts = new Set(transfers.map((row) => String(row.details?.product || '').trim()).filter(Boolean)).size;
+    const uniqueRoutes = new Set(transfers.map((row) => `${row.details?.from || ''}->${row.details?.to || ''}`).filter((value) => value !== '->')).size;
+    return {
+      historyCount: transfers.length,
+      transferQty,
+      uniqueProducts,
+      uniqueRoutes,
+      pendingApprovals: pendingRequests.length
+    };
+  }, [transfers, pendingRequests]);
 
   useEffect(() => {
     async function run() {
@@ -444,6 +457,13 @@ function TransfersPage() {
       <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
         <button className={tab === 'initiate' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('initiate')}>Initiate</button>
         <button className={tab === 'approvals' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('approvals')} disabled={!canApprove}>Approvals</button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Transfer Records</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.historyCount}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Units Moved</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.transferQty}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Products</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.uniqueProducts}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Routes</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.uniqueRoutes}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Pending Approvals</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.pendingApprovals}</div></div>
       </div>
       {openModal && (
         <Modal title="Add Transfer" onClose={() => setOpenModal(false)} footer={
@@ -624,14 +644,21 @@ function TransfersPage() {
         </div>
       )}
       <div className="card" style={{ marginTop: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, marginBottom: 8 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, marginBottom: 8 }}>
+          <label>
+            Period
+            <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
+              <option value="range">Custom Range</option>
+              <option value="all_time">All Time</option>
+            </select>
+          </label>
           <label>
             From
-            <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
             To
-            <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+            <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
             Actor

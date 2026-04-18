@@ -18,6 +18,7 @@ function StockRecordsPage() {
   const [fSource, setFSource] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [periodMode, setPeriodMode] = useState('range');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [selectedRecordIds, setSelectedRecordIds] = useState([]);
@@ -83,8 +84,8 @@ function StockRecordsPage() {
   const actors = useMemo(() => Array.from(new Set(baseRows.map(r => r.actor))).sort(), [baseRows]);
   const sources = useMemo(() => Array.from(new Set(baseRows.map(r => r.source))).sort(), [baseRows]);
   const rows = useMemo(() => {
-    const fromTs = dateFrom ? new Date(dateFrom).getTime() : 0;
-    const toTs = dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER;
+    const fromTs = periodMode === 'all_time' ? 0 : (dateFrom ? new Date(dateFrom).getTime() : 0);
+    const toTs = periodMode === 'all_time' ? Number.MAX_SAFE_INTEGER : (dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER);
     return baseRows.filter(r => {
       const ts = new Date(r.ts).getTime();
       if (ts < fromTs || ts > toTs) return false;
@@ -93,7 +94,13 @@ function StockRecordsPage() {
       if (fSource && r.source !== fSource) return false;
       return true;
     }).slice().reverse();
-  }, [baseRows, fActor, fBranch, fSource, dateFrom, dateTo]);
+  }, [baseRows, fActor, fBranch, fSource, dateFrom, dateTo, periodMode]);
+  const summary = useMemo(() => ({
+    records: rows.length,
+    totalMovement: rows.reduce((sum, row) => sum + Math.abs(Number(row.qty || 0)), 0),
+    uniqueProducts: new Set(rows.map((row) => String(row.product || '').trim()).filter(Boolean)).size,
+    uniqueBranches: new Set(rows.map((row) => String(row.branchId || '').trim()).filter(Boolean)).size
+  }), [rows]);
 
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const pageRows = rows.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
@@ -176,14 +183,27 @@ function StockRecordsPage() {
           )}
         </div>
       </div>
-      <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 8, marginBottom: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Records</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.records}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Units Moved</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.totalMovement}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Products</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.uniqueProducts}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Branches</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.uniqueBranches}</div></div>
+      </div>
+      <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, marginBottom: 8 }}>
+        <label>
+          Period
+          <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
+            <option value="range">Custom Range</option>
+            <option value="all_time">All Time</option>
+          </select>
+        </label>
         <label>
           From
-          <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+          <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
         </label>
         <label>
           To
-          <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
         </label>
         <label>
           Actor
