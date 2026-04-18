@@ -8,8 +8,12 @@ export async function createSale(sale) {
   });
 }
 
-export function list() {
-  return fetchJson('/api/sales');
+export function list(params = {}) {
+  const qs = new URLSearchParams();
+  if (params.branchId) qs.set('branchId', String(params.branchId));
+  if (params.limit) qs.set('limit', String(params.limit));
+  const query = qs.toString();
+  return fetchJson(`/api/sales${query ? `?${query}` : ''}`);
 }
 
 export function removeMany(ids = []) {

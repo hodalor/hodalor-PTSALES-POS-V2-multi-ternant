@@ -1,12 +1,12 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { buildBrandedReceiptHtml, printReceiptHtml } from '../utils/print';
 import { escposReceipt, downloadText } from '../utils/escpos';
 import { formatCurrency } from '../utils/currency';
 import { exportCsv, exportTablePdf } from '../utils/exporters';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import * as salesApi from '../api/sales';
-import { removeSales } from '../store/salesSlice';
+import { removeSales, setSales } from '../store/salesSlice';
 import { useToast } from '../components/ToastProvider';
 import InlineSpinner from '../components/InlineSpinner';
 import BranchSelect from '../components/BranchSelect';
@@ -22,6 +22,16 @@ function SalesPage() {
   const toast = useToast();
   const canSeeAll = roleLower === 'admin' || roleLower === 'superadmin';
   const canDeleteSales = roleLower === 'superadmin';
+  const assigned = auth.user?.assignedBranches || 'all';
+  const allowedBranches = useMemo(() => {
+    if (canSeeAll || assigned === 'all') return branches;
+    const ids = new Set(Array.isArray(assigned) ? assigned.map(String) : [String(assigned)]);
+    return (branches || []).filter(branch => ids.has(String(branch.id)));
+  }, [assigned, branches, canSeeAll]);
+  const effectiveBranchId = useMemo(() => {
+    if ((branches || []).some(branch => String(branch.id) === String(currentBranchId || ''))) return currentBranchId;
+    return allowedBranches[0]?.id || branches[0]?.id || '';
+  }, [allowedBranches, branches, currentBranchId]);
   const [showAll, setShowAll] = useState(false);
   const [saleKind, setSaleKind] = useState('all'); // all, retail, wholesale
   const [creditKind, setCreditKind] = useState('all'); // all, non_credit, retail_easybuy, wholesale_credit
@@ -35,14 +45,39 @@ function SalesPage() {
   const [selectedSaleIds, setSelectedSaleIds] = useState([]);
   const [bulkAction, setBulkAction] = useState('');
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [loadingSales, setLoadingSales] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const branchScope = (canSeeAll && showAll)
+        ? (selectedBranchId !== 'all' ? selectedBranchId : '')
+        : (selectedBranchId !== 'all' ? selectedBranchId : '');
+      try {
+        setLoadingSales(true);
+        const rows = await salesApi.list(branchScope ? { branchId: branchScope, limit: 1000 } : { limit: 1000 });
+        if (!alive) return;
+        dispatch(setSales(Array.isArray(rows) ? rows : []));
+      } catch (e) {
+        if (!alive) return;
+        toast.show(String(e?.message || 'Failed to load sales'), { type: 'error' });
+      } finally {
+        if (alive) setLoadingSales(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [canSeeAll, dispatch, effectiveBranchId, selectedBranchId, showAll, toast]);
   function branchLabel(sale) {
     return sale.branchName || (branches.find(b => b.id === sale.branchId)?.name || sale.branchId || '-');
   }
   const filteredByBranch = useMemo(() => {
-    let list = (canSeeAll && showAll) ? sales : sales.filter(sale => sale.branchId === currentBranchId);
+    let list = sales;
+    if (!(canSeeAll && showAll)) {
+      const scoped = sales.filter(sale => String(sale.branchId || '') === String(effectiveBranchId || ''));
+      list = scoped.length > 0 ? scoped : sales;
+    }
     if (selectedBranchId !== 'all') list = list.filter(sale => String(sale.branchId || '') === String(selectedBranchId));
     return list;
-  }, [canSeeAll, currentBranchId, sales, selectedBranchId, showAll]);
+  }, [canSeeAll, effectiveBranchId, sales, selectedBranchId, showAll]);
   const filteredSales = useMemo(() => {
     let list = filteredByBranch;
     if (periodMode !== 'all_time' && dateFrom) {
@@ -193,6 +228,12 @@ function SalesPage() {
       </div>
       {tab === 'sales' && (
         <>
+          {loadingSales ? (
+            <div className="card" style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <InlineSpinner />
+              <span>Loading sales...</span>
+            </div>
+          ) : null}
           <div className="card" style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
             <label>
               <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Period</div>
