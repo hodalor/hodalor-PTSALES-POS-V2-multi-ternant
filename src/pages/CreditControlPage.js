@@ -6,6 +6,7 @@ import { confirmDialog, promptDialog } from '../utils/dialogs';
 import { useSelector } from 'react-redux';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import InlineSpinner from '../components/InlineSpinner';
+import BranchSelect from '../components/BranchSelect';
 
 function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', title = 'Credit Sale Control', description = 'Credit sale balances, overdue tracking, customer rank, and repayment initiation.' }) {
   const settings = useSelector(s => s.settings);
@@ -30,6 +31,11 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [deletedSaleKeys, setDeletedSaleKeys] = useState(() => new Set());
   const [sourceFilter, setSourceFilter] = useState('all');
+  const [branchFilter, setBranchFilter] = useState('');
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const defaultFromIso = new Date(Date.now() - 29 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const [dateFrom, setDateFrom] = useState(defaultFromIso);
+  const [dateTo, setDateTo] = useState(todayIso);
 
   useEffect(() => {
     setSection(initialSection);
@@ -93,6 +99,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
         _id: row.creditSaleId || row.id || row._id,
         saleId: row.id || row._id,
         customer_id: row.customerId || '',
+        branchId: row.branchId || '',
         posType: row.posType || 'retail',
         items: row.items || [],
         total_amount: Number(row.total || 0),
@@ -100,10 +107,18 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
         balance: Number(row.creditBalance || row.creditSale?.balance || Math.max(0, Number(row.total || 0) - Number(row.creditAmountPaidNow || 0))),
         accumulated_penalty: Number(row.creditSale?.accumulated_penalty || 0),
         due_date: row.creditDueDate || row.creditSale?.due_date || row.creditSale?.dueDate || null,
+        createdAt: row.created_at || row.createdAt || row.creditSale?.createdAt || null,
         overdue_days: Number(row.creditSale?.overdue_days || 0),
         status: row.creditSale?.status || 'active'
       }));
   }, [saleRows]);
+  const inRange = useCallback((value) => {
+    const ts = new Date(value).getTime();
+    if (Number.isNaN(ts)) return false;
+    const fromTs = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : -Infinity;
+    const toTs = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : Infinity;
+    return ts >= fromTs && ts <= toTs;
+  }, [dateFrom, dateTo]);
   const mergedSales = useMemo(() => {
     const byId = new Map();
     [...fallbackCreditSales, ...sales].forEach(row => {
@@ -119,19 +134,49 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   const filteredSales = useMemo(() => (
     sourceFilter === 'all' ? mergedSales : mergedSales.filter((row) => String(row.posType || 'retail') === sourceFilter)
   ), [mergedSales, sourceFilter]);
+  const branchFilteredSales = useMemo(() => filteredSales.filter((row) => {
+    if (branchFilter && String(row.branchId || '') !== String(branchFilter)) return false;
+    const dateValue = row.createdAt || row.created_at || row.saleDate || row.due_date;
+    if (!dateValue) return true;
+    return inRange(dateValue);
+  }), [filteredSales, branchFilter, inRange]);
   const salesById = useMemo(() => new Map(mergedSales.map((row) => [String(row._id || row.saleId || ''), row])), [mergedSales]);
-  const shownActiveSales = useMemo(() => filteredSales.filter(row => row.status !== 'completed'), [filteredSales]);
-  const overdueSales = useMemo(() => filteredSales.filter(row => row.status === 'overdue'), [filteredSales]);
+  const shownActiveSales = useMemo(() => branchFilteredSales.filter(row => row.status !== 'completed'), [branchFilteredSales]);
+  const overdueSales = useMemo(() => branchFilteredSales.filter(row => row.status === 'overdue'), [branchFilteredSales]);
   const dueTodaySales = useMemo(() => mergedSales.filter(row => {
     if (!row?.due_date || row.status === 'completed') return false;
     const due = new Date(row.due_date);
     const now = new Date();
     return due.toDateString() === now.toDateString();
-  }).filter((row) => sourceFilter === 'all' || String(row.posType || 'retail') === sourceFilter), [mergedSales, sourceFilter]);
+  }).filter((row) => {
+    if (sourceFilter !== 'all' && String(row.posType || 'retail') !== sourceFilter) return false;
+    if (branchFilter && String(row.branchId || '') !== String(branchFilter)) return false;
+    return inRange(row.due_date);
+  }), [mergedSales, sourceFilter, branchFilter, inRange]);
   const shownRepayments = useMemo(() => {
-    if (sourceFilter === 'all') return repayments;
-    return repayments.filter((row) => String(salesById.get(String(row.creditSaleId || ''))?.posType || 'retail') === sourceFilter);
-  }, [repayments, salesById, sourceFilter]);
+    return repayments.filter((row) => {
+      const sale = salesById.get(String(row.creditSaleId || ''));
+      if (sourceFilter !== 'all' && String(sale?.posType || 'retail') !== sourceFilter) return false;
+      if (branchFilter && String(sale?.branchId || '') !== String(branchFilter)) return false;
+      const dateValue = row.createdAt || row.created_at || row.paymentDate || row.date;
+      if (dateValue && !inRange(dateValue)) return false;
+      return true;
+    });
+  }, [repayments, salesById, sourceFilter, branchFilter, inRange]);
+  const creditSummary = useMemo(() => {
+    const easybuyRows = branchFilteredSales.filter((row) => String(row.posType || 'retail') === 'retail');
+    const wholesaleRows = branchFilteredSales.filter((row) => String(row.posType || 'retail') === 'wholesale');
+    const pendingRepayments = shownRepayments.filter((row) => row.status !== 'approved' && row.status !== 'rejected');
+    return {
+      activeCount: shownActiveSales.length,
+      overdueCount: overdueSales.length,
+      dueTodayCount: dueTodaySales.length,
+      easybuyOutstanding: easybuyRows.reduce((sum, row) => sum + (Number(row.balance || 0) + Number(row.accumulated_penalty || 0)), 0),
+      wholesaleOutstanding: wholesaleRows.reduce((sum, row) => sum + (Number(row.balance || 0) + Number(row.accumulated_penalty || 0)), 0),
+      pendingRepaymentAmount: pendingRepayments.reduce((sum, row) => sum + (Number(row.amount || row.repayment_amount || 0) || 0), 0),
+      pendingRepaymentCount: pendingRepayments.length
+    };
+  }, [branchFilteredSales, shownRepayments, shownActiveSales.length, overdueSales.length, dueTodaySales.length]);
 
   async function startRepayment(row) {
     const amount = await promptDialog('Repayment amount');
@@ -280,31 +325,57 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
         </div>
       )}
 
-      <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+      <div className="card" style={{ display: 'grid', gap: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+          <label>
+            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>From</div>
+            <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+          </label>
+          <label>
+            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>To</div>
+            <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          </label>
+          <label>
+            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Branch</div>
+            <BranchSelect value={branchFilter} onChange={setBranchFilter} includeAll allLabel="All Branches" />
+          </label>
+          <label>
+            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Credit Source</div>
+            <select className="select" value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}>
+              <option value="all">All Sources</option>
+              <option value="retail">Retail EasyBuy</option>
+              <option value="wholesale">Distribution Credit Sale</option>
+            </select>
+          </label>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
         <div>
           <div style={{ color: '#64748b', fontSize: 12 }}>Active Credit Sales</div>
-          <div style={{ fontSize: 28, fontWeight: 800 }}>{shownActiveSales.length}</div>
+          <div style={{ fontSize: 28, fontWeight: 800 }}>{creditSummary.activeCount}</div>
         </div>
         <div>
           <div style={{ color: '#64748b', fontSize: 12 }}>Overdue Accounts</div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: overdueSales.length > 0 ? '#b91c1c' : undefined }}>{overdueSales.length}</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: creditSummary.overdueCount > 0 ? '#b91c1c' : undefined }}>{creditSummary.overdueCount}</div>
+        </div>
+        <div>
+          <div style={{ color: '#64748b', fontSize: 12 }}>Retail EasyBuy Balance</div>
+          <div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(creditSummary.easybuyOutstanding, settings)}</div>
+        </div>
+        <div>
+          <div style={{ color: '#64748b', fontSize: 12 }}>Distribution Credit Balance</div>
+          <div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(creditSummary.wholesaleOutstanding, settings)}</div>
         </div>
         <div>
           <div style={{ color: '#64748b', fontSize: 12 }}>Pending Repayments</div>
-          <div style={{ fontSize: 28, fontWeight: 800 }}>{repayments.filter(row => row.status !== 'approved' && row.status !== 'rejected').length}</div>
+          <div style={{ fontSize: 28, fontWeight: 800 }}>{creditSummary.pendingRepaymentCount}</div>
+          <div style={{ color: '#64748b', fontSize: 12 }}>{formatCurrency(creditSummary.pendingRepaymentAmount, settings)}</div>
         </div>
         <div>
           <div style={{ color: '#64748b', fontSize: 12 }}>Due Today</div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: dueTodaySales.length > 0 ? '#b45309' : undefined }}>{dueTodaySales.length}</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: creditSummary.dueTodayCount > 0 ? '#b45309' : undefined }}>{creditSummary.dueTodayCount}</div>
+          <div style={{ color: '#64748b', fontSize: 12 }}>Good {goodClients.length} • Flagged {riskyClients.length}</div>
         </div>
-        <div>
-          <div style={{ color: '#64748b', fontSize: 12 }}>Good Clients</div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: '#15803d' }}>{goodClients.length}</div>
-        </div>
-        <div>
-          <div style={{ color: '#64748b', fontSize: 12 }}>Flagged Clients</div>
-          <div style={{ fontSize: 28, fontWeight: 800, color: '#b91c1c' }}>{riskyClients.length}</div>
-        </div>
+      </div>
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -373,11 +444,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       {section === 'sales' && <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
           <h2 className="section-title" style={{ margin: 0 }}>Active Credit Sales</h2>
-          <select className="select" value={sourceFilter} onChange={e => setSourceFilter(e.target.value)} style={{ minWidth: 220 }}>
-            <option value="all">All Sources</option>
-            <option value="retail">Retail EasyBuy</option>
-            <option value="wholesale">Distribution Credit Sale</option>
-          </select>
+          <div style={{ color: '#64748b', fontSize: 12 }}>Filtered by {branchFilter ? 'selected branch' : 'all branches'} and {sourceFilter === 'all' ? 'all sources' : sourceFilter === 'retail' ? 'Retail EasyBuy' : 'Distribution Credit Sale'}</div>
         </div>
         {canDeleteCredit && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -468,11 +535,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       {section === 'repayments' && <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
           <h2 className="section-title" style={{ margin: 0 }}>Repayment History</h2>
-          <select className="select" value={sourceFilter} onChange={e => setSourceFilter(e.target.value)} style={{ minWidth: 220 }}>
-            <option value="all">All Sources</option>
-            <option value="retail">Retail EasyBuy</option>
-            <option value="wholesale">Distribution Credit Sale</option>
-          </select>
+          <div style={{ color: '#64748b', fontSize: 12 }}>Filtered by {branchFilter ? 'selected branch' : 'all branches'} and {sourceFilter === 'all' ? 'all sources' : sourceFilter === 'retail' ? 'Retail EasyBuy' : 'Distribution Credit Sale'}</div>
         </div>
         {canDeleteCredit && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>

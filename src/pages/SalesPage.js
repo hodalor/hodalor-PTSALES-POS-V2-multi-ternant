@@ -9,6 +9,7 @@ import * as salesApi from '../api/sales';
 import { removeSales } from '../store/salesSlice';
 import { useToast } from '../components/ToastProvider';
 import InlineSpinner from '../components/InlineSpinner';
+import BranchSelect from '../components/BranchSelect';
 
 function SalesPage() {
   const dispatch = useDispatch();
@@ -23,6 +24,7 @@ function SalesPage() {
   const canDeleteSales = roleLower === 'superadmin';
   const [showAll, setShowAll] = useState(false);
   const [saleKind, setSaleKind] = useState('all'); // all, retail, wholesale
+  const [creditKind, setCreditKind] = useState('all'); // all, non_credit, retail_easybuy, wholesale_credit
   const [tab, setTab] = useState('sales'); // sales, leaderboard, branches
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -55,8 +57,31 @@ function SalesPage() {
     } else if (saleKind === 'wholesale') {
       list = list.filter(s => String(s.posType || 'retail') === 'wholesale');
     }
+    if (creditKind === 'non_credit') {
+      list = list.filter(s => !(Array.isArray(s.payment_methods) && s.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy')));
+    } else if (creditKind === 'retail_easybuy') {
+      list = list.filter(s => String(s.posType || 'retail') === 'retail' && Array.isArray(s.payment_methods) && s.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy'));
+    } else if (creditKind === 'wholesale_credit') {
+      list = list.filter(s => String(s.posType || 'retail') === 'wholesale' && Array.isArray(s.payment_methods) && s.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy'));
+    }
     return list;
-  }, [dateFrom, dateTo, filteredByBranch, saleKind]);
+  }, [dateFrom, dateTo, filteredByBranch, saleKind, creditKind]);
+
+  const summary = useMemo(() => {
+    const totalRevenue = filteredSales.reduce((sum, sale) => sum + (Number(sale.total) || 0), 0);
+    const totalProfit = filteredSales.reduce((sum, sale) => sum + (Number(sale.profitTotal) || 0), 0);
+    const itemsSold = filteredSales.reduce((sum, sale) => sum + (Array.isArray(sale.items) ? sale.items.reduce((acc, item) => acc + (Number(item.qty) || 0), 0) : 0), 0);
+    const easybuyCount = filteredSales.filter(sale => String(sale.posType || 'retail') === 'retail' && Array.isArray(sale.payment_methods) && sale.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy')).length;
+    const wholesaleCreditCount = filteredSales.filter(sale => String(sale.posType || 'retail') === 'wholesale' && Array.isArray(sale.payment_methods) && sale.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy')).length;
+    return {
+      totalSales: filteredSales.length,
+      totalRevenue,
+      totalProfit,
+      itemsSold,
+      easybuyCount,
+      wholesaleCreditCount
+    };
+  }, [filteredSales]);
 
   const leaderboard = useMemo(() => {
     const map = new Map();
@@ -164,14 +189,50 @@ function SalesPage() {
         <button className={tab === 'sales' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('sales')}>Sales</button>
         <button className={tab === 'leaderboard' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('leaderboard')}>Sales Rep Leaderboard</button>
         <button className={tab === 'branches' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('branches')}>Branch Comparison</button>
-        {tab === 'sales' && (
-        <span style={{ marginLeft: 'auto', display: 'inline-flex', gap: 6 }}>
-          <button className={saleKind === 'all' ? 'btn btn-primary' : 'btn'} onClick={() => setSaleKind('all')}>All</button>
-          <button className={saleKind === 'retail' ? 'btn btn-primary' : 'btn'} onClick={() => setSaleKind('retail')}>Retail</button>
-          <button className={saleKind === 'wholesale' ? 'btn btn-primary' : 'btn'} onClick={() => setSaleKind('wholesale')}>Wholesale</button>
-        </span>
-        )}
       </div>
+      {tab === 'sales' && (
+        <>
+          <div className="card" style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+            <label>
+              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Period From</div>
+              <input className="input" type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} />
+            </label>
+            <label>
+              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Period To</div>
+              <input className="input" type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} />
+            </label>
+            <label>
+              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Branch</div>
+              <BranchSelect value={selectedBranchId} onChange={(value) => { setSelectedBranchId(value || 'all'); setPage(1); }} includeAll allLabel="All Branches" />
+            </label>
+            <label>
+              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Inventory Type</div>
+              <select className="select" value={saleKind} onChange={e => { setSaleKind(e.target.value); setPage(1); }}>
+                <option value="all">All Types</option>
+                <option value="retail">Retail</option>
+                <option value="wholesale">Distribution</option>
+              </select>
+            </label>
+            <label>
+              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Credit Filter</div>
+              <select className="select" value={creditKind} onChange={e => { setCreditKind(e.target.value); setPage(1); }}>
+                <option value="all">All Payment Types</option>
+                <option value="non_credit">Non Credit</option>
+                <option value="retail_easybuy">Retail EasyBuy</option>
+                <option value="wholesale_credit">Distribution Credit Sale</option>
+              </select>
+            </label>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginTop: 12 }}>
+            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Sales Count</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.totalSales}</div></div>
+            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Revenue</div><div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(summary.totalRevenue, settings)}</div></div>
+            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Profit</div><div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(summary.totalProfit, settings)}</div></div>
+            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Items Sold</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.itemsSold}</div></div>
+            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Retail EasyBuy</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.easybuyCount}</div></div>
+            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Distribution Credit</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.wholesaleCreditCount}</div></div>
+          </div>
+        </>
+      )}
       {(tab === 'leaderboard' || tab === 'branches') && (
         <div className="card" style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
           <label>
@@ -288,6 +349,7 @@ function SalesPage() {
             <th align="left">Date</th>
             <th align="left">Branch</th>
             <th align="left">Type</th>
+            <th align="left">Credit Mode</th>
             <th align="left">Seller</th>
             <th align="left">Invoice</th>
             <th align="left">Items</th>
@@ -310,7 +372,12 @@ function SalesPage() {
               )}
               <td>{new Date(sale.created_at).toLocaleString()}</td>
               <td>{branchLabel(sale)}</td>
-              <td>{String(sale.posType || 'retail') === 'wholesale' ? 'Wholesale' : 'Retail'}</td>
+              <td>{String(sale.posType || 'retail') === 'wholesale' ? 'Distribution' : 'Retail'}</td>
+              <td>
+                {Array.isArray(sale.payment_methods) && sale.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy')
+                  ? (String(sale.posType || 'retail') === 'wholesale' ? 'Credit Sale' : 'EasyBuy')
+                  : 'Non Credit'}
+              </td>
               <td>{sale.sellerName || '-'}</td>
               <td>{sale.invoiceSerial || '—'}</td>
               <td>{sale.items.map(i => `${i.name}${i.spec ? ' ['+i.spec+']' : ''}x${i.qty}`).join(', ')}</td>

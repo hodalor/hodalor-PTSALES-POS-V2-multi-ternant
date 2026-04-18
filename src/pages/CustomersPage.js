@@ -40,6 +40,7 @@ function CustomersPage() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkAction, setBulkAction] = useState('');
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [customerTypeFilter, setCustomerTypeFilter] = useState('all');
   const purchaseHistoryEnabled = isFeatureEnabled(settings, 'tabs.customerPurchaseHistory');
 
   useEffect(() => {
@@ -50,9 +51,19 @@ function CustomersPage() {
     name: '',
     phone: '',
     email: '',
+    customerType: 'retail',
     dob: '',
     idCardNumber: '',
+    idFront: '',
+    idBack: '',
+    businessCertificate: '',
     address: '',
+    businessName: '',
+    businessAddress: '',
+    registrationNumber: '',
+    taxId: '',
+    businessPhone: '',
+    businessEmail: '',
     anniversaryDate: '',
     vip: false,
     photo: ''
@@ -61,9 +72,19 @@ function CustomersPage() {
     name: '',
     phone: '',
     email: '',
+    customerType: 'retail',
     dob: '',
     idCardNumber: '',
+    idFront: '',
+    idBack: '',
+    businessCertificate: '',
     address: '',
+    businessName: '',
+    businessAddress: '',
+    registrationNumber: '',
+    taxId: '',
+    businessPhone: '',
+    businessEmail: '',
     anniversaryDate: '',
     vip: false,
     photo: ''
@@ -92,15 +113,20 @@ function CustomersPage() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return customers;
-    return customers.filter(c =>
-      (c.name || '').toLowerCase().includes(q) ||
-      (c.phone || '').toLowerCase().includes(q) ||
-      (c.email || '').toLowerCase().includes(q) ||
-      String(c.customerCode || '').toLowerCase().includes(q) ||
-      String(c.idCardNumber || '').toLowerCase().includes(q)
-    );
-  }, [customers, query]);
+    return customers.filter(c => {
+      if (customerTypeFilter !== 'all' && String(c.customerType || 'retail') !== customerTypeFilter) return false;
+      if (!q) return true;
+      return (
+        (c.name || '').toLowerCase().includes(q) ||
+        (c.phone || '').toLowerCase().includes(q) ||
+        (c.email || '').toLowerCase().includes(q) ||
+        String(c.customerCode || '').toLowerCase().includes(q) ||
+        String(c.idCardNumber || '').toLowerCase().includes(q) ||
+        String(c.businessName || '').toLowerCase().includes(q) ||
+        String(c.registrationNumber || '').toLowerCase().includes(q)
+      );
+    });
+  }, [customers, query, customerTypeFilter]);
 
   const selected = useMemo(() => {
     if (!selectedId) return null;
@@ -132,19 +158,47 @@ function CustomersPage() {
   const activeProfile = useMemo(() => {
     return modalMode === 'create' ? createForm : editForm;
   }, [modalMode, createForm, editForm]);
+  const detailRows = useMemo(() => ([
+    ['Customer Type', String(activeProfile.customerType || 'retail') === 'distribution' ? 'Distribution Customer' : 'Retail Customer'],
+    ['Phone', activeProfile.phone || '—'],
+    ['Email', activeProfile.email || '—'],
+    ['DOB', activeProfile.dob || '—'],
+    ['Anniversary', activeProfile.anniversaryDate || '—'],
+    ['ID Card Number', activeProfile.idCardNumber || '—'],
+    ['Address', activeProfile.address || '—'],
+    ['Business Name', activeProfile.businessName || '—'],
+    ['Business Address', activeProfile.businessAddress || '—'],
+    ['Registration Number', activeProfile.registrationNumber || '—'],
+    ['Tax ID', activeProfile.taxId || '—'],
+    ['Business Phone', activeProfile.businessPhone || '—'],
+    ['Business Email', activeProfile.businessEmail || '—']
+  ]), [activeProfile]);
+  const uploadedDocuments = useMemo(() => ([
+    { key: 'photo', label: 'Photo', value: activeProfile.photo || '' },
+    { key: 'idFront', label: 'ID Front', value: activeProfile.idFront || '' },
+    { key: 'idBack', label: 'ID Back', value: activeProfile.idBack || '' },
+    { key: 'businessCertificate', label: 'Business Certificate', value: activeProfile.businessCertificate || '' }
+  ]).filter((item) => item.value), [activeProfile]);
 
-  function setPhotoFromFile(file, setter) {
+  function setPhotoFromFile(file, setter, field = 'photo') {
     if (!file) {
-      setter(prev => ({ ...prev, photo: '' }));
+      setter(prev => ({ ...prev, [field]: '' }));
       return;
     }
     if (file.size > 2 * 1024 * 1024) {
-      toast.show('Image is too large (max 2MB)', { type: 'error' });
+      toast.show('Upload is too large (max 2MB)', { type: 'error' });
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => setter(prev => ({ ...prev, photo: String(reader.result || '') }));
+    reader.onload = () => setter(prev => ({ ...prev, [field]: String(reader.result || '') }));
     reader.readAsDataURL(file);
+  }
+
+  function downloadDataUrl(filename, dataUrl) {
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = filename;
+    link.click();
   }
 
   function openCreate() {
@@ -152,7 +206,7 @@ function CustomersPage() {
     setModalMode('create');
     setSelectedId(null);
     setSelectedTab('profile');
-    setCreateForm({ name: '', phone: '', email: '', dob: '', idCardNumber: '', address: '', anniversaryDate: '', vip: false, photo: '' });
+    setCreateForm({ name: '', phone: '', email: '', customerType: 'retail', dob: '', idCardNumber: '', idFront: '', idBack: '', businessCertificate: '', address: '', businessName: '', businessAddress: '', registrationNumber: '', taxId: '', businessPhone: '', businessEmail: '', anniversaryDate: '', vip: false, photo: '' });
     setModalOpen(true);
   }
 
@@ -174,9 +228,19 @@ function CustomersPage() {
         name: createForm.name.trim(),
         phone: createForm.phone.trim(),
         email: createForm.email.trim(),
+        customerType: createForm.customerType,
         dob: createForm.dob || null,
         idCardNumber: createForm.idCardNumber.trim(),
+        idFront: createForm.idFront || '',
+        idBack: createForm.idBack || '',
+        businessCertificate: createForm.businessCertificate || '',
         address: createForm.address.trim(),
+        businessName: createForm.businessName.trim(),
+        businessAddress: createForm.businessAddress.trim(),
+        registrationNumber: createForm.registrationNumber.trim(),
+        taxId: createForm.taxId.trim(),
+        businessPhone: createForm.businessPhone.trim(),
+        businessEmail: createForm.businessEmail.trim(),
         anniversaryDate: createForm.anniversaryDate || null,
         vip: Boolean(createForm.vip),
         photo: createForm.photo || ''
@@ -223,9 +287,19 @@ function CustomersPage() {
       name: target.name || '',
       phone: target.phone || '',
       email: target.email || '',
+      customerType: target.customerType || 'retail',
       dob: target.dob ? String(target.dob).slice(0, 10) : '',
       idCardNumber: target.idCardNumber || '',
+      idFront: target.idFront || '',
+      idBack: target.idBack || '',
+      businessCertificate: target.businessCertificate || '',
       address: target.address || '',
+      businessName: target.businessName || '',
+      businessAddress: target.businessAddress || '',
+      registrationNumber: target.registrationNumber || '',
+      taxId: target.taxId || '',
+      businessPhone: target.businessPhone || '',
+      businessEmail: target.businessEmail || '',
       anniversaryDate: target.anniversaryDate ? String(target.anniversaryDate).slice(0, 10) : '',
       vip: Boolean(target.vip),
       photo: target.photo || ''
@@ -243,9 +317,19 @@ function CustomersPage() {
         name: editForm.name.trim(),
         phone: editForm.phone.trim(),
         email: editForm.email.trim(),
+        customerType: editForm.customerType,
         dob: editForm.dob || null,
         idCardNumber: editForm.idCardNumber.trim(),
+        idFront: editForm.idFront || '',
+        idBack: editForm.idBack || '',
+        businessCertificate: editForm.businessCertificate || '',
         address: editForm.address.trim(),
+        businessName: editForm.businessName.trim(),
+        businessAddress: editForm.businessAddress.trim(),
+        registrationNumber: editForm.registrationNumber.trim(),
+        taxId: editForm.taxId.trim(),
+        businessPhone: editForm.businessPhone.trim(),
+        businessEmail: editForm.businessEmail.trim(),
         anniversaryDate: editForm.anniversaryDate || null,
         vip: Boolean(editForm.vip),
         photo: editForm.photo || ''
@@ -339,8 +423,13 @@ function CustomersPage() {
       <p>Manage customer profiles and purchase history.</p>
 
       <div className="card">
-        <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
           <input className="input" placeholder="Search by name, phone, email, ID" value={query} onChange={e => setQuery(e.target.value)} style={{ width: '100%' }} />
+          <select className="select" value={customerTypeFilter} onChange={e => setCustomerTypeFilter(e.target.value)} style={{ minWidth: 220 }}>
+            <option value="all">All Customer Types</option>
+            <option value="retail">Retail Customers</option>
+            <option value="distribution">Distribution Customers</option>
+          </select>
           {canRemoveCustomers && (
             <>
               <select className="select" value={bulkAction} onChange={e => setBulkAction(e.target.value)} disabled={bulkDeleting}>
@@ -371,8 +460,10 @@ function CustomersPage() {
               )}
               <th align="left">Customer</th>
               <th align="left">Customer ID</th>
+              <th align="left">Type</th>
               <th align="left">Phone</th>
               <th align="left">Email</th>
+              <th align="left">Business</th>
               <th align="left">Points</th>
               <th align="left">VIP</th>
             </tr>
@@ -392,14 +483,16 @@ function CustomersPage() {
                 )}
                 <td style={{ fontWeight: 700 }}>{c.name}</td>
                 <td>{c.customerCode || '—'}</td>
+                <td>{String(c.customerType || 'retail') === 'distribution' ? 'Distribution' : 'Retail'}</td>
                 <td>{c.phone || '—'}</td>
                 <td>{c.email || '—'}</td>
+                <td>{c.businessName || '—'}</td>
                 <td>{Number(c.loyaltyPoints || 0)}</td>
                 <td>{c.vip ? 'Yes' : 'No'}</td>
               </tr>
             ))}
-            {loading && <tr><td colSpan={canRemoveCustomers ? 7 : 6} style={{ padding: 12, color: '#64748b' }}>Loading…</td></tr>}
-            {!loading && filtered.length === 0 && <tr><td colSpan={canRemoveCustomers ? 7 : 6} style={{ padding: 12, color: '#64748b' }}>No customers</td></tr>}
+            {loading && <tr><td colSpan={canRemoveCustomers ? 9 : 8} style={{ padding: 12, color: '#64748b' }}>Loading…</td></tr>}
+            {!loading && filtered.length === 0 && <tr><td colSpan={canRemoveCustomers ? 9 : 8} style={{ padding: 12, color: '#64748b' }}>No customers</td></tr>}
           </tbody>
         </table>
       </div>
@@ -444,55 +537,138 @@ function CustomersPage() {
           </div>
 
           {selectedTab === 'profile' && (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, alignItems: 'end' }}>
-              <label>
-                Name
-                <input className="input" value={activeProfile.name} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, name: e.target.value })) : setEditForm(p => ({ ...p, name: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
-              </label>
-              <label>
-                Phone
-                <input className="input" value={activeProfile.phone} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, phone: e.target.value })) : setEditForm(p => ({ ...p, phone: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
-              </label>
-              <label>
-                Email
-                <input className="input" value={activeProfile.email} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, email: e.target.value })) : setEditForm(p => ({ ...p, email: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
-              </label>
-              <label>
-                DOB
-                <input className="input" type="date" value={activeProfile.dob} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, dob: e.target.value })) : setEditForm(p => ({ ...p, dob: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
-              </label>
-              <label>
-                ID card number
-                <input className="input" value={activeProfile.idCardNumber} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, idCardNumber: e.target.value })) : setEditForm(p => ({ ...p, idCardNumber: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
-              </label>
-              <label>
-                Anniversary
-                <input className="input" type="date" value={activeProfile.anniversaryDate} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, anniversaryDate: e.target.value })) : setEditForm(p => ({ ...p, anniversaryDate: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
-              </label>
-              <label style={{ gridColumn: '1 / span 2' }}>
-                Address
-                <input className="input" value={activeProfile.address} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, address: e.target.value })) : setEditForm(p => ({ ...p, address: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <input type="checkbox" checked={!!activeProfile.vip} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, vip: e.target.checked })) : setEditForm(p => ({ ...p, vip: e.target.checked })))} disabled={modalMode !== 'create' && !canEditCustomers} />
-                VIP
-              </label>
-              <label style={{ gridColumn: '1 / span 2' }}>
-                Photo
-                <input className="input" type="file" accept="image/*" onChange={e => setPhotoFromFile(e.target.files?.[0], modalMode === 'create' ? setCreateForm : setEditForm)} disabled={modalMode !== 'create' && !canEditCustomers} />
-              </label>
-              {activeProfile.photo && (
-                <div style={{ gridColumn: '1 / span 2' }}>
-                  <img src={activeProfile.photo} alt="customer" style={{ maxHeight: 160, borderRadius: 8 }} />
+            <div style={{ display: 'grid', gap: 16 }}>
+              <div className="card" style={{ padding: 12, color: '#0f172a' }}>
+                <div style={{ fontWeight: 800, marginBottom: 10, color: '#0f172a' }}>Profile</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12, alignItems: 'start' }}>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>Name</div>
+                    <input className="input" value={activeProfile.name} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, name: e.target.value })) : setEditForm(p => ({ ...p, name: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>Phone</div>
+                    <input className="input" value={activeProfile.phone} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, phone: e.target.value })) : setEditForm(p => ({ ...p, phone: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>Email</div>
+                    <input className="input" value={activeProfile.email} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, email: e.target.value })) : setEditForm(p => ({ ...p, email: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>Customer Type</div>
+                    <select className="select" value={activeProfile.customerType || 'retail'} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, customerType: e.target.value })) : setEditForm(p => ({ ...p, customerType: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers}>
+                      <option value="retail">Retail Customer</option>
+                      <option value="distribution">Distribution Customer</option>
+                    </select>
+                  </label>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>DOB</div>
+                    <input className="input" type="date" value={activeProfile.dob} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, dob: e.target.value })) : setEditForm(p => ({ ...p, dob: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>Anniversary</div>
+                    <input className="input" type="date" value={activeProfile.anniversaryDate} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, anniversaryDate: e.target.value })) : setEditForm(p => ({ ...p, anniversaryDate: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>ID Card Number</div>
+                    <input className="input" value={activeProfile.idCardNumber} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, idCardNumber: e.target.value })) : setEditForm(p => ({ ...p, idCardNumber: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 24 }}>
+                    <input type="checkbox" checked={!!activeProfile.vip} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, vip: e.target.checked })) : setEditForm(p => ({ ...p, vip: e.target.checked })))} disabled={modalMode !== 'create' && !canEditCustomers} />
+                    VIP
+                  </label>
+                  <label style={{ gridColumn: '1 / span 2' }}>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>Address</div>
+                    <input className="input" value={activeProfile.address} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, address: e.target.value })) : setEditForm(p => ({ ...p, address: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
                 </div>
-              )}
+              </div>
+
+              <div className="card" style={{ padding: 12, color: '#0f172a' }}>
+                <div style={{ fontWeight: 800, marginBottom: 10, color: '#0f172a' }}>Business Details</div>
+                <div style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>Optional information for business customers.</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>Business Name</div>
+                    <input className="input" value={activeProfile.businessName || ''} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, businessName: e.target.value })) : setEditForm(p => ({ ...p, businessName: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>Registration Number</div>
+                    <input className="input" value={activeProfile.registrationNumber || ''} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, registrationNumber: e.target.value })) : setEditForm(p => ({ ...p, registrationNumber: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>Tax ID</div>
+                    <input className="input" value={activeProfile.taxId || ''} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, taxId: e.target.value })) : setEditForm(p => ({ ...p, taxId: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>Business Phone</div>
+                    <input className="input" value={activeProfile.businessPhone || ''} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, businessPhone: e.target.value })) : setEditForm(p => ({ ...p, businessPhone: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>Business Email</div>
+                    <input className="input" value={activeProfile.businessEmail || ''} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, businessEmail: e.target.value })) : setEditForm(p => ({ ...p, businessEmail: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
+                  <label style={{ gridColumn: '1 / span 2' }}>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>Business Address</div>
+                    <input className="input" value={activeProfile.businessAddress || ''} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, businessAddress: e.target.value })) : setEditForm(p => ({ ...p, businessAddress: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
+                </div>
+              </div>
+
+              <div className="card" style={{ padding: 12, color: '#0f172a' }}>
+                <div style={{ fontWeight: 800, marginBottom: 10, color: '#0f172a' }}>Documents & Images</div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>Photo</div>
+                    <input className="input" type="file" accept="image/*" onChange={e => setPhotoFromFile(e.target.files?.[0], modalMode === 'create' ? setCreateForm : setEditForm, 'photo')} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>ID Front</div>
+                    <input className="input" type="file" accept="image/*" onChange={e => setPhotoFromFile(e.target.files?.[0], modalMode === 'create' ? setCreateForm : setEditForm, 'idFront')} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>ID Back</div>
+                    <input className="input" type="file" accept="image/*" onChange={e => setPhotoFromFile(e.target.files?.[0], modalMode === 'create' ? setCreateForm : setEditForm, 'idBack')} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>Business Certificate</div>
+                    <input className="input" type="file" accept="image/*,.pdf" onChange={e => setPhotoFromFile(e.target.files?.[0], modalMode === 'create' ? setCreateForm : setEditForm, 'businessCertificate')} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
+                </div>
+                {modalMode !== 'create' && (
+                  <div className="card" style={{ padding: 12, marginTop: 12 }}>
+                    <div style={{ fontWeight: 800, marginBottom: 8, color: '#0f172a' }}>Collected Details</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
+                      {detailRows.map(([label, value]) => (
+                        <div key={label} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: '#fff' }}>
+                          <div style={{ color: '#475569', fontSize: 12 }}>{label}</div>
+                          <div style={{ color: '#0f172a', fontWeight: 700, wordBreak: 'break-word' }}>{value || '—'}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 12 }}>
+                  {uploadedDocuments.map((doc) => (
+                    <div key={doc.key} className="card" style={{ padding: 10 }}>
+                      <div style={{ fontSize: 12, color: '#475569', marginBottom: 6 }}>{doc.label}</div>
+                      {String(doc.value).startsWith('data:application/pdf')
+                        ? <iframe title={doc.label} src={doc.value} style={{ width: '100%', height: 180, border: '1px solid #e2e8f0', borderRadius: 8, marginBottom: 8, background: '#fff' }} />
+                        : <img src={doc.value} alt={doc.label} style={{ maxHeight: 160, maxWidth: '100%', borderRadius: 8, marginBottom: 8 }} />}
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <a className="btn" href={doc.value} target="_blank" rel="noreferrer">Preview</a>
+                        <button className="btn" type="button" onClick={() => downloadDataUrl(`${doc.key}-${activeProfile.name || 'customer'}`, doc.value)}>Download</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
               {modalMode !== 'create' && selected?.loyaltyPoints != null && (
-                <div style={{ gridColumn: '1 / span 2', color: '#94a3b8' }}>
+                <div style={{ color: '#94a3b8' }}>
                   Loyalty points: {Number(selected.loyaltyPoints || 0)}
                 </div>
               )}
               {modalMode !== 'create' && selected && (
-                <div style={{ gridColumn: '1 / span 2', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, marginTop: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, marginTop: 8 }}>
                   <div className="card" style={{ padding: 12 }}>
                     <div style={{ color: '#64748b', fontSize: 12 }}>Outstanding Credit</div>
                     <strong>{formatCurrency(Number(selected.outstandingBalance || 0), settings)}</strong>
