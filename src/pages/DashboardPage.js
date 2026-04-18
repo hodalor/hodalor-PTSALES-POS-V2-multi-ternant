@@ -29,6 +29,7 @@ function DashboardPage() {
   const [wholesalePending, setWholesalePending] = useState(0);
   const todayIso = new Date().toISOString().slice(0, 10);
   const defaultFromIso = new Date(Date.now() - 29 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const [periodMode, setPeriodMode] = useState('range');
   const [dateFrom, setDateFrom] = useState(defaultFromIso);
   const [dateTo, setDateTo] = useState(todayIso);
   const [branchId, setBranchId] = useState((roleLower === 'superadmin' || roleLower === 'admin') ? '' : settings.currentBranchId);
@@ -38,12 +39,13 @@ function DashboardPage() {
   }, [roleLower, settings.currentBranchId]);
 
   const inRange = useCallback((iso) => {
+    if (periodMode === 'all_time') return true;
     const ts = new Date(iso).getTime();
     if (Number.isNaN(ts)) return false;
     const fromTs = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : -Infinity;
     const toTs = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : Infinity;
     return ts >= fromTs && ts <= toTs;
-  }, [dateFrom, dateTo]);
+  }, [dateFrom, dateTo, periodMode]);
   const matchBranch = useCallback((value) => {
     if (!(roleLower === 'superadmin' || roleLower === 'admin')) return String(value || '') === String(settings.currentBranchId || '');
     if (!branchId) return true;
@@ -57,8 +59,8 @@ function DashboardPage() {
         if (alive) setExpenses([]);
         return;
       }
-      const to = dateTo || todayIso;
-      const from = dateFrom || defaultFromIso;
+      const to = periodMode === 'all_time' ? undefined : (dateTo || todayIso);
+      const from = periodMode === 'all_time' ? undefined : (dateFrom || defaultFromIso);
       try {
         const list = await expensesApi.list({ branchId: (roleLower === 'superadmin' || roleLower === 'admin') ? (branchId || undefined) : settings.currentBranchId, from, to });
         if (!alive) return;
@@ -69,7 +71,7 @@ function DashboardPage() {
       }
     })();
     return () => { alive = false; };
-  }, [settings.currentBranchId, roleLower, canUseExpenses, branchId, dateFrom, dateTo, todayIso, defaultFromIso]);
+  }, [settings.currentBranchId, roleLower, canUseExpenses, branchId, dateFrom, dateTo, todayIso, defaultFromIso, periodMode]);
 
   useEffect(() => {
     let alive = true;
@@ -163,8 +165,13 @@ function DashboardPage() {
         row.profit = row.revenue - row.cost;
       }
     }
-    const start = new Date(`${dateFrom || defaultFromIso}T00:00:00`);
-    const end = new Date(`${dateTo || todayIso}T00:00:00`);
+    const filteredDates = sourceSales.map((sale) => new Date(sale.created_at).getTime()).filter((ts) => !Number.isNaN(ts)).sort((a, b) => a - b);
+    const start = periodMode === 'all_time'
+      ? new Date(filteredDates[0] || Date.now())
+      : new Date(`${dateFrom || defaultFromIso}T00:00:00`);
+    const end = periodMode === 'all_time'
+      ? new Date(filteredDates[filteredDates.length - 1] || Date.now())
+      : new Date(`${dateTo || todayIso}T00:00:00`);
     const daysInRange = [];
     for (let t = start.getTime(); t <= end.getTime(); t += 24 * 3600 * 1000) {
       daysInRange.push(new Date(t).toISOString().slice(0, 10));
@@ -266,7 +273,7 @@ function DashboardPage() {
     for (const r of grid) for (const v of r.hours) max = Math.max(max, v);
 
     return { todayTotal, todayProfit, itemsSold, transactionCount: sourceSales.length, lineData, paymentBar, doughData, topBar, stackedOptions, lineOptions, barOptions, cashierBar, last30Revenue, last30Profit, last30Cost, marginPct, cashierLeaderboard, topProfitProducts, heatmap: { grid, max } };
-  }, [sales, products, heatMode, dateFrom, dateTo, inRange, matchBranch, defaultFromIso, todayIso]);
+  }, [sales, products, heatMode, dateFrom, dateTo, inRange, matchBranch, defaultFromIso, todayIso, periodMode]);
 
   const finance = useMemo(() => {
     const expenseTotal = expenses.reduce((s, x) => s + (Number(x.amount) || 0), 0);
@@ -354,12 +361,19 @@ function DashboardPage() {
       <div className="card" style={{ padding: 16, marginBottom: 16 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, alignItems: 'end' }}>
           <label>
+            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Period</div>
+            <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
+              <option value="range">Custom Range</option>
+              <option value="all_time">All Time</option>
+            </select>
+          </label>
+          <label>
             <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>From</div>
-            <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
             <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>To</div>
-            <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+            <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
             <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Branch</div>

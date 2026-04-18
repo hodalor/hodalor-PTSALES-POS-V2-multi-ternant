@@ -85,6 +85,7 @@ function InventoryPage() {
     const stockTotals = rows.map((p) => getStockForProduct(p, branchId));
     const totalStock = stockTotals.reduce((sum, qty) => sum + (Number(qty) || 0), 0);
     const totalCost = rows.reduce((sum, p) => sum + ((Number(p.costPrice || 0) || 0) * getStockForProduct(p, branchId)), 0);
+    const expectedRevenue = rows.reduce((sum, p) => sum + (getSalePrice(p) * getStockForProduct(p, branchId)), 0);
     const expectedProfit = rows.reduce((sum, p) => {
       const qty = getStockForProduct(p, branchId);
       const margin = getSalePrice(p) - Number(p.costPrice || 0);
@@ -95,6 +96,7 @@ function InventoryPage() {
       totalItems: rows.length,
       totalStock,
       totalCost,
+      expectedRevenue,
       expectedProfit
     };
   }, [rows, branchId, getSalePrice, getStockForProduct]);
@@ -196,6 +198,7 @@ function InventoryPage() {
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Total Items</div><div style={{ fontSize: 32, fontWeight: 800 }}>{summary.totalItems}</div></div>
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Total Stock</div><div style={{ fontSize: 32, fontWeight: 800 }}>{summary.totalStock}</div></div>
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Total Cost</div><div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(summary.totalCost, settings)}</div></div>
+        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Expected Revenue</div><div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(summary.expectedRevenue, settings)}</div></div>
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Expected Profit</div><div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(summary.expectedProfit, settings)}</div></div>
       </div>
       <div className="card">
