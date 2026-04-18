@@ -47,20 +47,21 @@ export function requireRole(roles = []) {
 
 export function requireRoleOrPerm(roles = [], perm = '') {
   const set = new Set((roles || []).map(r => String(r || '').toLowerCase()));
-  const p = String(perm || '');
+  const perms = (Array.isArray(perm) ? perm : [perm]).map(p => String(p || '').trim()).filter(Boolean);
   return async (req, res, next) => {
     const role = String(req.user?.role || '').toLowerCase();
     if (role === 'superadmin') return next();
-    if (!p && set.has(role)) return next();
-    if (p && role === 'admin' && set.has(role)) return next();
+    if (perms.length === 0 && set.has(role)) return next();
+    if (perms.length > 0 && role === 'admin' && set.has(role)) return next();
     const grants = Array.isArray(req.user?.grants) ? req.user.grants : [];
-    if (p && grants.includes(p)) return next();
-    if (p) {
+    if (perms.length > 0 && perms.some(p => grants.includes(p))) return next();
+    if (perms.length > 0) {
       try {
         const doc = await Settings.findOne({ key: 'default' });
         const map = doc?.data?.userGrants || {};
         const arr = map?.[req.user?.name];
-        if (Array.isArray(arr) && filterGrantsByFeatureFlags(arr, doc?.data?.featureFlags || {}).includes(p)) return next();
+        const filtered = Array.isArray(arr) ? filterGrantsByFeatureFlags(arr, doc?.data?.featureFlags || {}) : [];
+        if (perms.some(p => filtered.includes(p))) return next();
       } catch {}
     }
     return res.status(403).json({ error: 'Forbidden' });
