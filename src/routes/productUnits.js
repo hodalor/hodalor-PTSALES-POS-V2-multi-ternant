@@ -16,6 +16,7 @@ r.get('/', async (req, res) => {
     branchId: req.query.branchId || '',
     inventoryType: req.query.inventoryType || '',
     status: req.query.status || '',
+    reservationToken: req.query.reservationToken || '',
     query: req.query.query || '',
     page: Number(req.query.page || 1),
     pageSize: Math.min(100, Math.max(1, Number(req.query.pageSize || 30)))

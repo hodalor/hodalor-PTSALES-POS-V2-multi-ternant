@@ -194,18 +194,34 @@ export async function reserveSerializedUnit({ code, unitId = '', productId = '',
   return updated;
 }
 
-export async function listSerializedUnits({ productId = '', variantId = '', branchId = '', inventoryType = '', status = '', query = '', page = 1, pageSize = 30 }) {
+export async function listSerializedUnits({ productId = '', variantId = '', branchId = '', inventoryType = '', status = '', reservationToken = '', query = '', page = 1, pageSize = 30 }) {
   const filter = {};
   if (productId) filter.productId = String(productId);
   if (variantId) filter.variantId = String(variantId);
   if (branchId) filter.branchId = String(branchId);
   if (inventoryType) filter.inventoryType = normalizeInventoryType(inventoryType);
-  if (status) filter.status = String(status);
+  const availabilityFilter = status === 'available'
+    ? [
+        { status: 'in_stock' },
+        ...(reservationToken ? [{ status: 'reserved', reservationToken: String(reservationToken) }] : [])
+      ]
+    : null;
+  if (status === 'available') {
+    filter.$or = availabilityFilter;
+  } else if (status) {
+    filter.status = String(status);
+  }
   if (query) {
-    filter.$or = [
+    const queryFilter = [
       { imei: new RegExp(String(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
       { serialNumber: new RegExp(String(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }
     ];
+    if (availabilityFilter) {
+      delete filter.$or;
+      filter.$and = [{ $or: availabilityFilter }, { $or: queryFilter }];
+    } else {
+      filter.$or = queryFilter;
+    }
   }
   const skip = Math.max(0, (Number(page || 1) - 1) * Number(pageSize || 30));
   const [rows, total] = await Promise.all([
