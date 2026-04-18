@@ -73,6 +73,7 @@ function ProductsPage() {
   const [sku, setSku] = useState('');
   const [price, setPrice] = useState('');
   const [wholesalePrice, setWholesalePrice] = useState('');
+  const [warehousePrice, setWarehousePrice] = useState('');
   const [agentPrice, setAgentPrice] = useState('');
   const [category, setCategory] = useState(configuredCategories[0] || '');
   const [newCategory, setNewCategory] = useState('');
@@ -134,7 +135,7 @@ function ProductsPage() {
   }, [category, categoryOptions]);
 
   function resetForm() {
-    setName(''); setSku(''); setPrice(''); setWholesalePrice(''); setAgentPrice('');
+    setName(''); setSku(''); setPrice(''); setWholesalePrice(''); setWarehousePrice(''); setAgentPrice('');
     setCategory(categoryOptions[0] || 'General'); setNewCategory('');
     setInitialStock(0); setEditStockQty(0); setLowStock(0); setWholesaleLowStock(0); setWarehouseLowStock(0); setImagePreview('');
     setCostPrice(''); setExpiryDate('');
@@ -162,6 +163,7 @@ function ProductsPage() {
     setSku(p.sku);
     setPrice(String(p.price || 0));
     setWholesalePrice(String(p.wholesalePrice != null ? p.wholesalePrice : (p.price || 0)));
+    setWarehousePrice(String(p.warehousePrice != null ? p.warehousePrice : (p.wholesalePrice != null ? p.wholesalePrice : (p.price || 0))));
     setAgentPrice(String(p.agentPrice != null ? p.agentPrice : (p.price || 0)));
     setCostPrice(p.costPrice != null ? String(p.costPrice) : '');
     setExpiryDate(p.expiryDate ? String(p.expiryDate).slice(0, 10) : '');
@@ -178,7 +180,7 @@ function ProductsPage() {
     setAllowCredit(p.allowCredit !== false);
     setMinimumCreditPercentage(p.minimumCreditPercentage != null ? String(p.minimumCreditPercentage) : '');
     setTrackType(p.trackType || 'quantity');
-    const hasPricing = (p.costPrice != null && String(p.costPrice) !== '' && Number(p.costPrice) > 0) || !!p.expiryDate || Number(p.wholesalePrice || 0) > 0 || Number(p.agentPrice || 0) > 0;
+    const hasPricing = (p.costPrice != null && String(p.costPrice) !== '' && Number(p.costPrice) > 0) || !!p.expiryDate || Number(p.wholesalePrice || 0) > 0 || Number(p.warehousePrice || 0) > 0 || Number(p.agentPrice || 0) > 0;
     const hasCredit = p.allowCredit === false || Number(p.minimumCreditPercentage || 0) > 0;
     const hasUnits = (p.unitKind && p.unitKind !== 'none') || p.unitValue != null || !!p.unitSymbol || !!p.sizeLabel || !!p.shoeSize;
     const hasAttrs = Array.isArray(p.attributes) && p.attributes.length > 0;
@@ -373,7 +375,8 @@ function ProductsPage() {
             price: Number(price),
             retailPrice: Number(price),
             wholesalePrice: Number(wholesalePrice || price || 0),
-            agentPrice: Number(agentPrice || wholesalePrice || price || 0),
+            warehousePrice: Number(warehousePrice || wholesalePrice || price || 0),
+            agentPrice: Number(agentPrice || warehousePrice || wholesalePrice || price || 0),
             costPrice: Number(costPrice) || 0,
             expiryDate: expiryDate ? new Date(expiryDate).toISOString() : null,
             category,
@@ -478,7 +481,8 @@ function ProductsPage() {
             price: Number(price),
             retailPrice: Number(price),
             wholesalePrice: Number(wholesalePrice || price || 0),
-            agentPrice: Number(agentPrice || wholesalePrice || price || 0),
+            warehousePrice: Number(warehousePrice || wholesalePrice || price || 0),
+            agentPrice: Number(agentPrice || warehousePrice || wholesalePrice || price || 0),
             costPrice: Number(costPrice) || 0,
             expiryDate: expiryDate ? new Date(expiryDate).toISOString() : null,
             category,
@@ -574,7 +578,8 @@ function ProductsPage() {
             if (original.sku !== sku.trim()) changed.sku = { from: original.sku, to: sku.trim() };
             if (Number(original.price) !== Number(price)) changed.price = { from: Number(original.price), to: Number(price) };
             if (Number(original.wholesalePrice || original.price || 0) !== (Number(wholesalePrice || price) || 0)) changed.wholesalePrice = { from: Number(original.wholesalePrice || original.price || 0), to: Number(wholesalePrice || price) || 0 };
-            if (Number(original.agentPrice || original.price || 0) !== (Number(agentPrice || wholesalePrice || price) || 0)) changed.agentPrice = { from: Number(original.agentPrice || original.price || 0), to: Number(agentPrice || wholesalePrice || price) || 0 };
+            if (Number(original.warehousePrice || original.wholesalePrice || original.price || 0) !== (Number(warehousePrice || wholesalePrice || price) || 0)) changed.warehousePrice = { from: Number(original.warehousePrice || original.wholesalePrice || original.price || 0), to: Number(warehousePrice || wholesalePrice || price) || 0 };
+            if (Number(original.agentPrice || original.price || 0) !== (Number(agentPrice || warehousePrice || wholesalePrice || price) || 0)) changed.agentPrice = { from: Number(original.agentPrice || original.price || 0), to: Number(agentPrice || warehousePrice || wholesalePrice || price) || 0 };
             if ((original.category || '') !== category) changed.category = { from: original.category || '', to: category };
             if ((original.lowStock || 0) !== Number(lowStock)) changed.lowStock = { from: original.lowStock || 0, to: Number(lowStock) };
             if ((original.wholesaleLowStock ?? original.lowStock ?? 0) !== Number(wholesaleLowStock)) changed.wholesaleLowStock = { from: original.wholesaleLowStock ?? original.lowStock ?? 0, to: Number(wholesaleLowStock) };
@@ -1112,7 +1117,11 @@ function ProductsPage() {
                   </div>
                 )}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+              <div>
+                <label className="label">Warehouse Price</label>
+                <input className="input" placeholder="Warehouse selling price" type="number" value={warehousePrice} onChange={e => setWarehousePrice(e.target.value)} style={{ display: 'block', width: '100%' }} />
+              </div>
               {visiblePriceTiers.includes('agent') && (
                 <div>
                   <label className="label">Agent Price</label>
@@ -1137,7 +1146,7 @@ function ProductsPage() {
               </div>
             </div>
             <div style={{ color: '#94a3b8', fontSize: 12 }}>
-              Retail, Wholesale, and Agent prices are stored separately and used independently across retail POS, wholesale POS, inventory, sales, and invoices.
+              Retail, Wholesale, Warehouse, and Agent prices are stored separately and used independently across POS, inventory, sales, and invoices.
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
                 <div>

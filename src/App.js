@@ -236,7 +236,7 @@ function App() {
         const meta = await tenantsApi.me().catch(() => ({}));
         const remote = await settingsApi.get();
         if ((remote && Object.keys(remote).length > 0) || (!isMaster && meta && typeof meta === 'object')) {
-          const merged = isMaster
+          const mergedBase = isMaster
             ? (remote || {})
             : {
                 ...(remote || {}),
@@ -247,6 +247,10 @@ function App() {
                 subscriptionExpiresAt: remote?.subscriptionExpiresAt || meta?.subscriptionExpiresAt || null,
                 subscriptionPermanent: remote?.subscriptionPermanent ?? meta?.subscriptionPermanent ?? false
               };
+          const merged = {
+            ...mergedBase,
+            taxRate: Number.isFinite(Number(mergedBase?.taxRate)) ? Math.max(0, Math.min(1, Number(mergedBase.taxRate))) : 0
+          };
           dispatch(setAllSettings(merged));
           try {
             const root = document.documentElement;

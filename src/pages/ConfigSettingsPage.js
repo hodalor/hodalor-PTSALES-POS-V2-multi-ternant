@@ -60,6 +60,7 @@ function ConfigSettingsPage() {
     'invoicePaidStampThankYou',
     'invoicePaidStampShowDate',
     'invoicePaidStampColor',
+    'taxRate',
     'themeColor',
     'currentBranchId',
     'categories',

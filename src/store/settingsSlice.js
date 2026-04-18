@@ -40,7 +40,7 @@ const initialState = {
   receiptPrefix: 'RCPT',
   nextReceiptNumber: 1,
   drawerOpenOnCash: false,
-  taxRate: 0.10,
+  taxRate: 0,
   currencyCode: 'GHS',
   currencySymbol: '₵',
   currencyPosition: 'prefix',
