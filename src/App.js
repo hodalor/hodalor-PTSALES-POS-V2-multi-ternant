@@ -535,7 +535,7 @@ function App() {
             <Route path="/suppliers" element={<ProtectedRoute feature="sections.partners" roles={['Admin','Manager','Inventory Staff']} grant={['view_suppliers','see_suppliers']}><SuppliersPage /></ProtectedRoute>} />
             <Route path="/labels" element={<ProtectedRoute feature="modules.labels" roles={['Admin','Manager','Inventory Staff']} grant={['view_labels','see_labels']}><LabelsPage /></ProtectedRoute>} />
             <Route path="/reports" element={<ProtectedRoute feature="modules.reports" roles={['Admin','Manager','Auditor']} grant={['view_reports','see_reports']}><ReportsPage /></ProtectedRoute>} />
-            <Route path="/backup" element={<ProtectedRoute feature="modules.backup" roles={['Admin','Manager','SuperAdmin']}><BackupPage /></ProtectedRoute>} />
+            <Route path="/backup" element={<ProtectedRoute feature="modules.backup" roles={['Admin','Manager','SuperAdmin']} grant={['export_tenant_data','import_tenant_data']}><BackupPage /></ProtectedRoute>} />
             <Route path="/imei-conflicts" element={<ProtectedRoute feature="modules.backup" roles={['Admin','Manager','SuperAdmin']} grant={['view_imei_conflicts']}><ImeiConflictsPage /></ProtectedRoute>} />
             <Route path="/customers" element={<ProtectedRoute feature="sections.partners" roles={['Admin','Manager','Cashier']} grant={['view_customers','see_customers']}><CustomersPage /></ProtectedRoute>} />
             <Route path="/credit-control" element={<ProtectedRoute feature="modules.creditControl" roles={['Admin','Manager','Cashier']} grant={['view_credit_control']}><CreditControlPage /></ProtectedRoute>} />

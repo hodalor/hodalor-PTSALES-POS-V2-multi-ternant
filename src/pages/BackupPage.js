@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSelector, useStore } from 'react-redux';
 import { useToast } from '../components/ToastProvider';
@@ -10,6 +10,7 @@ import { refreshAllData } from '../offline/refreshAll';
 import { useDispatch } from 'react-redux';
 import { listImeiConflicts } from '../offline/imeiConflicts';
 import { setQueueSummary } from '../store/offlineQueueSlice';
+import * as tenantsApi from '../api/tenants';
 
 function BackupPage() {
   const toast = useToast();
@@ -23,6 +24,14 @@ function BackupPage() {
   const [itemsByCollection, setItemsByCollection] = useState(new Map());
   const [imeiConflictCount, setImeiConflictCount] = useState(0);
   const [selectedIds, setSelectedIds] = useState([]);
+  const [importMode, setImportMode] = useState('keep_current');
+  const [importFile, setImportFile] = useState(null);
+  const fileInputRef = useRef(null);
+  const roleLower = String(auth.role || '').toLowerCase();
+  const grants = Array.isArray(auth.grants) ? auth.grants : [];
+  const hasGrant = (key) => grants.includes(key) || (key.startsWith('view_') && grants.includes(`see_${key.slice(5)}`)) || (key.startsWith('see_') && grants.includes(`view_${key.slice(4)}`));
+  const canExportTenantData = roleLower === 'superadmin' || roleLower === 'admin' || hasGrant('export_tenant_data');
+  const canImportTenantData = roleLower === 'superadmin' || roleLower === 'admin' || hasGrant('import_tenant_data');
 
   async function refreshQueueState() {
     try {
@@ -135,6 +144,53 @@ function BackupPage() {
     }
   }
 
+  function downloadJsonFile(filename, data) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function onExportTenantData() {
+    if (loading || !canExportTenantData) return;
+    setLoading(true);
+    try {
+      const data = await tenantsApi.exportMyTenantData();
+      const tenantId = String(auth.user?.tenantId || 'tenant').trim() || 'tenant';
+      downloadJsonFile(`${tenantId}-backup-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`, data);
+      toast.show('Tenant data exported', { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to export tenant data'), { type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function onImportTenantData() {
+    if (loading || !canImportTenantData) return;
+    if (!importFile) {
+      toast.show('Choose a backup file first', { type: 'error' });
+      return;
+    }
+    setLoading(true);
+    try {
+      const raw = await importFile.text();
+      const parsed = JSON.parse(raw);
+      await tenantsApi.importMyTenantData({ mode: importMode, data: parsed });
+      toast.show('Tenant data imported. Refreshing app…', { type: 'success' });
+      setImportFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      setTimeout(() => window.location.reload(), 500);
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to import tenant data'), { type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div style={{ padding: 16 }}>
       <div className="card" style={{ padding: 16, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -161,6 +217,34 @@ function BackupPage() {
           </button>
         </div>
       </div>
+
+      {(canExportTenantData || canImportTenantData) ? (
+        <div className="card" style={{ padding: 16, marginBottom: 12 }}>
+          <h2 className="section-title" style={{ marginTop: 0 }}>Tenant Import / Export</h2>
+          <div style={{ color: '#64748b', marginBottom: 12 }}>
+            Download all tenant MongoDB collections as a backup JSON file, or import a backup into the current tenant database.
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 220px auto auto', gap: 12, alignItems: 'end' }}>
+            <label>
+              Backup File
+              <input ref={fileInputRef} className="input" type="file" accept="application/json,.json" onChange={(e) => setImportFile(e.target.files?.[0] || null)} disabled={loading || !canImportTenantData} />
+            </label>
+            <label>
+              Import Mode
+              <select className="input" value={importMode} onChange={(e) => setImportMode(e.target.value)} disabled={loading || !canImportTenantData}>
+                <option value="keep_current">Keep Current Data</option>
+                <option value="overwrite">Overwrite Current Data</option>
+              </select>
+            </label>
+            <button className="btn" onClick={onExportTenantData} disabled={loading || !canExportTenantData}>
+              {loading ? 'Working…' : 'Export Tenant Data'}
+            </button>
+            <button className="btn btn-primary" onClick={onImportTenantData} disabled={loading || !canImportTenantData}>
+              {loading ? 'Importing…' : 'Import Tenant Data'}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div style={{ display: 'grid', gridTemplateColumns: '260px 1fr', gap: 12, alignItems: 'start' }}>
         <div className="card" style={{ padding: 10 }}>

@@ -495,7 +495,7 @@ function Sidebar({ collapsed }) {
           <span className="sidebar-text">Reports</span>
         </NavLink>
         )}
-        {isFeatureEnabled(settings, 'modules.backup') && can(['Admin','Manager','SuperAdmin'], null) && (
+        {isFeatureEnabled(settings, 'modules.backup') && can(['Admin','Manager','SuperAdmin'], ['export_tenant_data', 'import_tenant_data']) && (
         <>
           <NavLink to="/backup" className="sidebar-link" title="Backup" style={{ display: 'flex', alignItems: 'center' }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>

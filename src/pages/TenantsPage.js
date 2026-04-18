@@ -88,6 +88,10 @@ function TenantsPage() {
   const [subscriptionManagement, setSubscriptionManagement] = useState(DEFAULT_SUBSCRIPTION_MANAGEMENT);
   const [savingSubscriptionManagement, setSavingSubscriptionManagement] = useState(false);
   const [selectedPlanKey, setSelectedPlanKey] = useState('basic');
+  const [tenantTransferLoading, setTenantTransferLoading] = useState('');
+  const [tenantImportTarget, setTenantImportTarget] = useState(null);
+  const [tenantImportMode, setTenantImportMode] = useState('keep_current');
+  const [tenantImportFile, setTenantImportFile] = useState(null);
 
   const sections = useMemo(() => TENANT_SIDEBAR_SECTIONS, []);
   const filteredPaymentRows = useMemo(() => {
@@ -159,6 +163,16 @@ function TenantsPage() {
       : `${subscriptionCurrencySymbol || subscriptionCurrencyCode}${numeric}`.trim();
   }
 
+  function downloadJsonFile(filename, data) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
   function setValue(key, value) {
     setForm((prev) => ({
       ...prev,
@@ -180,6 +194,49 @@ function TenantsPage() {
   function closeModal() {
     setShowForm(false);
     resetForm(planOptions[0] || 'basic');
+  }
+
+  async function exportTenantBackup(row) {
+    const key = `export:${row.tenantId}`;
+    setTenantTransferLoading(key);
+    try {
+      const data = await tenantsApi.exportTenantData(row.tenantId);
+      downloadJsonFile(`${row.tenantId}-backup-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.json`, data);
+      toast.show(`Exported tenant data for ${row.tenantId}`, { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to export tenant data'), { type: 'error' });
+    } finally {
+      setTenantTransferLoading('');
+    }
+  }
+
+  function openTenantImport(row) {
+    setTenantImportTarget(row);
+    setTenantImportMode('keep_current');
+    setTenantImportFile(null);
+  }
+
+  async function importTenantBackup() {
+    if (!tenantImportTarget) return;
+    if (!tenantImportFile) {
+      toast.show('Choose a backup file first', { type: 'error' });
+      return;
+    }
+    const key = `import:${tenantImportTarget.tenantId}`;
+    setTenantTransferLoading(key);
+    try {
+      const raw = await tenantImportFile.text();
+      const parsed = JSON.parse(raw);
+      await tenantsApi.importTenantData(tenantImportTarget.tenantId, { mode: tenantImportMode, data: parsed });
+      toast.show(`Imported tenant data for ${tenantImportTarget.tenantId}`, { type: 'success' });
+      setTenantImportTarget(null);
+      setTenantImportFile(null);
+      await load();
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to import tenant data'), { type: 'error' });
+    } finally {
+      setTenantTransferLoading('');
+    }
   }
 
   function daysLeftLabel(value) {
@@ -816,8 +873,14 @@ function TenantsPage() {
                   <td>{row.dbName}</td>
                   <td>{row.disabled ? 'Disabled' : 'Active'}{row.subscriptionExpiresAt ? ` • ${daysLeftLabel(String(row.subscriptionExpiresAt).slice(0, 10))}` : ''}</td>
                   <td><span style={{ display: 'inline-block', width: 16, height: 16, borderRadius: 999, background: String(row.themeColor || '#16a34a'), border: '1px solid #cbd5e1' }} /></td>
-                  <td style={{ display: 'flex', gap: 8 }}>
+                  <td style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <button className="btn" onClick={() => startEdit(row)}>Edit</button>
+                    <button className="btn" onClick={() => exportTenantBackup(row)} disabled={tenantTransferLoading === `export:${row.tenantId}` || tenantTransferLoading.startsWith('import:')}>
+                      {tenantTransferLoading === `export:${row.tenantId}` ? 'Exporting…' : 'Export Data'}
+                    </button>
+                    <button className="btn" onClick={() => openTenantImport(row)} disabled={!!tenantTransferLoading}>
+                      Import Data
+                    </button>
                     <button className="btn" style={{ color: '#b91c1c' }} onClick={async () => {
                       const { confirmDialog } = await import('../utils/dialogs');
                       const ok = await confirmDialog(`Delete tenant ${row.name}? This removes the tenant database.`);
@@ -1108,6 +1171,38 @@ function TenantsPage() {
               </div>
             </div>
           </form>
+        </Modal>
+      )}
+      {tenantImportTarget && (
+        <Modal
+          title={`Import Tenant Data: ${tenantImportTarget.tenantId}`}
+          onClose={() => { if (!tenantTransferLoading) setTenantImportTarget(null); }}
+          variant="light"
+          footer={
+            <>
+              <button className="btn" type="button" onClick={() => setTenantImportTarget(null)} disabled={!!tenantTransferLoading}>Cancel</button>
+              <button className="btn btn-primary" type="button" onClick={importTenantBackup} disabled={tenantTransferLoading === `import:${tenantImportTarget.tenantId}` || !tenantImportFile}>
+                {tenantTransferLoading === `import:${tenantImportTarget.tenantId}` ? 'Importing…' : 'Import Tenant Data'}
+              </button>
+            </>
+          }
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ color: '#64748b' }}>
+              Import a tenant backup into <strong>{tenantImportTarget.tenantId}</strong>. You can keep current data and merge the backup, or overwrite the current tenant database.
+            </div>
+            <label>
+              Backup File
+              <input className="input" type="file" accept="application/json,.json" onChange={(e) => setTenantImportFile(e.target.files?.[0] || null)} disabled={!!tenantTransferLoading} />
+            </label>
+            <label>
+              Import Mode
+              <select className="input" value={tenantImportMode} onChange={(e) => setTenantImportMode(e.target.value)} disabled={!!tenantTransferLoading}>
+                <option value="keep_current">Keep Current Data</option>
+                <option value="overwrite">Overwrite Current Data</option>
+              </select>
+            </label>
+          </div>
         </Modal>
       )}
     </div>

@@ -32,6 +32,14 @@ export function me() {
   return fetchJson('/api/tenants/me');
 }
 
+export function exportMyTenantData() {
+  return fetchJson('/api/tenants/data-export', { timeoutMs: 0 });
+}
+
+export function importMyTenantData(payload) {
+  return fetchJson('/api/tenants/data-import', { method: 'POST', body: JSON.stringify(payload), timeoutMs: 0 });
+}
+
 export function runUserAudit() {
   return fetchJson('/api/tenants/user-audit');
 }
@@ -42,6 +50,14 @@ export function cleanupUserAuditRecord(payload) {
 
 export function refreshActivationCode(tenantId) {
   return fetchJson(`/api/tenants/${encodeURIComponent(tenantId)}/activation-code/refresh`, { method: 'POST' });
+}
+
+export function exportTenantData(tenantId) {
+  return fetchJson(`/api/tenants/${encodeURIComponent(tenantId)}/data-export`, { timeoutMs: 0 });
+}
+
+export function importTenantData(tenantId, payload) {
+  return fetchJson(`/api/tenants/${encodeURIComponent(tenantId)}/data-import`, { method: 'POST', body: JSON.stringify(payload), timeoutMs: 0 });
 }
 
 export function getPaymentManagement() {

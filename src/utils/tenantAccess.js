@@ -55,7 +55,9 @@ export const TENANT_GRANT_CATALOG = [
   { key: 'view_cashdrawer', label: 'Open Cash Drawer' },
   { key: 'view_users', label: 'Open Users' },
   { key: 'view_config', label: 'Open Config' },
-  { key: 'view_audit', label: 'Open Audit Log' }
+  { key: 'view_audit', label: 'Open Audit Log' },
+  { key: 'export_tenant_data', label: 'Export Tenant Data' },
+  { key: 'import_tenant_data', label: 'Import Tenant Data' }
 ];
 
 export const GRANT_FEATURE_MAP = Object.fromEntries(
@@ -73,7 +75,8 @@ export const PLAN_DEFAULT_FEATURES = {
     'grants.add_sales', 'grants.view_products', 'grants.add_products', 'grants.edit_products',
     'grants.view_inventory', 'grants.edit_inventory', 'grants.view_labels', 'grants.view_purchases',
     'grants.add_purchases', 'grants.view_suppliers', 'grants.add_suppliers', 'grants.view_customers',
-    'grants.add_customers', 'grants.view_cashdrawer', 'grants.view_users', 'grants.view_config'
+    'grants.add_customers', 'grants.view_cashdrawer', 'grants.view_users', 'grants.view_config',
+    'grants.export_tenant_data', 'grants.import_tenant_data'
   ],
   pro: [
     'modules.dashboard', 'modules.pos', 'modules.wholesalePos', 'modules.invoices', 'modules.sales',
@@ -154,7 +157,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
       { label: 'Approvals Center', keys: ['modules.approvalsCenter', 'grants.view_approvals', 'grants.approve_credit_director', 'grants.approve_credit_manager', 'grants.approve_wholesale_director', 'grants.approve_wholesale_manager'] },
       { label: 'Refund Approvals', keys: ['modules.refundApprovals', 'grants.approve_refunds'] },
       { label: 'Reports', keys: ['modules.reports', 'grants.view_reports'] },
-      { label: 'Backup', keys: ['modules.backup', 'features.offlineBackup'] },
+      { label: 'Backup', keys: ['modules.backup', 'features.offlineBackup', 'grants.export_tenant_data', 'grants.import_tenant_data'] },
       { label: 'IMEI Conflicts', keys: ['modules.backup', 'grants.view_imei_conflicts'] }
     ]
   },
@@ -312,7 +315,7 @@ export const TENANT_FEATURE_CATALOG = [
       group = 'Permissions / Pricing & Visibility';
     } else if (['view_wholesale_pos', 'view_purchases', 'add_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'edit_adjustments', 'approve_adjustments', 'view_credit_control', 'approve_credit_director', 'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_wholesale_director', 'approve_wholesale_manager', 'view_wholesale_invoices', 'view_warehouse_invoices', 'view_warehouse_approvals'].includes(item.key)) {
       group = 'Permissions / Distribution Actions';
-    } else if (['view_users', 'view_config', 'view_audit', 'view_stock_records', 'view_cashdrawer', 'view_imei_conflicts'].includes(item.key)) {
+    } else if (['view_users', 'view_config', 'view_audit', 'view_stock_records', 'view_cashdrawer', 'view_imei_conflicts', 'export_tenant_data', 'import_tenant_data'].includes(item.key)) {
       group = 'Permissions / Admin Actions';
     }
     return { key: `grants.${item.key}`, label: item.label, group };
