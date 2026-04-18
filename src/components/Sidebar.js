@@ -204,7 +204,7 @@ function Sidebar({ collapsed }) {
           (isFeatureEnabled(settings, 'pages.distribution.purchase') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_purchases','view_purchases','see_purchases'])) ||
           (isFeatureEnabled(settings, 'pages.distribution.transfer') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_transfers','view_transfers','see_transfers'])) ||
           (isFeatureEnabled(settings, 'pages.distribution.adjustment') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_adjustments','view_adjustments','see_adjustments'])) ||
-          (isFeatureEnabled(settings, 'pages.distribution.refund') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_refunds','view_refunds','see_refunds']))
+          (isFeatureEnabled(settings, 'pages.distribution.refund') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_distribution_refunds','add_distribution_refunds']))
         ) && (
         <div>
           <button className="sidebar-group-toggle" onClick={() => toggleGroup('wholesale')}>
@@ -248,7 +248,7 @@ function Sidebar({ collapsed }) {
             {isFeatureEnabled(settings, 'pages.distribution.adjustment') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_adjustments','view_adjustments','see_adjustments']) && (<NavLink to="/wholesale-adjustment" className="sidebar-link" title="Distribution Adjustment">
               <span className="sidebar-text">Distribution Adjustment</span>
             </NavLink>)}
-            {isFeatureEnabled(settings, 'pages.distribution.refund') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_refunds','view_refunds','see_refunds']) && (<NavLink to="/wholesale-refund" className="sidebar-link" title="Distribution Refund">
+            {isFeatureEnabled(settings, 'pages.distribution.refund') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_distribution_refunds','add_distribution_refunds']) && (<NavLink to="/wholesale-refund" className="sidebar-link" title="Distribution Refund">
               <span className="sidebar-text">Distribution Refund</span>
             </NavLink>)}
           </div>
