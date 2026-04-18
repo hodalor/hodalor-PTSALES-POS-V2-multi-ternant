@@ -80,6 +80,10 @@ function SalesPage() {
   }, [canSeeAll, effectiveBranchId, sales, selectedBranchId, showAll]);
   const filteredSales = useMemo(() => {
     let list = filteredByBranch;
+    if (roleLower === 'cashier') {
+      const me = String(auth.user?.name || '').trim().toLowerCase();
+      list = list.filter(s => String(s.sellerName || '').trim().toLowerCase() === me);
+    }
     if (periodMode !== 'all_time' && dateFrom) {
       const start = new Date(`${dateFrom}T00:00:00`);
       list = list.filter(s => new Date(s.created_at || s.createdAt || 0) >= start);
@@ -101,7 +105,7 @@ function SalesPage() {
       list = list.filter(s => String(s.posType || 'retail') === 'wholesale' && Array.isArray(s.payment_methods) && s.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy'));
     }
     return list;
-  }, [dateFrom, dateTo, filteredByBranch, saleKind, creditKind, periodMode]);
+  }, [auth.user?.name, creditKind, dateFrom, dateTo, filteredByBranch, periodMode, roleLower, saleKind]);
 
   const summary = useMemo(() => {
     const totalRevenue = filteredSales.reduce((sum, sale) => sum + (Number(sale.total) || 0), 0);
