@@ -25,16 +25,17 @@ function Header({ onToggleSidebar }) {
   const canChangeBranch = ['admin', 'manager', 'branch manager', 'superadmin'].includes(roleLower);
   const assigned = auth.user?.assignedBranches || 'all';
   const visibleBranchName = useMemo(() => {
-    const allowedBranches = (roleLower === 'superadmin' || roleLower === 'admin' || assigned === 'all')
-      ? branches
-      : branches.filter(branch => {
-          const ids = new Set(Array.isArray(assigned) ? assigned.map(String) : [String(assigned)]);
-          return ids.has(String(branch.id));
-        });
-    const current = (branches || []).find(branch => String(branch.id) === String(currentBranchId || ''));
-    if (current?.name) return current.name;
-    return allowedBranches[0]?.name || 'Assigned Branch';
-  }, [assigned, branches, currentBranchId, roleLower]);
+    const assignedIds = assigned === 'all'
+      ? []
+      : (Array.isArray(assigned) ? assigned : [assigned]).map(v => String(v || '').trim()).filter(Boolean);
+    const preferredIds = [currentBranchId, auth.user?.branchId, ...assignedIds].map(v => String(v || '').trim()).filter(Boolean);
+    for (const id of preferredIds) {
+      const match = (branches || []).find(branch => String(branch.id) === id);
+      if (match?.name) return match.name;
+    }
+    if (assignedIds[0]) return assignedIds[0];
+    return 'Assigned Branch';
+  }, [assigned, auth.user?.branchId, branches, currentBranchId]);
 
   return (
     <div className="topbar">
