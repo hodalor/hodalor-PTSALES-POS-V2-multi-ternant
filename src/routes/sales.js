@@ -26,13 +26,17 @@ function productLookupQuery(productId) {
   return { $or: or };
 }
 
-r.get('/', async (req, res) => {
+r.get('/', requireRoleOrPerm(['Admin','Manager','Cashier'], ['view_sales','see_sales']), async (req, res) => {
   const role = String(req.user?.role || '').toLowerCase();
   const query = {};
   if (role === 'cashier') {
     query.sellerName = String(req.user?.name || '').trim();
   }
-  const rows = await Sale.find(query).sort({ created_at: -1 }).limit(500);
+  if (req.query.branchId) {
+    query.branchId = String(req.query.branchId);
+  }
+  const limit = Math.min(2000, Math.max(1, Number(req.query.limit || 500)));
+  const rows = await Sale.find(query).sort({ created_at: -1 }).limit(limit).lean();
   res.json(rows);
 });
 
