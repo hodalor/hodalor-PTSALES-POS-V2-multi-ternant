@@ -466,7 +466,7 @@ function PurchasesPage() {
     <div style={{ padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <h1 style={{ margin: 0 }}>Purchases</h1>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="filter-actions">
           {tab === 'initiate' && (
           <button className="btn btn-primary" onClick={() => { setOpenModal(true); }}>
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2"/></svg>
@@ -477,7 +477,7 @@ function PurchasesPage() {
           <OfflineQueueIndicator collection="audits" label="Stock queued" />
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+      <div className="filter-actions" style={{ marginBottom: 12 }}>
         <button className={tab === 'initiate' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('initiate')}>Initiate</button>
         <button className={tab === 'approvals' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('approvals')} disabled={!canApprove}>Approvals</button>
       </div>
@@ -733,7 +733,7 @@ function PurchasesPage() {
         </Modal>
       )}
       <div className="card" style={{ marginTop: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr) auto', gap: 8, marginBottom: 8 }}>
+        <div className="filter-grid" style={{ marginBottom: 8 }}>
           <label>
             Period
             <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>

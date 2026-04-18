@@ -452,7 +452,7 @@ function ReportsPage() {
   return (
     <div style={{ padding: 16 }}>
       <h1>Reports</h1>
-      <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 12 }}>
+      <div className="card filter-grid" style={{ marginBottom: 12 }}>
         <label>
           Period
           <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
@@ -473,8 +473,8 @@ function ReportsPage() {
           <BranchSelect value={branchId} onChange={setBranchId} includeAll allLabel="All Branches" />
         </label>
       </div>
-      <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-        <div style={{ gridColumn: '1 / span 2', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+      <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+        <div className="filter-grid" style={{ gridColumn: '1 / -1' }}>
           <label>
             Report
             <select className="select" value={reportType} onChange={e => setReportType(e.target.value)}>

@@ -265,7 +265,7 @@ function InvoicesPage({ mode = 'retail' }) {
           {modeLower === 'retail' ? 'Create retail A4 invoices and reprint invoice records.' : modeLower === 'wholesale' ? 'Create distribution A4 invoices using the assigned visible pricing tier.' : 'Create warehouse A4 invoices using the assigned visible pricing tier.'}
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+      <div className="filter-actions" style={{ marginBottom: 12 }}>
         {showNewTab && (<button className={`btn ${tab === 'new' ? 'btn-primary' : ''}`} onClick={() => setTab('new')}>New Invoice</button>)}
         {showRecordsTab && (<button className={`btn ${tab === 'records' ? 'btn-primary' : ''}`} onClick={() => setTab('records')}>Invoice Records</button>)}
       </div>

@@ -55,7 +55,7 @@ function LabelsPage() {
     <div style={{ padding: 16 }}>
       <h1>Barcode Labels</h1>
       <div className="card" style={{ marginBottom: 12 }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="filter-actions">
           <input className="input" placeholder="Search by name, SKU or barcode" value={query} onChange={e => setQuery(e.target.value)} style={{ width: '100%' }} />
           <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span>Copies</span>

@@ -286,7 +286,7 @@ function RefundApprovalsPage() {
         <h1 style={{ margin: 0 }}>Refund Approvals</h1>
         <OfflineQueueIndicator collection="refundrequests" label="Refunds queued" />
       </div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12, alignItems: 'center' }}>
+      <div className="filter-actions" style={{ marginBottom: 12 }}>
         <button className={`btn ${filter==='pending' ? 'btn-primary' : ''}`} onClick={() => setFilter('pending')}>Pending</button>
         <button className={`btn ${filter==='approved' ? 'btn-primary' : ''}`} onClick={() => setFilter('approved')}>Approved</button>
         <button className={`btn ${filter==='rejected' ? 'btn-primary' : ''}`} onClick={() => setFilter('rejected')}>Rejected</button>

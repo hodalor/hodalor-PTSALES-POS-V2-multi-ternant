@@ -131,7 +131,7 @@ function AuditLogPage() {
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Actions</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.actions}</div></div>
       </div>
       <div className="card" style={{ marginBottom: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: isSuper ? 'repeat(8, 1fr)' : 'repeat(7, 1fr)', gap: 8 }}>
+        <div className="filter-grid">
           <label>
             Period
             <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>

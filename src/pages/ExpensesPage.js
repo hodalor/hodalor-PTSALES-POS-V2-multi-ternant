@@ -138,7 +138,7 @@ function ExpensesPage() {
     <div style={{ padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <h1 style={{ margin: 0 }}>Expenses</h1>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div className="filter-actions">
           <button className="btn btn-primary" onClick={() => setOpenModal(true)} disabled={!canManage}>
             Add Expense
           </button>
@@ -152,7 +152,7 @@ function ExpensesPage() {
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Categories</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.categories}</div></div>
       </div>
 
-      <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 12 }}>
+      <div className="card filter-grid" style={{ marginBottom: 12 }}>
         <label>
           Period
           <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>

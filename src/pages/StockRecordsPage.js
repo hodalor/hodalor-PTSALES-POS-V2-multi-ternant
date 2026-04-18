@@ -189,7 +189,7 @@ function StockRecordsPage() {
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Products</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.uniqueProducts}</div></div>
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Branches</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.uniqueBranches}</div></div>
       </div>
-      <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, marginBottom: 8 }}>
+      <div className="card filter-grid" style={{ marginBottom: 8 }}>
         <label>
           Period
           <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>

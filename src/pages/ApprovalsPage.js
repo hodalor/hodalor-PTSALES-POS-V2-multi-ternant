@@ -87,7 +87,7 @@ function ApprovalsPage() {
           <h1 style={{ margin: 0 }}>Approvals Center</h1>
           <div style={{ color: '#64748b', fontSize: 13 }}>Director and manager approval queue for wholesale operations and credit repayments.</div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="filter-actions">
           <select className="select" value={status} onChange={e => setStatus(e.target.value)}>
             <option value="pending_director">Pending Director</option>
             <option value="pending_manager">Pending Manager</option>

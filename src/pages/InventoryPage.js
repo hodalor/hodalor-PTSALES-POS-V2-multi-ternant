@@ -156,7 +156,7 @@ function InventoryPage() {
         <OfflineQueueIndicator collection="audits" label="Stock queued" />
       </div>
       <div className="card" style={{ marginBottom: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, alignItems: 'end' }}>
+        <div className="filter-grid-wide">
           <label>
             <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Branch</div>
             <BranchSelect value={branchId} onChange={setBranchId} includeAll allLabel="All Branches" style={{ minWidth: 180 }} />
@@ -186,7 +186,7 @@ function InventoryPage() {
               </span>
             </div>
           )}
-          <div style={{ display: 'flex', gap: 6, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+          <div className="filter-actions filter-actions-end" style={{ gridColumn: '1 / -1' }}>
             <button className={viewInventoryType === 'retail' ? 'btn btn-primary' : 'btn'} onClick={() => setViewInventoryType('retail')}>Retail</button>
             <button className={viewInventoryType === 'wholesale' ? 'btn btn-primary' : 'btn'} onClick={() => setViewInventoryType('wholesale')}>Distribution</button>
             <button className={viewInventoryType === 'warehouse' ? 'btn btn-primary' : 'btn'} onClick={() => setViewInventoryType('warehouse')}>Warehouse</button>
