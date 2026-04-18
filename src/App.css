@@ -532,6 +532,24 @@ html, body, #root {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.topbar .brand-title {
+  min-width: 0;
+  flex: 0 1 auto;
+}
+.topbar .brand-title strong {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar .topbar-branch-select {
+  margin-left: 12px;
+  min-width: 180px;
+  max-width: 260px;
+  flex: 0 0 auto;
 }
 .topbar img {
   width: 28px;
@@ -642,6 +660,18 @@ html, body, #root {
   }
   .topbar .brand {
     gap: 6px;
+    flex-wrap: wrap;
+  }
+  .topbar .brand-title {
+    flex: 1 1 140px;
+  }
+  .topbar .brand-title strong {
+    white-space: normal;
+  }
+  .topbar .topbar-branch-select {
+    margin-left: 0;
+    min-width: 160px;
+    max-width: 100%;
   }
   .hamburger {
     display: inline-flex;

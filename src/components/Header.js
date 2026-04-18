@@ -48,8 +48,10 @@ function Header({ onToggleSidebar }) {
             } catch {}
           }}
         />
-        <strong>{settings.clientAppName || settings.appName}</strong>
-        <BranchSelect value={currentBranchId} onChange={id => dispatch(setCurrentBranch(id))} style={{ marginLeft: 12 }} />
+        <div className="brand-title" title={settings.clientAppName || settings.appName}>
+          <strong>{settings.clientAppName || settings.appName}</strong>
+        </div>
+        <BranchSelect value={currentBranchId} onChange={id => dispatch(setCurrentBranch(id))} className="select topbar-branch-select" />
       </div>
       <div>
         {auth.isAuthenticated ? (
