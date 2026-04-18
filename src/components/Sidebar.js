@@ -198,7 +198,7 @@ function Sidebar({ collapsed }) {
         </div>
         )}
         {sectionEnabled('sections.distribution') && (
-          (isFeatureEnabled(settings, 'pages.distribution.goods') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_wholesale_pos'])) ||
+          (isFeatureEnabled(settings, 'pages.distribution.goods') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_distribution_products'])) ||
           (isFeatureEnabled(settings, 'pages.distribution.pos') && can(['Admin','Manager','Cashier','SuperAdmin'], ['view_wholesale_pos'])) ||
           (isFeatureEnabled(settings, 'pages.distribution.invoices') && can(['Admin','Manager','Cashier','SuperAdmin'], ['view_wholesale_invoices'])) ||
           (isFeatureEnabled(settings, 'pages.distribution.purchase') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_purchases','view_purchases','see_purchases'])) ||
@@ -225,7 +225,7 @@ function Sidebar({ collapsed }) {
           </button>
           {wholesaleOpen && (
           <div className="sidebar-subgroup">
-            {isFeatureEnabled(settings, 'pages.distribution.goods') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_wholesale_pos']) && (<NavLink to="/wholesale-goods" className="sidebar-link" title="Distribution Goods" style={{ display: 'flex', alignItems: 'center' }}>
+            {isFeatureEnabled(settings, 'pages.distribution.goods') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_distribution_products']) && (<NavLink to="/wholesale-goods" className="sidebar-link" title="Distribution Goods" style={{ display: 'flex', alignItems: 'center' }}>
               <span className="sidebar-text">Distribution Goods</span>
               {wholesaleLowStock > 0 && (
                 <span style={{ marginLeft: 'auto', minWidth: 22, height: 20, borderRadius: 999, padding: '0 8px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: 12 }}>
@@ -256,7 +256,7 @@ function Sidebar({ collapsed }) {
         </div>
         )}
         {sectionEnabled('sections.warehouse') && (
-          (isFeatureEnabled(settings, 'pages.warehouse.goods') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_wholesale_pos'])) ||
+          (isFeatureEnabled(settings, 'pages.warehouse.goods') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_warehouse_products'])) ||
           (isFeatureEnabled(settings, 'pages.warehouse.invoices') && can(['Admin','Manager','Cashier','SuperAdmin'], ['view_warehouse_invoices'])) ||
           (isFeatureEnabled(settings, 'pages.warehouse.purchase') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_purchases','view_purchases','see_purchases'])) ||
           (isFeatureEnabled(settings, 'pages.warehouse.transfer') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_transfers','view_transfers','see_transfers'])) ||
@@ -287,7 +287,7 @@ function Sidebar({ collapsed }) {
           </button>
           {warehouseOpen && (
           <div className="sidebar-subgroup">
-            {isFeatureEnabled(settings, 'pages.warehouse.goods') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_wholesale_pos']) && (<NavLink to="/warehouse-goods" className="sidebar-link" title="Warehouse Goods" style={{ display: 'flex', alignItems: 'center' }}>
+            {isFeatureEnabled(settings, 'pages.warehouse.goods') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_warehouse_products']) && (<NavLink to="/warehouse-goods" className="sidebar-link" title="Warehouse Goods" style={{ display: 'flex', alignItems: 'center' }}>
               <span className="sidebar-text">Warehouse Goods</span>
               {warehouseLowStock > 0 && (
                 <span style={{ marginLeft: 'auto', minWidth: 22, height: 20, borderRadius: 999, padding: '0 8px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: 12 }}>

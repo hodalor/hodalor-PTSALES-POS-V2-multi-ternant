@@ -55,7 +55,7 @@ export async function refreshAllData(dispatch, getState) {
     ['view_expenses', 'see_expenses', 'add_expenses'].some((key) => grants.includes(key))
   );
   const results = await Promise.allSettled([
-    allow('modules.products', ['Admin','Manager','Inventory Staff'], ['view_products','see_products']) ? productsApi.list() : Promise.resolve([]),
+    allow('modules.products', ['Admin','Manager','Inventory Staff'], ['view_products','see_products','view_distribution_products','view_warehouse_products']) ? productsApi.list() : Promise.resolve([]),
     isFeatureEnabled(settings, 'modules.suppliers') && allow('modules.suppliers', ['Admin','Manager','Inventory Staff'], ['view_suppliers','see_suppliers']) ? suppliersApi.list() : Promise.resolve([]),
     isFeatureEnabled(settings, 'modules.customers') && allow('modules.customers', ['Admin','Manager','Cashier'], ['view_customers','see_customers']) ? customersApi.list() : Promise.resolve([]),
     isFeatureEnabled(settings, 'admin.config') && allow('admin.config', ['Admin'], ['view_config','see_config']) ? branchesApi.list() : Promise.resolve([]),
