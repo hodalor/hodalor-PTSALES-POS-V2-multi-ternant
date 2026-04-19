@@ -18,7 +18,10 @@ const invoicesSlice = createSlice({
     },
     setInvoices(state, action) {
       const rows = Array.isArray(action.payload) ? action.payload : [];
-      if (rows.length === 0) return;
+      if (rows.length === 0) {
+        state.invoices = [];
+        return;
+      }
       const merged = new Map();
       for (const it of state.invoices) {
         const key = it.clientId || it.number || it.id;

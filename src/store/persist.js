@@ -12,7 +12,11 @@ export function loadState() {
     } catch {}
     const raw = localStorage.getItem(getTenantStateKey());
     if (!raw) return undefined;
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    const expectedTenantId = String(localStorage.getItem('ptSales:tenantId') || 'default').trim() || 'default';
+    const snapshotTenantId = String(parsed?.__meta?.tenantId || parsed?.auth?.user?.tenantId || '').trim();
+    if (snapshotTenantId && snapshotTenantId !== expectedTenantId) return undefined;
+    return parsed;
   } catch {
     return undefined;
   }
@@ -20,19 +24,17 @@ export function loadState() {
 
 export function saveState(state) {
   try {
+    const tenantId = String(state?.auth?.user?.tenantId || localStorage.getItem('ptSales:tenantId') || 'default').trim() || 'default';
     const snapshot = {
+      __meta: {
+        tenantId,
+        userName: String(state?.auth?.user?.name || ''),
+        savedAt: new Date().toISOString()
+      },
       auth: state.auth,
-      cart: state.cart,
-      settings: state.settings,
-      branches: state.branches,
-      products: state.products,
-      users: state.users,
-      sales: state.sales,
-      audit: state.audit,
-      sessions: state.sessions,
-      invoices: state.invoices
+      settings: state.settings
     };
-    localStorage.setItem(getTenantStateKey(state?.auth?.user?.tenantId), JSON.stringify(snapshot));
+    localStorage.setItem(getTenantStateKey(tenantId), JSON.stringify(snapshot));
   } catch {
     // ignore
   }

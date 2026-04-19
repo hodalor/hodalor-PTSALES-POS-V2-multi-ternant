@@ -6,8 +6,22 @@ function ProtectedRoute({ roles, grant, feature, children }) {
   const auth = useSelector(state => state.auth);
   const settings = useSelector(state => state.settings);
   const location = useLocation();
+  const brandedName = settings?.clientAppName || settings?.receiptBrandName || settings?.appName || 'ptSales POS';
+  const brandedLogo = settings?.clientLogoUrl || '/clientlogo512.png';
+  const loadingLabel = !auth.initialized ? 'Preparing secure sign-in...' : 'Loading tenant access...';
   if (!auth.initialized) {
-    return <div style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>Loading…</div>;
+    return (
+      <div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center', padding: 24 }}>
+        <div style={{ display: 'grid', gap: 14, justifyItems: 'center', textAlign: 'center', maxWidth: 480 }}>
+          <div className="brand-loader">
+            <div className="brand-loader-ring" />
+            <img className="brand-loader-logo" src={brandedLogo} alt="logo" onError={(e) => { e.currentTarget.src = '/logo512.png'; }} />
+          </div>
+          <div className="brand-loader-copy brand-loader-copy-delay-1" style={{ fontSize: 22, fontWeight: 800 }}>{brandedName}</div>
+          <div className="brand-loader-copy brand-loader-copy-delay-2" style={{ color: '#475569', fontSize: 15 }}>{loadingLabel}</div>
+        </div>
+      </div>
+    );
   }
   if (!auth.isAuthenticated) {
     return <Navigate to="/login" state={{ from: location }} replace />;
@@ -16,7 +30,18 @@ function ProtectedRoute({ roles, grant, feature, children }) {
   const isPermanent = !!settings?.subscriptionPermanent;
   const isSuper = String(auth.role || '').toLowerCase() === 'superadmin' && String(auth.user?.tenantId || '').toLowerCase() === 'master';
   if (!isSuper && !settings?.hydrated) {
-    return <div style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>Loading tenant access…</div>;
+    return (
+      <div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center', padding: 24 }}>
+        <div style={{ display: 'grid', gap: 14, justifyItems: 'center', textAlign: 'center', maxWidth: 480 }}>
+          <div className="brand-loader">
+            <div className="brand-loader-ring" />
+            <img className="brand-loader-logo" src={brandedLogo} alt="logo" onError={(e) => { e.currentTarget.src = '/logo512.png'; }} />
+          </div>
+          <div className="brand-loader-copy brand-loader-copy-delay-1" style={{ fontSize: 22, fontWeight: 800 }}>{brandedName}</div>
+          <div className="brand-loader-copy brand-loader-copy-delay-2" style={{ color: '#475569', fontSize: 15 }}>{loadingLabel}</div>
+        </div>
+      </div>
+    );
   }
   if (!isSuper && !isPermanent && expiryTs && expiryTs < Date.now()) {
     return (

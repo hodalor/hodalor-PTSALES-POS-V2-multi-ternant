@@ -3,7 +3,7 @@ import { addItem, removeItem, removeItemByUnitId, setQuantity, updateItemPricing
 import { adjustStock, setStock } from '../store/productsSlice';
 import { recordSale } from '../store/salesSlice';
 import { addInvoice } from '../store/invoicesSlice';
-import { addCustomer, setCustomers, updateCustomer } from '../store/customersSlice';
+import { addCustomer, updateCustomer } from '../store/customersSlice';
 import { buildBrandedReceiptHtml, printReceiptHtml } from '../utils/print';
 import { escposReceipt, escposOpenDrawer, downloadText } from '../utils/escpos';
 import { useToast } from '../components/ToastProvider';
@@ -317,14 +317,7 @@ function PosPage({ mode = 'retail' }) {
       const clientId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `cust-${Date.now()}`;
       const created = await customersApi.create({ ...payload, clientId });
       dispatch(addCustomer(created));
-      try {
-        const list = await customersApi.list({ limit: 2000 });
-        dispatch(setCustomers(list));
-        const matched = (Array.isArray(list) ? list : []).find((customer) => String(customer?.id || customer?._id || '') === String(created?.id || created?._id || '') || String(customer?.clientId || '') === String(clientId));
-        setSelectedCustomerId(String(matched?.id || matched?._id || created?.id || created?._id || ''));
-      } catch {
-        setSelectedCustomerId(String(created?.id || created?._id || ''));
-      }
+      setSelectedCustomerId(String(created?.id || created?._id || clientId));
       setCustomerQuery('');
       setQuickCustomerOpen(false);
       toast.show('Customer added and selected', { type: 'success' });

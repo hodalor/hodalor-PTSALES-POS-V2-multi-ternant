@@ -9,8 +9,7 @@ const branchesSlice = createSlice({
   initialState,
   reducers: {
     setBranches(state, action) {
-      const server = Array.isArray(action.payload) && action.payload.length > 0 ? action.payload : null;
-      if (!server) return;
+      const server = Array.isArray(action.payload) ? action.payload : [];
       const normalized = server.map(b => ({ ...b, id: String(b?.id || b?._id || ''), branchType: b?.branchType || 'retail' }));
       const seen = new Set(normalized.map(b => b?.id).filter(Boolean).map(String));
       const localPending = state.branches.filter(b => b && (b.offline || b.syncPending) && !seen.has(String(b.id)));

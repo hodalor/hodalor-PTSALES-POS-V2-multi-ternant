@@ -13,7 +13,7 @@ import { syncQueuedItem } from '../offline/syncHandlers';
 import { ensureOnlineJwt } from '../offline/reAuth';
 import { refreshAllData } from '../offline/refreshAll';
 
-function Layout() {
+function Layout({ bootstrapLoading = false }) {
   const dispatch = useDispatch();
   const store = useStore();
   const footer = useSelector(s => s.settings.footerText);
@@ -48,7 +48,7 @@ function Layout() {
           const after = await getQueueSummary();
           if (alive) dispatch(setQueueSummary(after));
         }
-        if (navigator.onLine) {
+        if (navigator.onLine && !bootstrapLoading) {
           await refreshAllData(dispatch, store.getState);
         }
       } catch {}
@@ -83,7 +83,7 @@ function Layout() {
       window.removeEventListener('beforeinstallprompt', onBip);
       window.removeEventListener('appinstalled', onInstalled);
     };
-  }, [dispatch, settings, store]);
+  }, [bootstrapLoading, dispatch, settings, store]);
   function toggleSidebar() {
     const isMobile = window.matchMedia && window.matchMedia('(max-width: 992px)').matches;
     if (isMobile) {
@@ -100,6 +100,8 @@ function Layout() {
   const isPermanent = !!settings?.subscriptionPermanent;
   const isMaster = String(auth.user?.tenantId || '').toLowerCase() === 'master';
   const daysLeft = expiryTs ? Math.ceil((expiryTs - Date.now()) / (24 * 3600 * 1000)) : null;
+  const brandedName = settings?.clientAppName || settings?.receiptBrandName || settings?.appName || 'ptSales POS';
+  const brandedLogo = settings?.clientLogoUrl || '/clientlogo512.png';
   return (
     <div className={`layout ${sidebarOpen ? 'sidebar-open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
       <Sidebar collapsed={sidebarCollapsed} />
@@ -150,7 +152,26 @@ function Layout() {
         <OfflineBanner />
         <Breadcrumbs />
         <main className="main">
-          <Outlet />
+          {bootstrapLoading ? (
+            <div className="card" style={{ minHeight: 280, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
+              <div style={{ display: 'grid', gap: 14, justifyItems: 'center', maxWidth: 520 }}>
+                <div className="brand-loader">
+                  <div className="brand-loader-ring" />
+                  <img className="brand-loader-logo" src={brandedLogo} alt="logo" onError={(e) => { e.currentTarget.src = '/logo512.png'; }} />
+                </div>
+                <div className="brand-loader-copy brand-loader-copy-delay-1" style={{ fontSize: 22, fontWeight: 800 }}>{brandedName}</div>
+                <div className="brand-loader-copy brand-loader-copy-delay-2" style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Loading your business data...</div>
+                <div className="brand-loader-copy brand-loader-copy-delay-3" style={{ color: '#64748b', fontSize: 14 }}>
+                  Your tenant access is ready. We are now loading products and stock first, then customers, suppliers, sales, and other business records from the database.
+                </div>
+                <div className="brand-loader-copy brand-loader-copy-delay-3" style={{ color: '#64748b', fontSize: 13 }}>
+                  This does not mean your data is erased.
+                </div>
+              </div>
+            </div>
+          ) : (
+            <Outlet />
+          )}
         </main>
         <div style={{ padding: 12, color: '#64748b', borderTop: '1px solid #e2e8f0', textAlign: 'right' }}>{footer}</div>
       </div>

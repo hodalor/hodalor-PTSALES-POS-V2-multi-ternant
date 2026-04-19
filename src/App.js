@@ -13,7 +13,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import * as productsApi from './api/products';
 import * as suppliersApi from './api/suppliers';
 import * as customersApi from './api/customers';
-import { loadState, clearTenantState } from './store/persist';
+import { loadState } from './store/persist';
 import { filterGrantsByTenantFlags } from './utils/tenantAccess';
 import { isFeatureEnabled } from './utils/featureFlags';
 import * as branchesApi from './api/branches';
@@ -87,6 +87,10 @@ import * as expensesApi from './api/expenses';
 import { setEntries as setAuditEntries } from './store/auditSlice';
 import { setInvoices } from './store/invoicesSlice';
 import { ensureOnlineJwt } from './offline/reAuth';
+import { setPurchaseRequests } from './store/purchasesSlice';
+import { setTransferRequests } from './store/transfersSlice';
+import { setExpenseRequests } from './store/expenseRequestsSlice';
+import { setAdjustmentRequests } from './store/adjustmentRequestsSlice';
 
 function App() {
   const dispatch = useDispatch();
@@ -104,6 +108,7 @@ function App() {
   const clientLogoUrl = settings?.clientLogoUrl;
   const themeColor = settings?.themeColor || '#0b1220';
   const [settingsReady, setSettingsReady] = useState(false);
+  const [dataBootstrapReady, setDataBootstrapReady] = useState(false);
   useEffect(() => {
     function resizeToPng(src, size) {
       return new Promise((resolve) => {
@@ -226,12 +231,6 @@ function App() {
     })();
   }, [dispatch]);
   useEffect(() => {
-    const tid = setTimeout(() => {
-      dispatch(setInitialized(true));
-    }, 3000);
-    return () => clearTimeout(tid);
-  }, [dispatch]);
-  useEffect(() => {
     if (!authInitialized || !isAuthed) {
       setSettingsReady(false);
       dispatch(setSettingsHydrated(false));
@@ -306,10 +305,38 @@ function App() {
   useEffect(() => {
     (async () => {
       if (!authInitialized || !isAuthed || !settingsReady) return;
+      if (!navigator.onLine) {
+        setDataBootstrapReady(true);
+        return;
+      }
+      setDataBootstrapReady(false);
+      dispatch(setProducts([]));
+      dispatch(setSuppliers([]));
+      dispatch(setCustomers([]));
+      dispatch(setBranches([]));
+      dispatch(setRequests([]));
+      dispatch(setSales([]));
+      dispatch(setUsers([]));
+      dispatch(setAuditEntries([]));
+      dispatch(setInvoices([]));
+      dispatch(setPurchaseRequests([]));
+      dispatch(setTransferRequests([]));
+      dispatch(setExpenseRequests([]));
+      dispatch(setAdjustmentRequests([]));
       try {
         const migFlag = localStorage.getItem(`ptSales:migratedDbV1:${String(authTenantId || 'default')}`);
         if (migFlag) return;
         const snapshot = loadState();
+        const hasLegacyBusinessSnapshot = !!(
+          (snapshot?.branches?.branches || []).length ||
+          (snapshot?.products?.products || []).length ||
+          (snapshot?.suppliers?.suppliers || []).length ||
+          (snapshot?.customers?.customers || []).length
+        );
+        if (!hasLegacyBusinessSnapshot) {
+          localStorage.setItem(`ptSales:migratedDbV1:${String(authTenantId || 'default')}`, '1');
+          return;
+        }
         const [srvBranches, srvProducts, srvSuppliers, srvCustomers] = await Promise.all([
           branchesApi.list().catch(() => []),
           productsApi.list().catch(() => []),
@@ -349,11 +376,10 @@ function App() {
             }
           }
         }
-        clearTenantState(authTenantId || 'default');
         localStorage.setItem(`ptSales:migratedDbV1:${String(authTenantId || 'default')}`, '1');
       } catch {}
     })();
-  }, [authInitialized, isAuthed, authTenantId, settingsReady]);
+  }, [dispatch, authInitialized, isAuthed, authTenantId, settingsReady]);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -378,24 +404,43 @@ function App() {
           if (roleLower !== 'admin') return requested.some(hasGrant);
           return roleOk || requested.some(hasGrant);
         };
-        const [p, s, c, b, r, sl] = await Promise.allSettled([
-          allow('modules.products', ['Admin','Manager','Inventory Staff'], ['view_products','see_products','view_distribution_products','view_warehouse_products']) ? productsApi.list() : Promise.resolve([]),
-          section('sections.partners') && allow('modules.suppliers', ['Admin','Manager','Inventory Staff'], ['view_suppliers','see_suppliers']) ? suppliersApi.list() : Promise.resolve([]),
-          section('sections.partners') && allow('modules.customers', ['Admin','Manager','Cashier'], ['view_customers','see_customers']) ? customersApi.list() : Promise.resolve([]),
-          authInitialized && isAuthed ? branchesApi.list() : Promise.resolve([]),
-          section('sections.retail') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']) ? refundsApi.listRequests() : Promise.resolve([]),
-          allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? salesApi.list() : Promise.resolve([])
+        const canLoadProducts = allow('modules.products', ['Admin','Manager','Inventory Staff'], ['view_products','see_products','view_distribution_products','view_warehouse_products']);
+        const canLoadCustomers = section('sections.partners') && allow('modules.customers', ['Admin','Manager','Cashier'], ['view_customers','see_customers']);
+        const canLoadSuppliers = section('sections.partners') && allow('modules.suppliers', ['Admin','Manager','Inventory Staff'], ['view_suppliers','see_suppliers']);
+        const canLoadRefunds = section('sections.retail') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']);
+        const canLoadSales = allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']);
+
+        const [criticalProducts, criticalBranches] = await Promise.allSettled([
+          canLoadProducts ? productsApi.list() : Promise.resolve([]),
+          authInitialized && isAuthed ? branchesApi.list() : Promise.resolve([])
         ]);
-        if (alive && p.status === 'fulfilled' && Array.isArray(p.value)) dispatch(setProducts(p.value));
+
+        if (alive && criticalProducts.status === 'fulfilled' && Array.isArray(criticalProducts.value)) dispatch(setProducts(criticalProducts.value));
+        if (alive && criticalBranches.status === 'fulfilled' && Array.isArray(criticalBranches.value)) dispatch(setBranches(criticalBranches.value));
+        if (alive) setDataBootstrapReady(true);
+
+        const [s, c, r, sl] = await Promise.allSettled([
+          canLoadSuppliers ? suppliersApi.list() : Promise.resolve([]),
+          canLoadCustomers ? customersApi.list() : Promise.resolve([]),
+          canLoadRefunds ? refundsApi.listRequests() : Promise.resolve([]),
+          canLoadSales ? salesApi.list() : Promise.resolve([])
+        ]);
         if (alive && s.status === 'fulfilled' && Array.isArray(s.value)) dispatch(setSuppliers(s.value));
         if (alive && c.status === 'fulfilled' && Array.isArray(c.value)) dispatch(setCustomers(c.value));
-        if (alive && b.status === 'fulfilled' && Array.isArray(b.value) && b.value.length > 0) dispatch(setBranches(b.value));
         if (alive && r.status === 'fulfilled' && Array.isArray(r.value)) dispatch(setRequests(r.value));
         if (alive && sl.status === 'fulfilled' && Array.isArray(sl.value)) dispatch(setSales(sl.value));
       } catch {}
+      finally {
+        if (alive) setDataBootstrapReady(true);
+      }
     })();
     return () => { alive = false; };
   }, [dispatch, authInitialized, isAuthed, settings, settingsReady, authRole, authGrants]);
+  useEffect(() => {
+    if (!authInitialized || !isAuthed || !settingsReady) {
+      setDataBootstrapReady(false);
+    }
+  }, [authInitialized, isAuthed, settingsReady, authTenantId]);
   useEffect(() => {
     let alive = true;
     const int = setInterval(async () => {
@@ -484,22 +529,10 @@ function App() {
         if (alive && u.status === 'fulfilled' && Array.isArray(u.value)) dispatch(setUsers(u.value));
         if (alive && au.status === 'fulfilled' && Array.isArray(au.value) && au.value.length > 0) dispatch(setAuditEntries(au.value));
         if (alive && invs.status === 'fulfilled' && Array.isArray(invs.value)) dispatch(setInvoices(invs.value));
-        if (alive && pr.status === 'fulfilled' && Array.isArray(pr.value)) {
-          const { setPurchaseRequests } = await import('./store/purchasesSlice');
-          dispatch(setPurchaseRequests(pr.value));
-        }
-        if (alive && tr.status === 'fulfilled' && Array.isArray(tr.value)) {
-          const { setTransferRequests } = await import('./store/transfersSlice');
-          dispatch(setTransferRequests(tr.value));
-        }
-        if (alive && exr.status === 'fulfilled' && Array.isArray(exr.value)) {
-          const { setExpenseRequests } = await import('./store/expenseRequestsSlice');
-          dispatch(setExpenseRequests(exr.value));
-        }
-        if (alive && adr.status === 'fulfilled' && Array.isArray(adr.value)) {
-          const { setAdjustmentRequests } = await import('./store/adjustmentRequestsSlice');
-          dispatch(setAdjustmentRequests(adr.value));
-        }
+        if (alive && pr.status === 'fulfilled' && Array.isArray(pr.value)) dispatch(setPurchaseRequests(pr.value));
+        if (alive && tr.status === 'fulfilled' && Array.isArray(tr.value)) dispatch(setTransferRequests(tr.value));
+        if (alive && exr.status === 'fulfilled' && Array.isArray(exr.value)) dispatch(setExpenseRequests(exr.value));
+        if (alive && adr.status === 'fulfilled' && Array.isArray(adr.value)) dispatch(setAdjustmentRequests(adr.value));
       } catch {}
     }, Math.max(10000, Number(refreshSec) * 1000));
     return () => {
@@ -519,7 +552,7 @@ function App() {
         <Routes>
           <Route path="/r/:id" element={<ReceiptPublicPage />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
+          <Route element={<ProtectedRoute><Layout bootstrapLoading={!dataBootstrapReady} /></ProtectedRoute>}>
             <Route path="/" element={<Navigate to="/pos" replace />} />
             <Route path="/dashboard" element={<ProtectedRoute feature="modules.dashboard" roles={['Admin','Manager']} grant={['view_dashboard','see_dashboard']}><DashboardPage /></ProtectedRoute>} />
             <Route path="/pos" element={<ProtectedRoute feature="pages.retail.pos" roles={['Admin','Manager','Cashier']} grant={['view_pos','see_pos']}><PosPage mode="retail" /></ProtectedRoute>} />

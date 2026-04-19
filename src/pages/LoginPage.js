@@ -539,21 +539,15 @@ function LoginPage() {
       try { localStorage.setItem('ptSales:authToken', 'offline'); } catch {}
     }
     const nextTenantId = String(user?.tenantId || tenantId || 'master');
-    let previousTenantId = 'master';
-    try { previousTenantId = String(localStorage.getItem('ptSales:tenantId') || 'master'); } catch {}
     try { localStorage.setItem('ptSales:tenantId', nextTenantId); } catch {}
     if (remember) {
       try { localStorage.setItem('ptSales:rememberName', name); } catch {}
     } else {
       try { localStorage.removeItem('ptSales:rememberName'); } catch {}
     }
-    if (previousTenantId !== nextTenantId) {
-      dispatch(resetTenantAppState(nextTenantId));
-      clearTenantState(nextTenantId);
-      try { localStorage.removeItem('ptSales:state'); } catch {}
-      window.location.replace(from || landing);
-      return;
-    }
+    dispatch(resetTenantAppState(nextTenantId));
+    clearTenantState(nextTenantId);
+    try { localStorage.removeItem('ptSales:state'); } catch {}
     dispatch(loginSuccess({ user, role, grants }));
     navigate(from || landing, { replace: true });
   }
@@ -569,25 +563,41 @@ function LoginPage() {
             <div className="brand-name">{appName}</div>
           </div>
         </div>
-        <form onSubmit={handleSubmit} className="login-form">
-          <input placeholder="tenant id (use master for superadmin)" value={tenantId} onChange={e => setTenantId(e.target.value)} />
-          <input placeholder="username" value={name} onChange={e => setName(e.target.value)} />
-          <input placeholder="PIN (4-6 digits)" type="password" value={pin} onChange={e => setPin(e.target.value)} />
-          <div className="captcha-row">
-            <input placeholder="captcha" value={captchaInput} onChange={e => setCaptchaInput(e.target.value)} />
-            <div className="captcha-box">{captcha}</div>
+        {loading ? (
+          <div style={{ minHeight: 320, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
+            <div style={{ display: 'grid', gap: 14, justifyItems: 'center', maxWidth: 420 }}>
+              <div className="brand-loader">
+                <div className="brand-loader-ring" />
+                <img className="brand-loader-logo" src="/logo512.png" alt="logo" />
+              </div>
+              <div className="brand-loader-copy brand-loader-copy-delay-1" style={{ fontSize: 22, fontWeight: 800 }}>{appName}</div>
+              <div className="brand-loader-copy brand-loader-copy-delay-2" style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Signing you in...</div>
+              <div className="brand-loader-copy brand-loader-copy-delay-3" style={{ color: '#64748b', fontSize: 14 }}>
+                Verifying tenant, credentials, and secure access.
+              </div>
+            </div>
           </div>
-          <div style={{ fontSize: 12, color: '#64748b' }}>
-            Captcha refreshes in {Math.max(0, Math.ceil((expiresAt - Date.now())/1000))}s
-          </div>
-          <label className="remember-row">
-            <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />
-            <span>remember PIN</span>
-          </label>
-          <button type="submit" className="primary" disabled={loading}>
-            {loading ? 'Logging in...' : 'Log In'}
-          </button>
-        </form>
+        ) : (
+          <form onSubmit={handleSubmit} className="login-form">
+            <input placeholder="tenant id (use master for superadmin)" value={tenantId} onChange={e => setTenantId(e.target.value)} />
+            <input placeholder="username" value={name} onChange={e => setName(e.target.value)} />
+            <input placeholder="PIN (4-6 digits)" type="password" value={pin} onChange={e => setPin(e.target.value)} />
+            <div className="captcha-row">
+              <input placeholder="captcha" value={captchaInput} onChange={e => setCaptchaInput(e.target.value)} />
+              <div className="captcha-box">{captcha}</div>
+            </div>
+            <div style={{ fontSize: 12, color: '#64748b' }}>
+              Captcha refreshes in {Math.max(0, Math.ceil((expiresAt - Date.now())/1000))}s
+            </div>
+            <label className="remember-row">
+              <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />
+              <span>remember PIN</span>
+            </label>
+            <button type="submit" className="primary" disabled={loading}>
+              {loading ? 'Logging in...' : 'Log In'}
+            </button>
+          </form>
+        )}
         {expiredTenantNotice ? (
           <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: 13 }}>
             <div style={{ fontWeight: 800, marginBottom: 4 }}>Subscription Expired</div>
@@ -603,7 +613,7 @@ function LoginPage() {
           </div>
         ) : null}
         
-        <button className="outline" type="button" onClick={() => setResetOpen(true)}>Reset PIN (Admin)</button>
+        {!loading ? <button className="outline" type="button" onClick={() => setResetOpen(true)}>Reset PIN (Admin)</button> : null}
         {expiredTenantNotice ? (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
             <button className="outline" type="button" onClick={() => { setActivationTenantId(String(tenantId || '')); setActivationAdminName(String(name || '')); setActivationOpen(true); }}>Activate Subscription</button>

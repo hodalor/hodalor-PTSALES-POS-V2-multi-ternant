@@ -17,6 +17,7 @@ const authSlice = createSlice({
       state.role = action.payload.role;
       state.isAuthenticated = true;
       state.grants = Array.isArray(action.payload.grants) ? action.payload.grants : [];
+      state.initialized = true;
     },
     setGrants(state, action) {
       state.grants = Array.isArray(action.payload) ? action.payload : [];
