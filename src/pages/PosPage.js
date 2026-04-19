@@ -102,7 +102,7 @@ function PosPage({ mode = 'retail' }) {
   }, [reservationStorageKey, reservationToken]);
   useEffect(() => {
     if (cart.items.length > 0 || !reservationToken) return;
-    void productUnitsApi.releaseProductUnits({ unitIds: [], reservationToken });
+    void productUnitsApi.releaseProductUnits({ unitIds: [], reservationToken }).catch(() => {});
   }, [cart.items.length, reservationToken]);
   useEffect(() => {
     setSelectedPriceTier(getPreferredPriceTier(allowedPriceTiers, initialPriceTier));
