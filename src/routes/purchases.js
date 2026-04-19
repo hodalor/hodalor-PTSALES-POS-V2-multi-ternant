@@ -6,6 +6,7 @@ import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import { createSerializedUnits, normalizeTrackType, resolveInventoryTypeFromBranch } from '../utils/productUnits.js';
+import { safeErrorMessage } from '../utils/safeError.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -206,7 +207,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_pu
       lastProduct = doc;
     }
   } catch (e) {
-    return res.status(500).json({ error: e?.message || 'Failed to receive stock' });
+    return res.status(500).json({ error: safeErrorMessage(e, 'Failed to receive stock') });
   }
 
   pr.status = 'approved';

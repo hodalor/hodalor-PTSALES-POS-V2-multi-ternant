@@ -5,6 +5,7 @@ import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
 import { normalizeTrackType } from '../utils/productUnits.js';
+import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
 
 const r = Router();
 
@@ -103,7 +104,7 @@ r.post('/adjust', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'add_
       p = await adjustBaseStock(productId, branchId, delta);
     }
   } catch (e) {
-    return res.status(e?.status || 500).json({ error: e?.message || 'Failed to adjust stock' });
+    return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to adjust stock') });
   }
   const varLabel = (Array.isArray(p?.variants) ? p.variants.find(v => v.id === variantId)?.label : '') || '';
   await Audit.create({
@@ -138,7 +139,7 @@ r.post('/damage-remove', requireRoleOrPerm(['Admin','Manager','Inventory Staff']
       p = await adjustBaseStock(productId, branchId, -q);
     }
   } catch (e) {
-    return res.status(e?.status || 500).json({ error: e?.message || 'Failed to remove stock' });
+    return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to remove stock') });
   }
   const varLabel = (Array.isArray(p?.variants) ? p.variants.find(v => v.id === variantId)?.label : '') || '';
   await Audit.create({
@@ -173,7 +174,7 @@ r.post('/receive', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'add
       p = await adjustBaseStock(productId, branchId, u);
     }
   } catch (e) {
-    return res.status(e?.status || 500).json({ error: e?.message || 'Failed to receive stock' });
+    return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to receive stock') });
   }
   const cpu = costPerUnit != null ? Number(costPerUnit) : null;
   if (cpu != null && Number.isFinite(cpu) && cpu >= 0) {
@@ -222,7 +223,7 @@ r.post('/transfer', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
       p = await adjustBaseStock(productId, to, q);
     }
   } catch (e) {
-    return res.status(e?.status || 500).json({ error: e?.message || 'Failed to transfer stock' });
+    return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to transfer stock') });
   }
   const varLabel = (Array.isArray(p?.variants) ? p.variants.find(v => v.id === variantId)?.label : '') || '';
   await Audit.create({
@@ -268,7 +269,7 @@ r.post('/set', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'edit_in
       await adjustBaseStock(productId, branchId, delta);
     }
   } catch (e) {
-    return res.status(e?.status || 500).json({ error: e?.message || 'Failed to set stock' });
+    return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to set stock') });
   }
   const varLabel = (Array.isArray(p?.variants) ? p.variants.find(v => v.id === variantId)?.label : '') || '';
   await Audit.create({

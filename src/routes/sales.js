@@ -14,6 +14,7 @@ import mongoose from 'mongoose';
 import { getMapQty, getStockTarget, markInventoryModified, resolveTierPrice, setMapQty } from '../utils/inventory.js';
 import { refreshCreditSaleStatus, updateCustomerCreditMetrics } from '../utils/credit.js';
 import { normalizeTrackType, releaseSerializedUnits, sellSerializedUnits } from '../utils/productUnits.js';
+import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
 
 const r = Router();
 
@@ -236,7 +237,7 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
         await t.target.product.save();
       }
     } catch {}
-    return res.status(e?.status || 500).json({ error: e?.message || 'Failed to apply sale stock changes' });
+    return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to apply sale stock changes') });
   }
 
   let sale;
@@ -414,7 +415,7 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
         await releaseSerializedUnits({ unitIds: touchedSerializedUnits, reservationToken: String(payload.reservationToken || '') });
       }
     } catch {}
-    return res.status(e?.status || 500).json({ error: e?.message || 'Failed to create sale' });
+    return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to create sale') });
   }
 
   await Audit.create({

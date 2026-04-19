@@ -6,6 +6,7 @@ import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import { normalizeTrackType, transferSerializedUnits } from '../utils/productUnits.js';
+import { safeErrorMessage } from '../utils/safeError.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -196,7 +197,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_tr
       lastProduct = p;
     }
   } catch (e) {
-    return res.status(500).json({ error: e?.message || 'Failed to transfer stock' });
+    return res.status(500).json({ error: safeErrorMessage(e, 'Failed to transfer stock') });
   }
   tr.status = 'approved';
   tr.managerApproverName = approverName || req.user?.name || 'unknown';

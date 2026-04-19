@@ -4,6 +4,7 @@ import Audit from '../models/Audit.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import { createSerializedUnits, listSerializedUnits, releaseSerializedUnits, reserveSerializedUnit, resolveInventoryTypeFromBranch, transferSerializedUnits } from '../utils/productUnits.js';
 import mongoose from 'mongoose';
+import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
 
 const r = Router();
 
@@ -45,7 +46,7 @@ r.post('/bulk-create', requireRoleOrPerm(['Admin', 'Manager', 'Inventory Staff']
     });
     res.json({ count: result.created.length, rows: result.created });
   } catch (e) {
-    res.status(e?.status || 500).json({ error: e?.message || 'Failed to create serialized units' });
+    res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to create serialized units') });
   }
 });
 
@@ -64,7 +65,7 @@ r.post('/reserve', requireRoleOrPerm(['Admin', 'Manager', 'Cashier', 'Inventory 
     });
     res.json(row);
   } catch (e) {
-    res.status(e?.status || 500).json({ error: e?.message || 'Failed to reserve serialized unit' });
+    res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to reserve serialized unit') });
   }
 });
 
@@ -84,7 +85,7 @@ r.post('/scan-imei', requireRoleOrPerm(['Admin', 'Manager', 'Cashier', 'Inventor
     });
     res.json(row);
   } catch (e) {
-    res.status(e?.status || 500).json({ error: e?.message || 'Failed to scan IMEI' });
+    res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to scan IMEI') });
   }
 });
 
@@ -96,7 +97,7 @@ r.post('/release', requireRoleOrPerm(['Admin', 'Manager', 'Cashier', 'Inventory 
     });
     res.json({ count: rows.length });
   } catch (e) {
-    res.status(e?.status || 500).json({ error: e?.message || 'Failed to release serialized units' });
+    res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to release serialized units') });
   }
 });
 
@@ -113,7 +114,7 @@ r.post('/transfer', requireRoleOrPerm(['Admin', 'Manager', 'Inventory Staff'], '
     });
     res.json({ count: rows.length, rows });
   } catch (e) {
-    res.status(e?.status || 500).json({ error: e?.message || 'Failed to transfer serialized units' });
+    res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to transfer serialized units') });
   }
 });
 

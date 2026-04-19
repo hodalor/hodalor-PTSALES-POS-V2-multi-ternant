@@ -2,6 +2,7 @@ import { Router } from 'express';
 import Approval from '../models/Approval.js';
 import { requireAuth } from '../middleware/auth.js';
 import { canApproveDirector, canApproveManager, executeApprovedReference, syncReferenceStatus } from '../utils/approvalWorkflow.js';
+import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
 
 const r = Router();
 
@@ -44,7 +45,7 @@ r.post('/:id/approve', async (req, res) => {
       const fresh = await Approval.findById(approval._id);
       return res.json(fresh);
     } catch (e) {
-      return res.status(e?.status || 400).json({ error: e?.message || 'Failed to execute approval' });
+      return res.status(safeErrorStatus(e, 400)).json({ error: safeErrorMessage(e, 'Failed to execute approval') });
     }
   }
   return res.status(400).json({ error: `Cannot approve item in status ${approval.status}` });

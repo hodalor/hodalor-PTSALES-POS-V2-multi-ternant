@@ -1,4 +1,5 @@
 import { getTenantConnection, normalizeTenantId, resolveStoredTenantId } from '../config/tenancy.js';
+import { safeErrorMessage } from '../utils/safeError.js';
 
 function readTenantId(req) {
   const bodyTenantId = req.body && typeof req.body === 'object' ? req.body.tenantId : '';
@@ -15,6 +16,6 @@ export async function tenantContext(req, res, next) {
     req.db = await getTenantConnection(tenantId);
     next();
   } catch (err) {
-    res.status(400).json({ error: err?.message || 'Tenant could not be resolved' });
+    res.status(400).json({ error: safeErrorMessage(err, 'Tenant could not be resolved') });
   }
 }

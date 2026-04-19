@@ -6,6 +6,7 @@ import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import AdjustmentRequest from '../models/AdjustmentRequest.js';
 import mongoose from 'mongoose';
 import { adjustSerializedUnits, normalizeTrackType, resolveInventoryTypeFromBranch } from '../utils/productUnits.js';
+import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -222,7 +223,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_ad
       }
     }
   } catch (e) {
-    return res.status(e?.status || 500).json({ error: e?.message || 'Failed to apply adjustment' });
+    return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to apply adjustment') });
   }
   row.status = 'approved';
   row.managerApproverName = req.user?.name || '';
