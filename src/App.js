@@ -287,7 +287,7 @@ function App() {
           }
         }
       } catch (e) {
-        console.error('Settings init error:', e);
+        console.warn('Settings init failed; using safe defaults.');
       } finally {
         setSettingsReady(true);
       }
@@ -505,7 +505,7 @@ function App() {
   }, [dispatch, refreshSec, isAuthed, isAuthedNow, settings, settingsReady, authTenantId, authRole, authGrants]);
   return (
     <ToastProvider>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/r/:id" element={<ReceiptPublicPage />} />
           <Route path="/login" element={<LoginPage />} />

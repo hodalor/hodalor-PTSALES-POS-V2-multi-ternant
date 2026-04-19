@@ -1,5 +1,5 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { setStock } from '../store/productsSlice';
 import { addAudit } from '../store/auditSlice';
 import BranchSelect from '../components/BranchSelect';
@@ -425,8 +425,8 @@ function InventoryPage() {
                   : (p.retailPrice != null ? p.retailPrice : p.price);
               const hasVariants = Array.isArray(p.variants) && p.variants.length > 0;
               return (
-                <>
-                  <tr key={p.id} onClick={() => setModalId(p.id)} style={{ cursor: 'pointer' }}>
+                <Fragment key={p.id}>
+                  <tr onClick={() => setModalId(p.id)} style={{ cursor: 'pointer' }}>
                     <td>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         {p.image ? (
@@ -465,7 +465,7 @@ function InventoryPage() {
                     </td>
                   </tr>
                   {(openVariantsFor === p.id && hasVariants) && (
-                    <tr key={`${p.id}-variants`} style={{ background: '#fbfdff' }}>
+                    <tr style={{ background: '#fbfdff' }}>
                       <td colSpan="4">
                         <div style={{ display: 'grid', gap: 6 }}>
                           {p.variants.map(v => (
@@ -486,7 +486,7 @@ function InventoryPage() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               );
             })}
             {rows.length === 0 ? <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No inventory items match the current filters.</td></tr> : null}

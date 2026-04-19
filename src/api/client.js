@@ -2,6 +2,32 @@ import { loadState } from '../store/persist';
 
 const LS_KEY = 'apiBaseUrl';
 
+function sanitizeClientErrorMessage(input, fallback = 'Request failed. Please try again.') {
+  const raw = String(input || '').trim();
+  if (!raw) return fallback;
+  const lower = raw.toLowerCase();
+  if (lower.includes('err_network_changed') || lower.includes('network changed')) {
+    return 'Network connection changed. Please check your internet and try again.';
+  }
+  if (lower.includes('failed to fetch') || lower.includes('load failed') || lower.includes('networkerror')) {
+    return 'Unable to reach the server. Please check your internet connection and try again.';
+  }
+  if (
+    lower.includes('getaddrinfo') ||
+    lower.includes('enotfound') ||
+    lower.includes('econnrefused') ||
+    lower.includes('mongodb') ||
+    lower.includes('mongo') ||
+    lower.includes('srv') ||
+    lower.includes('server selection') ||
+    lower.includes('timed out after') ||
+    lower.includes('topology')
+  ) {
+    return 'Service temporarily unavailable. Please try again shortly.';
+  }
+  return raw;
+}
+
 function readJwtPayload(token) {
   try {
     const raw = String(token || '').split('.')[1] || '';
@@ -70,7 +96,7 @@ export async function fetchJson(path, opts = {}) {
     if (e && (e.name === 'AbortError' || String(e.message || '').toLowerCase().includes('aborted'))) {
       throw new Error('Request timed out while processing. Refresh to confirm whether the operation completed.');
     }
-    throw e;
+    throw new Error(sanitizeClientErrorMessage(e?.message || e, 'Unable to reach the server. Please try again.'));
   } finally {
     if (tid) clearTimeout(tid);
   }
@@ -81,7 +107,7 @@ export async function fetchJson(path, opts = {}) {
       const obj = JSON.parse(text);
       if (obj && typeof obj === 'object' && obj.error) parsedError = String(obj.error);
     } catch {}
-    throw new Error(parsedError || text || `HTTP ${res.status}`);
+    throw new Error(sanitizeClientErrorMessage(parsedError || text || `HTTP ${res.status}`, `Request failed (HTTP ${res.status})`));
   }
   const ct = res.headers.get('content-type') || '';
   if (ct.includes('application/json')) return res.json();
