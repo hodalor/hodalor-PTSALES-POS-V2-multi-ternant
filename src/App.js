@@ -241,8 +241,12 @@ function App() {
       dispatch(setSettingsHydrated(false));
       try {
         const isMaster = String(authTenantId || '').toLowerCase() === 'master';
-        const meta = await tenantsApi.me().catch(() => ({}));
-        const remote = await settingsApi.get();
+        const [remoteResult, metaResult] = await Promise.allSettled([
+          settingsApi.get(),
+          isMaster ? Promise.resolve({}) : tenantsApi.me()
+        ]);
+        const remote = remoteResult.status === 'fulfilled' ? remoteResult.value : {};
+        const meta = metaResult.status === 'fulfilled' ? metaResult.value : {};
         if ((remote && Object.keys(remote).length > 0) || (!isMaster && meta && typeof meta === 'object')) {
           const mergedBase = isMaster
             ? (remote || {})

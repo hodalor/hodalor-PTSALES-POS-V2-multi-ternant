@@ -20,6 +20,10 @@ function branchTypeBadgeStyle(branchType = 'retail') {
   return { background: '#dcfce7', color: '#166534' };
 }
 
+function shouldShowBranchTypeBadge(branchType = 'retail') {
+  return String(branchType || 'retail').toLowerCase() !== 'retail';
+}
+
 function InventoryPage() {
   const products = useSelector(s => s.products.products);
   const branches = useSelector(s => s.branches.branches);
@@ -315,7 +319,7 @@ function InventoryPage() {
             <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Search</div>
             <input className="input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Name, SKU, barcode" />
           </label>
-          {!isAllBranches && branch && (
+          {!isAllBranches && branch && shouldShowBranchTypeBadge(branch.branchType) && (
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 700, ...branchTypeBadgeStyle(branch.branchType) }}>
                 {String(branch.branchType || 'retail')}
@@ -528,9 +532,11 @@ function InventoryPage() {
                               <div style={{ fontWeight: 700 }}>{b.code || b.name}</div>
                               <div style={{ color: '#64748b', fontSize: 12 }}>{b.name || b.code}</div>
                             </div>
-                            <span style={{ display: 'inline-flex', width: 'fit-content', padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, ...branchTypeBadgeStyle(b.branchType) }}>
-                              {String(b.branchType || 'retail')}
-                            </span>
+                            {shouldShowBranchTypeBadge(b.branchType) ? (
+                              <span style={{ display: 'inline-flex', width: 'fit-content', padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, ...branchTypeBadgeStyle(b.branchType) }}>
+                                {String(b.branchType || 'retail')}
+                              </span>
+                            ) : null}
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
                             <label style={{ minWidth: 0 }}>
@@ -577,11 +583,13 @@ function InventoryPage() {
                 {(Array.isArray(selected.variants) && selected.variants.length > 0) && (
                   <div style={{ gridColumn: '1 / -1', marginTop: 8 }}>
                     <strong>Variants (current branch)</strong>
-                    <div style={{ marginTop: 4, marginBottom: 6 }}>
-                      <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 700, ...branchTypeBadgeStyle(branch?.branchType) }}>
-                        {String(branch?.branchType || 'retail')}
-                      </span>
-                    </div>
+                    {shouldShowBranchTypeBadge(branch?.branchType) ? (
+                      <div style={{ marginTop: 4, marginBottom: 6 }}>
+                        <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 700, ...branchTypeBadgeStyle(branch?.branchType) }}>
+                          {String(branch?.branchType || 'retail')}
+                        </span>
+                      </div>
+                    ) : null}
                     <div style={{ display: 'grid', gap: 6, marginTop: 6 }}>
                       {selected.variants.map(v => (
                         <div key={v.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(180px, 2fr) repeat(3, minmax(90px, 1fr))', gap: 8, alignItems: 'center' }}>
