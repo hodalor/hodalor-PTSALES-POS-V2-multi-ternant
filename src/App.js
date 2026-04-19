@@ -92,6 +92,7 @@ function App() {
   const dispatch = useDispatch();
   const refreshSec = useSelector(s => s.settings.refreshIntervalSec || 60);
   const isAuthed = useSelector(s => s.auth.isAuthenticated);
+  const authInitialized = useSelector(s => s.auth.initialized);
   const settings = useSelector(s => s.settings);
   const userName = useSelector(s => s.auth.user?.name || '');
   const isAuthedNow = useSelector(s => s.auth.isAuthenticated);
@@ -198,7 +199,13 @@ function App() {
   useEffect(() => {
     (async () => {
       try {
-        const token = localStorage.getItem('ptSales:authToken');
+        let token = localStorage.getItem('ptSales:authToken');
+        if (token && String(token).toLowerCase() === 'offline' && navigator.onLine) {
+          try {
+            const refreshed = await ensureOnlineJwt();
+            if (refreshed) token = localStorage.getItem('ptSales:authToken');
+          } catch {}
+        }
         if (token && String(token).toLowerCase() !== 'offline') {
           const resp = await authApi.me();
           if (resp && resp.role) {
@@ -225,12 +232,12 @@ function App() {
     return () => clearTimeout(tid);
   }, [dispatch]);
   useEffect(() => {
-    if (!isAuthed) {
+    if (!authInitialized || !isAuthed) {
       setSettingsReady(false);
       return;
     }
     (async () => {
-      if (!isAuthed) return;
+      if (!authInitialized || !isAuthed) return;
       try {
         const isMaster = String(authTenantId || '').toLowerCase() === 'master';
         const meta = await tenantsApi.me().catch(() => ({}));
@@ -292,10 +299,10 @@ function App() {
         setSettingsReady(true);
       }
     })();
-  }, [dispatch, isAuthed, authTenantId]);
+  }, [dispatch, authInitialized, isAuthed, authTenantId]);
   useEffect(() => {
     (async () => {
-      if (!isAuthed || !settingsReady) return;
+      if (!authInitialized || !isAuthed || !settingsReady) return;
       try {
         const migFlag = localStorage.getItem(`ptSales:migratedDbV1:${String(authTenantId || 'default')}`);
         if (migFlag) return;
@@ -343,11 +350,11 @@ function App() {
         localStorage.setItem(`ptSales:migratedDbV1:${String(authTenantId || 'default')}`, '1');
       } catch {}
     })();
-  }, [isAuthed, authTenantId, settingsReady]);
+  }, [authInitialized, isAuthed, authTenantId, settingsReady]);
   useEffect(() => {
     let alive = true;
     (async () => {
-      if (!isAuthed || !settingsReady) return;
+      if (!authInitialized || !isAuthed || !settingsReady) return;
       try {
         const hasGrant = (grant) => {
           const g = Array.isArray(authGrants) ? authGrants : [];
@@ -372,7 +379,7 @@ function App() {
           allow('modules.products', ['Admin','Manager','Inventory Staff'], ['view_products','see_products','view_distribution_products','view_warehouse_products']) ? productsApi.list() : Promise.resolve([]),
           section('sections.partners') && allow('modules.suppliers', ['Admin','Manager','Inventory Staff'], ['view_suppliers','see_suppliers']) ? suppliersApi.list() : Promise.resolve([]),
           section('sections.partners') && allow('modules.customers', ['Admin','Manager','Cashier'], ['view_customers','see_customers']) ? customersApi.list() : Promise.resolve([]),
-          isAuthed ? branchesApi.list() : Promise.resolve([]),
+          authInitialized && isAuthed ? branchesApi.list() : Promise.resolve([]),
           section('sections.retail') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']) ? refundsApi.listRequests() : Promise.resolve([]),
           allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? salesApi.list() : Promise.resolve([])
         ]);
@@ -385,7 +392,7 @@ function App() {
       } catch {}
     })();
     return () => { alive = false; };
-  }, [dispatch, isAuthed, settings, settingsReady, authRole, authGrants]);
+  }, [dispatch, authInitialized, isAuthed, settings, settingsReady, authRole, authGrants]);
   useEffect(() => {
     let alive = true;
     const int = setInterval(async () => {
@@ -401,11 +408,11 @@ function App() {
     };
   }, []);
   useEffect(() => {
-    if (!isAuthed) return;
+    if (!authInitialized || !isAuthed) return;
     const userGrants = settings?.userGrants;
     const g = (userGrants && userName) ? (userGrants[userName] || []) : [];
     dispatch(setGrants(filterGrantsByTenantFlags(Array.isArray(g) ? g : [], settings)));
-  }, [isAuthed, settings, settings?.userGrants, userName, dispatch]);
+  }, [authInitialized, isAuthed, settings, settings?.userGrants, userName, dispatch]);
   useEffect(() => {
     let alive = true;
     const idleMs = 180000;
@@ -421,7 +428,7 @@ function App() {
       document.addEventListener('visibilitychange', onVis, { passive: true });
     }
     const interval = setInterval(async () => {
-      if (!navigator.onLine || !alive || !isAuthed || !settingsReady) return;
+      if (!navigator.onLine || !alive || !authInitialized || !isAuthed || !settingsReady) return;
       if (Date.now() - lastActive >= idleMs) {
         const tenantId = String(authTenantId || localStorage.getItem('ptSales:tenantId') || 'default');
         try { await authApi.logout(); } catch {}
@@ -454,7 +461,7 @@ function App() {
           allow('modules.products', ['Admin','Manager','Inventory Staff'], ['view_products','see_products','view_distribution_products','view_warehouse_products']) ? productsApi.list() : Promise.resolve([]),
           section('sections.partners') && allow('modules.suppliers', ['Admin','Manager','Inventory Staff'], ['view_suppliers','see_suppliers']) ? suppliersApi.list() : Promise.resolve([]),
           section('sections.partners') && allow('modules.customers', ['Admin','Manager','Cashier'], ['view_customers','see_customers']) ? customersApi.list() : Promise.resolve([]),
-          isAuthed ? branchesApi.list() : Promise.resolve([]),
+          authInitialized && isAuthed ? branchesApi.list() : Promise.resolve([]),
           section('sections.retail') && allow('modules.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']) ? refundsApi.listRequests() : Promise.resolve([]),
           allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? salesApi.list() : Promise.resolve([]),
           section('sections.admin') && allow('admin.users', ['Admin'], ['view_users','see_users']) ? usersApi.list() : Promise.resolve([]),
@@ -502,7 +509,7 @@ function App() {
       window.removeEventListener('scroll', bump);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [dispatch, refreshSec, isAuthed, isAuthedNow, settings, settingsReady, authTenantId, authRole, authGrants]);
+  }, [dispatch, refreshSec, authInitialized, isAuthed, isAuthedNow, settings, settingsReady, authTenantId, authRole, authGrants]);
   return (
     <ToastProvider>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>

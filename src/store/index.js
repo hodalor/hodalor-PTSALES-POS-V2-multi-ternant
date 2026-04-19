@@ -21,6 +21,12 @@ import adjustmentRequestsReducer from './adjustmentRequestsSlice';
 import { clearTenantState } from './persist';
 
 const preloadedState = loadState();
+if (preloadedState?.auth) {
+  preloadedState.auth = {
+    ...preloadedState.auth,
+    initialized: false
+  };
+}
 const appReducer = {
   auth: authReducer,
   cart: cartReducer,
