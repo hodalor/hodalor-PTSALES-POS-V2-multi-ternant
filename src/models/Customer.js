@@ -9,6 +9,7 @@ const CustomerSchema = new mongoose.Schema({
   email: { type: String, index: true },
   customerType: { type: String, enum: ['retail', 'distribution'], default: 'retail', index: true },
   dob: { type: Date },
+  idType: { type: String, default: '' },
   idCardNumber: { type: String, index: true },
   idFront: { type: String },
   idBack: { type: String },
