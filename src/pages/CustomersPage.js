@@ -25,7 +25,7 @@ function CustomersPage() {
     if (roleLower === 'superadmin') return true;
     return grants.includes(g);
   }
-  const canAddCustomers = (['admin','manager','cashier'].includes(roleLower)) || has('add_customers');
+  const canAddCustomers = roleLower === 'superadmin' || has('add_customers');
   const canEditCustomers = (['admin','manager','cashier'].includes(roleLower)) || has('edit_customers');
   const canRemoveCustomers = (roleLower === 'admin' || roleLower === 'superadmin');
   const [query, setQuery] = useState('');
