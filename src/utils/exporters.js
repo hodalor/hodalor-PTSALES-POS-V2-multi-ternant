@@ -16,14 +16,18 @@ export function exportCsv(filename, headers, rows) {
 
 export function exportTablePdf(title, headers, rows, options = {}) {
   const letterhead = options?.letterhead || null;
+  const meta = Array.isArray(options?.meta) ? options.meta.filter((item) => item && (item.label || item.value)) : [];
   const styles = `
     <style>
       body { font-family: Arial, sans-serif; padding: 16px; color: #0f172a; }
       h1 { margin: 0 0 12px; font-size: 18px; }
-      .letterhead { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; padding-bottom: 10px; border-bottom: 2px solid #e2e8f0; }
+      .letterhead { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 8px; }
       .letterhead-logo { width: 64px; height: 64px; object-fit: contain; border-radius: 8px; background: #fff; border: 1px solid #e2e8f0; }
       .letterhead-title { margin: 0 0 4px; font-size: 20px; font-weight: 800; }
       .letterhead-line { margin: 2px 0; font-size: 12px; color: #334155; }
+      .letterhead-sep { border-bottom: 2px dotted #94a3b8; margin: 10px 0 12px; }
+      .meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 6px 14px; margin: 0 0 12px; font-size: 12px; color: #334155; }
+      .meta-label { font-weight: 700; color: #0f172a; }
       .report-title { margin: 0 0 12px; font-size: 18px; }
       table { width: 100%; border-collapse: collapse; font-size: 12px; }
       th, td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; vertical-align: top; }
@@ -39,6 +43,11 @@ export function exportTablePdf(title, headers, rows, options = {}) {
           ${letterhead.address ? `<div class="letterhead-line"><strong>Address:</strong> ${escapeHtml(letterhead.address)}</div>` : ''}
         </div>
       </div>` : '';
+  const metaHtml = meta.length > 0 ? `
+      <div class="letterhead-sep"></div>
+      <div class="meta-grid">
+        ${meta.map((item) => `<div><span class="meta-label">${escapeHtml(item.label || '')}:</span> ${escapeHtml(item.value || '')}</div>`).join('')}
+      </div>` : (letterhead ? `<div class="letterhead-sep"></div>` : '');
   const head = `<tr>${headers.map(h => `<th>${escapeHtml(h.label)}</th>`).join('')}</tr>`;
   const body = rows.map(r => {
     const tds = headers.map(h => {
@@ -53,6 +62,7 @@ export function exportTablePdf(title, headers, rows, options = {}) {
     <head><meta charset="utf-8" />${styles}</head>
     <body>
       ${letterheadHtml}
+      ${metaHtml}
       <h1 class="report-title">${escapeHtml(title)}</h1>
       <table>${head}${body}</table>
     </body>
