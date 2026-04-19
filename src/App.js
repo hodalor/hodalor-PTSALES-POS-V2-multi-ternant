@@ -212,9 +212,52 @@ function App() {
           } catch {}
         }
         if (token && String(token).toLowerCase() !== 'offline') {
-          const resp = await authApi.me();
+          const hintedTenantId = String(localStorage.getItem('ptSales:tenantId') || 'default');
+          const hintedIsMaster = hintedTenantId.toLowerCase() === 'master';
+          const [meResult, remoteResult, metaResult] = await Promise.allSettled([
+            authApi.me(),
+            settingsApi.get(),
+            hintedIsMaster ? Promise.resolve({}) : tenantsApi.me()
+          ]);
+          const resp = meResult.status === 'fulfilled' ? meResult.value : null;
           if (resp && resp.role) {
             dispatch(loginSuccess({ user: resp.user, role: resp.role, grants: resp.grants || [] }));
+            const remote = remoteResult.status === 'fulfilled' ? remoteResult.value : {};
+            const meta = metaResult.status === 'fulfilled' ? metaResult.value : {};
+            const isMaster = String(resp?.user?.tenantId || hintedTenantId || '').toLowerCase() === 'master';
+            if ((remote && Object.keys(remote).length > 0) || (!isMaster && meta && typeof meta === 'object')) {
+              const mergedBase = isMaster
+                ? (remote || {})
+                : {
+                    ...(remote || {}),
+                    clientAppName: remote?.clientAppName || meta?.clientAppName || meta?.name || '',
+                    clientLogoUrl: remote?.clientLogoUrl || meta?.logo || '',
+                    themeColor: remote?.themeColor || meta?.themeColor || '',
+                    subscriptionPlan: remote?.subscriptionPlan || meta?.subscriptionPlan || 'basic',
+                    subscriptionExpiresAt: remote?.subscriptionExpiresAt || meta?.subscriptionExpiresAt || null,
+                    subscriptionPermanent: remote?.subscriptionPermanent ?? meta?.subscriptionPermanent ?? false
+                  };
+              const merged = {
+                ...mergedBase,
+                taxRate: Number.isFinite(Number(mergedBase?.taxRate)) ? Math.max(0, Math.min(1, Number(mergedBase.taxRate))) : 0
+              };
+              dispatch(setAllSettings(merged));
+              dispatch(setSettingsHydrated(true));
+              setSettingsReady(true);
+              try {
+                const root = document.documentElement;
+                const color = !isMaster ? String(merged.themeColor || '') : '';
+                if (color) {
+                  root.style.setProperty('--brand', color);
+                  root.style.setProperty('--sidebar-bg', color);
+                  root.style.setProperty('--active', color);
+                } else {
+                  root.style.removeProperty('--brand');
+                  root.style.removeProperty('--sidebar-bg');
+                  root.style.removeProperty('--active');
+                }
+              } catch {}
+            }
           }
         } else if (!token) {
           dispatch(logout());
@@ -234,6 +277,10 @@ function App() {
     if (!authInitialized || !isAuthed) {
       setSettingsReady(false);
       dispatch(setSettingsHydrated(false));
+      return;
+    }
+    if (settings?.hydrated) {
+      setSettingsReady(true);
       return;
     }
     (async () => {
@@ -305,7 +352,7 @@ function App() {
         setSettingsReady(true);
       }
     })();
-  }, [dispatch, authInitialized, isAuthed, authTenantId]);
+  }, [dispatch, authInitialized, isAuthed, authTenantId, settings?.hydrated]);
   useEffect(() => {
     (async () => {
       if (!authInitialized || !isAuthed || !settingsReady) return;
