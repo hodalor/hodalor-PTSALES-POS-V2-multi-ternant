@@ -15,6 +15,9 @@ function ProtectedRoute({ roles, grant, feature, children }) {
   const expiryTs = settings?.subscriptionExpiresAt ? new Date(settings.subscriptionExpiresAt).getTime() : 0;
   const isPermanent = !!settings?.subscriptionPermanent;
   const isSuper = String(auth.role || '').toLowerCase() === 'superadmin' && String(auth.user?.tenantId || '').toLowerCase() === 'master';
+  if (!isSuper && !settings?.hydrated) {
+    return <div style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>Loading tenant access…</div>;
+  }
   if (!isSuper && !isPermanent && expiryTs && expiryTs < Date.now()) {
     return (
       <div style={{ padding: 24, display: 'grid', gap: 12 }}>

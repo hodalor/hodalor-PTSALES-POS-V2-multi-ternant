@@ -27,6 +27,12 @@ if (preloadedState?.auth) {
     initialized: false
   };
 }
+if (preloadedState?.settings) {
+  preloadedState.settings = {
+    ...preloadedState.settings,
+    hydrated: false
+  };
+}
 const appReducer = {
   auth: authReducer,
   cart: cartReducer,

@@ -77,7 +77,7 @@ import { resetTenantAppState } from './store';
 import * as tenantsApi from './api/tenants';
 import { loginSuccess, setGrants, setInitialized, logout } from './store/authSlice';
 import * as settingsApi from './api/settings';
-import { setAllSettings } from './store/settingsSlice';
+import { setAllSettings, setSettingsHydrated } from './store/settingsSlice';
 import * as usersApi from './api/users';
 import { setUsers } from './store/usersSlice';
 import * as auditsApi from './api/audits';
@@ -234,10 +234,12 @@ function App() {
   useEffect(() => {
     if (!authInitialized || !isAuthed) {
       setSettingsReady(false);
+      dispatch(setSettingsHydrated(false));
       return;
     }
     (async () => {
       if (!authInitialized || !isAuthed) return;
+      dispatch(setSettingsHydrated(false));
       try {
         const isMaster = String(authTenantId || '').toLowerCase() === 'master';
         const meta = await tenantsApi.me().catch(() => ({}));
@@ -296,6 +298,7 @@ function App() {
       } catch (e) {
         console.warn('Settings init failed; using safe defaults.');
       } finally {
+        dispatch(setSettingsHydrated(true));
         setSettingsReady(true);
       }
     })();
