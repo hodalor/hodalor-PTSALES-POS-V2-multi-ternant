@@ -3,7 +3,7 @@ import { addItem, removeItem, removeItemByUnitId, setQuantity, updateItemPricing
 import { adjustStock, setStock } from '../store/productsSlice';
 import { recordSale } from '../store/salesSlice';
 import { addInvoice } from '../store/invoicesSlice';
-import { updateCustomer } from '../store/customersSlice';
+import { addCustomer, setCustomers, updateCustomer } from '../store/customersSlice';
 import { buildBrandedReceiptHtml, printReceiptHtml } from '../utils/print';
 import { escposReceipt, escposOpenDrawer, downloadText } from '../utils/escpos';
 import { useToast } from '../components/ToastProvider';
@@ -12,6 +12,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { addAudit } from '../store/auditSlice';
 import { productSpec } from '../utils/productSpec';
 import { createSale } from '../api/sales';
+import * as customersApi from '../api/customers';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import { confirmDialog, promptDialog } from '../utils/dialogs';
@@ -88,6 +89,9 @@ function PosPage({ mode = 'retail' }) {
   const [saving, setSaving] = useState(false);
   const [customerQuery, setCustomerQuery] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
+  const [quickCustomerSaving, setQuickCustomerSaving] = useState(false);
+  const [quickCustomerForm, setQuickCustomerForm] = useState({ name: '', phone: '', email: '', customerType: isWholesale ? 'distribution' : 'retail', idType: '', idCardNumber: '', address: '' });
   const [redeemPoints, setRedeemPoints] = useState('');
   const [heldOpen, setHeldOpen] = useState(false);
   const [heldSort, setHeldSort] = useState(() => {
@@ -252,6 +256,84 @@ function PosPage({ mode = 'retail' }) {
     }
     return list;
   }, [heldSales, heldSort, heldQuery, customers]);
+
+  const canQuickAddCustomer = useMemo(() => {
+    const roleLower = String(auth.role || '').toLowerCase();
+    const grants = Array.isArray(auth.grants) ? auth.grants : [];
+    return roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('add_customers');
+  }, [auth.grants, auth.role]);
+
+  function openQuickCustomerModal() {
+    const seed = String(customerQuery || '').trim();
+    const looksLikePhone = !!seed && /^[+\d\s()-]+$/.test(seed);
+    setQuickCustomerForm({
+      name: looksLikePhone ? '' : seed,
+      phone: looksLikePhone ? seed : '',
+      email: '',
+      customerType: isWholesale ? 'distribution' : 'retail',
+      idType: '',
+      idCardNumber: '',
+      address: ''
+    });
+    setQuickCustomerOpen(true);
+  }
+
+  async function quickAddCustomer() {
+    if (!canQuickAddCustomer) {
+      toast.show('Not authorized to add customers', { type: 'error' });
+      return;
+    }
+    if (quickCustomerSaving) return;
+    if (!String(quickCustomerForm.name || '').trim()) {
+      toast.show('Customer name is required', { type: 'error' });
+      return;
+    }
+    setQuickCustomerSaving(true);
+    try {
+      const payload = {
+        name: String(quickCustomerForm.name || '').trim(),
+        phone: String(quickCustomerForm.phone || '').trim(),
+        email: String(quickCustomerForm.email || '').trim(),
+        customerType: quickCustomerForm.customerType === 'distribution' ? 'distribution' : 'retail',
+        idType: String(quickCustomerForm.idType || '').trim(),
+        idCardNumber: String(quickCustomerForm.idCardNumber || '').trim(),
+        address: String(quickCustomerForm.address || '').trim()
+      };
+      if (!navigator.onLine) {
+        if (!offlineBackupAllowed) {
+          toast.show('Offline: connect internet and try again.', { type: 'error' });
+          return;
+        }
+        const clientId = `offline-customer-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const offlineRow = { ...payload, id: clientId, clientId, customerCode: `OFF-${String(Date.now()).slice(-6)}`, loyaltyPoints: 0, offline: true };
+        dispatch(addCustomer(offlineRow));
+        await enqueueHttp({ collection: 'customers', label: 'Customer', path: '/api/customers', method: 'POST', body: { ...payload, clientId } });
+        setSelectedCustomerId(String(clientId));
+        setCustomerQuery('');
+        setQuickCustomerOpen(false);
+        toast.show('Customer saved offline and selected for this sale', { type: 'success' });
+        return;
+      }
+      const clientId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `cust-${Date.now()}`;
+      const created = await customersApi.create({ ...payload, clientId });
+      dispatch(addCustomer(created));
+      try {
+        const list = await customersApi.list({ limit: 2000 });
+        dispatch(setCustomers(list));
+        const matched = (Array.isArray(list) ? list : []).find((customer) => String(customer?.id || customer?._id || '') === String(created?.id || created?._id || '') || String(customer?.clientId || '') === String(clientId));
+        setSelectedCustomerId(String(matched?.id || matched?._id || created?.id || created?._id || ''));
+      } catch {
+        setSelectedCustomerId(String(created?.id || created?._id || ''));
+      }
+      setCustomerQuery('');
+      setQuickCustomerOpen(false);
+      toast.show('Customer added and selected', { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to add customer'), { type: 'error' });
+    } finally {
+      setQuickCustomerSaving(false);
+    }
+  }
 
   function isSerializedAlreadyInCart(unit) {
     const unitId = String(unit?._id || unit?.unitId || '');
@@ -1045,34 +1127,37 @@ function PosPage({ mode = 'retail' }) {
 
   return (
     <div className="pos-layout">
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <h2 style={{ marginBottom: 4 }}>{modeLabel}</h2>
-            <div style={{ color: '#64748b', fontSize: 12 }}>{isWholesale ? `Distribution inventory${activeBranch ? ` • ${activeBranch.name}` : ''}` : `Retail inventory${activeBranch ? ` • ${activeBranch.name}` : ''} with EasyBuy support`}</div>
+      <div className="pos-products-pane">
+        <div className="pos-sticky-search">
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div>
+              <h2 style={{ marginBottom: 4 }}>{modeLabel}</h2>
+              <div style={{ color: '#64748b', fontSize: 12 }}>{isWholesale ? `Distribution inventory${activeBranch ? ` • ${activeBranch.name}` : ''}` : `Retail inventory${activeBranch ? ` • ${activeBranch.name}` : ''} with EasyBuy support`}</div>
+            </div>
+            <OfflineQueueIndicator collection="sales" label="Sales queued" />
           </div>
-          <OfflineQueueIndicator collection="sales" label="Sales queued" />
-        </div>
-        <div className="toolbar">
-          <input className="input" placeholder="Search name, SKU, barcode, IMEI, or serial number" value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onSearchKeyDown} style={{ width: '100%' }} />
-          <button className="btn" onClick={submitMainSearch}>Search / Add</button>
-          {isWholesale && (
-          <select className="select" value={selectedPriceTier} onChange={e => setSelectedPriceTier(e.target.value)}>
-            {allowedPriceTiers.map(tier => <option key={tier} value={tier}>{getPriceTierLabel(tier)}</option>)}
-          </select>
-          )}
-          <div className="filter-actions">
-            <button className={`btn-toggle ${view === 'grid' ? 'active' : ''}`} onClick={() => setView('grid')}>
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" stroke="currentColor" strokeWidth="2"/></svg>
-            </button>
-            <button className={`btn-toggle ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')}>
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2"/></svg>
-            </button>
+          <div className="toolbar">
+            <input className="input" placeholder="Search name, SKU, barcode, IMEI, or serial number" value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onSearchKeyDown} style={{ width: '100%' }} />
+            <button className="btn" onClick={submitMainSearch}>Search / Add</button>
+            {isWholesale && (
+            <select className="select" value={selectedPriceTier} onChange={e => setSelectedPriceTier(e.target.value)}>
+              {allowedPriceTiers.map(tier => <option key={tier} value={tier}>{getPriceTierLabel(tier)}</option>)}
+            </select>
+            )}
+            <div className="filter-actions">
+              <button className={`btn-toggle ${view === 'grid' ? 'active' : ''}`} onClick={() => setView('grid')}>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" stroke="currentColor" strokeWidth="2"/></svg>
+              </button>
+              <button className={`btn-toggle ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')}>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2"/></svg>
+              </button>
+            </div>
+          </div>
+          <div style={{ color: '#64748b', fontSize: 12, marginTop: 6 }}>
+            Search by name, SKU, barcode, IMEI, or serial number. If a serialized unit exists in stock for this branch, it will be added directly to cart.
           </div>
         </div>
-        <div style={{ color: '#64748b', fontSize: 12, marginTop: 6 }}>
-          Search by name, SKU, barcode, IMEI, or serial number. If a serialized unit exists in stock for this branch, it will be added directly to cart.
-        </div>
+        <div className="pos-products-scroll">
         {query.trim().length >= 4 && (
           <div className="card" style={{ marginTop: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -1177,10 +1262,12 @@ function PosPage({ mode = 'retail' }) {
             ))}
           </div>
         )}
+        </div>
       </div>
-      <div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2>Cart</h2>
+      <div className="pos-cart-pane">
+        <div className="pos-cart-sticky">
+        <div className="pos-cart-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h2 style={{ margin: 0 }}>Cart</h2>
           <div style={{ position: 'relative' }}>
             <div style={{ display: 'flex', gap: 6 }}>
               {heldUiEnabled && (
@@ -1236,8 +1323,13 @@ function PosPage({ mode = 'retail' }) {
             )}
           </div>
         </div>
-        <div className="card" style={{ marginBottom: 12 }}>
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Customer (optional)</div>
+        <div className="card pos-customer-card" style={{ marginBottom: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+            <div style={{ fontWeight: 700 }}>Customer (optional)</div>
+            {!selectedCustomer && canQuickAddCustomer ? (
+              <button className="btn" onClick={openQuickCustomerModal}>Quick Add Customer</button>
+            ) : null}
+          </div>
           {selectedCustomer ? (
             <div style={{ display: 'grid', gap: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
@@ -1246,9 +1338,20 @@ function PosPage({ mode = 'retail' }) {
                   <div style={{ color: '#64748b', fontSize: 12 }}>
                     {selectedCustomer.customerCode || '—'} {selectedCustomer.phone ? `• ${selectedCustomer.phone}` : ''}
                   </div>
+                  {(selectedCustomer.idType || selectedCustomer.idCardNumber) ? (
+                    <div style={{ color: '#475569', fontSize: 12, marginTop: 2 }}>
+                      ID: <strong>{selectedCustomer.idType || '—'}</strong>{selectedCustomer.idCardNumber ? ` • ${selectedCustomer.idCardNumber}` : ''}
+                    </div>
+                  ) : null}
                 </div>
-                <button className="btn" onClick={() => { setSelectedCustomerId(''); setCustomerQuery(''); setEasyBuyEnabled(false); }}>
-                  Clear
+                <button
+                  className="btn"
+                  aria-label="Remove selected customer"
+                  title="Remove selected customer"
+                  onClick={() => { setSelectedCustomerId(''); setCustomerQuery(''); setEasyBuyEnabled(false); }}
+                  style={{ width: 32, height: 32, padding: 0, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  X
                 </button>
               </div>
               <div style={{ display: 'grid', gap: 4, color: '#475569', fontSize: 13 }}>
@@ -1266,6 +1369,11 @@ function PosPage({ mode = 'retail' }) {
                   value={customerQuery}
                   onChange={e => setCustomerQuery(e.target.value)}
                 />
+                {canQuickAddCustomer ? (
+                  <div style={{ marginTop: 8, color: '#64748b', fontSize: 12 }}>
+                    Need a new customer quickly? Use `Quick Add Customer` and finish full details later in `Customers`.
+                  </div>
+                ) : null}
                 {customerMatches.length > 0 && (
                   <div style={{ position: 'absolute', top: 44, left: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', zIndex: 20 }}>
                     {customerMatches.map(c => (
@@ -1288,6 +1396,72 @@ function PosPage({ mode = 'retail' }) {
             </div>
           )}
         </div>
+        </div>
+        <div className="pos-cart-scroll">
+        {quickCustomerOpen && (
+          <Modal
+            title="Quick Add Customer"
+            variant="light"
+            onClose={() => { if (!quickCustomerSaving) setQuickCustomerOpen(false); }}
+            footer={(
+              <>
+                <button className="btn" onClick={() => setQuickCustomerOpen(false)} disabled={quickCustomerSaving}>Cancel</button>
+                <button className="btn btn-primary" onClick={() => void quickAddCustomer()} disabled={quickCustomerSaving}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                    {quickCustomerSaving && <InlineSpinner />}
+                    {quickCustomerSaving ? 'Saving…' : 'Save Customer'}
+                  </span>
+                </button>
+              </>
+            )}
+          >
+            <div style={{ display: 'grid', gap: 14 }}>
+              <div style={{ color: '#64748b', fontSize: 13 }}>
+                Capture only the basic customer details now. Full profile details can be updated later in `Customers` using `Edit Customer`.
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                <label>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Name</div>
+                  <input className="input" value={quickCustomerForm.name} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Customer name" />
+                </label>
+                <label>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Phone</div>
+                  <input className="input" value={quickCustomerForm.phone} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="Phone number" />
+                </label>
+                <label>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Email</div>
+                  <input className="input" value={quickCustomerForm.email} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, email: e.target.value }))} placeholder="Email (optional)" />
+                </label>
+                <label>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Customer Type</div>
+                  <select className="select" value={quickCustomerForm.customerType} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, customerType: e.target.value }))}>
+                    <option value="retail">Retail Customer</option>
+                    <option value="distribution">Distribution Customer</option>
+                  </select>
+                </label>
+                <label>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>ID Type</div>
+                  <select className="select" value={quickCustomerForm.idType} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, idType: e.target.value }))}>
+                    <option value="">Select ID Type</option>
+                    <option value="voter_id">Voter ID</option>
+                    <option value="passport">Passport</option>
+                    <option value="drivers_license">Driver's License</option>
+                    <option value="national_id">National ID</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+                <label>
+                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>ID Number</div>
+                  <input className="input" value={quickCustomerForm.idCardNumber} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, idCardNumber: e.target.value }))} placeholder="ID number (optional)" />
+                </label>
+              </div>
+              <label>
+                <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Address</div>
+                <input className="input" value={quickCustomerForm.address} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, address: e.target.value }))} placeholder="Address (optional)" />
+              </label>
+            </div>
+          </Modal>
+        )}
         <ul className="cart-list">
           {cart.items.map(item => (
             <li key={item.id} className="cart-item">
@@ -1457,6 +1631,7 @@ function PosPage({ mode = 'retail' }) {
             <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M6 7l1 12h10l1-12M9 7l1-2h4l1 2" stroke="currentColor" strokeWidth="2"/></svg>
             Clear
           </button>
+        </div>
         </div>
         {serializedPickerProduct && (
           <Modal

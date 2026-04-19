@@ -53,6 +53,7 @@ function CustomersPage() {
     email: '',
     customerType: 'retail',
     dob: '',
+    idType: '',
     idCardNumber: '',
     idFront: '',
     idBack: '',
@@ -74,6 +75,7 @@ function CustomersPage() {
     email: '',
     customerType: 'retail',
     dob: '',
+    idType: '',
     idCardNumber: '',
     idFront: '',
     idBack: '',
@@ -171,7 +173,8 @@ function CustomersPage() {
     ['Email', activeProfile.email || '—'],
     ['DOB', activeProfile.dob || '—'],
     ['Anniversary', activeProfile.anniversaryDate || '—'],
-    ['ID Card Number', activeProfile.idCardNumber || '—'],
+    ['ID Type', activeProfile.idType || '—'],
+    ['ID Number', activeProfile.idCardNumber || '—'],
     ['Address', activeProfile.address || '—'],
     ['Business Name', activeProfile.businessName || '—'],
     ['Business Address', activeProfile.businessAddress || '—'],
@@ -213,7 +216,7 @@ function CustomersPage() {
     setModalMode('create');
     setSelectedId(null);
     setSelectedTab('profile');
-    setCreateForm({ name: '', phone: '', email: '', customerType: 'retail', dob: '', idCardNumber: '', idFront: '', idBack: '', businessCertificate: '', address: '', businessName: '', businessAddress: '', registrationNumber: '', taxId: '', businessPhone: '', businessEmail: '', anniversaryDate: '', vip: false, photo: '' });
+    setCreateForm({ name: '', phone: '', email: '', customerType: 'retail', dob: '', idType: '', idCardNumber: '', idFront: '', idBack: '', businessCertificate: '', address: '', businessName: '', businessAddress: '', registrationNumber: '', taxId: '', businessPhone: '', businessEmail: '', anniversaryDate: '', vip: false, photo: '' });
     setModalOpen(true);
   }
 
@@ -237,6 +240,7 @@ function CustomersPage() {
         email: createForm.email.trim(),
         customerType: createForm.customerType,
         dob: createForm.dob || null,
+        idType: createForm.idType.trim(),
         idCardNumber: createForm.idCardNumber.trim(),
         idFront: createForm.idFront || '',
         idBack: createForm.idBack || '',
@@ -296,6 +300,7 @@ function CustomersPage() {
       email: target.email || '',
       customerType: target.customerType || 'retail',
       dob: target.dob ? String(target.dob).slice(0, 10) : '',
+      idType: target.idType || '',
       idCardNumber: target.idCardNumber || '',
       idFront: target.idFront || '',
       idBack: target.idBack || '',
@@ -326,6 +331,7 @@ function CustomersPage() {
         email: editForm.email.trim(),
         customerType: editForm.customerType,
         dob: editForm.dob || null,
+        idType: editForm.idType.trim(),
         idCardNumber: editForm.idCardNumber.trim(),
         idFront: editForm.idFront || '',
         idBack: editForm.idBack || '',
@@ -583,7 +589,18 @@ function CustomersPage() {
                     <input className="input" type="date" value={activeProfile.anniversaryDate} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, anniversaryDate: e.target.value })) : setEditForm(p => ({ ...p, anniversaryDate: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
                   </label>
                   <label>
-                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>ID Card Number</div>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>ID Type</div>
+                    <select className="select" value={activeProfile.idType || ''} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, idType: e.target.value })) : setEditForm(p => ({ ...p, idType: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers}>
+                      <option value="">Select ID Type</option>
+                      <option value="voter_id">Voter ID</option>
+                      <option value="passport">Passport</option>
+                      <option value="drivers_license">Driver's License</option>
+                      <option value="national_id">National ID</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </label>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>ID Number</div>
                     <input className="input" value={activeProfile.idCardNumber} onChange={e => (modalMode === 'create' ? setCreateForm(p => ({ ...p, idCardNumber: e.target.value })) : setEditForm(p => ({ ...p, idCardNumber: e.target.value })))} disabled={modalMode !== 'create' && !canEditCustomers} />
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 24 }}>

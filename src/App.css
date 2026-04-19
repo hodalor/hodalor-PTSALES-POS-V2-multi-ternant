@@ -109,6 +109,7 @@ html, body, #root {
   padding: 16px;
   overflow: auto;
   flex: 1 1 auto;
+  min-height: 0;
 }
 
 .login-page {
@@ -513,7 +514,50 @@ html, body, #root {
   grid-template-columns: 2fr 1fr;
   gap: 16px;
   padding: 16px;
-  align-items: flex-start;
+  align-items: stretch;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.pos-products-pane,
+.pos-cart-pane {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.pos-sticky-search {
+  position: sticky;
+  top: -16px;
+  align-self: flex-start;
+  z-index: 5;
+  background: #f8fafc;
+  padding-top: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.95);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+}
+.pos-cart-sticky {
+  position: sticky;
+  top: -16px;
+  align-self: flex-start;
+  z-index: 4;
+  background: #f8fafc;
+  padding-top: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.95);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+}
+.pos-cart-head {
+  margin-bottom: 8px;
+}
+.pos-customer-card {
+  padding-top: 12px;
+}
+.pos-products-scroll,
+.pos-cart-scroll {
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
 }
 
 /* Topbar */
@@ -708,6 +752,32 @@ html, body, #root {
     grid-template-columns: 1fr;
     padding: 12px;
     gap: 12px;
+    height: auto;
+    overflow: visible;
+  }
+  .pos-sticky-search {
+    position: static;
+    top: auto;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+    box-shadow: none;
+  }
+  .pos-cart-sticky {
+    position: static;
+    top: auto;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+    box-shadow: none;
+  }
+  .pos-products-pane,
+  .pos-cart-pane,
+  .pos-products-scroll,
+  .pos-cart-scroll {
+    min-height: auto;
+    overflow: visible;
+    padding-right: 0;
   }
   .toolbar {
     align-items: stretch;
