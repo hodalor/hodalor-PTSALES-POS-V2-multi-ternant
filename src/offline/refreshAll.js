@@ -58,7 +58,7 @@ export async function refreshAllData(dispatch, getState) {
     allow('modules.products', ['Admin','Manager','Inventory Staff'], ['view_products','see_products','view_distribution_products','view_warehouse_products']) ? productsApi.list() : Promise.resolve([]),
     isFeatureEnabled(settings, 'modules.suppliers') && allow('modules.suppliers', ['Admin','Manager','Inventory Staff'], ['view_suppliers','see_suppliers']) ? suppliersApi.list() : Promise.resolve([]),
     isFeatureEnabled(settings, 'modules.customers') && allow('modules.customers', ['Admin','Manager','Cashier'], ['view_customers','see_customers']) ? customersApi.list() : Promise.resolve([]),
-    isFeatureEnabled(settings, 'admin.config') && allow('admin.config', ['Admin'], ['view_config','see_config']) ? branchesApi.list() : Promise.resolve([]),
+    branchesApi.list(),
     isFeatureEnabled(settings, 'pages.retail.refunds') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']) ? refundsApi.listRequests() : Promise.resolve([]),
     isFeatureEnabled(settings, 'pages.retail.purchases') && allow('pages.retail.purchases', ['Admin','Manager','Inventory Staff','Director'], ['approve_purchases','view_purchases','see_purchases']) ? purchasesApi.listRequests({ status: 'pending_approval', limit: 200 }) : Promise.resolve([]),
     isFeatureEnabled(settings, 'pages.retail.transfers') && allow('pages.retail.transfers', ['Admin','Manager','Inventory Staff','Director'], ['approve_transfers','view_transfers','see_transfers']) ? transfersApi.listRequests({ status: 'pending_approval', limit: 200 }) : Promise.resolve([]),

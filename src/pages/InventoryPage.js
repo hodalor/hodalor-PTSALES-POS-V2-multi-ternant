@@ -10,6 +10,7 @@ import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import { getAllowedPriceTiers, getDisplayPrice, getPriceTierLabel } from '../utils/priceVisibility';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
+import { exportCsv, exportTablePdf } from '../utils/exporters';
 
 function branchTypeBadgeStyle(branchType = 'retail') {
   const kind = String(branchType || 'retail').toLowerCase();
@@ -36,8 +37,9 @@ function InventoryPage() {
   const dispatch = useDispatch();
   const toast = useToast();
   const visiblePriceTiers = useMemo(() => getAllowedPriceTiers(auth), [auth]);
+  const isAllBranches = String(branchId || '') === 'all';
 
-  const branch = useMemo(() => branches.find(b => b.id === branchId) || branches[0], [branches, branchId]);
+  const branch = useMemo(() => (isAllBranches ? null : (branches.find(b => b.id === branchId) || branches[0])), [branches, branchId, isAllBranches]);
   const categoryOptions = useMemo(() => Array.from(new Set(products.map((p) => String(p.category || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)), [products]);
   const baseFilteredRows = useMemo(() => {
     const term = String(search || '').trim().toLowerCase();
@@ -71,7 +73,7 @@ function InventoryPage() {
       : viewInventoryType === 'warehouse'
         ? (product.warehouseStockByBranch || {})
         : (product.stockByBranch || {});
-    if (!targetBranchId) return Object.values(source).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
+    if (!targetBranchId || String(targetBranchId) === 'all') return Object.values(source).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
     return Number(source[targetBranchId] || 0);
   }, [branchId, viewInventoryType]);
 
@@ -104,6 +106,40 @@ function InventoryPage() {
       expectedProfit
     };
   }, [rows, branchId, getSalePrice, getStockForProduct]);
+
+  const exportHeaders = useMemo(() => [
+    { key: 'name', label: 'Product', value: (p) => p.name || '' },
+    { key: 'category', label: 'Category', value: (p) => p.category || 'Uncategorized' },
+    { key: 'sku', label: 'SKU', value: (p) => p.sku || '' },
+    { key: 'barcode', label: 'Barcode', value: (p) => p.barcode || '' },
+    { key: 'branch', label: 'Branch', value: () => isAllBranches ? 'All Branches' : (branch?.name || branch?.code || branchId || '') },
+    { key: 'inventoryType', label: 'Inventory Type', value: () => viewInventoryType === 'wholesale' ? 'Distribution' : viewInventoryType === 'warehouse' ? 'Warehouse' : 'Retail' },
+    { key: 'stock', label: 'Stock', value: (p) => getStockForProduct(p, branchId) },
+    { key: 'costPrice', label: 'Cost Price', value: (p) => Number(p.costPrice || 0) },
+    { key: 'salePrice', label: 'Sale Price', value: (p) => getSalePrice(p) },
+    { key: 'lowStock', label: 'Low Stock Threshold', value: (p) => Number(p.lowStock ?? 0) }
+  ], [branch, branchId, getSalePrice, getStockForProduct, isAllBranches, viewInventoryType]);
+
+  function onExportCsv() {
+    const branchPart = isAllBranches ? 'all-branches' : (branch?.code || branch?.name || branchId || 'branch');
+    const categoryPart = categoryFilter === 'all' ? 'all-categories' : String(categoryFilter).replace(/\s+/g, '-').toLowerCase();
+    exportCsv(`inventory-${viewInventoryType}-${branchPart}-${categoryPart}.csv`, exportHeaders, rows);
+  }
+
+  function onExportPdf() {
+    const scope = isAllBranches ? 'All Branches' : (branch?.name || branch?.code || branchId || 'Branch');
+    const category = categoryFilter === 'all' ? 'All Categories' : categoryFilter;
+    const typeLabel = viewInventoryType === 'wholesale' ? 'Distribution' : viewInventoryType === 'warehouse' ? 'Warehouse' : 'Retail';
+    exportTablePdf(`Inventory - ${typeLabel} - ${scope} - ${category}`, exportHeaders, rows, {
+      letterhead: {
+        logoUrl: settings?.clientLogoUrl || '/clientlogo512.png',
+        companyName: settings?.receiptBrandName || settings?.clientAppName || settings?.appName || 'ptSales POS',
+        branch: scope,
+        phone: settings?.businessPhone || '',
+        address: settings?.invoiceCompanyAddress || ''
+      }
+    });
+  }
 
   function setStockWithAudit(p, variantId, bId, quantity) {
     if (String(p.trackType || 'quantity') === 'serialized') {
@@ -157,7 +193,17 @@ function InventoryPage() {
     <div style={{ padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <h1 style={{ margin: 0 }}>Inventory</h1>
-        <OfflineQueueIndicator collection="audits" label="Stock queued" />
+        <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+          <button className="btn" onClick={onExportCsv}>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M12 3v12m0 0l-3-3m3 3l3-3" stroke="currentColor" strokeWidth="2"/><path d="M5 21h14" stroke="currentColor" strokeWidth="2"/></svg>
+            Export CSV
+          </button>
+          <button className="btn" onClick={onExportPdf}>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M6 4h12v16H6z" stroke="currentColor" strokeWidth="2"/><path d="M9 8h6M9 12h6M9 16h4" stroke="currentColor" strokeWidth="2"/></svg>
+            Export PDF
+          </button>
+          <OfflineQueueIndicator collection="audits" label="Stock queued" />
+        </div>
       </div>
       <div className="card" style={{ marginBottom: 12 }}>
         <div className="filter-grid-wide">
@@ -183,7 +229,7 @@ function InventoryPage() {
             <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Search</div>
             <input className="input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Name, SKU, barcode" />
           </label>
-          {branch && (
+          {!isAllBranches && branch && (
             <div style={{ display: 'flex', alignItems: 'center' }}>
               <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 700, ...branchTypeBadgeStyle(branch.branchType) }}>
                 {String(branch.branchType || 'retail')}
@@ -212,13 +258,13 @@ function InventoryPage() {
               <th align="left">Product</th>
               <th align="left">Price</th>
               <th align="left">Barcode</th>
-              <th align="left">Stock ({viewInventoryType === 'wholesale' ? 'Distribution' : viewInventoryType === 'warehouse' ? 'Warehouse' : 'Retail'} – {branch?.code || branch?.name})</th>
+              <th align="left">Stock ({viewInventoryType === 'wholesale' ? 'Distribution' : viewInventoryType === 'warehouse' ? 'Warehouse' : 'Retail'} – {isAllBranches ? 'All Branches' : (branch?.code || branch?.name)})</th>
             </tr>
           </thead>
           <tbody>
             {rows.map(p => {
               const low = p.lowStock ?? 0;
-              const cur = (viewInventoryType === 'wholesale' ? (p.wholesaleStockByBranch || {})[branchId] : viewInventoryType === 'warehouse' ? (p.warehouseStockByBranch || {})[branchId] : (p.stockByBranch || {})[branchId]) || 0;
+              const cur = getStockForProduct(p, branchId);
               const basePrice = viewInventoryType === 'warehouse'
                 ? (p.warehousePrice != null ? p.warehousePrice : 0)
                 : viewInventoryType === 'wholesale'
