@@ -86,12 +86,11 @@ function PosPage({ mode = 'retail' }) {
   const serializedLoadSeqRef = useRef(0);
   const serializedPickerKeyRef = useRef('');
   const liveSerializedSearchSeqRef = useRef(0);
+  const completeSaleLockRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const [customerQuery, setCustomerQuery] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
-  const [quickCustomerOpen, setQuickCustomerOpen] = useState(false);
-  const [quickCustomerSaving, setQuickCustomerSaving] = useState(false);
-  const [quickCustomerForm, setQuickCustomerForm] = useState({ name: '', phone: '', email: '', customerType: isWholesale ? 'distribution' : 'retail', idType: '', idCardNumber: '', address: '' });
+  const [quickCustomerForm, setQuickCustomerForm] = useState({ name: '', phone: '', address: '', customerType: isWholesale ? 'distribution' : 'retail' });
   const [redeemPoints, setRedeemPoints] = useState('');
   const [heldOpen, setHeldOpen] = useState(false);
   const [heldSort, setHeldSort] = useState(() => {
@@ -262,70 +261,46 @@ function PosPage({ mode = 'retail' }) {
     const grants = Array.isArray(auth.grants) ? auth.grants : [];
     return roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('add_customers');
   }, [auth.grants, auth.role]);
+  const quickCustomerHasAny = useMemo(() => (
+    !!String(quickCustomerForm.name || '').trim()
+    || !!String(quickCustomerForm.phone || '').trim()
+    || !!String(quickCustomerForm.address || '').trim()
+  ), [quickCustomerForm.address, quickCustomerForm.name, quickCustomerForm.phone]);
+  const quickCustomerReady = useMemo(() => (
+    !!String(quickCustomerForm.name || '').trim()
+    && !!String(quickCustomerForm.phone || '').trim()
+    && !!String(quickCustomerForm.address || '').trim()
+  ), [quickCustomerForm.address, quickCustomerForm.name, quickCustomerForm.phone]);
 
-  function openQuickCustomerModal() {
-    const seed = String(customerQuery || '').trim();
-    const looksLikePhone = !!seed && /^[+\d\s()-]+$/.test(seed);
-    setQuickCustomerForm({
-      name: looksLikePhone ? '' : seed,
-      phone: looksLikePhone ? seed : '',
-      email: '',
-      customerType: isWholesale ? 'distribution' : 'retail',
-      idType: '',
-      idCardNumber: '',
-      address: ''
-    });
-    setQuickCustomerOpen(true);
-  }
-
-  async function quickAddCustomer() {
+  async function ensureCheckoutCustomer() {
+    if (selectedCustomer) return selectedCustomer;
+    if (!quickCustomerHasAny) return null;
     if (!canQuickAddCustomer) {
-      toast.show('Not authorized to add customers', { type: 'error' });
-      return;
+      throw new Error('Not authorized to register customers from POS');
     }
-    if (quickCustomerSaving) return;
-    if (!String(quickCustomerForm.name || '').trim()) {
-      toast.show('Customer name is required', { type: 'error' });
-      return;
+    if (!quickCustomerReady) {
+      throw new Error('Enter customer name, phone, and address');
     }
-    setQuickCustomerSaving(true);
-    try {
-      const payload = {
-        name: String(quickCustomerForm.name || '').trim(),
-        phone: String(quickCustomerForm.phone || '').trim(),
-        email: String(quickCustomerForm.email || '').trim(),
-        customerType: quickCustomerForm.customerType === 'distribution' ? 'distribution' : 'retail',
-        idType: String(quickCustomerForm.idType || '').trim(),
-        idCardNumber: String(quickCustomerForm.idCardNumber || '').trim(),
-        address: String(quickCustomerForm.address || '').trim()
-      };
-      if (!navigator.onLine) {
-        if (!offlineBackupAllowed) {
-          toast.show('Offline: connect internet and try again.', { type: 'error' });
-          return;
-        }
-        const clientId = `offline-customer-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-        const offlineRow = { ...payload, id: clientId, clientId, customerCode: `OFF-${String(Date.now()).slice(-6)}`, loyaltyPoints: 0, offline: true };
-        dispatch(addCustomer(offlineRow));
-        await enqueueHttp({ collection: 'customers', label: 'Customer', path: '/api/customers', method: 'POST', body: { ...payload, clientId } });
-        setSelectedCustomerId(String(clientId));
-        setCustomerQuery('');
-        setQuickCustomerOpen(false);
-        toast.show('Customer saved offline and selected for this sale', { type: 'success' });
-        return;
-      }
-      const clientId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `cust-${Date.now()}`;
-      const created = await customersApi.create({ ...payload, clientId });
-      dispatch(addCustomer(created));
-      setSelectedCustomerId(String(created?.id || created?._id || clientId));
-      setCustomerQuery('');
-      setQuickCustomerOpen(false);
-      toast.show('Customer added and selected', { type: 'success' });
-    } catch (e) {
-      toast.show(String(e?.message || 'Failed to add customer'), { type: 'error' });
-    } finally {
-      setQuickCustomerSaving(false);
+    const payload = {
+      name: String(quickCustomerForm.name || '').trim(),
+      phone: String(quickCustomerForm.phone || '').trim(),
+      address: String(quickCustomerForm.address || '').trim(),
+      customerType: quickCustomerForm.customerType === 'distribution' ? 'distribution' : 'retail'
+    };
+    if (!navigator.onLine) {
+      if (!offlineBackupAllowed) throw new Error('Offline: connect internet and try again.');
+      const clientId = `offline-customer-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+      const offlineRow = { ...payload, id: clientId, clientId, customerCode: `OFF-${String(Date.now()).slice(-6)}`, loyaltyPoints: 0, offline: true };
+      dispatch(addCustomer(offlineRow));
+      await enqueueHttp({ collection: 'customers', label: 'Customer', path: '/api/customers', method: 'POST', body: { ...payload, clientId } });
+      setSelectedCustomerId(String(clientId));
+      return offlineRow;
     }
+    const clientId = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `cust-${Date.now()}`;
+    const created = await customersApi.create({ ...payload, clientId });
+    dispatch(addCustomer(created));
+    setSelectedCustomerId(String(created?.id || created?._id || clientId));
+    return created;
   }
 
   function isSerializedAlreadyInCart(unit) {
@@ -458,7 +433,7 @@ function PosPage({ mode = 'retail' }) {
   const change = easyBuyEnabled ? 0 : Math.max(0, paid - total);
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);
   const heldUiEnabled = isFeatureEnabled(settings, 'tabs.posHeldSales');
-  const easyBuyAllowed = !!selectedCustomer && cart.items.length > 0;
+  const easyBuyAllowed = cart.items.length > 0;
   const easyBuyBlockedItem = cart.items.find(item => item.allowCredit === false);
   const easyBuyMinimum = cart.items.reduce((sum, item) => {
     const pct = Math.max(0, Number(item.minimumCreditPercentage || 0));
@@ -665,6 +640,7 @@ function PosPage({ mode = 'retail' }) {
       discount: manualDiscount,
       notes: cart.notes || '',
       selectedCustomerId,
+      quickCustomerForm: { ...quickCustomerForm },
       redeemPoints,
       taxOverridePct,
       taxOverrideRemark,
@@ -680,6 +656,7 @@ function PosPage({ mode = 'retail' }) {
     rotateReservationToken();
     setSelectedCustomerId('');
     setCustomerQuery('');
+    setQuickCustomerForm({ name: '', phone: '', address: '', customerType: isWholesale ? 'distribution' : 'retail' });
     setRedeemPoints('');
     setTaxOverridePct('');
     setTaxOverrideRemark('');
@@ -700,6 +677,7 @@ function PosPage({ mode = 'retail' }) {
     rotateReservationToken();
     setSelectedCustomerId('');
     setCustomerQuery('');
+    setQuickCustomerForm({ name: '', phone: '', address: '', customerType: isWholesale ? 'distribution' : 'retail' });
     setRedeemPoints('');
     setTaxOverridePct('');
     setTaxOverrideRemark('');
@@ -721,6 +699,7 @@ function PosPage({ mode = 'retail' }) {
     try { localStorage.setItem(reservationStorageKey, resumedToken); } catch {}
     dispatch(replaceCart({ items: Array.isArray(h.items) ? h.items : [], discount: h.discount || 0, notes: h.notes || '' }));
     setSelectedCustomerId(h.selectedCustomerId || '');
+    setQuickCustomerForm(h.quickCustomerForm || { name: '', phone: '', address: '', customerType: isWholesale ? 'distribution' : 'retail' });
     setRedeemPoints(h.redeemPoints || '');
     setTaxOverridePct(h.taxOverridePct ?? '');
     setTaxOverrideRemark(h.taxOverrideRemark ?? '');
@@ -759,59 +738,75 @@ function PosPage({ mode = 'retail' }) {
   }
 
   async function completeSale(escpos = false) {
-    if (saving) return;
-    if (!easyBuyEnabled && due > 0) {
-      toast.show('Payment incomplete', { type: 'error' });
-      return;
-    }
-    if (easyBuyEnabled) {
-      if (!easyBuyAllowed || !selectedCustomer) {
-        toast.show(`${creditModeLabel} requires a registered customer`, { type: 'error' });
+    if (saving || completeSaleLockRef.current) return;
+    completeSaleLockRef.current = true;
+    setSaving(true);
+    try {
+      if (!easyBuyEnabled && due > 0) {
+        toast.show('Payment incomplete', { type: 'error' });
         return;
       }
-      if (easyBuyBlockedItem) {
-        toast.show(`${easyBuyBlockedItem.name} is not allowed for ${creditModeLabel.toLowerCase()}`, { type: 'error' });
+      if (easyBuyEnabled) {
+        if (!easyBuyAllowed) {
+          toast.show(`${creditModeLabel} requires items in cart`, { type: 'error' });
+          return;
+        }
+        if (!selectedCustomer && !quickCustomerReady) {
+          toast.show(`${creditModeLabel} requires customer name, phone, and address`, { type: 'error' });
+          return;
+        }
+        if (easyBuyBlockedItem) {
+          toast.show(`${easyBuyBlockedItem.name} is not allowed for ${creditModeLabel.toLowerCase()}`, { type: 'error' });
+          return;
+        }
+        if (!easyBuyDueDate) {
+          toast.show(`Select a due date for ${creditModeLabel}`, { type: 'error' });
+          return;
+        }
+        if ((Number(easyBuyAmountPaidNow || 0) + 0.0001) < Number(easyBuyMinimum || 0)) {
+          toast.show(`Minimum upfront payment is ${formatCurrency(easyBuyMinimum, settings)}`, { type: 'error' });
+          return;
+        }
+        if (customerMaxCreditLimit > 0 && (customerOutstanding + due) > customerMaxCreditLimit) {
+          toast.show('Customer exceeds the configured credit limit', { type: 'error' });
+          return;
+        }
+      }
+      if (!navigator.onLine) {
+        if (!offlineBackupAllowed) {
+          toast.show('Offline: connect internet and try again.', { type: 'error' });
+          return;
+        }
+      }
+      if (canOverrideTax && taxOverridePct !== '' && String(Math.round((taxRate || 0)*100)) !== String(Math.round((settings.taxRate || 0)*100))) {
+        if (!taxOverrideRemark.trim()) {
+          toast.show('Enter a remark for tax override', { type: 'error' });
+          return;
+        }
+      }
+      let checkoutCustomer = selectedCustomer;
+      try {
+        if (!checkoutCustomer && (easyBuyEnabled || quickCustomerHasAny)) {
+          checkoutCustomer = await ensureCheckoutCustomer();
+        }
+      } catch (e) {
+        toast.show(String(e?.message || 'Failed to save customer'), { type: 'error' });
         return;
       }
-      if (!easyBuyDueDate) {
-        toast.show(`Select a due date for ${creditModeLabel}`, { type: 'error' });
-        return;
-      }
-      if ((Number(easyBuyAmountPaidNow || 0) + 0.0001) < Number(easyBuyMinimum || 0)) {
-        toast.show(`Minimum upfront payment is ${formatCurrency(easyBuyMinimum, settings)}`, { type: 'error' });
-        return;
-      }
-      if (customerMaxCreditLimit > 0 && (customerOutstanding + due) > customerMaxCreditLimit) {
-        toast.show('Customer exceeds the configured credit limit', { type: 'error' });
-        return;
-      }
-    }
-    if (!navigator.onLine) {
-      if (!offlineBackupAllowed) {
-        toast.show('Offline: connect internet and try again.', { type: 'error' });
-        return;
-      }
-    }
-    if (canOverrideTax && taxOverridePct !== '' && String(Math.round((taxRate || 0)*100)) !== String(Math.round((settings.taxRate || 0)*100))) {
-      if (!taxOverrideRemark.trim()) {
-        toast.show('Enter a remark for tax override', { type: 'error' });
-        return;
-      }
-    }
-    const branchName = activeBranch?.name || activeBranchId;
-    const sale = {
+      const branchName = activeBranch?.name || activeBranchId;
+      const sale = {
       branchId: activeBranchId,
       branchName,
       sellerName: auth.user?.name || 'unknown',
       sellerRole: auth.role || '',
-      customerId: selectedCustomer ? selectedCustomer.id : '',
-      customerCode: selectedCustomer ? (selectedCustomer.customerCode || '') : '',
-      customerName: selectedCustomer ? (selectedCustomer.name || '') : '',
-      customerPhone: selectedCustomer ? (selectedCustomer.phone || '') : '',
+      customerId: checkoutCustomer ? checkoutCustomer.id : '',
+      customerCode: checkoutCustomer ? (checkoutCustomer.customerCode || '') : '',
+      customerName: checkoutCustomer ? (checkoutCustomer.name || '') : '',
+      customerPhone: checkoutCustomer ? (checkoutCustomer.phone || '') : '',
       posType: isWholesale ? 'wholesale' : 'retail',
       inventoryType: isWholesale ? 'wholesale' : 'retail',
       defaultPriceTier: selectedPriceTier,
-      loyaltyPointsRedeemed: (settings.loyaltyEnabled && selectedCustomer) ? redeemable : 0,
+      loyaltyPointsRedeemed: (settings.loyaltyEnabled && checkoutCustomer) ? redeemable : 0,
       items: cart.items.map(i => ({
         name: i.name,
         sku: i.sku,
@@ -840,38 +835,36 @@ function PosPage({ mode = 'retail' }) {
       status: 'completed',
       created_at: new Date().toISOString(),
       reservationToken
-    };
-    setSaving(true);
-    let saleForUi = null;
-    if (!navigator.onLine) {
-      const offlineId = `offline-sale-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      sale.clientId = offlineId;
-      const ref = `OFF-${String(Date.now()).padStart(6, '0').slice(-6)}`;
+      };
+      let saleForUi = null;
+      if (!navigator.onLine) {
+        const offlineId = `offline-sale-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        sale.clientId = offlineId;
+        const ref = `OFF-${String(Date.now()).padStart(6, '0').slice(-6)}`;
+        try {
+          await enqueueHttp({ collection: 'sales', label: 'Sale', path: '/api/sales', method: 'POST', body: sale });
+        } catch (e) {
+          toast.show(String(e?.message || 'Failed to save offline'), { type: 'error' });
+          return;
+        }
+        saleForUi = { ...sale, id: offlineId, invoiceSerial: ref, receiptNumber: ref, branchName, offline: true };
+      } else {
+        sale.clientId = crypto.randomUUID();
+        const tmpRef = `TMP-${String(Date.now()).padStart(6, '0').slice(-6)}`;
+        saleForUi = { ...sale, id: sale.clientId, invoiceSerial: tmpRef, receiptNumber: tmpRef, branchName };
+      }
+      const receiptHtml = buildBrandedReceiptHtml({ settings, sale: saleForUi });
+      const skuToRef = new Map();
+      sellables.forEach(p => skuToRef.set(p.sku, { productId: p.productId || p.id, variantId: p.variantId || null }));
+      const affectedProductIds = Array.from(new Set(cart.items.map(i => skuToRef.get(i.sku)?.productId).filter(Boolean)));
+      cart.items.forEach(i => {
+        const ref = skuToRef.get(i.sku);
+        if (ref) {
+          dispatch(adjustStock({ productId: ref.productId, variantId: ref.variantId, branchId: activeBranchId, inventoryType: isWholesale ? 'wholesale' : 'retail', delta: -i.quantity }));
+        }
+      });
+      dispatch(recordSale(saleForUi));
       try {
-        await enqueueHttp({ collection: 'sales', label: 'Sale', path: '/api/sales', method: 'POST', body: sale });
-      } catch (e) {
-        toast.show(String(e?.message || 'Failed to save offline'), { type: 'error' });
-        setSaving(false);
-        return;
-      }
-      saleForUi = { ...sale, id: offlineId, invoiceSerial: ref, receiptNumber: ref, branchName, offline: true };
-    } else {
-      sale.clientId = crypto.randomUUID();
-      const tmpRef = `TMP-${String(Date.now()).padStart(6, '0').slice(-6)}`;
-      saleForUi = { ...sale, id: sale.clientId, invoiceSerial: tmpRef, receiptNumber: tmpRef, branchName };
-    }
-    const receiptHtml = buildBrandedReceiptHtml({ settings, sale: saleForUi });
-    const skuToRef = new Map();
-    sellables.forEach(p => skuToRef.set(p.sku, { productId: p.productId || p.id, variantId: p.variantId || null }));
-    const affectedProductIds = Array.from(new Set(cart.items.map(i => skuToRef.get(i.sku)?.productId).filter(Boolean)));
-    cart.items.forEach(i => {
-      const ref = skuToRef.get(i.sku);
-      if (ref) {
-        dispatch(adjustStock({ productId: ref.productId, variantId: ref.variantId, branchId: activeBranchId, inventoryType: isWholesale ? 'wholesale' : 'retail', delta: -i.quantity }));
-      }
-    });
-    dispatch(recordSale(saleForUi));
-    try {
       const payTerms = (saleForUi.payment_methods || [])
         .map(p => {
           const t = String(p.type || '').toLowerCase();
@@ -890,13 +883,13 @@ function PosPage({ mode = 'retail' }) {
         saleId: saleForUi.id || saleForUi._id || '',
         paymentStatus: easyBuyEnabled ? 'active' : 'paid',
         source: isWholesale ? 'wholesale-pos' : 'pos',
-        customer: selectedCustomer ? {
-          name: selectedCustomer.name || '',
-          phone: selectedCustomer.phone || '',
-          email: selectedCustomer.email || '',
-          address: selectedCustomer.address || '',
-          customerCode: selectedCustomer.customerCode || '',
-          customerId: selectedCustomer.id
+        customer: checkoutCustomer ? {
+          name: checkoutCustomer.name || '',
+          phone: checkoutCustomer.phone || '',
+          email: checkoutCustomer.email || '',
+          address: checkoutCustomer.address || '',
+          customerCode: checkoutCustomer.customerCode || '',
+          customerId: checkoutCustomer.id
         } : (saleForUi.customerName ? {
           name: saleForUi.customerName,
           phone: saleForUi.customerPhone || ''
@@ -916,12 +909,12 @@ function PosPage({ mode = 'retail' }) {
         destination: '',
         termsOfDelivery: ''
       };
-      dispatch(addInvoice(inv));
-    } catch {}
-    if (navigator.onLine && selectedCustomer && saleForUi.customerPointsAfter != null) {
-      dispatch(updateCustomer({ id: selectedCustomer.id, loyaltyPoints: Number(saleForUi.customerPointsAfter || 0) }));
-    }
-    dispatch(addAudit({
+        dispatch(addInvoice(inv));
+      } catch {}
+      if (navigator.onLine && checkoutCustomer && saleForUi.customerPointsAfter != null) {
+        dispatch(updateCustomer({ id: checkoutCustomer.id, loyaltyPoints: Number(saleForUi.customerPointsAfter || 0) }));
+      }
+      dispatch(addAudit({
       actor: auth.user?.name || 'unknown',
       actionType: isWholesale ? 'stock_wholesale_sale_deduct' : 'stock_sale_deduct',
       details: { items: sale.items.map(it => ({ sku: it.sku, qty: it.qty, priceTier: it.priceTier || selectedPriceTier })), branchId: activeBranchId, mode: isWholesale ? 'wholesale' : 'retail' },
@@ -938,63 +931,65 @@ function PosPage({ mode = 'retail' }) {
         offline: !navigator.onLine
       }));
     }
-    dispatch(addAudit({
+      dispatch(addAudit({
       actor: auth.user?.name || 'unknown',
       actionType: easyBuyEnabled ? 'credit_sale_complete' : 'sale_complete',
       details: { total: sale.total, items: sale.items.length, mode: isWholesale ? 'wholesale' : 'retail', easyBuy: easyBuyEnabled, branchId: activeBranchId },
       branchId: activeBranchId,
       offline: !navigator.onLine
     }));
-    dispatch(clearCart());
-    rotateReservationToken();
-    setSelectedCustomerId('');
-    setCustomerQuery('');
-    setRedeemPoints('');
-    setEasyBuyEnabled(false);
-    setEasyBuyAmountPaidNow('');
-    setEasyBuyDueDate('');
-    if (escpos) {
-      const text = escposReceipt({
+      dispatch(clearCart());
+      rotateReservationToken();
+      setSelectedCustomerId('');
+      setCustomerQuery('');
+      setQuickCustomerForm({ name: '', phone: '', address: '', customerType: isWholesale ? 'distribution' : 'retail' });
+      setRedeemPoints('');
+      setEasyBuyEnabled(false);
+      setEasyBuyAmountPaidNow('');
+      setEasyBuyDueDate('');
+      if (escpos) {
+        const text = escposReceipt({
         header: { title: settings.appName, store: settings.receiptHeader, branch: branchName, phone: settings.businessPhone || '', cashier: saleForUi.sellerName, customer: saleForUi.customerName ? `${saleForUi.customerName}${saleForUi.customerCode ? ` (${saleForUi.customerCode})` : ''}` : '', receiptId: saleForUi.id || saleForUi._id, receiptNumber: saleForUi.receiptNumber, invoiceSerial: saleForUi.invoiceSerial },
         items: saleForUi.items,
         totals: { subtotal, discount, tax, total },
         footer: { note: settings.receiptFooter },
         settings
       });
-      downloadText('receipt-escpos.txt', (settings.drawerOpenOnCash && payments.some(p => p.type === 'cash')) ? (escposOpenDrawer() + '\n' + text) : text);
-    } else {
-      printReceiptHtml(receiptHtml);
-    }
-    if (navigator.onLine) {
-      try {
-        const saved = await createSale({ ...sale, clientId: sale.clientId });
-        if (saved && (saved.invoiceSerial || saved.receiptNumber)) {
-          // no-op: printed already; server holds the official refs
-        }
-        productUnitsApi.markSoldProductUnits(cart.items.map(item => item.unitId).filter(Boolean));
-        void refreshAffectedProducts(dispatch, affectedProductIds);
-        toast.show('Sale recorded', { type: 'success' });
-      } catch (e) {
-        try {
-          await enqueueHttp({ collection: 'sales', label: 'Sale', path: '/api/sales', method: 'POST', body: { ...sale, clientId: sale.clientId } });
-          productUnitsApi.markSoldProductUnits(cart.items.map(item => item.unitId).filter(Boolean));
-          toast.show(sale.items.some(item => Array.isArray(item.soldUnitIds) && item.soldUnitIds.length > 0) ? 'Saved offline. Serialized IMEI sale will sync later and conflicts will be flagged if found.' : 'Network issue: saved offline and will sync later', { type: 'warning' });
-        } catch (err) {
-          await releaseSerializedCartItems(cart.items);
-          cart.items.forEach(i => {
-            const ref = skuToRef.get(i.sku);
-            if (ref) {
-              dispatch(adjustStock({ productId: ref.productId, variantId: ref.variantId, branchId: activeBranchId, inventoryType: isWholesale ? 'wholesale' : 'retail', delta: i.quantity, syncPending: false }));
-            }
-          });
-          toast.show(String(e?.message || 'Failed to record sale'), { type: 'error' });
-        }
-      } finally {
-        setSaving(false);
+        downloadText('receipt-escpos.txt', (settings.drawerOpenOnCash && payments.some(p => p.type === 'cash')) ? (escposOpenDrawer() + '\n' + text) : text);
+      } else {
+        printReceiptHtml(receiptHtml);
       }
-    } else {
-      productUnitsApi.markSoldProductUnits(cart.items.map(item => item.unitId).filter(Boolean));
-      toast.show('Saved offline. Will backup when online.', { type: 'success' });
+      if (navigator.onLine) {
+        try {
+          const saved = await createSale({ ...sale, clientId: sale.clientId });
+          if (saved && (saved.invoiceSerial || saved.receiptNumber)) {
+            // no-op: printed already; server holds the official refs
+          }
+          productUnitsApi.markSoldProductUnits(cart.items.map(item => item.unitId).filter(Boolean));
+          void refreshAffectedProducts(dispatch, affectedProductIds);
+          toast.show('Sale recorded', { type: 'success' });
+        } catch (e) {
+          try {
+            await enqueueHttp({ collection: 'sales', label: 'Sale', path: '/api/sales', method: 'POST', body: { ...sale, clientId: sale.clientId } });
+            productUnitsApi.markSoldProductUnits(cart.items.map(item => item.unitId).filter(Boolean));
+            toast.show(sale.items.some(item => Array.isArray(item.soldUnitIds) && item.soldUnitIds.length > 0) ? 'Saved offline. Serialized IMEI sale will sync later and conflicts will be flagged if found.' : 'Network issue: saved offline and will sync later', { type: 'warning' });
+          } catch (err) {
+            await releaseSerializedCartItems(cart.items);
+            cart.items.forEach(i => {
+              const ref = skuToRef.get(i.sku);
+              if (ref) {
+                dispatch(adjustStock({ productId: ref.productId, variantId: ref.variantId, branchId: activeBranchId, inventoryType: isWholesale ? 'wholesale' : 'retail', delta: i.quantity, syncPending: false }));
+              }
+            });
+            toast.show(String(e?.message || 'Failed to record sale'), { type: 'error' });
+          }
+        }
+      } else {
+        productUnitsApi.markSoldProductUnits(cart.items.map(item => item.unitId).filter(Boolean));
+        toast.show('Saved offline. Will backup when online.', { type: 'success' });
+      }
+    } finally {
+      completeSaleLockRef.current = false;
       setSaving(false);
     }
   }
@@ -1319,9 +1314,6 @@ function PosPage({ mode = 'retail' }) {
         <div className="card pos-customer-card" style={{ marginBottom: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 6 }}>
             <div style={{ fontWeight: 700 }}>Customer (optional)</div>
-            {!selectedCustomer && canQuickAddCustomer ? (
-              <button className="btn" onClick={openQuickCustomerModal}>Quick Add Customer</button>
-            ) : null}
           </div>
           {selectedCustomer ? (
             <div style={{ display: 'grid', gap: 8 }}>
@@ -1341,7 +1333,7 @@ function PosPage({ mode = 'retail' }) {
                   className="btn"
                   aria-label="Remove selected customer"
                   title="Remove selected customer"
-                  onClick={() => { setSelectedCustomerId(''); setCustomerQuery(''); setEasyBuyEnabled(false); }}
+                  onClick={() => { setSelectedCustomerId(''); setCustomerQuery(''); }}
                   style={{ width: 32, height: 32, padding: 0, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                 >
                   X
@@ -1362,11 +1354,6 @@ function PosPage({ mode = 'retail' }) {
                   value={customerQuery}
                   onChange={e => setCustomerQuery(e.target.value)}
                 />
-                {canQuickAddCustomer ? (
-                  <div style={{ marginTop: 8, color: '#64748b', fontSize: 12 }}>
-                    Need a new customer quickly? Use `Quick Add Customer` and finish full details later in `Customers`.
-                  </div>
-                ) : null}
                 {customerMatches.length > 0 && (
                   <div style={{ position: 'absolute', top: 44, left: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', zIndex: 20 }}>
                     {customerMatches.map(c => (
@@ -1386,75 +1373,27 @@ function PosPage({ mode = 'retail' }) {
                   </div>
                 )}
               </div>
+              {canQuickAddCustomer ? (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
+                  <label>
+                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Name</div>
+                    <input className="input" value={quickCustomerForm.name} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Customer name" />
+                  </label>
+                  <label>
+                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Phone</div>
+                    <input className="input" value={quickCustomerForm.phone} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="Phone number" />
+                  </label>
+                  <label style={{ gridColumn: '1 / -1' }}>
+                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Address</div>
+                    <input className="input" value={quickCustomerForm.address} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, address: e.target.value }))} placeholder="Address" />
+                  </label>
+                </div>
+              ) : null}
             </div>
           )}
         </div>
         </div>
         <div className="pos-cart-scroll">
-        {quickCustomerOpen && (
-          <Modal
-            title="Quick Add Customer"
-            variant="light"
-            onClose={() => { if (!quickCustomerSaving) setQuickCustomerOpen(false); }}
-            footer={(
-              <>
-                <button className="btn" onClick={() => setQuickCustomerOpen(false)} disabled={quickCustomerSaving}>Cancel</button>
-                <button className="btn btn-primary" onClick={() => void quickAddCustomer()} disabled={quickCustomerSaving}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                    {quickCustomerSaving && <InlineSpinner />}
-                    {quickCustomerSaving ? 'Saving…' : 'Save Customer'}
-                  </span>
-                </button>
-              </>
-            )}
-          >
-            <div style={{ display: 'grid', gap: 14 }}>
-              <div style={{ color: '#64748b', fontSize: 13 }}>
-                Capture only the basic customer details now. Full profile details can be updated later in `Customers` using `Edit Customer`.
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-                <label>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Name</div>
-                  <input className="input" value={quickCustomerForm.name} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Customer name" />
-                </label>
-                <label>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Phone</div>
-                  <input className="input" value={quickCustomerForm.phone} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="Phone number" />
-                </label>
-                <label>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Email</div>
-                  <input className="input" value={quickCustomerForm.email} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, email: e.target.value }))} placeholder="Email (optional)" />
-                </label>
-                <label>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Customer Type</div>
-                  <select className="select" value={quickCustomerForm.customerType} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, customerType: e.target.value }))}>
-                    <option value="retail">Retail Customer</option>
-                    <option value="distribution">Distribution Customer</option>
-                  </select>
-                </label>
-                <label>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>ID Type</div>
-                  <select className="select" value={quickCustomerForm.idType} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, idType: e.target.value }))}>
-                    <option value="">Select ID Type</option>
-                    <option value="voter_id">Voter ID</option>
-                    <option value="passport">Passport</option>
-                    <option value="drivers_license">Driver's License</option>
-                    <option value="national_id">National ID</option>
-                    <option value="other">Other</option>
-                  </select>
-                </label>
-                <label>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>ID Number</div>
-                  <input className="input" value={quickCustomerForm.idCardNumber} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, idCardNumber: e.target.value }))} placeholder="ID number (optional)" />
-                </label>
-              </div>
-              <label>
-                <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Address</div>
-                <input className="input" value={quickCustomerForm.address} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, address: e.target.value }))} placeholder="Address (optional)" />
-              </label>
-            </div>
-          </Modal>
-        )}
         <ul className="cart-list">
           {cart.items.map(item => (
             <li key={item.id} className="cart-item">
@@ -1612,7 +1551,7 @@ function PosPage({ mode = 'retail' }) {
           )}
         </div>
         <div style={{ marginTop: 12 }}>
-          <button className="btn btn-primary" onClick={() => completeSale(false)} disabled={cart.items.length === 0}>
+          <button className="btn btn-primary" onClick={() => completeSale(false)} disabled={cart.items.length === 0 || saving}>
             <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>
             {saving ? 'Processing…' : 'Complete & Print'}
           </button>
