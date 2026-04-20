@@ -21,7 +21,6 @@ function Layout({ bootstrapLoading = false }) {
   const [installEvt, setInstallEvt] = useState(null);
   const [showInstall, setShowInstall] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const auth = useSelector(s => s.auth);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try { return localStorage.getItem('ptSales:sidebarCollapsed') === '1'; } catch { return false; }
   });
@@ -96,10 +95,6 @@ function Layout({ bootstrapLoading = false }) {
       });
     }
   }
-  const expiryTs = settings?.subscriptionExpiresAt ? new Date(settings.subscriptionExpiresAt).getTime() : 0;
-  const isPermanent = !!settings?.subscriptionPermanent;
-  const isMaster = String(auth.user?.tenantId || '').toLowerCase() === 'master';
-  const daysLeft = expiryTs ? Math.ceil((expiryTs - Date.now()) / (24 * 3600 * 1000)) : null;
   const brandedName = settings?.clientAppName || settings?.receiptBrandName || settings?.appName || 'ptSales POS';
   const brandedLogo = settings?.clientLogoUrl || '/clientlogo512.png';
   return (
@@ -138,14 +133,6 @@ function Layout({ bootstrapLoading = false }) {
               >
                 Not now
               </button>
-            </div>
-          </div>
-        )}
-        {!isMaster && (isPermanent || daysLeft != null) && (
-          <div className="card" style={{ margin: '8px 16px', padding: 12, background: daysLeft < 0 ? '#fee2e2' : daysLeft <= 14 ? '#fef3c7' : '#ecfeff' }}>
-            <div style={{ fontWeight: 700 }}>Subscription</div>
-            <div style={{ color: '#475569', fontSize: 13 }}>
-              {isPermanent ? `Plan: ${String(settings.subscriptionPlan || 'basic')} • Permanent access enabled` : (daysLeft < 0 ? `Subscription expired ${Math.abs(daysLeft)} day(s) ago. Contact your super admin.` : `Plan: ${String(settings.subscriptionPlan || 'basic')} • ${daysLeft} day(s) left`)}
             </div>
           </div>
         )}

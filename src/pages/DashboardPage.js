@@ -17,13 +17,14 @@ function DashboardPage() {
   const settings = useSelector(s => s.settings);
   const auth = useSelector(s => s.auth);
   const roleLower = String(auth.role || '').toLowerCase();
-  const canViewFinancials = roleLower === 'superadmin' || roleLower === 'admin' || (Array.isArray(auth.grants) && auth.grants.includes('view_financials'));
+  const grants = Array.isArray(auth.grants) ? auth.grants : [];
+  const canViewRevenue = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_revenue') || grants.includes('view_financials');
+  const canViewProfit = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_profit') || grants.includes('view_financials');
   const canUseExpenses = isFeatureEnabled(settings, 'modules.expenses') && (
     roleLower === 'superadmin' ||
     roleLower === 'admin' ||
     (Array.isArray(auth.grants) && ['view_expenses', 'see_expenses', 'add_expenses'].some((key) => auth.grants.includes(key)))
   );
-  const [heatMode, setHeatMode] = useState('week'); // day, week, month
   const [expenses, setExpenses] = useState([]);
   const [warehousePending, setWarehousePending] = useState(0);
   const [wholesalePending, setWholesalePending] = useState(0);
@@ -253,27 +254,8 @@ function DashboardPage() {
 
     const topProfitProducts = Array.from(productProfit.values()).sort((a, b) => b.profit - a.profit).slice(0, 10);
 
-    const daysBack = heatMode === 'day' ? 1 : heatMode === 'month' ? Math.max(30, daysInRange.length) : Math.max(7, daysInRange.length);
-    const endHeat = new Date(`${dateTo || todayIso}T00:00:00`);
-    const startHeat = new Date(Math.max(new Date(`${dateFrom || defaultFromIso}T00:00:00`).getTime(), endHeat.getTime() - daysBack * 24 * 3600 * 1000));
-    const days = [];
-    const d0 = new Date(startHeat.toISOString().slice(0, 10));
-    const d1 = new Date(endHeat.toISOString().slice(0, 10));
-    for (let t = d0.getTime(); t <= d1.getTime(); t += 24 * 3600 * 1000) days.push(new Date(t));
-    const grid = days.map(d => ({ day: d.toISOString().slice(0, 10), hours: new Array(24).fill(0) }));
-    const idxByDay = new Map(grid.map((r, i) => [r.day, i]));
-    for (const s of last30Sales) {
-      const dt = new Date(s.created_at);
-      const day = dt.toISOString().slice(0, 10);
-      const i = idxByDay.get(day);
-      if (i == null) continue;
-      grid[i].hours[dt.getHours()] += Number(s.total) || 0;
-    }
-    let max = 0;
-    for (const r of grid) for (const v of r.hours) max = Math.max(max, v);
-
-    return { todayTotal, todayProfit, itemsSold, transactionCount: sourceSales.length, lineData, paymentBar, doughData, topBar, stackedOptions, lineOptions, barOptions, cashierBar, last30Revenue, last30Profit, last30Cost, marginPct, cashierLeaderboard, topProfitProducts, heatmap: { grid, max } };
-  }, [sales, products, heatMode, dateFrom, dateTo, inRange, matchBranch, defaultFromIso, todayIso, periodMode]);
+    return { todayTotal, todayProfit, itemsSold, transactionCount: sourceSales.length, lineData, paymentBar, doughData, topBar, stackedOptions, lineOptions, barOptions, cashierBar, last30Revenue, last30Profit, last30Cost, marginPct, cashierLeaderboard, topProfitProducts };
+  }, [sales, products, dateFrom, dateTo, inRange, matchBranch, defaultFromIso, todayIso, periodMode]);
 
   const finance = useMemo(() => {
     const expenseTotal = expenses.reduce((s, x) => s + (Number(x.amount) || 0), 0);
@@ -282,12 +264,16 @@ function DashboardPage() {
     return { expenseTotal, net, projected30 };
   }, [expenses, metrics.last30Revenue]);
 
-  function maskMoney(value) {
-    return canViewFinancials ? formatCurrency(value, settings) : '******';
+  function maskRevenue(value) {
+    return canViewRevenue ? formatCurrency(value, settings) : '******';
   }
 
-  function maskText(value) {
-    return canViewFinancials ? value : '***';
+  function maskProfit(value) {
+    return canViewProfit ? formatCurrency(value, settings) : '******';
+  }
+
+  function maskProfitText(value) {
+    return canViewProfit ? value : '***';
   }
 
   const branchComparison = useMemo(() => {
@@ -384,11 +370,11 @@ function DashboardPage() {
       <div className="summary-grid" style={{ marginBottom: 16 }}>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>Sales (Filtered Range)</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{formatCurrency(metrics.todayTotal, settings)}</div>
+          <div style={{ fontSize: 28, fontWeight: 700 }}>{maskRevenue(metrics.todayTotal)}</div>
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>Profit (Filtered Range)</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{maskMoney(metrics.todayProfit)}</div>
+          <div style={{ fontSize: 28, fontWeight: 700 }}>{maskProfit(metrics.todayProfit)}</div>
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>Items Sold</div>
@@ -400,11 +386,11 @@ function DashboardPage() {
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>Margin</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{maskText(`${metrics.marginPct}%`)}</div>
+          <div style={{ fontSize: 28, fontWeight: 700 }}>{maskProfitText(`${metrics.marginPct}%`)}</div>
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>Net Cashflow</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{maskMoney(finance.net)}</div>
+          <div style={{ fontSize: 28, fontWeight: 700 }}>{maskProfit(finance.net)}</div>
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
@@ -415,13 +401,13 @@ function DashboardPage() {
               ...metrics.lineOptions,
               scales: {
                 ...(metrics.lineOptions.scales || {}),
-                y: { ...((metrics.lineOptions.scales || {}).y || {}), ticks: { callback: (value) => (canViewFinancials ? value : '***') } }
+                y: { ...((metrics.lineOptions.scales || {}).y || {}), ticks: { callback: (value) => (canViewRevenue ? value : '***') } }
               },
               plugins: {
                 ...(metrics.lineOptions.plugins || {}),
                 tooltip: {
                   callbacks: {
-                    label: (ctx) => (canViewFinancials ? `${ctx.dataset.label}: ${formatCurrency(ctx.parsed.y || 0, settings)}` : `${ctx.dataset.label}: ***`)
+                    label: (ctx) => (canViewRevenue ? `${ctx.dataset.label}: ${formatCurrency(ctx.parsed.y || 0, settings)}` : `${ctx.dataset.label}: ***`)
                   }
                 }
               }
@@ -436,21 +422,21 @@ function DashboardPage() {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginTop: 16 }}>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>Revenue</div>
-          <div style={{ fontSize: 22, fontWeight: 800 }}>{maskMoney(metrics.last30Revenue)}</div>
-          <div style={{ marginTop: 6, color: '#64748b' }}>COGS: {maskMoney(metrics.last30Cost)}</div>
-          <div style={{ marginTop: 2, color: '#64748b' }}>Profit: {maskMoney(metrics.last30Profit)}</div>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>{maskRevenue(metrics.last30Revenue)}</div>
+          <div style={{ marginTop: 6, color: '#64748b' }}>COGS: {maskProfit(metrics.last30Cost)}</div>
+          <div style={{ marginTop: 2, color: '#64748b' }}>Profit: {maskProfit(metrics.last30Profit)}</div>
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>Expenses</div>
-          <div style={{ fontSize: 22, fontWeight: 800 }}>{maskMoney(finance.expenseTotal)}</div>
-          <div style={{ marginTop: 6, color: '#64748b' }}>Projection: {maskMoney(finance.projected30)}</div>
+          <div style={{ fontSize: 22, fontWeight: 800 }}>{maskProfit(finance.expenseTotal)}</div>
+          <div style={{ marginTop: 6, color: '#64748b' }}>Projection: {maskProfit(finance.projected30)}</div>
         </div>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>Cashflow</div>
           <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Inflow</span><strong>{maskMoney(metrics.last30Revenue)}</strong></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Outflow</span><strong>{maskMoney(finance.expenseTotal)}</strong></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Net</span><strong>{maskMoney(finance.net)}</strong></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Inflow</span><strong>{maskRevenue(metrics.last30Revenue)}</strong></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Outflow</span><strong>{maskProfit(finance.expenseTotal)}</strong></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Net</span><strong>{maskProfit(finance.net)}</strong></div>
           </div>
         </div>
       </div>
@@ -535,41 +521,9 @@ function DashboardPage() {
         </div>
       </div>
       <div style={{ background: '#fff', padding: 16, borderRadius: 12, marginTop: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h2 style={{ marginTop: 0, marginBottom: 0 }}>Performance Heatmap</h2>
-          <select className="select" value={heatMode} onChange={e => setHeatMode(e.target.value)} style={{ width: 160 }}>
-            <option value="day">Daily</option>
-            <option value="week">Weekly</option>
-            <option value="month">Monthly</option>
-          </select>
-        </div>
-        <div style={{ overflowX: 'auto', marginTop: 10 }}>
-          <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-            <thead>
-              <tr>
-                <th align="left" style={{ position: 'sticky', left: 0, background: '#fff' }}>Day</th>
-                {new Array(24).fill(0).map((_, h) => <th key={h} style={{ fontSize: 11, padding: 4 }}>{h}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {metrics.heatmap.grid.map(r => (
-                <tr key={r.day}>
-                  <td style={{ position: 'sticky', left: 0, background: '#fff', paddingRight: 8, fontSize: 12 }}>{r.day}</td>
-                  {r.hours.map((v, i) => {
-                    const t = metrics.heatmap.max > 0 ? v / metrics.heatmap.max : 0;
-                    const bg = `rgba(14,165,233,${Math.min(0.9, Math.max(0, t))})`;
-                    return <td key={i} title={canViewFinancials ? formatCurrency(v, settings) : '***'} style={{ width: 18, height: 18, background: v > 0 ? bg : '#f8fafc', border: '1px solid #eef2f7' }} />;
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <div style={{ background: '#fff', padding: 16, borderRadius: 12, marginTop: 16 }}>
         <h2 style={{ marginTop: 0 }}>Cashier Performance (Filtered Revenue)</h2>
         <div style={{ height: 240 }}>
-          <Bar data={metrics.cashierBar} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => (canViewFinancials ? formatCurrency(ctx.parsed.x ?? ctx.parsed.y ?? 0, settings) : '***') } } }, scales: { x: { ticks: { callback: () => (canViewFinancials ? undefined : '***') } } } }} />
+          <Bar data={metrics.cashierBar} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => (canViewRevenue ? formatCurrency(ctx.parsed.x ?? ctx.parsed.y ?? 0, settings) : '***') } } }, scales: { x: { ticks: { callback: () => (canViewRevenue ? undefined : '***') } } } }} />
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
@@ -588,7 +542,7 @@ function DashboardPage() {
                 <tr key={p.key}>
                   <td>{p.name}</td>
                   <td>{p.units}</td>
-                  <td>{maskMoney(p.profit)}</td>
+                  <td>{maskProfit(p.profit)}</td>
                 </tr>
               ))}
               {metrics.topProfitProducts.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>No data</td></tr>}
@@ -609,8 +563,8 @@ function DashboardPage() {
               {metrics.cashierLeaderboard.map(x => (
                 <tr key={x.seller}>
                   <td>{x.seller}</td>
-                  <td>{maskMoney(x.revenue)}</td>
-                  <td>{maskMoney(x.profit)}</td>
+                  <td>{maskRevenue(x.revenue)}</td>
+                  <td>{maskProfit(x.profit)}</td>
                 </tr>
               ))}
               {metrics.cashierLeaderboard.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>No data</td></tr>}
@@ -635,8 +589,8 @@ function DashboardPage() {
                 <tr key={b.branchId}>
                   <td>{b.name}</td>
                   <td>{b.sales}</td>
-                  <td>{maskMoney(b.revenue)}</td>
-                  <td>{maskMoney(b.profit)}</td>
+                  <td>{maskRevenue(b.revenue)}</td>
+                  <td>{maskProfit(b.profit)}</td>
                 </tr>
               ))}
               {branchComparison.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No data</td></tr>}

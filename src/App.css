@@ -376,6 +376,23 @@ html, body, #root {
 .toolbar .select {
   flex: 1 1 220px;
 }
+.pos-toolbar {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+.pos-toolbar-search {
+  flex: 1 1 auto !important;
+  min-width: 0;
+}
+.pos-toolbar-tier {
+  flex: 0 0 190px !important;
+  width: 190px;
+}
+.pos-toolbar-actions {
+  margin-left: auto;
+  flex: 0 0 auto;
+  flex-wrap: nowrap;
+}
 .filter-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -850,6 +867,16 @@ html, body, #root {
   }
   .toolbar .input {
     flex: 1 1 100%;
+  }
+  .pos-toolbar {
+    flex-wrap: wrap;
+  }
+  .pos-toolbar-tier {
+    flex: 1 1 100% !important;
+    width: 100%;
+  }
+  .pos-toolbar-actions {
+    margin-left: 0;
   }
   .filter-grid,
   .filter-grid-wide,

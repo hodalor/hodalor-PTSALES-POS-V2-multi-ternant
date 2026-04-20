@@ -23,6 +23,17 @@ function Header({ onToggleSidebar }) {
   const [syncing, setSyncing] = useState(false);
   const roleLower = String(auth.role || '').toLowerCase();
   const canChangeBranch = ['admin', 'manager', 'branch manager', 'superadmin'].includes(roleLower);
+  const expiryTs = settings?.subscriptionExpiresAt ? new Date(settings.subscriptionExpiresAt).getTime() : 0;
+  const isPermanent = !!settings?.subscriptionPermanent;
+  const isMaster = String(auth.user?.tenantId || '').toLowerCase() === 'master';
+  const daysLeft = expiryTs ? Math.ceil((expiryTs - Date.now()) / (24 * 3600 * 1000)) : null;
+  const subscriptionLabel = !isMaster && (isPermanent || daysLeft != null)
+    ? (isPermanent
+        ? `${String(settings.subscriptionPlan || 'basic')} • Permanent`
+        : daysLeft < 0
+          ? `Subscription expired`
+          : `${String(settings.subscriptionPlan || 'basic')} • ${daysLeft} day(s) left`)
+    : '';
   const assigned = auth.user?.assignedBranches || 'all';
   const visibleBranchName = useMemo(() => {
     const assignedIds = assigned === 'all'
@@ -74,6 +85,24 @@ function Header({ onToggleSidebar }) {
             {visibleBranchName}
           </div>
         )}
+        {subscriptionLabel ? (
+          <div
+            title={subscriptionLabel}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              padding: '8px 12px',
+              borderRadius: 12,
+              background: isPermanent ? '#ecfeff' : daysLeft < 0 ? '#fee2e2' : daysLeft <= 14 ? '#fef3c7' : '#ecfeff',
+              color: daysLeft < 0 ? '#991b1b' : '#0f172a',
+              fontSize: 12,
+              fontWeight: 700,
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {subscriptionLabel}
+          </div>
+        ) : null}
       </div>
       <div>
         {auth.isAuthenticated ? (

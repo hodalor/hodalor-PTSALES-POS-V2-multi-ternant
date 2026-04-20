@@ -19,7 +19,9 @@ function SalesPage() {
   const currentBranchId = useSelector(s => s.settings.currentBranchId);
   const auth = useSelector(s => s.auth);
   const roleLower = String(auth.role || '').toLowerCase();
-  const canViewFinancials = roleLower === 'superadmin' || roleLower === 'admin' || (Array.isArray(auth.grants) && auth.grants.includes('view_financials'));
+  const grants = Array.isArray(auth.grants) ? auth.grants : [];
+  const canViewRevenue = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_revenue') || grants.includes('view_financials');
+  const canViewProfit = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_profit') || grants.includes('view_financials');
   const toast = useToast();
   const canSeeAll = roleLower === 'admin' || roleLower === 'superadmin';
   const canDeleteSales = roleLower === 'superadmin';
@@ -212,8 +214,11 @@ function SalesPage() {
     ];
     exportTablePdf('Sales', headers, filteredSales);
   }
-  function maskMoney(value) {
-    return canViewFinancials ? formatCurrency(value, settings) : '***';
+  function maskRevenue(value) {
+    return canViewRevenue ? formatCurrency(value, settings) : '***';
+  }
+  function maskProfit(value) {
+    return canViewProfit ? formatCurrency(value, settings) : '***';
   }
   return (
     <div style={{ padding: 16 }}>
@@ -282,8 +287,8 @@ function SalesPage() {
           </div>
           <div className="summary-grid" style={{ marginTop: 12 }}>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Sales Count</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.totalSales}</div></div>
-            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Revenue</div><div style={{ fontSize: 24, fontWeight: 800 }}>{maskMoney(summary.totalRevenue)}</div></div>
-            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Profit</div><div style={{ fontSize: 24, fontWeight: 800 }}>{maskMoney(summary.totalProfit)}</div></div>
+            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Revenue</div><div style={{ fontSize: 24, fontWeight: 800 }}>{maskRevenue(summary.totalRevenue)}</div></div>
+            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Profit</div><div style={{ fontSize: 24, fontWeight: 800 }}>{maskProfit(summary.totalProfit)}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Items Sold</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.itemsSold}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Retail EasyBuy</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.easybuyCount}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Distribution Credit</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.wholesaleCreditCount}</div></div>
@@ -339,8 +344,8 @@ function SalesPage() {
                 <tr key={x.seller}>
                   <td>{x.seller}</td>
                   <td>{x.sales}</td>
-                  <td>{maskMoney(x.revenue)}</td>
-                  <td>{maskMoney(x.profit)}</td>
+                  <td>{maskRevenue(x.revenue)}</td>
+                  <td>{maskProfit(x.profit)}</td>
                 </tr>
               ))}
               {leaderboard.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No sales found</td></tr>}
@@ -368,8 +373,8 @@ function SalesPage() {
                 <tr key={b.branchId}>
                   <td>{b.name}</td>
                   <td>{b.sales}</td>
-                  <td>{maskMoney(b.revenue)}</td>
-                  <td>{maskMoney(b.profit)}</td>
+                  <td>{maskRevenue(b.revenue)}</td>
+                  <td>{maskProfit(b.profit)}</td>
                 </tr>
               ))}
               {branchComparison.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No sales found</td></tr>}

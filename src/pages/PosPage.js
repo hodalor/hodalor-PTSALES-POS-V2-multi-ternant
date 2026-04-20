@@ -1138,15 +1138,14 @@ function PosPage({ mode = 'retail' }) {
             </div>
             <OfflineQueueIndicator collection="sales" label="Sales queued" />
           </div>
-          <div className="toolbar">
-            <input className="input" placeholder="Search name, SKU, barcode, IMEI, or serial number" value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onSearchKeyDown} style={{ width: '100%' }} />
-            <button className="btn" onClick={submitMainSearch}>Search / Add</button>
+          <div className="toolbar pos-toolbar">
+            <input className="input pos-toolbar-search" placeholder="Search name, SKU, barcode, IMEI, or serial number" value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onSearchKeyDown} />
             {isWholesale && (
-            <select className="select" value={selectedPriceTier} onChange={e => setSelectedPriceTier(e.target.value)}>
+            <select className="select pos-toolbar-tier" value={selectedPriceTier} onChange={e => setSelectedPriceTier(e.target.value)}>
               {allowedPriceTiers.map(tier => <option key={tier} value={tier}>{getPriceTierLabel(tier)}</option>)}
             </select>
             )}
-            <div className="filter-actions">
+            <div className="filter-actions pos-toolbar-actions">
               <button className={`btn-toggle ${view === 'grid' ? 'active' : ''}`} onClick={() => setView('grid')}>
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" stroke="currentColor" strokeWidth="2"/></svg>
               </button>
@@ -1154,9 +1153,6 @@ function PosPage({ mode = 'retail' }) {
                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2"/></svg>
               </button>
             </div>
-          </div>
-          <div style={{ color: '#64748b', fontSize: 12, marginTop: 6 }}>
-            Search by name, SKU, barcode, IMEI, or serial number. If a serialized unit exists in stock for this branch, it will be added directly to cart.
           </div>
         </div>
         <div className="pos-products-scroll">
@@ -1389,18 +1385,15 @@ function PosPage({ mode = 'retail' }) {
               </div>
               {canQuickAddCustomer ? (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
-                  <label>
-                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Name</div>
+                  <div>
                     <input className="input" value={quickCustomerForm.name} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Customer name" />
-                  </label>
-                  <label>
-                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Phone</div>
+                  </div>
+                  <div>
                     <input className="input" value={quickCustomerForm.phone} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="Phone number" />
-                  </label>
-                  <label style={{ gridColumn: '1 / -1' }}>
-                    <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Address</div>
+                  </div>
+                  <div style={{ gridColumn: '1 / -1' }}>
                     <input className="input" value={quickCustomerForm.address} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, address: e.target.value }))} placeholder="Address" />
-                  </label>
+                  </div>
                 </div>
               ) : null}
             </div>
