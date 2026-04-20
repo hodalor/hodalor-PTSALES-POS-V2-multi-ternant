@@ -171,11 +171,18 @@ r.get('/renewal-info', async (req, res) => {
   const tenantConn = await getTenantConnection(resolvedTenantId);
   meta._masterConn = master;
   const info = await getTenantRenewalInfo(tenantConn, meta);
+  const Settings = SettingsModelFor(tenantConn);
+  const settingsDoc = await Settings.findOne({ key: 'default' }).lean().catch(() => null);
+  const paymentUnavailableMessage = String(
+    settingsDoc?.data?.subscriptionPaymentUnavailableMessage
+    || 'Online payment is currently unavailable contact Prynovatechnologies@gmail.com for activation code.'
+  );
   const paymentConfig = await getPaymentManagementConfig(master);
   res.json({
     ...info,
     enabledGateways: paymentConfig.enabledGateways,
-    mobileMoneyNetworks: getMobileMoneyNetworks(info.billingCountry)
+    mobileMoneyNetworks: getMobileMoneyNetworks(info.billingCountry),
+    paymentUnavailableMessage
   });
 });
 

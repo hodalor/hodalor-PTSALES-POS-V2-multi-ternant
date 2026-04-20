@@ -10,16 +10,20 @@ export const PAYMENT_GATEWAY_CATALOG = [
 const DEFAULT_ENABLED_GATEWAYS = PAYMENT_GATEWAY_CATALOG.map((item) => item.key);
 const PAYMENT_MANAGEMENT_KEY = 'payment_management';
 
-export function normalizeEnabledGateways(value) {
+export function normalizeEnabledGateways(value, { allowEmpty = false } = {}) {
   const allowed = new Set(PAYMENT_GATEWAY_CATALOG.map((item) => item.key));
   const list = Array.isArray(value) ? value.map((item) => String(item || '').trim().toLowerCase()).filter((item) => allowed.has(item)) : [];
-  return list.length > 0 ? Array.from(new Set(list)) : DEFAULT_ENABLED_GATEWAYS.slice();
+  if (list.length > 0) return Array.from(new Set(list));
+  return allowEmpty ? [] : DEFAULT_ENABLED_GATEWAYS.slice();
 }
 
 export async function getPaymentManagementConfig(masterConn) {
   const Settings = SettingsModelFor(masterConn);
   const doc = await Settings.findOne({ key: PAYMENT_MANAGEMENT_KEY });
-  const enabledGateways = normalizeEnabledGateways(doc?.data?.enabledGateways);
+  const hasStoredList = Array.isArray(doc?.data?.enabledGateways);
+  const enabledGateways = hasStoredList
+    ? normalizeEnabledGateways(doc?.data?.enabledGateways, { allowEmpty: true })
+    : DEFAULT_ENABLED_GATEWAYS.slice();
   return {
     enabledGateways,
     gateways: PAYMENT_GATEWAY_CATALOG.map((item) => ({ ...item, enabled: enabledGateways.includes(item.key) }))
@@ -28,7 +32,7 @@ export async function getPaymentManagementConfig(masterConn) {
 
 export async function savePaymentManagementConfig(masterConn, payload = {}) {
   const Settings = SettingsModelFor(masterConn);
-  const enabledGateways = normalizeEnabledGateways(payload.enabledGateways);
+  const enabledGateways = normalizeEnabledGateways(payload.enabledGateways, { allowEmpty: true });
   await Settings.findOneAndUpdate(
     { key: PAYMENT_MANAGEMENT_KEY },
     { key: PAYMENT_MANAGEMENT_KEY, data: { enabledGateways } },

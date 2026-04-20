@@ -32,6 +32,7 @@ const TENANT_ADMIN_ALLOWED_KEYS = new Set([
   'invoicePaidStampColor',
   'taxRate',
   'themeColor',
+  'subscriptionPaymentUnavailableMessage',
   'currentBranchId',
   'categories'
 ]);
