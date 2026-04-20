@@ -379,6 +379,7 @@ html, body, #root {
 .pos-toolbar {
   flex-wrap: nowrap;
   align-items: center;
+  width: 100%;
 }
 .pos-toolbar-search {
   flex: 1 1 auto !important;
@@ -613,6 +614,7 @@ html, body, #root {
   top: -16px;
   align-self: flex-start;
   z-index: 5;
+  width: 100%;
   background: #f8fafc;
   padding-top: 16px;
   padding-bottom: 8px;
@@ -870,6 +872,7 @@ html, body, #root {
   }
   .pos-toolbar {
     flex-wrap: wrap;
+    width: 100%;
   }
   .pos-toolbar-tier {
     flex: 1 1 100% !important;
