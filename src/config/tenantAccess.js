@@ -8,7 +8,7 @@ export const TENANT_GRANT_KEYS = [
   'add_customers', 'edit_customers', 'view_credit_control', 'approve_credit_director',
   'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals',
   'approve_wholesale_director', 'approve_wholesale_manager', 'view_refunds', 'add_refunds', 'view_distribution_refunds', 'add_distribution_refunds',
-  'approve_refunds', 'view_expenses', 'add_expenses', 'approve_expenses', 'view_reports', 'view_financials',
+  'approve_refunds', 'view_expenses', 'add_expenses', 'approve_expenses', 'view_reports', 'view_revenue', 'view_profit', 'view_financials',
   'view_stock_records', 'view_wholesale_invoices', 'view_warehouse_invoices',
   'view_warehouse_approvals', 'view_imei_conflicts', 'view_cashdrawer', 'view_users',
   'view_config', 'view_audit', 'export_tenant_data', 'import_tenant_data'
