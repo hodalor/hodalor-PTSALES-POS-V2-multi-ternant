@@ -54,8 +54,12 @@ export async function refreshAllData(dispatch, getState) {
     roleLower === 'admin' ||
     ['view_expenses', 'see_expenses', 'add_expenses'].some((key) => grants.includes(key))
   );
+  const canLoadPosProducts = (
+    (isFeatureEnabled(settings, 'pages.retail.pos') && allow('pages.retail.pos', ['Admin','Manager','Cashier'], ['view_pos','see_pos']))
+    || (isFeatureEnabled(settings, 'pages.distribution.pos') && allow('pages.distribution.pos', ['Admin','Manager','Cashier'], ['view_wholesale_pos']))
+  );
   const results = await Promise.allSettled([
-    allow('modules.products', ['Admin','Manager','Inventory Staff'], ['view_products','see_products','view_distribution_products','view_warehouse_products']) ? productsApi.list() : Promise.resolve([]),
+    (allow('modules.products', ['Admin','Manager','Inventory Staff'], ['view_products','see_products','view_distribution_products','view_warehouse_products']) || canLoadPosProducts) ? productsApi.list() : Promise.resolve([]),
     isFeatureEnabled(settings, 'modules.suppliers') && allow('modules.suppliers', ['Admin','Manager','Inventory Staff'], ['view_suppliers','see_suppliers']) ? suppliersApi.list() : Promise.resolve([]),
     isFeatureEnabled(settings, 'modules.customers') && allow('modules.customers', ['Admin','Manager','Cashier'], ['view_customers','see_customers']) ? customersApi.list() : Promise.resolve([]),
     branchesApi.list(),

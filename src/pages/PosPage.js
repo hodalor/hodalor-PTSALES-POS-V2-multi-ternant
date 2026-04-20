@@ -43,12 +43,26 @@ function PosPage({ mode = 'retail' }) {
   const reservationStorageKey = `ptsales:pos-reservation-token:${String(mode || 'retail').toLowerCase()}`;
   const initialPriceTier = isWholesale ? 'wholesale' : 'retail';
   const activeBranchId = useMemo(() => {
-    const currentBranch = (branches || []).find(branch => String(branch.id) === String(branchId));
+    const roleLower = String(auth.role || '').toLowerCase();
+    const isFixedBranchUser = !['admin', 'manager', 'branch manager', 'superadmin'].includes(roleLower);
+    const assignedRaw = auth.user?.assignedBranches;
+    const assignedIds = assignedRaw === 'all'
+      ? []
+      : (Array.isArray(assignedRaw) ? assignedRaw : [assignedRaw]).map(v => String(v || '').trim()).filter(Boolean);
+    const preferredBranchId = isFixedBranchUser
+      ? (String(auth.user?.branchId || '').trim() || assignedIds[0] || branchId)
+      : branchId;
+    const currentBranch = (branches || []).find(branch => String(branch.id) === String(preferredBranchId));
     const expectedType = isWholesale ? 'wholesale' : 'retail';
-    if (String(currentBranch?.branchType || 'retail').toLowerCase() === expectedType) return branchId;
-    const fallback = (branches || []).find(branch => String(branch.branchType || 'retail').toLowerCase() === expectedType);
-    return fallback?.id || branchId;
-  }, [branchId, branches, isWholesale]);
+    if (String(currentBranch?.branchType || 'retail').toLowerCase() === expectedType) return preferredBranchId;
+    const allowedIds = new Set((isFixedBranchUser ? [preferredBranchId, ...assignedIds] : [preferredBranchId]).filter(Boolean).map(String));
+    const fallback = (branches || []).find(branch => {
+      if (String(branch.branchType || 'retail').toLowerCase() !== expectedType) return false;
+      if (!isFixedBranchUser) return true;
+      return allowedIds.has(String(branch.id));
+    });
+    return fallback?.id || preferredBranchId || branchId;
+  }, [auth.role, auth.user?.assignedBranches, auth.user?.branchId, branchId, branches, isWholesale]);
   const activeBranch = useMemo(() => (branches || []).find(branch => String(branch.id) === String(activeBranchId)) || null, [activeBranchId, branches]);
   const branchNameById = useMemo(() => new Map((branches || []).map(branch => [String(branch.id), branch.name])), [branches]);
   const allowedPriceTiers = useMemo(() => getAllowedPriceTiers(auth), [auth]);
@@ -285,7 +299,7 @@ function PosPage({ mode = 'retail' }) {
       name: String(quickCustomerForm.name || '').trim(),
       phone: String(quickCustomerForm.phone || '').trim(),
       address: String(quickCustomerForm.address || '').trim(),
-      customerType: quickCustomerForm.customerType === 'distribution' ? 'distribution' : 'retail'
+      customerType: isWholesale ? 'distribution' : 'retail'
     };
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) throw new Error('Offline: connect internet and try again.');
