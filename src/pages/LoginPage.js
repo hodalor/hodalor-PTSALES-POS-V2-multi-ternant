@@ -124,6 +124,7 @@ function LoginPage() {
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentInfo, setPaymentInfo] = useState(null);
+  const [renewalInfoLoaded, setRenewalInfoLoaded] = useState(false);
   const [paymentProvider, setPaymentProvider] = useState('paypal');
   const [paymentMethod, setPaymentMethod] = useState('mobile_money');
   const [paymentMonths, setPaymentMonths] = useState('1');
@@ -176,6 +177,7 @@ function LoginPage() {
   async function loadRenewalInfo(nextTenantId) {
     const value = String(nextTenantId || '').trim();
     if (!value) return null;
+    setRenewalInfoLoaded(false);
     const info = await authApi.getRenewalInfo(value);
     setPaymentInfo(info);
     setPaymentPhone(String(info?.billingPhone || ''));
@@ -183,8 +185,9 @@ function LoginPage() {
     setPaymentAddress(String(info?.billingAddress || ''));
     setPaymentNetwork(String((info?.mobileMoneyNetworks || [])[0] || ''));
     setPaymentMonths(String(info?.periods?.[0]?.months || 1));
-    const enabled = Array.isArray(info?.enabledGateways) && info.enabledGateways.length > 0 ? info.enabledGateways : ['paypal', 'paystack', 'dpo_pay'];
+    const enabled = Array.isArray(info?.enabledGateways) ? info.enabledGateways : ['paypal', 'paystack', 'dpo_pay'];
     setPaymentProvider(enabled.includes(paymentProvider) ? paymentProvider : enabled[0]);
+    setRenewalInfoLoaded(true);
     return info;
   }
 
@@ -199,10 +202,17 @@ function LoginPage() {
   const isPaystackProvider = paymentProvider === 'paystack';
   const isDpoProvider = paymentProvider === 'dpo_pay';
   const enabledProviders = useMemo(() => (
-    Array.isArray(paymentInfo?.enabledGateways) && paymentInfo.enabledGateways.length > 0
+    Array.isArray(paymentInfo?.enabledGateways)
       ? paymentInfo.enabledGateways
-      : ['paypal', 'paystack', 'dpo_pay']
-  ), [paymentInfo?.enabledGateways]);
+      : paymentInfo
+        ? []
+        : ['paypal', 'paystack', 'dpo_pay']
+  ), [paymentInfo]);
+  const canShowPaymentActions = !!expiredTenantNotice && renewalInfoLoaded && enabledProviders.length > 0;
+  const paymentUnavailableMessage = String(
+    paymentInfo?.paymentUnavailableMessage
+    || 'Online payment is currently unavailable contact Prynovatechnologies@gmail.com for activation code.'
+  );
   const showProviderChooser = enabledProviders.length > 1;
   const providerCheckoutLabel = isPayPalProvider ? 'Continue Checkout' : isPaystackProvider ? 'Continue To Paystack Checkout' : 'Continue To DPO Checkout';
 
@@ -285,6 +295,37 @@ function LoginPage() {
       setPaymentProvider(enabledProviders[0] || 'paypal');
     }
   }, [enabledProviders, paymentProvider]);
+  useEffect(() => {
+    let ignore = false;
+    if (!expiredTenantNotice) {
+      setPaymentInfo(null);
+      setRenewalInfoLoaded(false);
+      return () => { ignore = true; };
+    }
+    const activeTenantId = String(activationTenantId || tenantId || '').trim();
+    if (!activeTenantId) return () => { ignore = true; };
+    (async () => {
+      try {
+        const info = await authApi.getRenewalInfo(activeTenantId);
+        if (ignore) return;
+        setPaymentInfo(info);
+        setPaymentPhone(String(info?.billingPhone || ''));
+        setPaymentEmail(String(info?.billingEmail || ''));
+        setPaymentAddress(String(info?.billingAddress || ''));
+        setPaymentNetwork(String((info?.mobileMoneyNetworks || [])[0] || ''));
+        setPaymentMonths(String(info?.periods?.[0]?.months || 1));
+        const enabled = Array.isArray(info?.enabledGateways) ? info.enabledGateways : ['paypal', 'paystack', 'dpo_pay'];
+        setPaymentProvider(enabled[0] || 'paypal');
+        setRenewalInfoLoaded(true);
+      } catch {
+        if (!ignore) {
+          setPaymentInfo(null);
+          setRenewalInfoLoaded(true);
+        }
+      }
+    })();
+    return () => { ignore = true; };
+  }, [activationTenantId, expiredTenantNotice, tenantId]);
 
   async function doServerLogin(u, p) {
     const resp = await authApi.login({ username: u, pin: p, tenantId });
@@ -617,7 +658,9 @@ function LoginPage() {
         {expiredTenantNotice ? (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
             <button className="outline" type="button" onClick={() => { setActivationTenantId(String(tenantId || '')); setActivationAdminName(String(name || '')); setActivationOpen(true); }}>Activate Subscription</button>
-            <button className="outline" type="button" onClick={openPaymentModal} disabled={paymentLoading}>Make Payment</button>
+            {canShowPaymentActions ? (
+              <button className="outline" type="button" onClick={openPaymentModal} disabled={paymentLoading}>Make Payment</button>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -628,9 +671,11 @@ function LoginPage() {
           footer={
             <>
               <button className="btn" onClick={() => setActivationOpen(false)} disabled={activationLoading || paymentLoading}>Cancel</button>
-              <button className="btn" onClick={() => openPaymentModal({ closeActivation: true })} disabled={activationLoading || paymentLoading}>
-                {paymentLoading ? 'Opening Payment…' : 'Make Payment Instead'}
-              </button>
+              {canShowPaymentActions ? (
+                <button className="btn" onClick={() => openPaymentModal({ closeActivation: true })} disabled={activationLoading || paymentLoading}>
+                  {paymentLoading ? 'Opening Payment…' : 'Make Payment Instead'}
+                </button>
+              ) : null}
               <button className="btn btn-primary" onClick={onActivateSubscription} disabled={activationLoading || paymentLoading}>
                 {activationLoading ? 'Activating…' : 'Activate For 30 Days'}
               </button>
@@ -663,7 +708,9 @@ function LoginPage() {
               </label>
             </div>
             <div style={{ color: '#64748b', fontSize: 13 }}>
-              If you do not have the activation code, choose <strong>Make Payment Instead</strong> to continue with self-service renewal.
+              {canShowPaymentActions
+                ? <>If you do not have the activation code, choose <strong>Make Payment Instead</strong> to continue with self-service renewal.</>
+                : <>{paymentUnavailableMessage}</>}
             </div>
           </div>
         </Modal>

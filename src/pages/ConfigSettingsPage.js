@@ -62,6 +62,7 @@ function ConfigSettingsPage() {
     'invoicePaidStampColor',
     'taxRate',
     'themeColor',
+    'subscriptionPaymentUnavailableMessage',
     'currentBranchId',
     'categories',
     'userGrants'
@@ -419,6 +420,16 @@ function ConfigSettingsPage() {
               <label style={{ display: 'block', marginTop: 8 }}>
                 Theme Color
                 <input className="input" type="color" value={settings.themeColor || '#16a34a'} onChange={e => setSetting('themeColor', e.target.value)} style={{ display: 'block', width: '100%', marginTop: 6, height: 44 }} />
+              </label>
+              <label style={{ display: 'block', marginTop: 8 }}>
+                Subscription Payment Unavailable Message
+                <textarea
+                  className="input"
+                  rows="3"
+                  value={settings.subscriptionPaymentUnavailableMessage || ''}
+                  onChange={e => setSetting('subscriptionPaymentUnavailableMessage', e.target.value)}
+                  style={{ display: 'block', width: '100%', marginTop: 6 }}
+                />
               </label>
               {String(auth.user?.tenantId || '').toLowerCase() !== 'master' && (
                 <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: '#f8fafc', color: '#475569' }}>

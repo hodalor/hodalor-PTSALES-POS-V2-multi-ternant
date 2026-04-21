@@ -162,6 +162,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
       { label: 'Approvals Center', keys: ['modules.approvalsCenter', 'grants.view_approvals', 'grants.approve_credit_director', 'grants.approve_credit_manager', 'grants.approve_wholesale_director', 'grants.approve_wholesale_manager'] },
       { label: 'Refund Approvals', keys: ['modules.refundApprovals', 'grants.approve_refunds'] },
       { label: 'Reports', keys: ['modules.reports', 'grants.view_reports'] },
+      { label: 'Revenue / Profit Visibility', keys: ['grants.view_revenue', 'grants.view_profit'] },
       { label: 'Backup', keys: ['modules.backup', 'features.offlineBackup', 'grants.export_tenant_data', 'grants.import_tenant_data'] },
       { label: 'IMEI Conflicts', keys: ['modules.backup', 'grants.view_imei_conflicts'] }
     ]

@@ -14,6 +14,7 @@ const initialState = {
   clientAppName: '',
   clientLogoUrl: '',
   themeColor: '',
+  subscriptionPaymentUnavailableMessage: 'Online payment is currently unavailable contact Prynovatechnologies@gmail.com for activation code.',
   subscriptionPlan: 'basic',
   subscriptionExpiresAt: null,
   receiptBrandName: '',
