@@ -1,4 +1,6 @@
+import { useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { downloadHtmlDocument } from '../utils/exporters';
 
 function Section({ title, children }) {
   return (
@@ -18,15 +20,39 @@ function Code({ children }) {
 }
 
 function DocsPage() {
+  const contentRef = useRef(null);
+
+  function downloadDocs() {
+    downloadHtmlDocument(
+      'ptsales-technical-docs.html',
+      'ptSales Technical Documentation',
+      `
+        <div class="doc-header">
+          <h1>ptSales Technical Documentation</h1>
+          <div class="doc-muted">Architecture, runtime behavior, tenant controls, and implementation notes.</div>
+        </div>
+        ${contentRef.current?.innerHTML || ''}
+      `
+    );
+  }
+
   return (
     <div style={{ padding: 16, display: 'grid', gap: 12 }}>
       <div className="card" style={{ padding: 16 }}>
-        <h1 style={{ marginTop: 0 }}>Technical Documentation</h1>
-        <div style={{ color: '#64748b' }}>
-          Architecture, modules, and implementation references across the app. SuperAdmin‑only.
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <h1 style={{ marginTop: 0, marginBottom: 8 }}>Technical Documentation</h1>
+            <div style={{ color: '#64748b' }}>
+              Architecture, modules, runtime safety, tenant controls, and implementation references across the app. SuperAdmin-only.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn" type="button" onClick={() => window.print()}>Print / Save PDF</button>
+            <button className="btn btn-primary" type="button" onClick={downloadDocs}>Download Docs</button>
+          </div>
         </div>
       </div>
-
+      <div ref={contentRef} style={{ display: 'grid', gap: 12 }}>
       <Section title="PWA, Installation, and Offline">
         <ul>
           <li>Manifest branding is generated at runtime based on Settings clientAppName/appName. Icons derive from clientLogoUrl and are resized to 192/512.</li>
@@ -68,7 +94,8 @@ export async function checkUpdateAndOpen(startUrl='/') {
         <ul>
           <li>On successful online login, the app stores a SHA‑256 hash of the PIN with user and role for offline use.</li>
           <li>Offline login compares the local hash to the entered PIN; if matched, sets an offline token to preserve role headers for queued requests.</li>
-          <li>Redux store is persisted to localStorage (auth, cart, settings, branches, products, users, sales, audit, sessions) to enable fully offline operation.</li>
+          <li>Redux persistence is now scoped to auth, settings, and tenant metadata instead of broad business datasets, which reduces cross-tenant leakage risk on shared devices.</li>
+          <li>Tenant-sensitive lists are intentionally reloaded from the database after auth rather than trusted from prior local cache snapshots.</li>
         </ul>
         <Code>
 {`// LoginPage.js
@@ -93,6 +120,20 @@ store.subscribe(() => { clearTimeout(timer); timer = setTimeout(()=>saveState(st
         </Code>
       </Section>
 
+      <Section title="Tenant Bootstrap and Hydration Guards">
+        <ul>
+          <li>Auth bootstrap now starts in an uninitialized state, recovers the online session first, then hydrates tenant settings before protected content renders.</li>
+          <li>Protected routes wait for tenant settings hydration so plan features and grants do not flash briefly during login or refresh.</li>
+          <li>Startup loading is staged so critical data like branches, products, and POS dependencies arrive before slower secondary lists.</li>
+        </ul>
+        <Code>
+{`// ProtectedRoute/App bootstrap concept
+if (!auth.initialized) return <Loader label="Preparing secure sign-in..." />;
+if (!isMasterTenant && !settings.hydrated) return <Loader label="Loading tenant access..." />;
+// After auth + settings, protected routes render with the correct tenant flags and grants`}
+        </Code>
+      </Section>
+
       <Section title="Offline Queue and Backup">
         <ul>
           <li>Write actions enqueue when offline with collection labels; counts surface in the UI and Backup page.</li>
@@ -113,6 +154,8 @@ export async function enqueueHttp({ collection, label, path, method, body }) {
         <ul>
           <li>POS records sales; deducts stock per branch+variant locally; enqueues sale offline or posts online.</li>
           <li>Receipts render branded HTML and optional ESC/POS text output; drawer pulse included for cash when configured.</li>
+          <li>Complete Payment now uses an immediate lock to prevent duplicate customer creation and duplicate sales from repeated clicks.</li>
+          <li>Quick POS customer capture is inline, and customer type is derived from the active POS mode: retail vs distribution.</li>
         </ul>
         <Code>
 {`// PosPage.js (completeSale)
@@ -123,6 +166,21 @@ if (!navigator.onLine) {
   saved = await createSale(sale);
 }
 dispatch(adjustStock({ productId, variantId, branchId, delta: -i.quantity }));`}
+        </Code>
+      </Section>
+
+      <Section title="Subscription Renewal and Payment Gateways">
+        <ul>
+          <li>Expired-tenant renewal actions are driven by backend payment-management config rather than assuming gateways are always available.</li>
+          <li>If all payment gateways are disabled, login and activation flows hide payment buttons and show the configured fallback message.</li>
+          <li>Empty enabled-gateway arrays are preserved intentionally on save; defaults are only applied when no stored config exists yet.</li>
+        </ul>
+        <Code>
+{`// paymentManagement normalization
+const hasStoredList = Array.isArray(doc?.data?.enabledGateways);
+const enabledGateways = hasStoredList
+  ? normalizeEnabledGateways(doc?.data?.enabledGateways, { allowEmpty: true })
+  : DEFAULT_ENABLED_GATEWAYS.slice();`}
         </Code>
       </Section>
 
@@ -137,31 +195,22 @@ dispatch(adjustStock({ productId, variantId, branchId, delta: -i.quantity }));`}
         </div>
       </Section>
 
-      <Section title="Data Visualization: Heatmap">
+      <Section title="Dashboard and Financial Visibility">
         <ul>
-          <li>Aggregates hourly revenue over selected period (day/week/month) into a 24-hour grid per day.</li>
-          <li>Computes max cell value to normalize color intensity for consistent visualization.</li>
+          <li>The older dashboard heatmap has been removed.</li>
+          <li>Dashboard, Sales, and Reports now apply separate grant checks for revenue and profit visibility.</li>
+          <li>`view_financials` remains supported for backward compatibility, while the active split model uses `view_revenue` and `view_profit`.</li>
         </ul>
         <Code>
-{`const daysBack = heatMode === 'day' ? 1 : heatMode === 'month' ? 30 : 7;
-const end = new Date();
-const start = new Date(end.getTime() - daysBack * 24 * 3600 * 1000);
-const days = [];
-const d0 = new Date(start.toISOString().slice(0, 10));
-const d1 = new Date(end.toISOString().slice(0, 10));
-for (let t = d0.getTime(); t <= d1.getTime(); t += 24 * 3600 * 1000) days.push(new Date(t));
-const grid = days.map(d => ({ day: d.toISOString().slice(0, 10), hours: new Array(24).fill(0) }));
-const idxByDay = new Map(grid.map((r, i) => [r.day, i]));
-for (const s of last30Sales) {
-  const dt = new Date(s.created_at);
-  const day = dt.toISOString().slice(0, 10);
-  const i = idxByDay.get(day);
-  if (i == null) continue;
-  grid[i].hours[dt.getHours()] += Number(s.total) || 0;
-}
-let max = 0;
-for (const r of grid) for (const v of r.hours) max = Math.max(max, v);
-const heatmap = { grid, max };`}
+{`const canViewRevenue = roleLower === 'superadmin'
+  || roleLower === 'admin'
+  || grants.includes('view_revenue')
+  || grants.includes('view_financials');
+
+const canViewProfit = roleLower === 'superadmin'
+  || roleLower === 'admin'
+  || grants.includes('view_profit')
+  || grants.includes('view_financials');`}
         </Code>
       </Section>
 
@@ -242,6 +291,7 @@ const payload = { productId, branchId, baseUnits, actor: auth.user?.name || 'unk
         <ul>
           <li>ProtectedRoute requires auth, checks feature flags and grants; roles gate admin routes.</li>
           <li>Sidebar honors feature flags and grants; SuperAdmin sees Docs, Server Logs and GodHand when enabled.</li>
+          <li>Tenant grant catalogs now include revenue/profit visibility in tenant-side permission management, not only master-level controls.</li>
         </ul>
         <Code>
 {`// ProtectedRoute.js
@@ -250,6 +300,7 @@ if (feature && !isFeatureEnabled(settings, feature)) return <Navigate to={fallba
 // grant helper maps view_* <-> see_*`}
         </Code>
       </Section>
+      </div>
     </div>
   );
 }

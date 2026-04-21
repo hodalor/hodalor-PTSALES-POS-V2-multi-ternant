@@ -14,6 +14,42 @@ export function exportCsv(filename, headers, rows) {
   URL.revokeObjectURL(url);
 }
 
+export function downloadTextFile(filename, content, type = 'text/plain;charset=utf-8;') {
+  const blob = new Blob([String(content ?? '')], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+export function downloadHtmlDocument(filename, title, bodyHtml) {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>${escapeHtml(title || 'Document')}</title>
+      <style>
+        body { font-family: Arial, sans-serif; padding: 24px; color: #0f172a; line-height: 1.5; }
+        h1, h2, h3 { color: #0f172a; }
+        .doc-header { margin-bottom: 20px; }
+        .doc-muted { color: #64748b; }
+        .doc-section { border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+        pre { background: #0b1220; color: #e2e8f0; padding: 12px; border-radius: 8px; overflow: auto; white-space: pre-wrap; }
+        code { font-family: Consolas, monospace; }
+        ul { padding-left: 22px; }
+      </style>
+    </head>
+    <body>${String(bodyHtml || '')}</body>
+    </html>`;
+  downloadTextFile(filename, html, 'text/html;charset=utf-8;');
+}
+
 export function exportTablePdf(title, headers, rows, options = {}) {
   const letterhead = options?.letterhead || null;
   const meta = Array.isArray(options?.meta) ? options.meta.filter((item) => item && (item.label || item.value)) : [];

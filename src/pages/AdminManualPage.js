@@ -1,3 +1,6 @@
+import { useRef } from 'react';
+import { downloadHtmlDocument } from '../utils/exporters';
+
 function Section({ title, children }) {
   return (
     <section className="card" style={{ padding: 16 }}>
@@ -8,15 +11,39 @@ function Section({ title, children }) {
 }
 
 function AdminManualPage() {
+  const contentRef = useRef(null);
+
+  function downloadManual() {
+    downloadHtmlDocument(
+      'ptsales-system-manual.html',
+      'ptSales System Manual',
+      `
+        <div class="doc-header">
+          <h1>ptSales System Manual</h1>
+          <div class="doc-muted">Operational guide for tenant admins, managers, cashiers, and support teams.</div>
+        </div>
+        ${contentRef.current?.innerHTML || ''}
+      `
+    );
+  }
+
   return (
     <div style={{ padding: 16, display: 'grid', gap: 12 }}>
       <div className="card" style={{ padding: 16 }}>
-        <h1 style={{ marginTop: 0 }}>System Manual</h1>
-        <div style={{ color: '#64748b' }}>
-          This guide explains how to use every major feature: what each page does, when to use it, and how product units, attributes, packs, and variants work across the system.
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+          <div>
+            <h1 style={{ marginTop: 0, marginBottom: 8 }}>System Manual</h1>
+            <div style={{ color: '#64748b' }}>
+              This guide explains how to use every major feature: what each page does, when to use it, and how newer tenant, POS, subscription, and permission controls work.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn" type="button" onClick={() => window.print()}>Print / Save PDF</button>
+            <button className="btn btn-primary" type="button" onClick={downloadManual}>Download Manual</button>
+          </div>
         </div>
       </div>
-
+      <div ref={contentRef} style={{ display: 'grid', gap: 12 }}>
       <Section title="Navigation Overview">
         <ul>
           <li>Dashboard: High‑level metrics (Admin/Manager).</li>
@@ -45,6 +72,17 @@ function AdminManualPage() {
           <li>Audit Log: Track sensitive actions (stock, sales, overrides).</li>
           <li>Server Logs: Backend diagnostics (SuperAdmin).</li>
           <li>GodHand: Feature toggle panel (SuperAdmin) to hide/show paid modules.</li>
+        </ul>
+      </Section>
+
+      <Section title="Tenant Access, Subscription, and Renewal">
+        <ul>
+          <li>Tenant feature access now waits for tenant settings before showing menus, which prevents unauthorized pages from flashing briefly during login.</li>
+          <li>Same-device tenant switching now clears business data such as users, branches, products, invoices, and other tenant records before fresh database data loads.</li>
+          <li>Subscription status now appears in the top bar instead of a separate body card.</li>
+          <li>When a tenant subscription is expired, payment actions appear only if at least one gateway is enabled by superadmin.</li>
+          <li>If all gateways are disabled, tenants see the configured fallback message instead of Make Payment buttons.</li>
+          <li>Tenant admins can edit the fallback renewal message from Config using the Subscription Payment Unavailable Message setting.</li>
         </ul>
       </Section>
 
@@ -124,6 +162,11 @@ function AdminManualPage() {
         <ul>
           <li>Search by name, SKU or scan barcode. Variants appear as separate items.</li>
           <li>Stock checks use the current branch and the specific variant’s stock.</li>
+          <li>Retail and Distribution POS now place the search box and product display style controls on the same toolbar row for faster browsing.</li>
+          <li>Quick customer creation now happens inline on the POS page using Name, Phone, and Address fields instead of a separate quick-add modal.</li>
+          <li>Easy Buy and Credit Sale can be selected without a preselected customer, but Name, Phone, and Address become required before completion.</li>
+          <li>When checkout creates a customer from POS, Retail POS saves a retail customer and Distribution POS saves a distribution customer automatically.</li>
+          <li>Complete Payment is now locked immediately on first click to prevent duplicate customer creation and duplicate sales.</li>
           <li>Serialized POS flow:
             <ul>
               <li>Scan IMEI directly into the POS search box to reserve and add the exact unit instantly.</li>
@@ -193,6 +236,8 @@ function AdminManualPage() {
       <Section title="Reports – Summaries & Exports">
         <ul>
           <li>Sales summaries by time, seller and branch with CSV/PDF exports.</li>
+          <li>Revenue and profit visibility now follow separate grants, so one can be shown while the other stays hidden.</li>
+          <li>Exports and on-screen values respect those visibility grants.</li>
           <li>Use filters and export buttons to share reports externally.</li>
         </ul>
       </Section>
@@ -200,15 +245,18 @@ function AdminManualPage() {
       <Section title="Sales – History and Exports">
         <ul>
           <li>Lists sales with invoice serials, seller, branch and totals.</li>
+          <li>Revenue and profit figures are masked independently based on the logged-in user grants.</li>
           <li>Click to view/print receipt; public receipt link is accessible from the ID.</li>
-          <li>CSV export available in Reports for analytics.</li>
+          <li>Use Sales or Reports export actions for analytics, sharing, and print-ready output.</li>
         </ul>
       </Section>
 
       <Section title="Users – Accounts & PIN">
         <ul>
           <li>Create, rename and delete users; set branch access as needed.</li>
-          <li>Assign roles and (optionally) grants for fine‑grained permissions.</li>
+          <li>Assign roles and grants for fine‑grained permissions.</li>
+          <li>Revenue and profit are separate grants, so you can allow one without the other.</li>
+          <li>Tenant user grant screens now show those visibility grants under tenant permissions as well, not only for superadmin.</li>
           <li>Reset PIN from Users page or via the Login screen’s Admin Reset PIN flow.</li>
         </ul>
       </Section>
@@ -366,6 +414,7 @@ function AdminManualPage() {
           <li>Currency: Manage supported currencies and active currency; symbols and positions apply across POS, Dashboard, Cash Drawer, Inventory and receipts.</li>
           <li>PAID Stamp: Configure whether a “PAID” stamp appears on A4 invoices for POS sales, along with label text, centering, thank‑you line, date, and color.</li>
           <li>Background Refresh: Control the auto‑refresh interval for lists such as products, suppliers, customers, branches, refunds and sales.</li>
+          <li>Subscription Payment Unavailable Message: Superadmin or tenant admin can define the message shown when online renewal gateways are all disabled.</li>
         </ul>
       </Section>
 
@@ -441,6 +490,7 @@ function AdminManualPage() {
           <li>Per‑user grants supplement roles. Assign on the Users page.</li>
           <li>Stock Ops: add_purchases, add_transfers, add_adjustments control receiving, transfers and adjustments buttons and APIs.</li>
           <li>Refunds: approve_refunds allows non‑Manager/Admin to approve if granted.</li>
+          <li>Financial visibility is split into view_revenue and view_profit, with older view_financials kept only for backward compatibility.</li>
           <li>Changes apply immediately; background refresh keeps the UI consistent.</li>
         </ul>
       </Section>
@@ -465,6 +515,7 @@ function AdminManualPage() {
           <li>Install: If the Install button isn’t available, use the browser’s “Install App” menu; once installed, the Config button will open the installed app and apply updates.</li>
         </ul>
       </Section>
+      </div>
     </div>
   );
 }
