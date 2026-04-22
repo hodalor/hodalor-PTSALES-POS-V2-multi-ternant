@@ -523,7 +523,33 @@ function DashboardPage() {
       <div style={{ background: '#fff', padding: 16, borderRadius: 12, marginTop: 16 }}>
         <h2 style={{ marginTop: 0 }}>Cashier Performance (Filtered Revenue)</h2>
         <div style={{ height: 240 }}>
-          <Bar data={metrics.cashierBar} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => (canViewRevenue ? formatCurrency(ctx.parsed.x ?? ctx.parsed.y ?? 0, settings) : '***') } } }, scales: { x: { ticks: { callback: () => (canViewRevenue ? undefined : '***') } } } }} />
+          <Bar
+            data={metrics.cashierBar}
+            options={{
+              responsive: true,
+              maintainAspectRatio: false,
+              indexAxis: 'y',
+              plugins: {
+                legend: { display: false },
+                tooltip: {
+                  callbacks: {
+                    label: (ctx) => {
+                      const raw = ctx.parsed?.x ?? ctx.parsed?.y ?? 0;
+                      if (!canViewRevenue) return '***';
+                      return `${ctx.label || 'Cashier'}: ${formatCurrency(raw, settings)}`;
+                    }
+                  }
+                }
+              },
+              scales: {
+                x: {
+                  ticks: {
+                    callback: (value) => (canViewRevenue ? value : '***')
+                  }
+                }
+              }
+            }}
+          />
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>

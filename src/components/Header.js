@@ -62,6 +62,8 @@ function Header({ onToggleSidebar }) {
         <img
           src={settings.clientLogoUrl || '/clientlogo512.png'}
           alt="logo"
+          style={{ cursor: auth.isAuthenticated ? 'pointer' : 'default' }}
+          onClick={() => { if (auth.isAuthenticated) navigate('/dashboard'); }}
           onError={(e) => {
             try {
               const curr = e.currentTarget.src || '';
@@ -75,9 +77,15 @@ function Header({ onToggleSidebar }) {
             } catch {}
           }}
         />
-        <div className="brand-title" title={settings.clientAppName || settings.appName}>
+        <button
+          type="button"
+          className="brand-title"
+          title={settings.clientAppName || settings.appName}
+          onClick={() => { if (auth.isAuthenticated) navigate('/dashboard'); }}
+          style={{ background: 'transparent', border: 'none', padding: 0, textAlign: 'left', cursor: auth.isAuthenticated ? 'pointer' : 'default' }}
+        >
           <strong>{settings.clientAppName || settings.appName}</strong>
-        </div>
+        </button>
         {canChangeBranch ? (
           <BranchSelect value={currentBranchId} onChange={id => dispatch(setCurrentBranch(id))} className="select topbar-branch-select" />
         ) : (

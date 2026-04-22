@@ -16,6 +16,7 @@ import { removeEntries as removeAuditEntries } from '../store/auditSlice';
 import Modal from '../components/Modal';
 import BarcodeScannerModal from '../components/BarcodeScannerModal';
 import InlineSpinner from '../components/InlineSpinner';
+import ProductLiveSearchField from '../components/ProductLiveSearchField';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 
 function PurchasesPage() {
@@ -25,7 +26,8 @@ function PurchasesPage() {
   const settings = useSelector(s => s.settings);
   const auth = useSelector(s => s.auth);
   const audit = useSelector(s => s.audit.entries);
-  const [productId, setProductId] = useState(products[0]?.id || '');
+  const [productId, setProductId] = useState('');
+  const [productQuery, setProductQuery] = useState('');
   const [branchId, setBranchId] = useState(currentBranchId);
   const [qty, setQty] = useState(1);
   const [packName, setPackName] = useState('');
@@ -67,6 +69,17 @@ function PurchasesPage() {
     return map;
   }, [branches]);
   const selectedProduct = useMemo(() => products.find(p => p.id === productId) || null, [productId, products]);
+  const filteredProducts = useMemo(() => {
+    const term = String(productQuery || '').trim().toLowerCase();
+    if (!term) return [];
+    return products.filter((product) => {
+      const variantText = Array.isArray(product.variants)
+        ? product.variants.map((variant) => `${variant.label || ''} ${variant.sku || ''} ${variant.barcode || ''}`).join(' ')
+        : '';
+      const hay = `${product.name || ''} ${product.sku || ''} ${product.barcode || ''} ${product.category || ''} ${variantText}`.toLowerCase();
+      return hay.includes(term);
+    });
+  }, [productQuery, products]);
   const selectedTrackType = String(selectedProduct?.trackType || 'quantity');
   useEffect(() => {
     if (!selectedProduct) {
@@ -121,6 +134,18 @@ function PurchasesPage() {
       setQty(Math.max(0, serializedEntries.length));
     }
   }, [selectedTrackType, serializedEntries.length]);
+  useEffect(() => {
+    if (!openModal) return;
+    setProductId('');
+    setProductQuery('');
+    setVariantId('');
+    setPackName('');
+  }, [openModal]);
+  useEffect(() => {
+    if (filteredProducts.length > 0 && !filteredProducts.some((product) => String(product.id) === String(productId))) {
+      setProductId(filteredProducts[0].id);
+    }
+  }, [filteredProducts, productId]);
 
   function appendSerializedEntry(value) {
     const text = String(value || '').trim();
@@ -499,13 +524,30 @@ function PurchasesPage() {
             </button>
           </>
         }>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <label>
-              <div style={{ marginBottom: 6, color: '#64748b' }}>Product</div>
-              <select className="select" value={productId} onChange={e => { setProductId(e.target.value); setPackName(''); setVariantId(''); }} style={{ display: 'block', width: '100%' }}>
-                {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <ProductLiveSearchField
+                label="Product"
+                query={productQuery}
+                onQueryChange={(value) => {
+                  setProductQuery(value);
+                  if (String(value || '').trim()) {
+                    setProductId('');
+                    setVariantId('');
+                    setPackName('');
+                  }
+                }}
+                products={filteredProducts}
+                allProducts={products}
+                selectedProductId={productId}
+                onSelect={(product) => {
+                  setProductId(product.id);
+                  setVariantId('');
+                  setPackName('');
+                  setProductQuery('');
+                }}
+              />
+            </div>
             <label>
               <div style={{ marginBottom: 6, color: '#64748b' }}>Branch</div>
               <BranchSelect value={branchId} onChange={setBranchId} />
@@ -521,15 +563,17 @@ function PurchasesPage() {
                 </select>
               </label>
             )}
-            <label>
-              <div style={{ marginBottom: 6, color: '#64748b' }}>Pack</div>
-              <select className="select" value={packName} onChange={e => setPackName(e.target.value)} disabled={selectedTrackType === 'serialized'}>
-                <option value="">Base Unit</option>
-                {(products.find(p => p.id === productId)?.packs || []).map(pk => (
-                  <option key={pk.name} value={pk.name}>{pk.name} = {pk.quantity} units</option>
-                ))}
-              </select>
-            </label>
+            {selectedProduct && (
+              <label>
+                <div style={{ marginBottom: 6, color: '#64748b' }}>Pack</div>
+                <select className="select" value={packName} onChange={e => setPackName(e.target.value)} disabled={selectedTrackType === 'serialized'}>
+                  <option value="">Base Unit</option>
+                  {(products.find(p => p.id === productId)?.packs || []).map(pk => (
+                    <option key={pk.name} value={pk.name}>{pk.name} = {pk.quantity} units</option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label>
               <div style={{ marginBottom: 6, color: '#64748b' }}>Quantity</div>
               <input className="input" type="number" min="1" value={qty} onChange={e => setQty(Number(e.target.value))} disabled={selectedTrackType === 'serialized'} />
@@ -586,6 +630,7 @@ function PurchasesPage() {
           </div>
           <div style={{ marginTop: 12 }}>
             <div style={{ marginBottom: 6, color: '#64748b' }}>Items In This Request</div>
+            <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
@@ -612,6 +657,7 @@ function PurchasesPage() {
                 {items.length === 0 && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>No items added yet. You can still submit a single item.</td></tr>}
               </tbody>
             </table>
+            </div>
           </div>
         </Modal>
       )}
@@ -628,13 +674,16 @@ function PurchasesPage() {
         <div className="card" style={{ marginBottom: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 className="section-title" style={{ marginBottom: 8 }}>Approvals</h2>
+            <div className="card-scroll-x">
             <div style={{ display: 'flex', gap: 6 }}>
               <button className={statusFilter === 'pending_director' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_director')}>Pending Director</button>
               <button className={statusFilter === 'pending_manager' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_manager')}>Pending Manager</button>
               <button className={statusFilter === 'approved' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('approved')}>Approved</button>
               <button className={statusFilter === 'rejected' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('rejected')}>Rejected</button>
             </div>
+            </div>
           </div>
+          <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
@@ -674,6 +723,7 @@ function PurchasesPage() {
               {!loading && pendingRequests.length === 0 && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}>No items</td></tr>}
             </tbody>
           </table>
+          </div>
         </div>
       )}
       {detail && (
@@ -698,6 +748,7 @@ function PurchasesPage() {
           {Array.isArray(detail.items) && detail.items.length > 0 && (
             <div style={{ marginTop: 12 }}>
               <div style={{ marginBottom: 6, color: '#64748b' }}>Request Items</div>
+              <div className="table-wrap">
               <table className="table">
                 <thead>
                   <tr>
@@ -728,11 +779,13 @@ function PurchasesPage() {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </Modal>
       )}
       <div className="card" style={{ marginTop: 12 }}>
+        <div className="card-scroll-x">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr) auto', gap: 8, marginBottom: 8 }}>
           <label>
             Period
@@ -782,7 +835,9 @@ function PurchasesPage() {
             )}
           </div>
         </div>
+        </div>
         <h2 className="section-title">Recent Purchases</h2>
+        <div className="table-wrap">
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
@@ -843,6 +898,7 @@ function PurchasesPage() {
             )}
           </tbody>
         </table>
+        </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8 }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <button className="btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>Prev</button>

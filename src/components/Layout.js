@@ -99,7 +99,13 @@ function Layout({ bootstrapLoading = false }) {
   const brandedLogo = settings?.clientLogoUrl || '/clientlogo512.png';
   return (
     <div className={`layout ${sidebarOpen ? 'sidebar-open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
-      <Sidebar collapsed={sidebarCollapsed} />
+      <Sidebar
+        collapsed={sidebarCollapsed}
+        onNavigate={() => {
+          const isMobile = window.matchMedia && window.matchMedia('(max-width: 992px)').matches;
+          if (isMobile) setSidebarOpen(false);
+        }}
+      />
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
       <div className="content">
         <Header onToggleSidebar={toggleSidebar} />

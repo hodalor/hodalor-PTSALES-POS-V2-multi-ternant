@@ -320,6 +320,7 @@ html, body, #root {
   border-radius: 12px;
   padding: 16px;
   box-shadow: 0 10px 20px rgba(2,6,23,0.04);
+  min-width: 0;
 }
 .section-title {
   margin: 0 0 12px;
@@ -473,6 +474,61 @@ html, body, #root {
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 10px 20px rgba(2,6,23,0.04);
+}
+.table-wrap {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.card-scroll-x {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.product-live-selected {
+  padding: 10px 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 13px;
+  font-weight: 700;
+}
+.product-live-results {
+  display: grid;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+.product-live-option {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #0f172a;
+  cursor: pointer;
+}
+.product-live-option:hover {
+  border-color: #93c5fd;
+  background: #f8fbff;
+}
+.product-live-option.selected {
+  border-color: #2563eb;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 700;
+}
+.product-live-empty {
+  padding: 12px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  color: #64748b;
+  background: #f8fafc;
 }
 .table thead th {
   position: sticky;
@@ -886,6 +942,16 @@ html, body, #root {
   .summary-grid {
     grid-template-columns: 1fr;
     gap: 10px;
+  }
+  .table-wrap .table {
+    min-width: 640px;
+  }
+  .card-scroll-x > * {
+    min-width: 640px;
+  }
+  .table th,
+  .table td {
+    white-space: nowrap;
   }
   .filter-actions {
     gap: 6px;

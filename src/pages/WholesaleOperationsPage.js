@@ -8,6 +8,7 @@ import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import Modal from '../components/Modal';
 import BarcodeScannerModal from '../components/BarcodeScannerModal';
+import ProductLiveSearchField from '../components/ProductLiveSearchField';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 
 function labelForArea(area, op) {
@@ -70,7 +71,8 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const [serializedCameraOpen, setSerializedCameraOpen] = useState(false);
   const pageSize = 50;
 
-  const [productId, setProductId] = useState(products[0]?.id || '');
+  const [productId, setProductId] = useState('');
+  const [productQuery, setProductQuery] = useState('');
   const [variantId, setVariantId] = useState('');
   const [branchId, setBranchId] = useState(currentBranchId || scopedBranchOptions[0]?.id || branchOptions[0]?.id || '');
   const [fromBranchId, setFromBranchId] = useState(currentBranchId || branchOptions[0]?.id || '');
@@ -86,6 +88,17 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const [remark, setRemark] = useState('');
 
   const selectedProduct = useMemo(() => products.find(product => String(product.id) === String(productId)) || null, [productId, products]);
+  const filteredProducts = useMemo(() => {
+    const term = String(productQuery || '').trim().toLowerCase();
+    if (!term) return [];
+    return products.filter((product) => {
+      const variantText = Array.isArray(product.variants)
+        ? product.variants.map((variant) => `${variant.label || ''} ${variant.sku || ''} ${variant.barcode || ''}`).join(' ')
+        : '';
+      const hay = `${product.name || ''} ${product.sku || ''} ${product.barcode || ''} ${product.category || ''} ${variantText}`.toLowerCase();
+      return hay.includes(term);
+    });
+  }, [productQuery, products]);
   const selectedVariant = useMemo(() => {
     if (!selectedProduct || !variantId) return null;
     return (selectedProduct.variants || []).find(v => String(v.id) === String(variantId)) || null;
@@ -121,8 +134,11 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const usesSerializedSelection = selectedTrackType === 'serialized' && (operationType === 'transfer' || (operationType === 'adjustment' && adjustmentType === 'decrease'));
 
   useEffect(() => {
-    if (!productId && products[0]?.id) setProductId(products[0].id);
-  }, [productId, products]);
+    if (!isCreateOpen) return;
+    setProductId('');
+    setProductQuery('');
+    setVariantId('');
+  }, [isCreateOpen]);
 
   useEffect(() => {
     if (selectedTrackType === 'serialized' && !usesSerializedSelection) {
@@ -237,6 +253,8 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   }, [normalizedArea, operationType, statusFilter]);
 
   function resetForm() {
+    setProductId('');
+    setProductQuery('');
     setVariantId('');
     setQty(1);
     setCost('');
@@ -561,7 +579,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
           </div>
         </div>
 
-        <div style={{ overflowX: 'auto' }}>
+        <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
@@ -627,12 +645,27 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
             </div>
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-            <label>
-              <div style={{ marginBottom: 6, color: '#94a3b8' }}>Product</div>
-              <select className="select" value={productId} onChange={e => setProductId(e.target.value)} style={{ width: '100%' }}>
-                {products.map(product => <option key={product.id} value={product.id}>{product.name}</option>)}
-              </select>
-            </label>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <ProductLiveSearchField
+                label="Product"
+                query={productQuery}
+                onQueryChange={(value) => {
+                  setProductQuery(value);
+                  if (String(value || '').trim()) {
+                    setProductId('');
+                    setVariantId('');
+                  }
+                }}
+                products={filteredProducts}
+                allProducts={products}
+                selectedProductId={productId}
+                onSelect={(product) => {
+                  setProductId(product.id);
+                  setVariantId('');
+                  setProductQuery('');
+                }}
+              />
+            </div>
 
             {(selectedProduct?.variants || []).length > 0 ? (
               <label>
@@ -642,7 +675,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                   {(selectedProduct?.variants || []).map(variant => <option key={variant.id} value={variant.id}>{variant.label}</option>)}
                 </select>
               </label>
-            ) : <div />}
+            ) : null}
 
             {operationType === 'transfer' ? (
               <>
@@ -696,7 +729,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                 <div style={{ color: '#64748b', fontSize: 12 }}>
                   Selected: {serializedUnits.filter(unit => unit.selected).length}
                 </div>
-                <div style={{ overflowX: 'auto', maxHeight: 220 }}>
+                <div className="table-wrap" style={{ maxHeight: 220 }}>
                   <table className="table">
                     <thead>
                       <tr>
@@ -799,7 +832,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
           </div>
           <div style={{ marginTop: 12 }}>
             <div style={{ marginBottom: 6, color: '#94a3b8' }}>Items In This Request</div>
-            <div style={{ overflowX: 'auto' }}>
+            <div className="table-wrap">
               <table className="table">
                 <thead>
                   <tr>
@@ -880,7 +913,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>To Inventory</div><strong>{selectedRow.toInventoryType || selectedRow.fromInventoryType || 'wholesale'}</strong></div>
             </div>
             <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Remark</div><strong>{selectedRow.remark || selectedRow.approvalRemark || selectedRow.rejectionRemark || '—'}</strong></div>
-            <div style={{ overflowX: 'auto' }}>
+            <div className="table-wrap">
               <table className="table">
                 <thead>
                   <tr>

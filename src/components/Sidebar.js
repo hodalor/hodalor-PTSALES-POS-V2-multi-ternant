@@ -6,7 +6,7 @@ import { listCreditSales } from '../api/credits';
 import { listApprovals } from '../api/approvals';
 import { listOperations } from '../api/wholesale';
 
-function Sidebar({ collapsed }) {
+function Sidebar({ collapsed, onNavigate }) {
   const location = useLocation();
   const appName = useSelector(s => s.settings.appName);
   const settings = useSelector(s => s.settings);
@@ -70,6 +70,11 @@ function Sidebar({ collapsed }) {
     setExpenseOpen(group === 'expense' ? !expenseOpen : false);
     setPartnersOpen(group === 'partners' ? !partnersOpen : false);
   }
+  function handleNavClick(event) {
+    const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+    if (!link || typeof onNavigate !== 'function') return;
+    onNavigate();
+  }
   useEffect(() => {
     const path = String(location.pathname || '');
     const isRetail = ['/pos','/purchases','/transfers','/adjustments','/refunds','/invoices'].some(prefix => path.startsWith(prefix));
@@ -120,7 +125,7 @@ function Sidebar({ collapsed }) {
         <img src="/logo512.png" alt="logo" />
         <div className="sidebar-title">{appName}</div>
       </div>
-      <nav className="sidebar-nav">
+      <nav className="sidebar-nav" onClick={handleNavClick}>
         {isFeatureEnabled(settings, 'modules.dashboard') && can(['Admin','Manager','SuperAdmin'],['view_dashboard','see_dashboard']) && (
         <NavLink to="/dashboard" className="sidebar-link" title="Dashboard">
           <svg viewBox="0 0 24 24" fill="none"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" fill="currentColor"/></svg>

@@ -409,10 +409,12 @@ function InventoryPage() {
         </Modal>
       )}
       <div className="card">
+        <div className="table-wrap">
         <table className="table">
           <thead>
             <tr>
               <th align="left">Product</th>
+              <th align="left">SKU</th>
               <th align="left">Price</th>
               <th align="left">Barcode</th>
               <th align="left">Stock ({viewInventoryType === 'wholesale' ? 'Distribution' : viewInventoryType === 'warehouse' ? 'Warehouse' : 'Retail'} – {isAllBranches ? 'All Branches' : (branch?.code || branch?.name)})</th>
@@ -440,9 +442,13 @@ function InventoryPage() {
                             —
                           </div>
                         )}
-                        <span>{p.name}</span>
+                        <div style={{ minWidth: 0 }}>
+                          <div>{p.name}</div>
+                          <div style={{ color: '#64748b', fontSize: 12 }}>{p.sku || '—'}</div>
+                        </div>
                       </div>
                     </td>
+                    <td><code style={{ fontSize: 12 }}>{p.sku || '—'}</code></td>
                     <td>{formatCurrency(basePrice || 0, settings)}</td>
                     <td><code style={{ fontSize: 12 }}>{p.barcode || '—'}</code></td>
                     <td onClick={e => e.stopPropagation()}>
@@ -470,7 +476,7 @@ function InventoryPage() {
                   </tr>
                   {(openVariantsFor === p.id && hasVariants) && (
                     <tr style={{ background: '#fbfdff' }}>
-                      <td colSpan="4">
+                      <td colSpan="5">
                         <div style={{ display: 'grid', gap: 6 }}>
                           {p.variants.map(v => (
                             <div key={v.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 8, alignItems: 'center' }}>
@@ -493,9 +499,10 @@ function InventoryPage() {
                 </Fragment>
               );
             })}
-            {rows.length === 0 ? <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No inventory items match the current filters.</td></tr> : null}
+            {rows.length === 0 ? <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>No inventory items match the current filters.</td></tr> : null}
           </tbody>
         </table>
+        </div>
       </div>
       {selected && (
         <div role="dialog" aria-modal="true" style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.6)', display: 'grid', placeItems: 'center', zIndex: 1000 }} onClick={() => setModalId(null)}>

@@ -12,6 +12,7 @@ import * as auditsApi from '../api/audits';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import Modal from '../components/Modal';
+import ProductLiveSearchField from '../components/ProductLiveSearchField';
 import { approveTransfer, createTransferRequest, rejectTransfer, setTransferRequests } from '../store/transfersSlice';
 import { removeEntries as removeAuditEntries } from '../store/auditSlice';
 import InlineSpinner from '../components/InlineSpinner';
@@ -24,7 +25,8 @@ function TransfersPage() {
   const settings = useSelector(s => s.settings);
   const auth = useSelector(s => s.auth);
   const audit = useSelector(s => s.audit.entries);
-  const [productId, setProductId] = useState(products[0]?.id || '');
+  const [productId, setProductId] = useState('');
+  const [productQuery, setProductQuery] = useState('');
   const [variantId, setVariantId] = useState('');
   const [fromId, setFromId] = useState(currentBranchId || branches[0]?.id || '');
   const [toId, setToId] = useState(branches.find(b => b.id !== currentBranchId)?.id || branches[1]?.id || branches[0]?.id || '');
@@ -85,8 +87,25 @@ function TransfersPage() {
     return map;
   }, [branches]);
   const selectedProduct = useMemo(() => products.find(p => p.id === productId) || null, [productId, products]);
+  const filteredProducts = useMemo(() => {
+    const term = String(productQuery || '').trim().toLowerCase();
+    if (!term) return [];
+    return products.filter((product) => {
+      const variantText = Array.isArray(product.variants)
+        ? product.variants.map((variant) => `${variant.label || ''} ${variant.sku || ''} ${variant.barcode || ''}`).join(' ')
+        : '';
+      const hay = `${product.name || ''} ${product.sku || ''} ${product.barcode || ''} ${product.category || ''} ${variantText}`.toLowerCase();
+      return hay.includes(term);
+    });
+  }, [productQuery, products]);
   const selectedTrackType = String(selectedProduct?.trackType || 'quantity');
   const selectedSerializedUnits = useMemo(() => serializedUnits.filter(unit => unit.selected).map(unit => ({ unitId: unit._id, imei: unit.imei || '', serialNumber: unit.serialNumber || '' })), [serializedUnits]);
+  useEffect(() => {
+    if (!openModal) return;
+    setProductId('');
+    setProductQuery('');
+    setVariantId('');
+  }, [openModal]);
   const baseTransfers = useMemo(() => audit.filter(e => e.actionType === 'stock_transfer'), [audit]);
   const actors = useMemo(() => Array.from(new Set(baseTransfers.map(e => e.actor).filter(Boolean))).sort(), [baseTransfers]);
   const transfers = useMemo(() => {
@@ -476,13 +495,28 @@ function TransfersPage() {
             </button>
           </>
         }>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <label>
-              <div style={{ marginBottom: 6, color: '#64748b' }}>Product</div>
-              <select className="select" value={productId} onChange={e => { setProductId(e.target.value); setVariantId(''); }}>
-                {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            </label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+            <div style={{ gridColumn: '1 / -1' }}>
+              <ProductLiveSearchField
+                label="Product"
+                query={productQuery}
+                onQueryChange={(value) => {
+                  setProductQuery(value);
+                  if (String(value || '').trim()) {
+                    setProductId('');
+                    setVariantId('');
+                  }
+                }}
+                products={filteredProducts}
+                allProducts={products}
+                selectedProductId={productId}
+                onSelect={(product) => {
+                  setProductId(product.id);
+                  setVariantId('');
+                  setProductQuery('');
+                }}
+              />
+            </div>
             {(products.find(p => p.id === productId)?.variants || []).length > 0 && (
               <label>
                 <div style={{ marginBottom: 6, color: '#64748b' }}>Variant</div>
@@ -512,7 +546,7 @@ function TransfersPage() {
               <div style={{ color: '#64748b' }}>Serialized Units</div>
               <input className="input" placeholder="Search IMEI or serial number" value={serializedUnitsQuery} onChange={e => setSerializedUnitsQuery(e.target.value)} />
               <div style={{ color: '#64748b', fontSize: 12 }}>Selected: {serializedUnits.filter(unit => unit.selected).length}</div>
-              <div style={{ overflowX: 'auto', maxHeight: 220 }}>
+              <div className="table-wrap" style={{ maxHeight: 220 }}>
                 <table className="table">
                   <thead>
                     <tr>
@@ -549,6 +583,7 @@ function TransfersPage() {
           )}
           <div style={{ marginTop: 12 }}>
             <div style={{ marginBottom: 6, color: '#64748b' }}>Items In This Request</div>
+            <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
@@ -573,6 +608,7 @@ function TransfersPage() {
                 {items.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No items added yet. You can still submit a single item.</td></tr>}
               </tbody>
             </table>
+            </div>
           </div>
         </Modal>
       )}
@@ -580,13 +616,16 @@ function TransfersPage() {
         <div className="card" style={{ marginTop: 8 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 className="section-title" style={{ marginBottom: 8 }}>Approvals</h2>
+            <div className="card-scroll-x">
             <div style={{ display: 'flex', gap: 6 }}>
               <button className={statusFilter === 'pending_director' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_director')}>Pending Director</button>
               <button className={statusFilter === 'pending_manager' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_manager')}>Pending Manager</button>
               <button className={statusFilter === 'approved' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('approved')}>Approved</button>
               <button className={statusFilter === 'rejected' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('rejected')}>Rejected</button>
             </div>
+            </div>
           </div>
+          <div className="table-wrap">
           <table className="table">
             <thead>
               <tr>
@@ -641,9 +680,11 @@ function TransfersPage() {
               {!loading && pendingRequests.length === 0 && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>No items</td></tr>}
             </tbody>
           </table>
+          </div>
         </div>
       )}
       <div className="card" style={{ marginTop: 12 }}>
+        <div className="card-scroll-x">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, marginBottom: 8 }}>
           <label>
             Period
@@ -700,7 +741,9 @@ function TransfersPage() {
             )}
           </div>
         </div>
+        </div>
         <h2 className="section-title">Recent Transfers</h2>
+        <div className="table-wrap">
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
@@ -754,6 +797,7 @@ function TransfersPage() {
             )}
           </tbody>
         </table>
+        </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8 }}>
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
             <button className="btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>Prev</button>
@@ -809,6 +853,7 @@ function TransfersPage() {
           {Array.isArray(detail.items) && detail.items.length > 0 && (
             <div style={{ marginTop: 12 }}>
               <div style={{ marginBottom: 6, color: '#64748b' }}>Request Items</div>
+              <div className="table-wrap">
               <table className="table">
                 <thead>
                   <tr>
@@ -837,6 +882,7 @@ function TransfersPage() {
                   })}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
         </Modal>
