@@ -9,6 +9,22 @@ const r = Router();
 
 r.use(requireAuth);
 
+function normalizeSupplierName(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function supplierNameQuery(name) {
+  const normalized = normalizeSupplierName(name);
+  return normalized
+    ? {
+        $or: [
+          { normalizedName: normalized.toLowerCase() },
+          { name: new RegExp(`^${normalized.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
+        ]
+      }
+    : null;
+}
+
 r.get('/', async (req, res) => {
   const rows = await Supplier.find().sort({ name: 1 });
   res.json(rows);
@@ -17,11 +33,24 @@ r.get('/', async (req, res) => {
 r.post('/', requireRoleOrPerm(['Admin','Manager'], 'add_suppliers'), async (req, res) => {
   const payload = req.body || {};
   const clientId = String(payload.clientId || '').trim();
+  const normalizedName = normalizeSupplierName(payload.name);
+  if (!normalizedName) return res.status(400).json({ error: 'Name is required' });
   if (clientId) {
     const existing = await Supplier.findOne({ clientId });
     if (existing) return res.json(existing);
   }
-  const s = await Supplier.create(payload);
+  const existingByName = await Supplier.findOne(supplierNameQuery(normalizedName));
+  if (existingByName) return res.json(existingByName);
+  const s = await Supplier.create({
+    ...payload,
+    name: normalizedName,
+    normalizedName: normalizedName.toLowerCase(),
+    contact: String(payload.contact || '').trim(),
+    phone: String(payload.phone || '').trim(),
+    email: String(payload.email || '').trim(),
+    address: String(payload.address || '').trim(),
+    notes: String(payload.notes || '').trim()
+  });
   res.json(s);
   void Audit.create({
     actor: req.user?.name || 'unknown',
@@ -44,13 +73,33 @@ r.put('/:id', requireRoleOrPerm(['Admin','Manager'], 'edit_suppliers'), async (r
   const query = { $or: [{ clientId: id }] };
   if (mongoose.isValidObjectId(id)) query.$or.unshift({ _id: id });
   const before = await Supplier.findOne(query);
-  const s = await Supplier.findOneAndUpdate(query, req.body, { new: true });
   const changed = [];
   const payload = req.body || {};
+  const nextName = normalizeSupplierName(payload.name ?? before?.name ?? '');
+  const updatePayload = {
+    ...payload,
+    name: nextName,
+    normalizedName: nextName.toLowerCase(),
+    contact: String(payload.contact ?? before?.contact ?? '').trim(),
+    phone: String(payload.phone ?? before?.phone ?? '').trim(),
+    email: String(payload.email ?? before?.email ?? '').trim(),
+    address: String(payload.address ?? before?.address ?? '').trim(),
+    notes: String(payload.notes ?? before?.notes ?? '').trim()
+  };
+  const duplicateByName = nextName
+    ? await Supplier.findOne({
+        ...supplierNameQuery(nextName),
+        _id: { $ne: before?._id }
+      })
+    : null;
+  if (duplicateByName) {
+    return res.status(400).json({ error: 'A supplier with this name already exists' });
+  }
+  const s = await Supplier.findOneAndUpdate(query, updatePayload, { new: true });
   Object.keys(payload).forEach(k => {
     try {
       const a = before ? JSON.stringify(before[k]) : undefined;
-      const b = JSON.stringify(payload[k]);
+      const b = JSON.stringify(updatePayload[k]);
       if (a !== b) changed.push(k);
     } catch {
       changed.push(k);

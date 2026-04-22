@@ -100,6 +100,7 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
     from: payload.from,
     to: payload.to,
     qty: Number(payload.qty),
+    transactionTitle: String(payload.transactionTitle || '').trim(),
     remark: payload.remark || '',
     items: normalizeItems(payload),
     status: 'pending_director',
@@ -109,7 +110,7 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
   await Audit.create({
     actor: doc.initiatorName || 'unknown',
     actionType: 'transfer_initiated',
-    details: { productId: doc.productId, from: doc.from, to: doc.to, qty: Number(doc.qty || 0), itemCount: Array.isArray(doc.items) ? doc.items.length : 0 },
+    details: { productId: doc.productId, from: doc.from, to: doc.to, qty: Number(doc.qty || 0), transactionTitle: doc.transactionTitle || '', itemCount: Array.isArray(doc.items) ? doc.items.length : 0 },
     remark: doc.remark || '',
     branchId: doc.from
   });

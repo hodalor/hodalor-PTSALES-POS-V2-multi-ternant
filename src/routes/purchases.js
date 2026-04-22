@@ -107,12 +107,13 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
     ...payload,
     status: 'pending_director',
     clientId: clientId || undefined,
+    transactionTitle: String(payload.transactionTitle || '').trim(),
     items: normalizeItems(payload)
   });
   await Audit.create({
     actor: pr.initiatorName || 'unknown',
     actionType: 'purchase_initiated',
-    details: { productId: pr.productId, variantId: pr.variantId || '', baseUnits: Number(pr.baseUnits || 0), supplier: pr.supplier || '', cost: Number(pr.cost) || 0, itemCount: Array.isArray(pr.items) ? pr.items.length : 0 },
+    details: { productId: pr.productId, variantId: pr.variantId || '', baseUnits: Number(pr.baseUnits || 0), supplier: pr.supplier || '', transactionTitle: pr.transactionTitle || '', cost: Number(pr.cost) || 0, itemCount: Array.isArray(pr.items) ? pr.items.length : 0 },
     remark: pr.remark || '',
     branchId: pr.branchId
   });

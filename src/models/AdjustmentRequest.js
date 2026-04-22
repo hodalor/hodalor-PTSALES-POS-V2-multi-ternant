@@ -19,6 +19,7 @@ const AdjustmentRequestSchema = new mongoose.Schema({
   variantId: String,
   branchId: String,
   delta: Number,
+  transactionTitle: String,
   remark: String,
   items: { type: [AdjustmentRequestItemSchema], default: [] },
   initiatorName: String,

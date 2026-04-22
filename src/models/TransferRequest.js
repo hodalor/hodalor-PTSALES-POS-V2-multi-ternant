@@ -19,6 +19,7 @@ const TransferRequestSchema = new mongoose.Schema({
   from: String,
   to: String,
   qty: Number,
+  transactionTitle: String,
   remark: String,
   items: { type: [TransferRequestItemSchema], default: [] },
   initiatorName: String,

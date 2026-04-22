@@ -24,6 +24,7 @@ const PurchaseRequestSchema = new mongoose.Schema({
   baseUnits: Number,
   pack: String,
   supplier: String,
+  transactionTitle: String,
   cost: Number,
   costPerUnit: Number,
   expiryDate: Date,

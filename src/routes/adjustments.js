@@ -152,6 +152,7 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
     variantId: variantId ? String(variantId) : undefined,
     branchId: String(branchId),
     delta: Number(delta),
+    transactionTitle: String((req.body || {}).transactionTitle || '').trim(),
     remark: String(remark || ''),
     items: draftItems,
     status: 'pending_director',
@@ -161,7 +162,7 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
   await Audit.create({
     actor: req.user?.name || 'unknown',
     actionType: 'adjustment_request_create',
-    details: { id: String(row._id), productId: row.productId, variantId: row.variantId || '', delta: row.delta, branchId: row.branchId, itemCount: Array.isArray(row.items) ? row.items.length : 0 },
+    details: { id: String(row._id), productId: row.productId, variantId: row.variantId || '', delta: row.delta, branchId: row.branchId, transactionTitle: row.transactionTitle || '', itemCount: Array.isArray(row.items) ? row.items.length : 0 },
     remark: row.remark || '',
     branchId: row.branchId
   });

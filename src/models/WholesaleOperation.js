@@ -13,6 +13,7 @@ const WholesaleOperationItemSchema = new mongoose.Schema({
   requestedAmount: { type: Number, default: 0 },
   adjustmentType: { type: String, enum: ['increase', 'decrease'], default: 'increase' },
   supplier: { type: String, default: '' },
+  transactionTitle: { type: String, default: '' },
   reason: { type: String, default: '' },
   remark: { type: String, default: '' },
   status: { type: String, enum: ['pending', 'accepted', 'cancelled'], default: 'pending' }
