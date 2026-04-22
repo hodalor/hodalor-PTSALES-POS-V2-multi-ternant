@@ -8,12 +8,25 @@ function normalizeSupplierName(value) {
   return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
+function normalizeSupplierRow(row = {}) {
+  return {
+    ...row,
+    id: String(row?.id || row?._id || '').trim(),
+    name: String(row?.name || ''),
+    contact: String(row?.contact || ''),
+    phone: String(row?.phone || ''),
+    email: String(row?.email || ''),
+    address: String(row?.address || ''),
+    notes: String(row?.notes || '')
+  };
+}
+
 const suppliersSlice = createSlice({
   name: 'suppliers',
   initialState,
   reducers: {
     setSuppliers(state, action) {
-      const server = Array.isArray(action.payload) ? action.payload : [];
+      const server = (Array.isArray(action.payload) ? action.payload : []).map(normalizeSupplierRow);
       const seen = new Set(server.map(s => s?.id || s?._id).filter(Boolean).map(String));
       const offline = state.suppliers.filter(s => s && s.offline && !seen.has(String(s.id)));
       state.suppliers = server.concat(offline);
@@ -40,14 +53,14 @@ const suppliersSlice = createSlice({
     },
     updateSupplier(state, action) {
       const { id, ...patch } = action.payload || {};
-      const idx = state.suppliers.findIndex(s => s.id === id);
+      const idx = state.suppliers.findIndex(s => String(s.id || s._id || '') === String(id || ''));
       if (idx >= 0) {
         state.suppliers[idx] = { ...state.suppliers[idx], ...patch };
       }
     },
     removeSupplier(state, action) {
       const id = action.payload;
-      state.suppliers = state.suppliers.filter(s => s.id !== id);
+      state.suppliers = state.suppliers.filter(s => String(s.id || s._id || '') !== String(id || ''));
     }
   }
 });
