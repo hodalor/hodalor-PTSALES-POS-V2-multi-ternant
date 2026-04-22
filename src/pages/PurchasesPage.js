@@ -18,10 +18,12 @@ import BarcodeScannerModal from '../components/BarcodeScannerModal';
 import InlineSpinner from '../components/InlineSpinner';
 import ProductLiveSearchField from '../components/ProductLiveSearchField';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
+import { ensureSupplierByName } from '../utils/suppliers';
 
 function PurchasesPage() {
   const products = useSelector(s => s.products.products);
   const branches = useSelector(s => s.branches.branches);
+  const suppliers = useSelector(s => s.suppliers?.suppliers || []);
   const currentBranchId = useSelector(s => s.settings.currentBranchId);
   const settings = useSelector(s => s.settings);
   const auth = useSelector(s => s.auth);
@@ -33,6 +35,7 @@ function PurchasesPage() {
   const [packName, setPackName] = useState('');
   const [variantId, setVariantId] = useState('');
   const [supplier, setSupplier] = useState('');
+  const [transactionTitle, setTransactionTitle] = useState('');
   const [cost, setCost] = useState('');
   const [expiryDate, setExpiryDate] = useState('');
   const [note, setNote] = useState('');
@@ -140,13 +143,8 @@ function PurchasesPage() {
     setProductQuery('');
     setVariantId('');
     setPackName('');
+    setTransactionTitle('');
   }, [openModal]);
-  useEffect(() => {
-    if (filteredProducts.length > 0 && !filteredProducts.some((product) => String(product.id) === String(productId))) {
-      setProductId(filteredProducts[0].id);
-    }
-  }, [filteredProducts, productId]);
-
   function appendSerializedEntry(value) {
     const text = String(value || '').trim();
     if (!text) return;
@@ -226,6 +224,16 @@ function PurchasesPage() {
       return;
     }
     const cpu = factor > 0 ? (price / factor) : price;
+    let supplierName = supplier.trim() || '';
+    if (supplierName) {
+      try {
+        const ensuredSupplier = await ensureSupplierByName({ name: supplierName, suppliers, dispatch, offlineBackupAllowed });
+        supplierName = ensuredSupplier?.name || supplierName;
+      } catch (e) {
+        toast.show(String(e?.message || 'Failed to save supplier'), { type: 'error' });
+        return;
+      }
+    }
     setSaving(true);
     const clientId = `purchase-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const payload = {
@@ -233,7 +241,8 @@ function PurchasesPage() {
       branchId,
       baseUnits: nextItems ? nextItems.reduce((sum, item) => sum + Number(item.baseUnits || 0), 0) : baseUnits,
       actor: auth.user?.name || 'unknown',
-      supplier: supplier.trim() || '',
+      supplier: supplierName,
+      transactionTitle: transactionTitle.trim() || '',
       cost: price,
       costPerUnit: cpu,
       expiryDate: expiryDate || undefined,
@@ -250,7 +259,7 @@ function PurchasesPage() {
         baseUnits,
         serializedEntries,
         pack: pack ? pack.name : '',
-        supplier: supplier.trim() || '',
+        supplier: supplierName,
         cost: price,
         costPerUnit: cpu,
         expiryDate: expiryDate || undefined,
@@ -280,7 +289,8 @@ function PurchasesPage() {
       variantId: variantId || null,
       branchId,
       baseUnits,
-      supplier: supplier.trim() || '',
+      supplier: supplierName,
+      transactionTitle: transactionTitle.trim() || '',
       cost: price,
       costPerUnit: cpu,
       expiryDate: expiryDate || null,
@@ -298,7 +308,7 @@ function PurchasesPage() {
         baseUnits,
         serializedEntries,
         pack: pack ? pack.name : '',
-        supplier: supplier.trim() || '',
+        supplier: supplierName,
         cost: price,
         costPerUnit: cpu,
         expiryDate: expiryDate || undefined,
@@ -309,7 +319,7 @@ function PurchasesPage() {
     dispatch(addAudit({
       actor: auth.user?.name || 'unknown',
       actionType: 'purchase_initiated',
-      details: { product: prod?.name || productId, variant: (prod?.variants || []).find(v => v.id === variantId)?.label || '', qty: selectedTrackType === 'serialized' ? serializedEntries.length : Number(qty), pack: selectedTrackType === 'serialized' ? 'Serialized Units' : (pack ? pack.name : 'Base Unit'), factor, baseUnits, branchId, supplier: supplier.trim() || '', cost: price, costPerUnit: cpu, expiryDate: expiryDate || null },
+      details: { product: prod?.name || productId, variant: (prod?.variants || []).find(v => v.id === variantId)?.label || '', qty: selectedTrackType === 'serialized' ? serializedEntries.length : Number(qty), pack: selectedTrackType === 'serialized' ? 'Serialized Units' : (pack ? pack.name : 'Base Unit'), factor, baseUnits, branchId, supplier: supplierName, transactionTitle: transactionTitle.trim() || '', cost: price, costPerUnit: cpu, expiryDate: expiryDate || null },
       remark: note.trim() || '',
       branchId,
       offline: !navigator.onLine
@@ -318,6 +328,7 @@ function PurchasesPage() {
     setPackName('');
     setVariantId('');
     setSupplier('');
+    setTransactionTitle('');
     setCost('');
     setExpiryDate('');
     setNote('');
@@ -616,6 +627,10 @@ function PurchasesPage() {
               <SuppliersDatalist />
             </label>
             <label>
+              <div style={{ marginBottom: 6, color: '#64748b' }}>Transaction Title</div>
+              <input className="input" placeholder="Optional bulk purchase title" value={transactionTitle} onChange={e => setTransactionTitle(e.target.value)} />
+            </label>
+            <label>
               <div style={{ marginBottom: 6, color: '#64748b' }}>Cost Price</div>
               <input className="input" type="number" min="0" step="0.01" placeholder="0.00" value={cost} onChange={e => setCost(e.target.value)} />
             </label>
@@ -700,9 +715,10 @@ function PurchasesPage() {
               {!loading && pendingRequests.map(r => {
                 const p = products.find(x => x.id === r.productId);
                 const branchName = byId.get(r.branchId) || r.branchId;
+                const title = String(r.transactionTitle || '').trim() || (Array.isArray(r.items) && r.items.length > 1 ? `${p?.name || r.productId} +${r.items.length - 1} more` : (p?.name || r.productId));
                 return (
                   <tr key={r._id || r.clientId} style={{ borderTop: '1px solid #e2e8f0', cursor: 'pointer' }} onClick={() => setDetail(r)}>
-                    <td>{p?.name || r.productId}</td>
+                    <td>{title}</td>
                     <td>{branchName}</td>
                     <td>{r.baseUnits}</td>
                     <td>{r.supplier || '—'}</td>
@@ -731,6 +747,7 @@ function PurchasesPage() {
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <div><div style={{ color: '#64748b' }}>Status</div><div>{detail.status}</div></div>
             <div><div style={{ color: '#64748b' }}>Branch</div><div>{byId.get(detail.branchId) || detail.branchId}</div></div>
+            <div><div style={{ color: '#64748b' }}>Title</div><div>{detail.transactionTitle || '—'}</div></div>
             <div><div style={{ color: '#64748b' }}>Product</div><div>{products.find(p => p.id === detail.productId)?.name || detail.productId}</div></div>
             {detail.variantId ? <div><div style={{ color: '#64748b' }}>Variant</div><div>{(products.find(p => p.id === detail.productId)?.variants || []).find(v => v.id === detail.variantId)?.label || detail.variantId}</div></div> : null}
             <div><div style={{ color: '#64748b' }}>Base Units</div><div>{detail.baseUnits}</div></div>

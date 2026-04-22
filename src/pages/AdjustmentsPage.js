@@ -38,6 +38,7 @@ function AdjustmentsPage() {
   const [serializedUnitsQuery, setSerializedUnitsQuery] = useState('');
   const [serializedLoading, setSerializedLoading] = useState(false);
   const [remark, setRemark] = useState('');
+  const [transactionTitle, setTransactionTitle] = useState('');
   const [savingAdjust, setSavingAdjust] = useState(false);
   const [tab, setTab] = useState('initiate');
   const [openModal, setOpenModal] = useState(false);
@@ -104,6 +105,7 @@ function AdjustmentsPage() {
     setProductId('');
     setProductQuery('');
     setVariantId('');
+    setTransactionTitle('');
   }, [openModal]);
   const baseRows = useMemo(() => audit.filter(e => e.actionType === 'stock_adjust' || e.actionType === 'stock_damage_remove'), [audit]);
   const actors = useMemo(() => Array.from(new Set(baseRows.map(e => e.actor).filter(Boolean))).sort(), [baseRows]);
@@ -276,6 +278,7 @@ function AdjustmentsPage() {
       delta: nextItems ? nextItems.reduce((sum, item) => sum + Number(item.delta || 0), 0) : Number(delta),
       actor: auth.user?.name || 'unknown',
       variantId: nextItems ? (nextItems[0]?.variantId || undefined) : (variantId || undefined),
+      transactionTitle: transactionTitle.trim() || '',
       remark,
       initiatorName: auth.user?.name || 'unknown',
       initiatorRole: auth.role || '',
@@ -342,6 +345,7 @@ function AdjustmentsPage() {
     setSerializedAdjustmentMode('increase');
     setVariantId('');
     setRemark('');
+    setTransactionTitle('');
     setItems([]);
     setSerializedEntriesText('');
     setSerializedScanInput('');
@@ -542,6 +546,10 @@ function AdjustmentsPage() {
                 )}
               </div>
             )}
+            <label style={{ gridColumn: '1 / -1' }}>
+              <div style={{ marginBottom: 6, color: '#64748b' }}>Transaction Title</div>
+              <input className="input" value={transactionTitle} onChange={e => setTransactionTitle(e.target.value)} placeholder="Optional bulk adjustment title" />
+            </label>
             <label style={{ gridColumn: '1 / -1' }}>
               <div style={{ marginBottom: 6, color: '#64748b' }}>Remark (required)</div>
               <input className="input" value={remark} onChange={e => setRemark(e.target.value)} placeholder="Reason or note" />
@@ -852,9 +860,10 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
           {loading && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>Loading…</td></tr>}
           {!loading && requests.map(r => {
             const p = products.find(x => x.id === r.productId);
+            const title = String(r.transactionTitle || '').trim() || (Array.isArray(r.items) && r.items.length > 1 ? `${p?.name || r.productId} +${r.items.length - 1} more` : `${p?.name || r.productId}${r.variantId ? ` • ${(p?.variants || []).find(v => v.id === r.variantId)?.label || r.variantId}` : ''}`);
             return (
               <tr key={r._id || r.clientId} style={{ borderTop: '1px solid #e2e8f0', cursor: 'pointer' }} onClick={() => setDetail(r)}>
-                <td>{p?.name || r.productId}{r.variantId ? ` • ${(p?.variants || []).find(v => v.id === r.variantId)?.label || r.variantId}` : ''}</td>
+                <td>{title}</td>
                 <td>{byId.get(r.branchId) || r.branchId}</td>
                 <td>{r.delta}</td>
                 <td>
@@ -885,6 +894,7 @@ function RequestDetail({ detail, products, byId }) {
     <>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         <div><div style={{ color: '#64748b' }}>Status</div><div>{detail.status}</div></div>
+        <div><div style={{ color: '#64748b' }}>Title</div><div>{detail.transactionTitle || '—'}</div></div>
         <div><div style={{ color: '#64748b' }}>Product</div><div>{p?.name || detail.productId}{vLabel ? ` • ${vLabel}` : ''}</div></div>
         <div><div style={{ color: '#64748b' }}>Branch</div><div>{byId.get(detail.branchId) || detail.branchId}</div></div>
         <div><div style={{ color: '#64748b' }}>Delta</div><div>{detail.delta}</div></div>

@@ -4,6 +4,10 @@ const initialState = {
   suppliers: []
 };
 
+function normalizeSupplierName(value) {
+  return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
 const suppliersSlice = createSlice({
   name: 'suppliers',
   initialState,
@@ -16,7 +20,18 @@ const suppliersSlice = createSlice({
     },
     addSupplier: {
       reducer(state, action) {
-        state.suppliers.push(action.payload);
+        const incoming = action.payload || {};
+        const incomingId = String(incoming.id || incoming._id || '').trim();
+        const incomingName = normalizeSupplierName(incoming.name);
+        const idx = state.suppliers.findIndex((supplier) => (
+          (incomingId && String(supplier.id || supplier._id || '').trim() === incomingId)
+          || (incomingName && normalizeSupplierName(supplier.name) === incomingName)
+        ));
+        if (idx >= 0) {
+          state.suppliers[idx] = { ...state.suppliers[idx], ...incoming, id: incomingId || state.suppliers[idx].id };
+        } else {
+          state.suppliers.push(incoming);
+        }
       },
       prepare(data) {
         const id = data?.id != null ? String(data.id) : nanoid();

@@ -8,6 +8,7 @@ import * as suppliersApi from '../api/suppliers';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import InlineSpinner from '../components/InlineSpinner';
+import { ensureSupplierByName, findSupplierByName, normalizeSupplierName } from '../utils/suppliers';
 
 function SuppliersPage() {
   const suppliers = useSelector(s => s.suppliers.suppliers);
@@ -58,8 +59,14 @@ function SuppliersPage() {
 
   async function addNew() {
     if (!canAddSuppliers) { toast.show('Not authorized to add suppliers', { type: 'error' }); return; }
-    if (!name.trim()) { toast.show('Name is required', { type: 'error' }); return; }
-    const payload = { name: name.trim(), contact: contact.trim(), phone: phone.trim(), email: email.trim(), address: address.trim(), notes: notes.trim() };
+    const normalizedName = normalizeSupplierName(name);
+    if (!normalizedName) { toast.show('Name is required', { type: 'error' }); return; }
+    const existing = findSupplierByName(suppliers, normalizedName);
+    if (existing) {
+      toast.show('Supplier already exists', { type: 'warning' });
+      return;
+    }
+    const payload = { name: normalizedName, contact: contact.trim(), phone: phone.trim(), email: email.trim(), address: address.trim(), notes: notes.trim() };
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) { toast.show('Offline: connect internet and try again.', { type: 'error' }); return; }
       const clientId = `offline-supplier-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -77,8 +84,12 @@ function SuppliersPage() {
     }
     try {
       setSavingCreate(true);
-      const created = await suppliersApi.create({ ...payload, clientId: crypto.randomUUID() });
-      dispatch(addSupplier(created));
+      const created = await ensureSupplierByName({
+        name: payload.name,
+        suppliers,
+        dispatch,
+        offlineBackupAllowed
+      });
       dispatch(addAudit({ actor: auth.user?.name || 'unknown', actionType: 'supplier_add', details: { id: created.id || created._id, name: created.name } }));
       setName(''); setContact(''); setPhone(''); setEmail(''); setAddress(''); setNotes('');
       toast.show('Supplier added', { type: 'success' });

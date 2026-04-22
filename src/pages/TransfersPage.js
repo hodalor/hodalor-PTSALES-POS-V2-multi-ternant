@@ -31,6 +31,7 @@ function TransfersPage() {
   const [fromId, setFromId] = useState(currentBranchId || branches[0]?.id || '');
   const [toId, setToId] = useState(branches.find(b => b.id !== currentBranchId)?.id || branches[1]?.id || branches[0]?.id || '');
   const [qty, setQty] = useState(1);
+  const [transactionTitle, setTransactionTitle] = useState('');
   const [saving, setSaving] = useState(false);
   const [fActor, setFActor] = useState('');
   const [fFrom, setFFrom] = useState('');
@@ -105,6 +106,7 @@ function TransfersPage() {
     setProductId('');
     setProductQuery('');
     setVariantId('');
+    setTransactionTitle('');
   }, [openModal]);
   const baseTransfers = useMemo(() => audit.filter(e => e.actionType === 'stock_transfer'), [audit]);
   const actors = useMemo(() => Array.from(new Set(baseTransfers.map(e => e.actor).filter(Boolean))).sort(), [baseTransfers]);
@@ -175,6 +177,7 @@ function TransfersPage() {
       from: fromId,
       to: toId,
       qty: nextItems ? nextItems.reduce((sum, item) => sum + Number(item.qty || 0), 0) : Number(qty),
+      transactionTitle: transactionTitle.trim() || '',
       remark,
       variantId: nextItems ? (nextItems[0]?.variantId || undefined) : (variantId || undefined),
       initiatorName: auth.user?.name || 'unknown',
@@ -221,6 +224,7 @@ function TransfersPage() {
       from: fromId,
       to: toId,
       qty: nextItems ? nextItems.reduce((sum, item) => sum + Number(item.qty || 0), 0) : Number(qty),
+      transactionTitle: transactionTitle.trim() || '',
       remark,
       initiatorName: auth.user?.name || 'unknown',
       initiatorRole: auth.role || '',
@@ -242,6 +246,7 @@ function TransfersPage() {
     }));
     setQty(1);
     setVariantId('');
+    setTransactionTitle('');
     setItems([]);
     setSerializedUnits([]);
     setSerializedUnitsQuery('');
@@ -540,6 +545,10 @@ function TransfersPage() {
               <div style={{ marginBottom: 6, color: '#64748b' }}>Quantity</div>
               <input className="input" type="number" min="1" value={qty} onChange={e => setQty(Number(e.target.value))} disabled={selectedTrackType === 'serialized'} />
             </label>
+            <label style={{ gridColumn: '1 / -1' }}>
+              <div style={{ marginBottom: 6, color: '#64748b' }}>Transaction Title</div>
+              <input className="input" value={transactionTitle} onChange={e => setTransactionTitle(e.target.value)} placeholder="Optional bulk transfer title" />
+            </label>
           </div>
           {selectedTrackType === 'serialized' && (
             <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
@@ -648,12 +657,13 @@ function TransfersPage() {
                     ? 'Wholesale Incoming'
                     : 'Retail Transfer')
                   : 'Retail Transfer';
+                const title = String(r.transactionTitle || '').trim() || (Array.isArray(r.items) && r.items.length > 1 ? `${p?.name || r.productId} +${r.items.length - 1} more` : (p?.name || r.productId));
                 const canAct = String(r.approvalMode || '') === 'workflow'
                   ? ((String(r.status || '') === 'pending_director' && canWorkflowDirector) || (String(r.status || '') === 'pending_manager' && canWorkflowManager))
                   : canApprove;
                 return (
                   <tr key={r._id || r.clientId} style={{ borderTop: '1px solid #e2e8f0', cursor: 'pointer' }} onClick={() => setDetail(r)}>
-                    <td>{p?.name || r.productId}</td>
+                    <td>{title}</td>
                     <td>
                       <div style={{ display: 'grid', gap: 4 }}>
                         <span>{fromLabel}{r.fromInventoryType ? ` (${r.fromInventoryType})` : ''}</span>
@@ -835,6 +845,7 @@ function TransfersPage() {
         }>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <div><div style={{ color: '#64748b' }}>Status</div><div>{detail.status}</div></div>
+            <div><div style={{ color: '#64748b' }}>Title</div><div>{detail.transactionTitle || '—'}</div></div>
             <div><div style={{ color: '#64748b' }}>Product</div><div>{products.find(p => p.id === detail.productId)?.name || detail.productId}</div></div>
             {detail.variantId ? <div><div style={{ color: '#64748b' }}>Variant</div><div>{(products.find(p => p.id === detail.productId)?.variants || []).find(v => v.id === detail.variantId)?.label || detail.variantId}</div></div> : null}
             <div><div style={{ color: '#64748b' }}>From</div><div>{byId.get(detail.fromBranchId || detail.from) || detail.fromBranchId || detail.from}</div></div>

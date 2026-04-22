@@ -10,6 +10,7 @@ import Modal from '../components/Modal';
 import BarcodeScannerModal from '../components/BarcodeScannerModal';
 import ProductLiveSearchField from '../components/ProductLiveSearchField';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
+import { ensureSupplierByName } from '../utils/suppliers';
 
 function labelForArea(area, op) {
   const prefix = String(area || 'wholesale').toLowerCase() === 'warehouse' ? 'Warehouse' : 'Distribution';
@@ -26,6 +27,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const dispatch = useDispatch();
   const products = useSelector(s => s.products.products);
   const branches = useSelector(s => s.branches.branches);
+  const suppliers = useSelector(s => s.suppliers?.suppliers || []);
   const settings = useSelector(s => s.settings);
   const auth = useSelector(s => s.auth);
   const currentBranchId = useSelector(s => s.settings.currentBranchId);
@@ -84,6 +86,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const [requestedAmount, setRequestedAmount] = useState('');
   const [adjustmentType, setAdjustmentType] = useState('increase');
   const [supplier, setSupplier] = useState('');
+  const [transactionTitle, setTransactionTitle] = useState('');
   const [reason, setReason] = useState('');
   const [remark, setRemark] = useState('');
 
@@ -138,6 +141,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     setProductId('');
     setProductQuery('');
     setVariantId('');
+    setTransactionTitle('');
   }, [isCreateOpen]);
 
   useEffect(() => {
@@ -183,6 +187,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     setRequestedAmount('');
     setAdjustmentType('increase');
     setSupplier('');
+    setTransactionTitle('');
     setReason('');
     setRemark('');
     setFromInventoryType(normalizedArea);
@@ -457,6 +462,17 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
       return;
     }
 
+    let supplierName = supplier.trim();
+    if (operationType === 'purchase' && supplierName) {
+      try {
+        const ensuredSupplier = await ensureSupplierByName({ name: supplierName, suppliers, dispatch, offlineBackupAllowed });
+        supplierName = ensuredSupplier?.name || supplierName;
+      } catch (e) {
+        toast.show(String(e?.message || 'Failed to save supplier'), { type: 'error' });
+        return;
+      }
+    }
+
     const clientId = `${normalizedArea}-${operationType}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const payload = {
       clientId,
@@ -468,7 +484,8 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
       cost: Number(cost || 0),
       requestedAmount: Number(requestedAmount || 0),
       adjustmentType,
-      supplier: supplier.trim(),
+      supplier: supplierName,
+      transactionTitle: transactionTitle.trim() || '',
       reason: reason.trim(),
       remark: remark.trim(),
       branchId: operationType === 'transfer' ? undefined : branchId,
@@ -600,9 +617,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                   ? `${branchNameById.get(row.fromBranchId || row.from) || row.fromBranchId || row.from || '—'} ${String(row.fromInventoryType || 'retail')} → ${branchNameById.get(row.toBranchId || row.to) || row.toBranchId || row.to || '—'} ${String(row.toInventoryType || 'retail')}`
                   : `${branchNameById.get(row.branchId) || row.branchId || '—'} • ${row.toInventoryType || row.fromInventoryType || 'wholesale'}`;
                 const value = row.operationType === 'refund' ? Number(row.requestedAmount || 0) : Number(row.cost || 0);
+                const title = String(row.transactionTitle || '').trim() || (Array.isArray(row.items) && row.items.length > 1 ? `${product?.name || row.productId} +${row.items.length - 1} more` : `${product?.name || row.productId}${variantLabel ? ` • ${variantLabel}` : ''}`);
                 return (
                   <tr key={row._id || row.clientId} onClick={() => openReview(row)} style={{ cursor: 'pointer' }}>
-                    <td>{product?.name || row.productId}{variantLabel ? ` • ${variantLabel}` : ''}</td>
+                    <td>{title}</td>
                     <td>{route}</td>
                     <td>{Number(row.qty || 0)}</td>
                     <td>{value > 0 ? formatCurrency(value, settings) : '—'}</td>
@@ -816,9 +834,15 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
             {(operationType === 'purchase' || operationType === 'refund') && (
               <label>
                 <div style={{ marginBottom: 6, color: '#94a3b8' }}>Supplier</div>
-                <input className="input" value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="Supplier or source" />
+                <input className="input" value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="Supplier or source" list="suppliers-list" />
+                <SuppliersDatalist />
               </label>
             )}
+
+            <label style={{ gridColumn: '1 / -1' }}>
+              <div style={{ marginBottom: 6, color: '#94a3b8' }}>Transaction Title</div>
+              <input className="input" value={transactionTitle} onChange={e => setTransactionTitle(e.target.value)} placeholder={`Optional ${operationType} title for grouped items`} />
+            </label>
 
             <label style={{ gridColumn: '1 / -1' }}>
               <div style={{ marginBottom: 6, color: '#94a3b8' }}>Reason</div>
@@ -904,6 +928,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
           <div style={{ display: 'grid', gap: 12 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Status</div><strong>{selectedRow.status}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Title</div><strong>{selectedRow.transactionTitle || '—'}</strong></div>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Initiator</div><strong>{selectedRow.initiatedByName || selectedRow.initiatorName || '—'}</strong></div>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Quantity</div><strong>{Number(selectedRow.qty || selectedRow.baseUnits || 0)}</strong></div>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Value</div><strong>{formatCurrency(Number(selectedRow.cost || selectedRow.requestedAmount || 0), settings)}</strong></div>
@@ -971,3 +996,12 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
 }
 
 export default WholesaleOperationsPage;
+
+function SuppliersDatalist() {
+  const list = useSelector(s => s.suppliers?.suppliers || []);
+  return (
+    <datalist id="suppliers-list">
+      {list.map((supplier) => <option key={supplier.id || supplier._id || supplier.name} value={supplier.name} />)}
+    </datalist>
+  );
+}
