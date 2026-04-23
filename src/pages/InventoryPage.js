@@ -24,6 +24,13 @@ function shouldShowBranchTypeBadge(branchType = 'retail') {
   return String(branchType || 'retail').toLowerCase() !== 'retail';
 }
 
+function normalizeInventoryType(value = 'retail') {
+  const kind = String(value || 'retail').toLowerCase();
+  if (kind === 'warehouse') return 'warehouse';
+  if (kind === 'wholesale') return 'wholesale';
+  return 'retail';
+}
+
 function InventoryPage() {
   const products = useSelector(s => s.products.products);
   const branches = useSelector(s => s.branches.branches);
@@ -70,6 +77,13 @@ function InventoryPage() {
       : baseFilteredRows.filter((p) => String(p.id) === String(productFilter))
   ), [baseFilteredRows, productFilter]);
   useEffect(() => { setBranchId(currentBranchId); }, [currentBranchId]);
+  useEffect(() => {
+    if (String(branchId || '') === 'all') return;
+    const selectedBranch = branches.find((item) => String(item.id) === String(branchId));
+    if (!selectedBranch) return;
+    const nextType = normalizeInventoryType(selectedBranch.branchType);
+    setViewInventoryType((prev) => prev === nextType ? prev : nextType);
+  }, [branches, branchId]);
   useEffect(() => {
     if (categoryFilter !== 'all' && !categoryOptions.includes(categoryFilter)) setCategoryFilter('all');
   }, [categoryOptions, categoryFilter]);
