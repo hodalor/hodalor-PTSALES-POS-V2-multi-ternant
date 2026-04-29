@@ -202,6 +202,9 @@ function InvoicesPage({ mode = 'retail' }) {
         phone: customer.phone || customer.contact || '',
         email: customer.email || '',
         address: customer.address || '',
+        businessName: customer.businessName || '',
+        businessAddress: customer.businessAddress || '',
+        taxId: customer.taxId || '',
         customerCode: customer.customerCode || '',
         customerId: customer.id
       } : {
@@ -391,8 +394,17 @@ function InvoicesPage({ mode = 'retail' }) {
                 <small>{item.sku}</small>
               </div>
               <input className="input" type="number" min="1" value={item.qty} onChange={e => setQty(item.id, e.target.value)} style={{ width: 70 }} />
-              <input className="input" type="number" min="0" step="0.01" value={item.rate} onChange={e => setRate(item.id, e.target.value)} style={{ width: 110 }} />
+              <div style={{ display: 'grid', gap: 4 }}>
+                <input className="input" type="number" min="0" step="0.01" value={item.rate} onChange={e => setRate(item.id, e.target.value)} style={{ width: 110 }} />
+                <span style={{ fontSize: 12, color: '#64748b' }}>
+                  Unit: {formatCurrency(item.rate, settings)}
+                </span>
+              </div>
               <span style={{ width: 50, textAlign: 'center' }}>{item.per}</span>
+              <div style={{ minWidth: 120, textAlign: 'right' }}>
+                <div style={{ fontSize: 12, color: '#64748b' }}>Line Total</div>
+                <strong>{formatCurrency((Number(item.qty) || 0) * (Number(item.rate) || 0), settings)}</strong>
+              </div>
               <button className="btn" onClick={() => remove(item.id)}>Remove</button>
             </li>
           ))}

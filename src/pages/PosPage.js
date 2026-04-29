@@ -10,6 +10,7 @@ import { useToast } from '../components/ToastProvider';
 import { formatCurrency } from '../utils/currency';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { addAudit } from '../store/auditSlice';
+import { setCurrentBranch } from '../store/settingsSlice';
 import { productSpec } from '../utils/productSpec';
 import { createSale } from '../api/sales';
 import * as customersApi from '../api/customers';
@@ -29,6 +30,7 @@ function createReservationToken() {
 }
 
 function PosPage({ mode = 'retail' }) {
+  const dispatch = useDispatch();
   const cart = useSelector(state => state.cart);
   const heldSales = useMemo(() => cart.heldSales || [], [cart.heldSales]);
   const products = useSelector(s => s.products.products);
@@ -42,29 +44,34 @@ function PosPage({ mode = 'retail' }) {
   const modeLabel = isWholesale ? 'Distribution POS' : 'POS';
   const reservationStorageKey = `ptsales:pos-reservation-token:${String(mode || 'retail').toLowerCase()}`;
   const initialPriceTier = isWholesale ? 'wholesale' : 'retail';
-  const activeBranchId = useMemo(() => {
-    const roleLower = String(auth.role || '').toLowerCase();
-    const isFixedBranchUser = !['admin', 'manager', 'branch manager', 'superadmin'].includes(roleLower);
+  const roleLower = String(auth.role || '').toLowerCase();
+  const isFixedBranchUser = !['admin', 'manager', 'branch manager', 'superadmin'].includes(roleLower);
+  const assignedBranchIds = useMemo(() => {
     const assignedRaw = auth.user?.assignedBranches;
-    const assignedIds = assignedRaw === 'all'
+    return assignedRaw === 'all'
       ? []
       : (Array.isArray(assignedRaw) ? assignedRaw : [assignedRaw]).map(v => String(v || '').trim()).filter(Boolean);
+  }, [auth.user?.assignedBranches]);
+  const activeBranchId = useMemo(() => {
     const preferredBranchId = isFixedBranchUser
-      ? (String(auth.user?.branchId || '').trim() || assignedIds[0] || branchId)
+      ? (String(auth.user?.branchId || '').trim() || assignedBranchIds[0] || branchId)
       : branchId;
     const currentBranch = (branches || []).find(branch => String(branch.id) === String(preferredBranchId));
     const expectedType = isWholesale ? 'wholesale' : 'retail';
     if (String(currentBranch?.branchType || 'retail').toLowerCase() === expectedType) return preferredBranchId;
-    const allowedIds = new Set((isFixedBranchUser ? [preferredBranchId, ...assignedIds] : [preferredBranchId]).filter(Boolean).map(String));
+    const allowedIds = new Set((isFixedBranchUser ? [preferredBranchId, ...assignedBranchIds] : [preferredBranchId]).filter(Boolean).map(String));
     const fallback = (branches || []).find(branch => {
       if (String(branch.branchType || 'retail').toLowerCase() !== expectedType) return false;
       if (!isFixedBranchUser) return true;
       return allowedIds.has(String(branch.id));
     });
     return fallback?.id || preferredBranchId || branchId;
-  }, [auth.role, auth.user?.assignedBranches, auth.user?.branchId, branchId, branches, isWholesale]);
+  }, [assignedBranchIds, auth.user?.branchId, branchId, branches, isFixedBranchUser, isWholesale]);
   const activeBranch = useMemo(() => (branches || []).find(branch => String(branch.id) === String(activeBranchId)) || null, [activeBranchId, branches]);
   const branchNameById = useMemo(() => new Map((branches || []).map(branch => [String(branch.id), branch.name])), [branches]);
+  const displayBranchId = useMemo(() => (
+    String(activeBranchId || branchId || auth.user?.branchId || assignedBranchIds[0] || '').trim()
+  ), [activeBranchId, assignedBranchIds, auth.user?.branchId, branchId]);
   const allowedPriceTiers = useMemo(() => getAllowedPriceTiers(auth), [auth]);
   const initialVisiblePriceTier = useMemo(() => getPreferredPriceTier(allowedPriceTiers, initialPriceTier), [allowedPriceTiers, initialPriceTier]);
   const [query, setQuery] = useState('');
@@ -114,6 +121,13 @@ function PosPage({ mode = 'retail' }) {
     try { return localStorage.getItem('ptSales:heldQuery') || ''; } catch { return ''; }
   });
   const toast = useToast();
+  useEffect(() => {
+    if (!isFixedBranchUser) return;
+    const current = String(branchId || '').trim();
+    const next = String(activeBranchId || '').trim();
+    if (!next || current === next) return;
+    dispatch(setCurrentBranch(next));
+  }, [activeBranchId, branchId, dispatch, isFixedBranchUser]);
   useEffect(() => {
     try { localStorage.setItem(reservationStorageKey, reservationToken); } catch {}
   }, [reservationStorageKey, reservationToken]);
@@ -224,8 +238,6 @@ function PosPage({ mode = 'retail' }) {
         return String(a.unit.imei || a.unit.serialNumber || '').localeCompare(String(b.unit.imei || b.unit.serialNumber || ''));
       });
   }, [liveSerializedUnits, query, sellables]);
-  const dispatch = useDispatch();
-
   const selectedCustomer = useMemo(() => {
     if (!selectedCustomerId) return null;
     return customers.find(c => String(c.id) === String(selectedCustomerId)) || null;
@@ -343,7 +355,7 @@ function PosPage({ mode = 'retail' }) {
       return Number(serializedStockCountMap.get(key) || 0);
     }
     const stockMap = isWholesale ? (p.wholesaleStockByBranch || p.stockByBranch || {}) : (p.stockByBranch || {});
-    const available = Number(stockMap?.[activeBranchId] || 0);
+    const available = Number(stockMap?.[displayBranchId] || 0);
     return available;
   }
 
@@ -587,7 +599,8 @@ function PosPage({ mode = 'retail' }) {
   }
 
   async function addToCart(p) {
-    const available = p.stockByBranch?.[activeBranchId] || 0;
+    const stockMap = isWholesale ? (p.wholesaleStockByBranch || p.stockByBranch || {}) : (p.stockByBranch || {});
+    const available = Number(stockMap?.[displayBranchId] || 0);
     const inCart = cart.items.filter(i => i.sku === p.sku).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
     if (available - inCart <= 0) {
       toast.show('Out of stock for current branch', { type: 'error' });
@@ -817,6 +830,10 @@ function PosPage({ mode = 'retail' }) {
       customerCode: checkoutCustomer ? (checkoutCustomer.customerCode || '') : '',
       customerName: checkoutCustomer ? (checkoutCustomer.name || '') : '',
       customerPhone: checkoutCustomer ? (checkoutCustomer.phone || '') : '',
+      customerAddress: checkoutCustomer ? (checkoutCustomer.address || '') : '',
+      customerBusinessName: checkoutCustomer ? (checkoutCustomer.businessName || '') : '',
+      customerBusinessAddress: checkoutCustomer ? (checkoutCustomer.businessAddress || '') : '',
+      customerTaxId: checkoutCustomer ? (checkoutCustomer.taxId || '') : '',
       posType: isWholesale ? 'wholesale' : 'retail',
       inventoryType: isWholesale ? 'wholesale' : 'retail',
       defaultPriceTier: selectedPriceTier,
@@ -902,11 +919,18 @@ function PosPage({ mode = 'retail' }) {
           phone: checkoutCustomer.phone || '',
           email: checkoutCustomer.email || '',
           address: checkoutCustomer.address || '',
+          businessName: checkoutCustomer.businessName || '',
+          businessAddress: checkoutCustomer.businessAddress || '',
+          taxId: checkoutCustomer.taxId || '',
           customerCode: checkoutCustomer.customerCode || '',
           customerId: checkoutCustomer.id
         } : (saleForUi.customerName ? {
           name: saleForUi.customerName,
-          phone: saleForUi.customerPhone || ''
+          phone: saleForUi.customerPhone || '',
+          address: saleForUi.customerAddress || '',
+          businessName: saleForUi.customerBusinessName || '',
+          businessAddress: saleForUi.customerBusinessAddress || '',
+          taxId: saleForUi.customerTaxId || ''
         } : { name: '—' }),
         items: (saleForUi.items || []).map(i => ({ name: i.name, spec: i.spec, qty: i.qty, rate: i.price, per: 'pcs', soldUnits: Array.isArray(i.soldUnits) ? i.soldUnits : [] })),
         subtotal: saleForUi.subtotal || 0,
@@ -1456,6 +1480,13 @@ function PosPage({ mode = 'retail' }) {
                 ) : (
                 <span style={{ fontWeight: 700 }}>{formatCurrency(item.price, settings)}</span>
                 )}
+                <span style={{ fontSize: 12, color: '#64748b' }}>
+                  Unit: {formatCurrency(item.price, settings)}
+                </span>
+              </div>
+              <div style={{ minWidth: 120, textAlign: 'right' }}>
+                <div style={{ fontSize: 12, color: '#64748b' }}>Line Total</div>
+                <strong>{formatCurrency((Number(item.price) || 0) * (Number(item.quantity) || 0), settings)}</strong>
               </div>
               <button className="btn" onClick={() => {
                 dispatch(removeItem(item.id));

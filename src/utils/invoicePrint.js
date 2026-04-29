@@ -49,6 +49,17 @@ export function buildInvoiceA4Html({ settings, invoice }) {
   const signLbl = settings?.invoiceSignatoryLabel || 'Authorised Signatory';
   const buyer = invoice.customer || {};
   const items = invoice.items || [];
+  const buyerBusinessFields = [
+    { label: 'Business Name', value: buyer.businessName || '' },
+    { label: 'TIN/TPIN', value: buyer.taxId || '' },
+    { label: 'Business Address', value: buyer.businessAddress || '' }
+  ].filter((field) => String(field.value || '').trim());
+  const buyerBusinessRows = buyerBusinessFields.map((field) => `
+        <tr>
+          <td class="label">${field.label}</td><td class="value">${field.value}</td>
+          <td class="label"></td><td class="value"></td>
+        </tr>
+  `).join('');
   const rows = items.map((it, idx) => `
     <tr>
       <td>${idx + 1}</td>
@@ -127,10 +138,18 @@ export function buildInvoiceA4Html({ settings, invoice }) {
           <td class="label">Phone</td><td class="value">${buyer.phone || buyer.contact || ''}</td>
           <td class="label">Despatch Document No.</td><td class="value">${invoice.despatchDocNo || ''}</td>
         </tr>
+        ${String(buyer.address || '').trim() ? `
         <tr>
           <td class="label">Address</td><td class="value">${buyer.address || ''}</td>
           <td class="label">Delivery Note Date</td><td class="value">${invoice.deliveryDate || ''}</td>
         </tr>
+        ` : `
+        <tr>
+          <td class="label"></td><td class="value"></td>
+          <td class="label">Delivery Note Date</td><td class="value">${invoice.deliveryDate || ''}</td>
+        </tr>
+        `}
+        ${buyerBusinessRows}
         <tr>
           <td class="label">Despatched through</td><td class="value">${invoice.despatchedThrough || ''}</td>
           <td class="label">Destination</td><td class="value">${invoice.destination || ''}</td>
