@@ -11,6 +11,8 @@ import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import { isFeatureEnabled } from '../utils/featureFlags';
 import { getAllowedPriceTiers, getDisplayPrice, getPreferredPriceTier } from '../utils/priceVisibility';
 
+const MANUAL_INVOICE_PRICE_TIERS = ['retail', 'wholesale', 'agent', 'warehouse'];
+
 function InvoicesPage({ mode = 'retail' }) {
   const dispatch = useDispatch();
   const toast = useToast();
@@ -56,6 +58,12 @@ function InvoicesPage({ mode = 'retail' }) {
   const allowedPriceTiers = useMemo(() => getAllowedPriceTiers(auth), [auth]);
   const preferredModeTier = modeLower === 'retail' ? 'retail' : 'wholesale';
   const activeInvoiceTier = useMemo(() => getPreferredPriceTier(allowedPriceTiers, preferredModeTier), [allowedPriceTiers, preferredModeTier]);
+  const selectableInvoiceTiers = useMemo(() => (
+    modeLower === 'retail'
+      ? allowedPriceTiers
+      : MANUAL_INVOICE_PRICE_TIERS.slice()
+  ), [allowedPriceTiers, modeLower]);
+  const [selectedInvoiceTier, setSelectedInvoiceTier] = useState(activeInvoiceTier);
   const pageTitle = modeLower === 'wholesale' ? 'Distribution Invoices' : modeLower === 'warehouse' ? 'Warehouse Invoices' : 'Invoices';
   const invoiceSource = modeLower === 'wholesale' ? 'wholesale-manual' : modeLower === 'warehouse' ? 'warehouse-manual' : 'manual';
   const invoicePrefix = modeLower === 'wholesale'
@@ -68,9 +76,28 @@ function InvoicesPage({ mode = 'retail' }) {
     : modeLower === 'warehouse'
       ? Number(settings.nextWarehouseInvoiceNumber || 1)
       : Number(settings.nextInvoiceNumber || 1);
+  useEffect(() => {
+    const fallbackTier = selectableInvoiceTiers.includes(selectedInvoiceTier)
+      ? selectedInvoiceTier
+      : (selectableInvoiceTiers[0] || activeInvoiceTier);
+    if (fallbackTier !== selectedInvoiceTier) setSelectedInvoiceTier(fallbackTier);
+  }, [activeInvoiceTier, selectableInvoiceTiers, selectedInvoiceTier]);
+
   const defaultRateFor = useCallback((p) => (
-    getDisplayPrice(p, activeInvoiceTier)
-  ), [activeInvoiceTier]);
+    getDisplayPrice(p, selectedInvoiceTier)
+  ), [selectedInvoiceTier]);
+
+  const resolveSellableRate = useCallback((productId, variantId = '') => {
+    const source = products.find((product) => String(product.id) === String(productId));
+    if (!source) return 0;
+    const variant = variantId && Array.isArray(source.variants)
+      ? source.variants.find((item) => String(item.id) === String(variantId))
+      : null;
+    const priceSource = variant
+      ? { ...source, ...variant, price: variant.price != null ? variant.price : source.price }
+      : source;
+    return getDisplayPrice(priceSource, selectedInvoiceTier);
+  }, [products, selectedInvoiceTier]);
   const bumpInvoiceSequence = useCallback(() => {
     if (modeLower === 'wholesale') dispatch(setNextWholesaleInvoiceNumber(nextInvoiceNumberValue + 1));
     else if (modeLower === 'warehouse') dispatch(setNextWarehouseInvoiceNumber(nextInvoiceNumberValue + 1));
@@ -116,7 +143,17 @@ function InvoicesPage({ mode = 'retail' }) {
       const ex = list.find(i => i.sku === p.sku);
       if (ex) return list.map(i => i.sku === p.sku ? { ...i, qty: i.qty + 1 } : i);
       const spec = productSpec(p);
-      return [...list, { id: `${p.id}:${Math.random()}`, name: p.name, sku: p.sku, spec, qty: 1, rate: p.price || 0, per: p.unitSymbol || 'pcs' }];
+      return [...list, {
+        id: `${p.id}:${Math.random()}`,
+        sourceProductId: p.productId || p.id,
+        sourceVariantId: p.variantId || '',
+        name: p.name,
+        sku: p.sku,
+        spec,
+        qty: 1,
+        rate: p.price || 0,
+        per: p.unitSymbol || 'pcs'
+      }];
     });
   }
   function setQty(id, v) {
@@ -128,6 +165,16 @@ function InvoicesPage({ mode = 'retail' }) {
   function remove(id) {
     setItems(list => list.filter(i => i.id !== id));
   }
+
+  useEffect(() => {
+    setItems((list) => list.map((item) => {
+      if (!item.sourceProductId) return item;
+      return {
+        ...item,
+        rate: resolveSellableRate(item.sourceProductId, item.sourceVariantId)
+      };
+    }));
+  }, [resolveSellableRate]);
 
   const customer = useMemo(() => {
     if (customerId) return customers.find(c => String(c.id) === String(customerId)) || null;
@@ -273,6 +320,23 @@ function InvoicesPage({ mode = 'retail' }) {
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
         <div>
           <h2>Products</h2>
+          {modeLower !== 'retail' && (
+            <div className="card" style={{ marginBottom: 12 }}>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <div style={{ fontWeight: 700 }}>Invoice Price Tier</div>
+                <select className="select" value={selectedInvoiceTier} onChange={e => setSelectedInvoiceTier(e.target.value)}>
+                  {selectableInvoiceTiers.map((tier) => (
+                    <option key={tier} value={tier}>
+                      {tier === 'wholesale' ? 'Distribution Price' : tier === 'warehouse' ? 'Warehouse Price' : tier === 'agent' ? 'Agent Price' : 'Retail Price'}
+                    </option>
+                  ))}
+                </select>
+                <div style={{ color: '#64748b', fontSize: 12 }}>
+                  All listed products and invoice item rates use the selected price tier.
+                </div>
+              </label>
+            </div>
+          )}
           <div className="toolbar">
             <input className="input" placeholder="Search name, SKU or scan barcode" value={query} onChange={e => setQuery(e.target.value)} style={{ width: '100%' }} />
           </div>
