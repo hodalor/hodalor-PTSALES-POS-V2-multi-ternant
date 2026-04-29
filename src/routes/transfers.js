@@ -5,7 +5,8 @@ import Product from '../models/Product.js';
 import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
-import { normalizeTrackType, transferSerializedUnits } from '../utils/productUnits.js';
+import { normalizeTrackType, resolveInventoryTypeFromBranch, transferSerializedUnits } from '../utils/productUnits.js';
+import { getStockTarget, getMapQty, markInventoryModified, setMapQty } from '../utils/inventory.js';
 import { safeErrorMessage } from '../utils/safeError.js';
 
 const r = Router();
@@ -34,16 +35,6 @@ function productLookupQuery(productId) {
   const or = [{ id: pid }];
   if (mongoose.isValidObjectId(pid)) or.unshift({ _id: pid });
   return { $or: or };
-}
-function getBranchQty(mapLike, branchId) {
-  if (!mapLike) return 0;
-  if (typeof mapLike.get === 'function') return Number(mapLike.get(branchId) || 0);
-  return Number(mapLike[branchId] || 0);
-}
-function setBranchQty(mapLike, branchId, qty) {
-  if (!mapLike) return;
-  if (typeof mapLike.set === 'function') mapLike.set(branchId, qty);
-  else mapLike[branchId] = qty;
 }
 function normalizeItems(payload = {}) {
   const raw = Array.isArray(payload.items) && payload.items.length > 0
@@ -149,6 +140,8 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_tr
   }
   if (!canManagerApproveRetail(req.user)) return res.status(403).json({ error: 'Manager approval required' });
   let lastProduct = null;
+  const fromInventoryType = await resolveInventoryTypeFromBranch(tr.from, 'retail');
+  const toInventoryType = await resolveInventoryTypeFromBranch(tr.to, 'retail');
   try {
     for (const item of nextItems) {
       if (item.status === 'cancelled') continue;
@@ -165,35 +158,23 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_tr
           variantId: item.variantId || '',
           fromBranchId: tr.from,
           toBranchId: tr.to,
-          fromInventoryType: 'retail',
-          toInventoryType: 'retail',
+          fromInventoryType,
+          toInventoryType,
           unitIds: item.unitIds
         });
         lastProduct = p;
         continue;
       }
-      if (item.variantId) {
-        const variants = Array.isArray(p.variants) ? p.variants : [];
-        const idx = variants.findIndex(v => v.id === item.variantId);
-        if (idx < 0) return res.status(400).json({ error: 'Variant not found' });
-        const v = variants[idx];
-        if (!v.stockByBranch) v.stockByBranch = new Map();
-        const curFrom = getBranchQty(v.stockByBranch, tr.from);
-        const nextFrom = Math.max(0, curFrom - q);
-        setBranchQty(v.stockByBranch, tr.from, nextFrom);
-        const curTo = getBranchQty(v.stockByBranch, tr.to);
-        setBranchQty(v.stockByBranch, tr.to, curTo + q);
-        p.variants[idx] = v;
-        p.markModified('variants');
-      } else {
-        if (!p.stockByBranch) p.stockByBranch = new Map();
-        const curFrom = getBranchQty(p.stockByBranch, tr.from);
-        const nextFrom = Math.max(0, curFrom - q);
-        setBranchQty(p.stockByBranch, tr.from, nextFrom);
-        const curTo = getBranchQty(p.stockByBranch, tr.to);
-        setBranchQty(p.stockByBranch, tr.to, curTo + q);
-        p.markModified('stockByBranch');
-      }
+      const fromTarget = getStockTarget(p, item.variantId || '', fromInventoryType);
+      const toTarget = getStockTarget(p, item.variantId || '', toInventoryType);
+      if (!fromTarget || !toTarget) return res.status(400).json({ error: 'Variant not found' });
+      const curFrom = getMapQty(fromTarget.container, tr.from);
+      if (curFrom < q) return res.status(400).json({ error: 'Insufficient stock for transfer' });
+      const curTo = getMapQty(toTarget.container, tr.to);
+      setMapQty(fromTarget.container, tr.from, curFrom - q);
+      setMapQty(toTarget.container, tr.to, curTo + q);
+      markInventoryModified(fromTarget);
+      markInventoryModified(toTarget);
       await p.save();
       lastProduct = p;
     }
@@ -214,7 +195,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_tr
   await Audit.create({
     actor: approverName || 'unknown',
     actionType: 'stock_transfer',
-    details: { product: lastProduct?.name || tr.productId, from: tr.from, to: tr.to, qty: Math.abs(Number(tr.qty || 0)), itemCount: nextItems.length, acceptedCount: nextItems.filter(item => item.status !== 'cancelled').length },
+    details: { product: lastProduct?.name || tr.productId, from: tr.from, to: tr.to, fromInventoryType, toInventoryType, qty: Math.abs(Number(tr.qty || 0)), itemCount: nextItems.length, acceptedCount: nextItems.filter(item => item.status !== 'cancelled').length },
     remark: tr.approvalRemark || tr.remark || '',
     branchId: tr.from
   });
