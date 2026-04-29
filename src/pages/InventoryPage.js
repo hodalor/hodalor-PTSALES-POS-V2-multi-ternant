@@ -58,6 +58,8 @@ function InventoryPage() {
   const inventoryPriceTierLabel = useMemo(() => getPriceTierLabel(viewInventoryType === 'wholesale' ? 'wholesale' : viewInventoryType === 'warehouse' ? 'warehouse' : 'retail'), [viewInventoryType]);
 
   const branch = useMemo(() => (isAllBranches ? null : (branches.find(b => b.id === branchId) || branches[0])), [branches, branchId, isAllBranches]);
+  const selectedBranchInventoryType = useMemo(() => normalizeInventoryType(branch?.branchType), [branch?.branchType]);
+  const inventoryTypeLocked = !isAllBranches && !!branch;
   const categoryOptions = useMemo(() => Array.from(new Set(products.map((p) => String(p.category || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)), [products]);
   const baseFilteredRows = useMemo(() => {
     const term = String(search || '').trim().toLowerCase();
@@ -341,9 +343,35 @@ function InventoryPage() {
             </div>
           )}
           <div className="filter-actions filter-actions-end" style={{ gridColumn: '1 / -1' }}>
-            <button className={viewInventoryType === 'retail' ? 'btn btn-primary' : 'btn'} onClick={() => setViewInventoryType('retail')}>Retail</button>
-            <button className={viewInventoryType === 'wholesale' ? 'btn btn-primary' : 'btn'} onClick={() => setViewInventoryType('wholesale')}>Distribution</button>
-            <button className={viewInventoryType === 'warehouse' ? 'btn btn-primary' : 'btn'} onClick={() => setViewInventoryType('warehouse')}>Warehouse</button>
+            <button
+              className={viewInventoryType === 'retail' ? 'btn btn-primary' : 'btn'}
+              onClick={() => !inventoryTypeLocked && setViewInventoryType('retail')}
+              disabled={inventoryTypeLocked}
+              title={inventoryTypeLocked ? `Locked to ${inventoryTypeLabel} for ${branch?.name || branch?.code || 'selected branch'}` : 'Show retail stock'}
+            >
+              Retail
+            </button>
+            <button
+              className={viewInventoryType === 'wholesale' ? 'btn btn-primary' : 'btn'}
+              onClick={() => !inventoryTypeLocked && setViewInventoryType('wholesale')}
+              disabled={inventoryTypeLocked}
+              title={inventoryTypeLocked ? `Locked to ${inventoryTypeLabel} for ${branch?.name || branch?.code || 'selected branch'}` : 'Show distribution stock'}
+            >
+              Distribution
+            </button>
+            <button
+              className={viewInventoryType === 'warehouse' ? 'btn btn-primary' : 'btn'}
+              onClick={() => !inventoryTypeLocked && setViewInventoryType('warehouse')}
+              disabled={inventoryTypeLocked}
+              title={inventoryTypeLocked ? `Locked to ${inventoryTypeLabel} for ${branch?.name || branch?.code || 'selected branch'}` : 'Show warehouse stock'}
+            >
+              Warehouse
+            </button>
+            {inventoryTypeLocked ? (
+              <span style={{ color: '#64748b', fontSize: 12 }}>
+                Locked to <strong>{selectedBranchInventoryType === 'wholesale' ? 'Distribution' : selectedBranchInventoryType === 'warehouse' ? 'Warehouse' : 'Retail'}</strong> for <strong>{branch?.name || branch?.code || 'selected branch'}</strong>
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
