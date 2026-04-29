@@ -44,7 +44,7 @@ function SalesPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [periodMode, setPeriodMode] = useState('range');
-  const [selectedBranchId, setSelectedBranchId] = useState('all');
+  const [selectedBranchId, setSelectedBranchId] = useState('');
   const [selectedSaleIds, setSelectedSaleIds] = useState([]);
   const [bulkAction, setBulkAction] = useState('');
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -52,9 +52,7 @@ function SalesPage() {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const branchScope = (canSeeAll && showAll)
-        ? (selectedBranchId !== 'all' ? selectedBranchId : '')
-        : (selectedBranchId !== 'all' ? selectedBranchId : '');
+      const branchScope = selectedBranchId ? selectedBranchId : '';
       try {
         setLoadingSales(true);
         const rows = await salesApi.list(branchScope ? { branchId: branchScope, limit: 1000 } : { limit: 1000 });
@@ -78,7 +76,7 @@ function SalesPage() {
       const scoped = sales.filter(sale => String(sale.branchId || '') === String(effectiveBranchId || ''));
       list = scoped.length > 0 ? scoped : sales;
     }
-    if (selectedBranchId !== 'all') list = list.filter(sale => String(sale.branchId || '') === String(selectedBranchId));
+    if (selectedBranchId) list = list.filter(sale => String(sale.branchId || '') === String(selectedBranchId));
     return list;
   }, [canSeeAll, effectiveBranchId, sales, selectedBranchId, showAll]);
   const filteredSales = useMemo(() => {
@@ -265,7 +263,7 @@ function SalesPage() {
             </label>
             <label>
               <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Branch</div>
-              <BranchSelect value={selectedBranchId} onChange={(value) => { setSelectedBranchId(value || 'all'); setPage(1); }} includeAll allLabel="All Branches" />
+              <BranchSelect value={selectedBranchId} onChange={(value) => { setSelectedBranchId(value || ''); setPage(1); }} includeAll allLabel="All Branches" />
             </label>
             <label>
               <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Inventory Type</div>
@@ -315,7 +313,7 @@ function SalesPage() {
           <label>
             <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Branch</div>
             <select className="select" value={selectedBranchId} onChange={e => setSelectedBranchId(e.target.value)}>
-              <option value="all">All Branches</option>
+              <option value="">All Branches</option>
               {branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name || branch.code || branch.id}</option>)}
             </select>
           </label>

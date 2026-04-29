@@ -77,7 +77,7 @@ import { resetTenantAppState } from './store';
 import * as tenantsApi from './api/tenants';
 import { loginSuccess, setGrants, setInitialized, logout } from './store/authSlice';
 import * as settingsApi from './api/settings';
-import { setAllSettings, setSettingsHydrated } from './store/settingsSlice';
+import { setAllSettings, setCurrentBranch, setSettingsHydrated } from './store/settingsSlice';
 import * as usersApi from './api/users';
 import { setUsers } from './store/usersSlice';
 import * as auditsApi from './api/audits';
@@ -98,11 +98,14 @@ function App() {
   const isAuthed = useSelector(s => s.auth.isAuthenticated);
   const authInitialized = useSelector(s => s.auth.initialized);
   const settings = useSelector(s => s.settings);
+  const currentBranchId = useSelector(s => s.settings.currentBranchId || '');
   const userName = useSelector(s => s.auth.user?.name || '');
   const isAuthedNow = useSelector(s => s.auth.isAuthenticated);
   const authTenantId = useSelector(s => s.auth.user?.tenantId || '');
   const authRole = useSelector(s => s.auth.role || '');
   const authGrants = useSelector(s => s.auth.grants || []);
+  const authUserBranchId = useSelector(s => s.auth.user?.branchId || '');
+  const authAssignedBranches = useSelector(s => s.auth.user?.assignedBranches ?? 'all');
   const clientAppName = settings?.clientAppName;
   const appName = settings?.appName;
   const clientLogoUrl = settings?.clientLogoUrl;
@@ -516,6 +519,25 @@ function App() {
     const g = (userGrants && userName) ? (userGrants[userName] || []) : [];
     dispatch(setGrants(filterGrantsByTenantFlags(Array.isArray(g) ? g : [], settings)));
   }, [authInitialized, isAuthed, settings, settings?.userGrants, userName, dispatch]);
+  useEffect(() => {
+    if (!authInitialized || !isAuthed) return;
+    const roleLower = String(authRole || '').toLowerCase();
+    const canChangeBranch = ['admin', 'manager', 'branch manager', 'superadmin'].includes(roleLower);
+    if (canChangeBranch) return;
+    const assigned = authAssignedBranches;
+    const assignedIds = assigned === 'all'
+      ? []
+      : (Array.isArray(assigned) ? assigned : [assigned]).map(v => String(v || '').trim()).filter(Boolean);
+    const allowedIds = new Set([
+      String(authUserBranchId || '').trim(),
+      ...assignedIds
+    ].filter(Boolean));
+    if (allowedIds.size === 0) return;
+    const current = String(currentBranchId || '').trim();
+    if (current && allowedIds.has(current)) return;
+    const nextBranchId = String(authUserBranchId || '').trim() || assignedIds[0] || '';
+    if (nextBranchId) dispatch(setCurrentBranch(nextBranchId));
+  }, [authAssignedBranches, authInitialized, authRole, authUserBranchId, currentBranchId, dispatch, isAuthed]);
   useEffect(() => {
     let alive = true;
     const idleMs = 180000;

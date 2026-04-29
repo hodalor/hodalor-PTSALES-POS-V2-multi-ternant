@@ -13,12 +13,24 @@ function BranchSelect({ value, onChange, enforceRole = true, rolesAllowed = ['Ad
     return branches.filter(b => ids.has(b.id));
   }, [roleLower, assigned, branches]);
   const canChange = !enforceRole || rolesAllowed.includes(auth.role) || (includeSuperAdmin && roleLower === 'superadmin');
-  const effValue = (enforceRole && !canChange) ? currentBranchId : (value ?? currentBranchId);
+  const requestedValue = value ?? currentBranchId;
+  const normalizedRequestedValue = includeAll && String(requestedValue || '').toLowerCase() === 'all' ? '' : requestedValue;
+  const allowedIds = new Set(allowedBranches.map(b => String(b.id)));
+  const fallbackValue = includeAll ? '' : (allowedBranches[0]?.id || '');
+  const fixedValue = allowedIds.has(String(currentBranchId || '')) ? currentBranchId : (allowedBranches[0]?.id || '');
+  const effValue = (enforceRole && !canChange)
+    ? fixedValue
+    : ((includeAll && String(normalizedRequestedValue || '') === '') || allowedIds.has(String(normalizedRequestedValue || ''))
+      ? normalizedRequestedValue
+      : fallbackValue);
   useEffect(() => {
-    const allowedIds = new Set(allowedBranches.map(b => b.id));
-    if (includeAll) allowedIds.add('');
-    if (!allowedIds.has(effValue) && allowedBranches[0] && onChange) {
-      onChange(allowedBranches[0].id);
+    const nextAllowedIds = new Set(allowedBranches.map(b => String(b.id)));
+    if (includeAll) {
+      nextAllowedIds.add('');
+      nextAllowedIds.add('all');
+    }
+    if (!nextAllowedIds.has(String(effValue || '')) && onChange) {
+      onChange(includeAll ? '' : (allowedBranches[0]?.id || ''));
     }
   }, [effValue, allowedBranches, onChange, includeAll]);
   return (

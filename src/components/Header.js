@@ -39,7 +39,7 @@ function Header({ onToggleSidebar }) {
     const assignedIds = assigned === 'all'
       ? []
       : (Array.isArray(assigned) ? assigned : [assigned]).map(v => String(v || '').trim()).filter(Boolean);
-    const preferredIds = [currentBranchId, auth.user?.branchId, ...assignedIds].map(v => String(v || '').trim()).filter(Boolean);
+    const preferredIds = [auth.user?.branchId, ...assignedIds, currentBranchId].map(v => String(v || '').trim()).filter(Boolean);
     for (const id of preferredIds) {
       const match = (branches || []).find(branch => String(branch.id) === id);
       if (match?.name) return match.name;

@@ -87,6 +87,15 @@ function TransfersPage() {
     branches.forEach(b => map.set(b.id, b.name));
     return map;
   }, [branches]);
+  const branchTypeById = useMemo(() => {
+    const map = new Map();
+    branches.forEach(branch => map.set(String(branch.id), String(branch.branchType || 'retail').toLowerCase()));
+    return map;
+  }, [branches]);
+  function inventoryTypeForBranch(branchId) {
+    const kind = String(branchTypeById.get(String(branchId)) || 'retail').toLowerCase();
+    return kind === 'warehouse' ? 'warehouse' : kind === 'wholesale' ? 'wholesale' : 'retail';
+  }
   const selectedProduct = useMemo(() => products.find(p => p.id === productId) || null, [productId, products]);
   const filteredProducts = useMemo(() => {
     const term = String(productQuery || '').trim().toLowerCase();
@@ -349,7 +358,7 @@ function TransfersPage() {
           productId,
           variantId,
           branchId: fromId,
-          inventoryType: 'retail',
+          inventoryType: inventoryTypeForBranch(fromId),
           status: 'in_stock',
           query: serializedUnitsQuery,
           pageSize: 50
@@ -366,7 +375,7 @@ function TransfersPage() {
       }
     }
     run();
-  }, [fromId, productId, selectedTrackType, serializedUnitsQuery, toast, variantId]);
+  }, [fromId, productId, selectedTrackType, serializedUnitsQuery, toast, variantId, branchTypeById]);
 
   useEffect(() => {
     let alive = true;
@@ -418,8 +427,8 @@ function TransfersPage() {
         const nextStatus = String(response?.status || '');
         dispatch(approveTransfer({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark, nextStatus }));
         if (nextStatus === 'approved') {
-          dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.from, delta: -Number(r.qty || 0) }));
-          dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.to, delta: Number(r.qty || 0) }));
+          dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.from, delta: -Number(r.qty || 0), inventoryType: inventoryTypeForBranch(r.from) }));
+          dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.to, delta: Number(r.qty || 0), inventoryType: inventoryTypeForBranch(r.to) }));
           void refreshAffectedProducts(dispatch, [r.productId]);
           toast.show('Transfer approved and stock updated', { type: 'success' });
         } else {
