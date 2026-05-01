@@ -1,8 +1,10 @@
 import Audit from '../models/Audit.js';
 import Approval from '../models/Approval.js';
+import CashReconciliation from '../models/CashReconciliation.js';
 import CreditRepayment from '../models/CreditRepayment.js';
 import CreditSale from '../models/CreditSale.js';
 import Product from '../models/Product.js';
+import ReconciliationAccount from '../models/ReconciliationAccount.js';
 import WholesaleOperation from '../models/WholesaleOperation.js';
 import mongoose from 'mongoose';
 import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from './inventory.js';
@@ -19,13 +21,13 @@ function productQuery(productId) {
 export function canApproveDirector(user) {
   const role = String(user?.role || '').toLowerCase();
   const grants = Array.isArray(user?.grants) ? user.grants : [];
-  return ['admin', 'superadmin', 'director'].includes(role) || grants.includes('approve_wholesale_director') || grants.includes('approve_credit_director');
+  return ['admin', 'superadmin', 'director'].includes(role) || grants.includes('approve_wholesale_director') || grants.includes('approve_credit_director') || grants.includes('approve_finance_reconciliation_director');
 }
 
 export function canApproveManager(user) {
   const role = String(user?.role || '').toLowerCase();
   const grants = Array.isArray(user?.grants) ? user.grants : [];
-  return ['manager', 'admin', 'superadmin'].includes(role) || grants.includes('approve_wholesale_manager') || grants.includes('approve_credit_manager');
+  return ['manager', 'admin', 'superadmin'].includes(role) || grants.includes('approve_wholesale_manager') || grants.includes('approve_credit_manager') || grants.includes('approve_finance_reconciliation_manager');
 }
 
 async function applyWholesaleOperation(operation, actor) {
@@ -265,6 +267,52 @@ async function applyCreditRepayment(repayment, actor) {
   });
 }
 
+async function applyCashReconciliation(reconciliation, actor) {
+  if (!reconciliation) {
+    const err = new Error('Cash reconciliation not found');
+    err.status = 400;
+    throw err;
+  }
+  if (reconciliation.executed || String(reconciliation.status || '').toLowerCase() === 'approved') return;
+  const allocations = Array.isArray(reconciliation.allocations) ? reconciliation.allocations : [];
+  if (allocations.length === 0) {
+    const err = new Error('No reconciliation allocations found');
+    err.status = 400;
+    throw err;
+  }
+  const accountIds = Array.from(new Set(allocations.map((item) => String(item.accountId || '')).filter(Boolean)));
+  const accounts = accountIds.length > 0 ? await ReconciliationAccount.find({ _id: { $in: accountIds } }) : [];
+  const accountMap = new Map(accounts.map((account) => [String(account._id), account]));
+  for (const allocation of allocations) {
+    const account = accountMap.get(String(allocation.accountId || ''));
+    if (!account) {
+      const err = new Error('Selected reconciliation account not found');
+      err.status = 400;
+      throw err;
+    }
+    account.balance = Number(account.balance || 0) + Number(allocation.amount || 0);
+    account.updatedByName = actor?.name || 'unknown';
+    await account.save();
+  }
+  reconciliation.status = 'approved';
+  reconciliation.executed = true;
+  reconciliation.approvedAt = new Date();
+  await reconciliation.save();
+  await Audit.create({
+    actor: actor?.name || 'unknown',
+    actionType: 'cash_reconciliation_approved',
+    details: {
+      reconciliationId: String(reconciliation._id),
+      branchId: reconciliation.branchId || '',
+      depositedAmount: Number(reconciliation.depositedAmount || 0),
+      selectedDates: reconciliation.selectedDates || [],
+      allocationCount: allocations.length
+    },
+    branchId: reconciliation.branchId || '',
+    ts: new Date()
+  });
+}
+
 export async function executeApprovedReference(approval, actor) {
   if (!approval) return null;
   if (approval.referenceModel === 'WholesaleOperation') {
@@ -275,6 +323,10 @@ export async function executeApprovedReference(approval, actor) {
     const repayment = await CreditRepayment.findById(approval.referenceId);
     if (!repayment) throw new Error('Credit repayment not found');
     await applyCreditRepayment(repayment, actor);
+  } else if (approval.referenceModel === 'CashReconciliation') {
+    const reconciliation = await CashReconciliation.findById(approval.referenceId);
+    if (!reconciliation) throw new Error('Cash reconciliation not found');
+    await applyCashReconciliation(reconciliation, actor);
   } else {
     throw new Error('Unsupported approval reference');
   }
@@ -289,6 +341,11 @@ export async function syncReferenceStatus(referenceModel, referenceId, status, e
     await WholesaleOperation.findByIdAndUpdate(referenceId, { status, ...extra });
   } else if (referenceModel === 'CreditRepayment') {
     await CreditRepayment.findByIdAndUpdate(referenceId, { status, ...extra });
+  } else if (referenceModel === 'CashReconciliation') {
+    const update = { status, ...extra };
+    if (status === 'rejected' && !update.rejectedAt) update.rejectedAt = new Date();
+    if (status === 'approved' && !update.approvedAt) update.approvedAt = new Date();
+    await CashReconciliation.findByIdAndUpdate(referenceId, update);
   }
 }
 

@@ -21,6 +21,8 @@ import approvals from './approvals.js';
 import wholesale from './wholesale.js';
 import credits from './credits.js';
 import productUnits from './productUnits.js';
+import reconciliationAccounts from './reconciliationAccounts.js';
+import cashReconciliations from './cashReconciliations.js';
 import tenants from './tenants.js';
 
 const router = Router();
@@ -46,6 +48,8 @@ router.use('/approvals', approvals);
 router.use('/wholesale', wholesale);
 router.use('/credits', credits);
 router.use('/product-units', productUnits);
+router.use('/reconciliation-accounts', reconciliationAccounts);
+router.use('/cash-reconciliations', cashReconciliations);
 router.use('/tenants', tenants);
 
 export default router;
