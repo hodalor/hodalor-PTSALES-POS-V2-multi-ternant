@@ -35,7 +35,7 @@ function DashboardPage() {
   const [warehousePending, setWarehousePending] = useState(0);
   const [wholesalePending, setWholesalePending] = useState(0);
   const todayIso = new Date().toISOString().slice(0, 10);
-  const defaultFromIso = new Date(Date.now() - 29 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+  const defaultFromIso = todayIso;
   const [periodMode, setPeriodMode] = useState('range');
   const [dateFrom, setDateFrom] = useState(defaultFromIso);
   const [dateTo, setDateTo] = useState(todayIso);
@@ -63,12 +63,18 @@ function DashboardPage() {
     if (canUseScopedDashboardBranches) return branches.filter((branch) => allowedDashboardBranchIdSet.has(String(branch.id || '').trim()));
     return branches.filter((branch) => String(branch.id || '').trim() === String(settings.currentBranchId || '').trim());
   }, [allowedDashboardBranchIdSet, branches, canUseScopedDashboardBranches, canViewBranchCompetitionAll, canViewCashierCompetitionAll, settings.currentBranchId]);
+  const defaultDashboardBranchId = useMemo(() => {
+    const current = String(settings.currentBranchId || '').trim();
+    if (current && (allowedDashboardBranchIdSet.has(current) || branches.some((branch) => String(branch.id || '').trim() === current))) {
+      return current;
+    }
+    return allowedDashboardBranchIds[0] || '';
+  }, [allowedDashboardBranchIdSet, allowedDashboardBranchIds, branches, settings.currentBranchId]);
   const [branchId, setBranchId] = useState(() => (
-    isPrivilegedDashboardViewer || canUseScopedDashboardBranches
-      ? ''
-      : (settings.currentBranchId || '')
+    defaultDashboardBranchId
   ));
   const dashboardScopeModeRef = useRef('');
+  const dashboardBranchInitRef = useRef(false);
 
   useEffect(() => {
     const nextScopeMode = isPrivilegedDashboardViewer
@@ -76,20 +82,21 @@ function DashboardPage() {
       : (canUseScopedDashboardBranches ? 'scoped' : 'current');
     if (dashboardScopeModeRef.current !== nextScopeMode) {
       dashboardScopeModeRef.current = nextScopeMode;
-      setBranchId(nextScopeMode === 'current' ? (settings.currentBranchId || '') : '');
+      dashboardBranchInitRef.current = true;
+      setBranchId(defaultDashboardBranchId);
       return;
     }
-    if (isPrivilegedDashboardViewer) return;
-    if (!canUseScopedDashboardBranches) {
-      setBranchId(settings.currentBranchId || '');
+    if (!defaultDashboardBranchId) return;
+    if (!dashboardBranchInitRef.current) {
+      dashboardBranchInitRef.current = true;
+      setBranchId((prev) => prev || defaultDashboardBranchId);
       return;
     }
     const current = String(branchId || '').trim();
-    if (!current) return;
-    if (!allowedDashboardBranchIdSet.has(current)) {
-      setBranchId(allowedDashboardBranchIds[0] || settings.currentBranchId || '');
+    if (current !== String(defaultDashboardBranchId || '').trim() && !allowedDashboardBranchIdSet.has(current) && !branches.some((branch) => String(branch.id || '').trim() === current)) {
+      setBranchId(defaultDashboardBranchId);
     }
-  }, [allowedDashboardBranchIdSet, allowedDashboardBranchIds, branchId, canUseScopedDashboardBranches, isPrivilegedDashboardViewer, settings.currentBranchId]);
+  }, [allowedDashboardBranchIdSet, branchId, branches, canUseScopedDashboardBranches, defaultDashboardBranchId, isPrivilegedDashboardViewer]);
 
   const inRange = useCallback((iso) => {
     if (periodMode === 'all_time') return true;
@@ -101,15 +108,13 @@ function DashboardPage() {
   }, [dateFrom, dateTo, periodMode]);
   const matchBranch = useCallback((value) => {
     const key = String(value || '').trim();
-    if (canViewCashierCompetitionAll || canViewBranchCompetitionAll) {
-      if (!branchId) return true;
-      return key === String(branchId || '').trim();
-    }
-    if (canUseScopedDashboardBranches) {
-      if (!branchId) return allowedDashboardBranchIdSet.has(key);
-      return key === String(branchId || '').trim();
-    }
-    return key === String(settings.currentBranchId || '').trim();
+    return key === String(branchId || '').trim();
+  }, [branchId]);
+  const matchCompetitionBranch = useCallback((value) => {
+    const key = String(value || '').trim();
+    if (canViewCashierCompetitionAll || canViewBranchCompetitionAll) return true;
+    if (canUseScopedDashboardBranches) return allowedDashboardBranchIdSet.has(key);
+    return key === String(branchId || settings.currentBranchId || '').trim();
   }, [allowedDashboardBranchIdSet, branchId, canUseScopedDashboardBranches, canViewBranchCompetitionAll, canViewCashierCompetitionAll, settings.currentBranchId]);
 
   useEffect(() => {
@@ -184,6 +189,7 @@ function DashboardPage() {
 
   const metrics = useMemo(() => {
     const sourceSales = sales.filter((s) => matchBranch(s.branchId) && inRange(s.created_at));
+    const competitionSales = sales.filter((s) => matchCompetitionBranch(s.branchId) && inRange(s.created_at));
     const branchNameById = new Map(branches.map((branch) => [String(branch.id), branch.name || branch.code || branch.id]));
     let todayTotal = 0;
     let todayProfit = 0;
@@ -208,25 +214,6 @@ function DashboardPage() {
       });
       todayTotal += sale.total;
       todayProfit += Number(sale.profitTotal || 0);
-      const seller = sale.sellerName || 'Unknown';
-      const saleBranchId = String(sale.branchId || '').trim();
-      const saleBranchName = branchNameById.get(saleBranchId) || sale.branchName || saleBranchId || '—';
-      const cashierKey = `${saleBranchId}::${seller}`;
-      if (!cashierMap.has(cashierKey)) {
-        cashierMap.set(cashierKey, {
-          key: cashierKey,
-          branchId: saleBranchId,
-          branchName: saleBranchName,
-          seller,
-          sales: 0,
-          revenue: 0,
-          profit: 0
-        });
-      }
-      const cashierRow = cashierMap.get(cashierKey);
-      cashierRow.sales += 1;
-      cashierRow.revenue += Number(sale.total || 0);
-      cashierRow.profit += Number(sale.profitTotal || 0);
       const customerId = String(sale.customerId || '').trim();
       const customerCode = String(sale.customerCode || '').trim();
       const customerName = String(sale.customerName || '').trim();
@@ -278,6 +265,27 @@ function DashboardPage() {
           if (customerRow) customerRow.products += qty;
         }
       }
+    }
+    for (const sale of competitionSales) {
+      const seller = sale.sellerName || 'Unknown';
+      const saleBranchId = String(sale.branchId || '').trim();
+      const saleBranchName = branchNameById.get(saleBranchId) || sale.branchName || saleBranchId || '—';
+      const cashierKey = `${saleBranchId}::${seller}`;
+      if (!cashierMap.has(cashierKey)) {
+        cashierMap.set(cashierKey, {
+          key: cashierKey,
+          branchId: saleBranchId,
+          branchName: saleBranchName,
+          seller,
+          sales: 0,
+          revenue: 0,
+          profit: 0
+        });
+      }
+      const cashierRow = cashierMap.get(cashierKey);
+      cashierRow.sales += 1;
+      cashierRow.revenue += Number(sale.total || 0);
+      cashierRow.profit += Number(sale.profitTotal || 0);
     }
     const filteredDates = sourceSales.map((sale) => new Date(sale.created_at).getTime()).filter((ts) => !Number.isNaN(ts)).sort((a, b) => a - b);
     const start = periodMode === 'all_time'
@@ -356,7 +364,7 @@ function DashboardPage() {
     };
     const barOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, indexAxis: 'y' };
     const cashierRows = Array.from(cashierMap.values()).sort((a, b) => b.revenue - a.revenue);
-    const multiBranchCashierView = !branchId;
+    const multiBranchCashierView = new Set(cashierRows.map((row) => String(row.branchId || '').trim()).filter(Boolean)).size > 1;
     const cashierTop = cashierRows.slice(0, 6);
     const cashierBar = {
       labels: cashierTop.map((row) => (multiBranchCashierView ? `${row.branchName} • ${row.seller}` : row.seller)),
@@ -376,7 +384,7 @@ function DashboardPage() {
     const topProfitProducts = Array.from(productProfit.values()).sort((a, b) => b.profit - a.profit).slice(0, 10);
 
     return { todayTotal, todayProfit, itemsSold, transactionCount: sourceSales.length, lineData, paymentBar, doughData, topBar, stackedOptions, lineOptions, barOptions, cashierBar, last30Revenue, last30Profit, last30Cost, marginPct, cashierLeaderboard, customerLeaderboardByAmount, customerLeaderboardByProducts, topProfitProducts, multiBranchCashierView };
-  }, [sales, products, branches, branchId, dateFrom, dateTo, inRange, matchBranch, defaultFromIso, todayIso, periodMode]);
+  }, [sales, products, branches, branchId, dateFrom, dateTo, inRange, matchBranch, matchCompetitionBranch, defaultFromIso, todayIso, periodMode, canUseScopedDashboardBranches, canViewBranchCompetitionAll, canViewCashierCompetitionAll]);
 
   const finance = useMemo(() => {
     const expenseTotal = expenses.reduce((s, x) => s + (Number(x.amount) || 0), 0);
@@ -402,7 +410,7 @@ function DashboardPage() {
     const byId = new Map(branches.map(b => [String(b.id), b.name || b.code || b.id]));
     const map = new Map();
     for (const s of sales) {
-      if (!inRange(s.created_at) || !matchBranch(s.branchId)) continue;
+      if (!inRange(s.created_at) || !matchCompetitionBranch(s.branchId)) continue;
       const key = String(s.branchId || '');
       if (!map.has(key)) map.set(key, { branchId: key, name: byId.get(key) || key, revenue: 0, profit: 0, sales: 0 });
       const row = map.get(key);
@@ -411,7 +419,7 @@ function DashboardPage() {
       row.sales += 1;
     }
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
-  }, [sales, branches, inRange, matchBranch, canViewBranchCompetitionAssigned, canViewBranchCompetitionAll]);
+  }, [sales, branches, inRange, matchCompetitionBranch, canViewBranchCompetitionAssigned, canViewBranchCompetitionAll]);
   const customerLeaderboard = useMemo(() => (
     customerLeaderboardMode === 'products'
       ? metrics.customerLeaderboardByProducts
