@@ -98,6 +98,15 @@ function AdjustmentsPage() {
     branches.forEach(b => map.set(b.id, b.name || b.code || b.id));
     return map;
   }, [branches]);
+  const branchTypeById = useMemo(() => {
+    const map = new Map();
+    branches.forEach(branch => map.set(String(branch.id), String(branch.branchType || 'retail').toLowerCase()));
+    return map;
+  }, [branches]);
+  function inventoryTypeForBranch(targetBranchId) {
+    const kind = String(branchTypeById.get(String(targetBranchId)) || 'retail').toLowerCase();
+    return kind === 'warehouse' ? 'warehouse' : kind === 'wholesale' ? 'wholesale' : 'retail';
+  }
   useEffect(() => { setFBranch(currentBranchId); }, [currentBranchId]);
   useEffect(() => { if (roleLower !== 'superadmin' && roleLower !== 'admin') setFBranch(branchId); }, [roleLower, branchId]);
   useEffect(() => {
@@ -800,8 +809,18 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
         const next = response?.request || response;
         const nextStatus = String(next?.status || '');
         if (nextStatus === 'approved') {
-          dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.branchId, delta: Number(r.delta || 0) }));
-          void refreshAffectedProducts(dispatch, [r.productId]);
+          const approvedItems = Array.isArray(next?.items) && next.items.length > 0 ? next.items : (Array.isArray(r.items) ? r.items : []);
+          approvedItems.forEach((item) => {
+            if (String(item?.status || '').toLowerCase() === 'cancelled') return;
+            dispatch(adjustStock({
+              productId: item.productId,
+              variantId: item.variantId || undefined,
+              branchId: next.branchId || r.branchId,
+              delta: Number(item.delta || 0),
+              inventoryType: inventoryTypeForBranch(next.branchId || r.branchId)
+            }));
+          });
+          void refreshAffectedProducts(dispatch, Array.from(new Set(approvedItems.map((item) => item?.productId).filter(Boolean))));
           toast.show('Adjustment approved and stock updated', { type: 'success' });
           setRequests(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, ...next } : x));
         } else {
