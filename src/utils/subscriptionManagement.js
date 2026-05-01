@@ -1,6 +1,6 @@
 import { modelFor as SettingsModelFor } from '../models/Settings.js';
 import { modelFor as TenantModelFor } from '../models/Tenant.js';
-import { ALL_FEATURES, PLAN_FEATURES } from '../config/tenantAccess.js';
+import { ALL_FEATURES, PLAN_FEATURES, normalizeFeatureList } from '../config/tenantAccess.js';
 
 const SUBSCRIPTION_MANAGEMENT_KEY = 'subscription_management';
 
@@ -57,7 +57,8 @@ function normalizePlan(plan = {}, existingKeys = new Set()) {
   existingKeys.add(key);
   const label = String(plan.label || key).trim() || key;
   const monthlyAmount = plan.monthlyAmount === '' || plan.monthlyAmount == null ? 0 : roundMoney(plan.monthlyAmount);
-  const features = Array.isArray(plan.features) ? plan.features.map((item) => String(item || '').trim()).filter((item) => ALL_FEATURES.includes(item)) : [];
+  const rawFeatures = Array.isArray(plan.features) ? plan.features.map((item) => String(item || '').trim()).filter((item) => ALL_FEATURES.includes(item)) : [];
+  const features = normalizeFeatureList(key, rawFeatures);
   return { key, label, monthlyAmount, features };
 }
 

@@ -1,5 +1,5 @@
 export const TENANT_GRANT_KEYS = [
-  'view_dashboard', 'view_pos', 'view_wholesale_pos', 'view_retail_price', 'view_wholesale_price',
+  'view_dashboard', 'view_dashboard_cashier_assigned', 'view_dashboard_cashier_all', 'view_dashboard_branch_comparison_assigned', 'view_dashboard_branch_comparison_all', 'view_pos', 'view_wholesale_pos', 'view_retail_price', 'view_wholesale_price',
   'view_agent_price', 'view_sales', 'add_sales', 'view_products', 'view_distribution_products', 'view_warehouse_products', 'add_products', 'edit_products',
   'view_inventory', 'edit_inventory', 'view_serialized_inventory', 'view_labels', 'view_purchases',
   'add_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers',
@@ -15,6 +15,13 @@ export const TENANT_GRANT_KEYS = [
 ];
 
 export const GRANT_FEATURE_KEYS = TENANT_GRANT_KEYS.map((key) => `grants.${key}`);
+
+const DASHBOARD_SCOPE_FEATURES = [
+  'grants.view_dashboard_cashier_assigned',
+  'grants.view_dashboard_cashier_all',
+  'grants.view_dashboard_branch_comparison_assigned',
+  'grants.view_dashboard_branch_comparison_all'
+];
 
 export const ALL_FEATURES = [
   'sections.primary', 'sections.retail', 'sections.distribution', 'sections.warehouse',
@@ -45,7 +52,7 @@ export const PLAN_FEATURES = {
     'modules.customers', 'modules.backup', 'admin.users', 'admin.audit',
     'admin.cashDrawer', 'admin.config', 'features.offlineBackup',
     'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
-    'grants.view_dashboard', 'grants.view_pos', 'grants.view_retail_price', 'grants.view_sales',
+    'grants.view_dashboard', 'grants.view_dashboard_cashier_assigned', 'grants.view_dashboard_cashier_all', 'grants.view_dashboard_branch_comparison_assigned', 'grants.view_dashboard_branch_comparison_all', 'grants.view_pos', 'grants.view_retail_price', 'grants.view_sales',
     'grants.add_sales', 'grants.view_products', 'grants.add_products', 'grants.edit_products',
     'grants.view_inventory', 'grants.edit_inventory', 'grants.view_labels', 'grants.view_purchases',
     'grants.add_purchases', 'grants.view_suppliers', 'grants.add_suppliers', 'grants.view_customers',
@@ -132,6 +139,11 @@ function expandFeatureDependencies(inputKeys = []) {
           changed = true;
         }
       });
+    });
+  }
+  if (expanded.has('modules.dashboard') || expanded.has('grants.view_dashboard')) {
+    DASHBOARD_SCOPE_FEATURES.forEach((key) => {
+      if (ALL_FEATURES.includes(key)) expanded.add(key);
     });
   }
   return expanded;

@@ -6,7 +6,7 @@ import { modelFor as SettingsModelFor } from '../models/Settings.js';
 import { requireAuth, requireFeature, requireRoleOrPerm, requireSuperAdmin } from '../middleware/auth.js';
 import { getMasterConnection, getTenantConnection, getTenantDbName, normalizeTenantId } from '../config/tenancy.js';
 import { hashPin } from '../utils/pin.js';
-import { ALL_FEATURES, featureFlagsFromEnabled } from '../config/tenantAccess.js';
+import { ALL_FEATURES, featureFlagsFromEnabled, normalizeFeatureList } from '../config/tenantAccess.js';
 import { getTenantLimitDefaults, normalizeLimitDefaults, normalizeLimitValue, saveTenantLimitDefaults } from '../utils/tenantLimits.js';
 import { buildRenewalHistoryEntry, ensureTenantActivationCode, normalizeSubscriptionAmount, refreshTenantActivationCode, syncTenantSubscriptionSnapshot } from '../utils/tenantActivation.js';
 import { getPaymentManagementDashboard, savePaymentManagementConfig } from '../utils/paymentManagement.js';
@@ -120,7 +120,13 @@ r.get('/', requireSuperAdmin, async (_req, res) => {
   const rows = await TenantModel.find().sort({ createdAt: -1 });
   const ensured = [];
   for (const row of rows) ensured.push(await ensureTenantActivationCode(master, row));
-  const plain = ensured.map((row) => row?.toObject?.() || row);
+  const plain = ensured.map((row) => {
+    const item = row?.toObject?.() || row;
+    return {
+      ...item,
+      features: normalizeFeatureList(item?.subscriptionPlan, Array.isArray(item?.features) ? item.features : [])
+    };
+  });
   res.json(plain);
 });
 
@@ -226,8 +232,8 @@ r.post('/', requireSuperAdmin, async (req, res) => {
   const planConfig = await resolveSubscriptionPlan(master, subscriptionPlan);
   const plan = String(planConfig?.key || 'basic');
   const enabledFeatures = Array.isArray(features) && features.length > 0
-    ? features.map((item) => String(item || '').trim()).filter((item) => ALL_FEATURES.includes(item))
-    : (Array.isArray(planConfig?.features) ? planConfig.features : []);
+    ? normalizeFeatureList(plan, features.map((item) => String(item || '').trim()).filter((item) => ALL_FEATURES.includes(item)))
+    : normalizeFeatureList(plan, Array.isArray(planConfig?.features) ? planConfig.features : []);
   await wipeTenantDb(tid);
   const doc = await TenantModel.create({
     tenantId: tid,
@@ -289,10 +295,13 @@ r.patch('/:tenantId', requireSuperAdmin, async (req, res) => {
   const planConfig = await resolveSubscriptionPlan(master, patch.subscriptionPlan || before.subscriptionPlan);
   const plan = String(planConfig?.key || before.subscriptionPlan || 'basic');
   const enabledFeatures = Array.isArray(patch.features)
-    ? patch.features.map((item) => String(item || '').trim()).filter((item) => ALL_FEATURES.includes(item))
-    : (Array.isArray(before.features) && before.features.length > 0
+    ? normalizeFeatureList(plan, patch.features.map((item) => String(item || '').trim()).filter((item) => ALL_FEATURES.includes(item)))
+    : normalizeFeatureList(
+      plan,
+      Array.isArray(before.features) && before.features.length > 0
         ? before.features
-        : (Array.isArray(planConfig?.features) ? planConfig.features : []));
+        : (Array.isArray(planConfig?.features) ? planConfig.features : [])
+    );
   const nextPermanent = Object.prototype.hasOwnProperty.call(patch, 'subscriptionPermanent')
     ? !!patch.subscriptionPermanent
     : !!before.subscriptionPermanent;

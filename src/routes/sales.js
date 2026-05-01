@@ -24,6 +24,15 @@ function escapeRegex(text = '') {
   return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function normalizeBranchIds(value) {
+  if (value === 'all') return 'all';
+  return Array.from(new Set(
+    (Array.isArray(value) ? value : [value])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+  ));
+}
+
 function productLookupQuery(productId) {
   const pid = String(productId || '');
   const or = [{ id: pid }];
@@ -33,9 +42,19 @@ function productLookupQuery(productId) {
 
 r.get('/', requireRoleOrPerm(['Admin','Manager','Cashier'], ['view_sales','see_sales']), async (req, res) => {
   const role = String(req.user?.role || '').toLowerCase();
+  const grants = Array.isArray(req.user?.grants) ? req.user.grants : [];
   const query = {};
-  if (role === 'cashier') {
+  const canViewCashierCompetitionAll = grants.includes('view_dashboard_cashier_all') || grants.includes('view_dashboard_branch_comparison_all');
+  const canViewCashierCompetitionAssigned = canViewCashierCompetitionAll || grants.includes('view_dashboard_cashier_assigned') || grants.includes('view_dashboard_branch_comparison_assigned');
+  if (role === 'cashier' && !canViewCashierCompetitionAssigned) {
     query.sellerName = new RegExp(`^${escapeRegex(String(req.user?.name || '').trim())}$`, 'i');
+  }
+  if (role === 'cashier' && canViewCashierCompetitionAssigned && !canViewCashierCompetitionAll) {
+    const assigned = normalizeBranchIds(req.user?.assignedBranches);
+    const branchIds = assigned === 'all'
+      ? normalizeBranchIds(req.user?.branchId)
+      : normalizeBranchIds([req.user?.branchId, ...assigned]);
+    if (branchIds.length > 0) query.branchId = { $in: branchIds };
   }
   if (req.query.branchId) {
     query.branchId = String(req.query.branchId);
