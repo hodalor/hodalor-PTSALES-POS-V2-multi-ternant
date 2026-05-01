@@ -11,6 +11,10 @@ import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import Modal from '../components/Modal';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import InlineSpinner from '../components/InlineSpinner';
+import { Bar } from 'react-chartjs-2';
+import { Chart, BarElement, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
+
+Chart.register(BarElement, CategoryScale, LinearScale, Tooltip, Legend);
 
 function CustomersPage() {
   const customers = useSelector(s => s.customers.customers);
@@ -41,6 +45,9 @@ function CustomersPage() {
   const [bulkAction, setBulkAction] = useState('');
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [customerTypeFilter, setCustomerTypeFilter] = useState('all');
+  const [pageTab, setPageTab] = useState('customers');
+  const [leaderboardMode, setLeaderboardMode] = useState('amount');
+  const [leaderboardTypeFilter, setLeaderboardTypeFilter] = useState('all');
   const purchaseHistoryEnabled = isFeatureEnabled(settings, 'tabs.customerPurchaseHistory');
 
   useEffect(() => {
@@ -136,6 +143,79 @@ function CustomersPage() {
     vip: filtered.filter(c => Boolean(c.vip)).length,
     businessProfiles: filtered.filter(c => String(c.businessName || '').trim() || String(c.registrationNumber || '').trim() || String(c.taxId || '').trim()).length
   }), [filtered]);
+  const customerMetaMap = useMemo(() => {
+    const map = new Map();
+    customers.forEach((customer) => {
+      const idKey = String(customer.id || customer._id || '').trim();
+      const codeKey = String(customer.customerCode || '').trim();
+      const nameKey = String(customer.name || '').trim().toLowerCase();
+      const payload = {
+        id: idKey,
+        customerCode: codeKey,
+        customerType: String(customer.customerType || 'retail').toLowerCase() === 'distribution' ? 'distribution' : 'retail',
+        name: String(customer.name || '').trim()
+      };
+      if (idKey) map.set(`id:${idKey}`, payload);
+      if (codeKey) map.set(`code:${codeKey}`, payload);
+      if (nameKey) map.set(`name:${nameKey}`, payload);
+    });
+    return map;
+  }, [customers]);
+  const customerLeaderboardRows = useMemo(() => {
+    const rows = new Map();
+    sales.forEach((sale) => {
+      const customerId = String(sale.customerId || '').trim();
+      const customerCode = String(sale.customerCode || '').trim();
+      const customerName = String(sale.customerName || '').trim();
+      const fallbackName = customerName || customerCode || customerId;
+      const normalizedFallbackName = fallbackName.toLowerCase();
+      if (!fallbackName || ['walk-in', 'walk in', '-', '—'].includes(normalizedFallbackName)) return;
+      const matched = customerMetaMap.get(`id:${customerId}`) || customerMetaMap.get(`code:${customerCode}`) || customerMetaMap.get(`name:${normalizedFallbackName}`) || null;
+      const customerType = matched?.customerType || 'retail';
+      if (leaderboardTypeFilter !== 'all' && customerType !== leaderboardTypeFilter) return;
+      const key = matched?.id || customerId || customerCode || normalizedFallbackName;
+      if (!rows.has(key)) {
+        rows.set(key, {
+          key,
+          customerName: matched?.name || fallbackName,
+          customerCode: matched?.customerCode || customerCode,
+          customerType,
+          sales: 0,
+          amount: 0,
+          products: 0
+        });
+      }
+      const row = rows.get(key);
+      row.sales += 1;
+      row.amount += Number(sale.total || 0);
+      (Array.isArray(sale.items) ? sale.items : []).forEach((item) => {
+        row.products += Number(item.qty || 0);
+      });
+    });
+    const list = Array.from(rows.values());
+    list.sort((a, b) => (
+      leaderboardMode === 'products'
+        ? (b.products - a.products || b.amount - a.amount || a.customerName.localeCompare(b.customerName))
+        : (b.amount - a.amount || b.products - a.products || a.customerName.localeCompare(b.customerName))
+    ));
+    return list;
+  }, [customerMetaMap, leaderboardMode, leaderboardTypeFilter, sales]);
+  const topCustomerLeaderboardRows = useMemo(() => customerLeaderboardRows.slice(0, 10), [customerLeaderboardRows]);
+  const customerLeaderboardChart = useMemo(() => {
+    const label = leaderboardMode === 'products' ? 'Products Bought' : 'Amount Spent';
+    return {
+      labels: topCustomerLeaderboardRows.map((row) => row.customerName),
+      datasets: [{
+        label,
+        data: topCustomerLeaderboardRows.map((row) => +(leaderboardMode === 'products' ? row.products : row.amount).toFixed(2)),
+        backgroundColor: leaderboardMode === 'products' ? '#0ea5e9' : '#2563eb',
+        borderRadius: 6,
+        maxBarThickness: 28,
+        categoryPercentage: 0.7,
+        barPercentage: 0.8
+      }]
+    };
+  }, [leaderboardMode, topCustomerLeaderboardRows]);
 
   const selected = useMemo(() => {
     if (!selectedId) return null;
@@ -434,6 +514,10 @@ function CustomersPage() {
         </div>
       </div>
       <p>Manage customer profiles and purchase history.</p>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        <button className={pageTab === 'customers' ? 'btn btn-primary' : 'btn'} onClick={() => setPageTab('customers')}>Customers</button>
+        <button className={pageTab === 'leaderboard' ? 'btn btn-primary' : 'btn'} onClick={() => setPageTab('leaderboard')}>Customer Leaderboard</button>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Customers</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.total}</div></div>
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Retail</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.retail}</div></div>
@@ -442,6 +526,105 @@ function CustomersPage() {
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Business Profiles</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.businessProfiles}</div></div>
       </div>
 
+      {pageTab === 'leaderboard' && (
+        <div style={{ display: 'grid', gap: 16 }}>
+          <div className="card" style={{ padding: 16 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+              <div>
+                <h2 style={{ margin: 0 }}>Customer Leaderboard</h2>
+                <div style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+                  Full ranking for all matching customers.
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, minWidth: 'min(100%, 420px)' }}>
+                <label>
+                  <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Rank By</div>
+                  <select className="select" value={leaderboardMode} onChange={e => setLeaderboardMode(e.target.value)}>
+                    <option value="amount">Amount Spent</option>
+                    <option value="products">Products Bought</option>
+                  </select>
+                </label>
+                <label>
+                  <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Customer Type</div>
+                  <select className="select" value={leaderboardTypeFilter} onChange={e => setLeaderboardTypeFilter(e.target.value)}>
+                    <option value="all">All Customers</option>
+                    <option value="retail">Retail Customers</option>
+                    <option value="distribution">Distribution Customers</option>
+                  </select>
+                </label>
+              </div>
+            </div>
+            <div style={{ height: 260 }}>
+              <Bar
+                data={customerLeaderboardChart}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                      callbacks: {
+                        label: (ctx) => {
+                          const raw = ctx.parsed?.y ?? ctx.parsed?.x ?? 0;
+                          if (leaderboardMode === 'products') return `${ctx.label || 'Customer'}: ${raw} products`;
+                          return `${ctx.label || 'Customer'}: ${formatCurrency(raw, settings)}`;
+                        }
+                      }
+                    }
+                  },
+                  scales: {
+                    x: {
+                      ticks: {
+                        autoSkip: false,
+                        maxRotation: 40,
+                        minRotation: 40
+                      },
+                      grid: { display: false }
+                    },
+                    y: {
+                      beginAtZero: true
+                    }
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <div className="card" style={{ padding: 16 }}>
+            <div style={{ color: '#64748b', fontSize: 13, marginBottom: 10 }}>
+              Showing {customerLeaderboardRows.length} ranked customer{customerLeaderboardRows.length === 1 ? '' : 's'}.
+            </div>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th align="left">Rank</th>
+                  <th align="left">Customer</th>
+                  <th align="left">Customer ID</th>
+                  <th align="left">Type</th>
+                  <th align="left">Sales</th>
+                  <th align="left">Products</th>
+                  <th align="left">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {customerLeaderboardRows.map((row, idx) => (
+                  <tr key={row.key}>
+                    <td>{idx + 1}</td>
+                    <td style={{ fontWeight: 700 }}>{row.customerName}</td>
+                    <td>{row.customerCode || '—'}</td>
+                    <td>{row.customerType === 'distribution' ? 'Distribution' : 'Retail'}</td>
+                    <td>{row.sales}</td>
+                    <td>{row.products}</td>
+                    <td>{formatCurrency(row.amount, settings)}</td>
+                  </tr>
+                ))}
+                {customerLeaderboardRows.length === 0 && <tr><td colSpan="7" style={{ padding: 12, color: '#64748b' }}>No ranked customer data</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {pageTab === 'customers' && (
       <div className="card">
         <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
           <input className="input" placeholder="Search by name, phone, email, ID" value={query} onChange={e => setQuery(e.target.value)} style={{ width: '100%' }} />
@@ -516,6 +699,7 @@ function CustomersPage() {
           </tbody>
         </table>
       </div>
+      )}
 
       {modalOpen && (
         <Modal

@@ -22,6 +22,8 @@ function SalesPage() {
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
   const canViewRevenue = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_revenue') || grants.includes('view_financials');
   const canViewProfit = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_profit') || grants.includes('view_financials');
+  const canViewCashierCompetitionAll = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_dashboard_cashier_all') || grants.includes('view_dashboard_branch_comparison_all');
+  const canViewCashierCompetitionAssigned = canViewCashierCompetitionAll || grants.includes('view_dashboard_cashier_assigned') || grants.includes('view_dashboard_branch_comparison_assigned');
   const toast = useToast();
   const canSeeAll = roleLower === 'admin' || roleLower === 'superadmin';
   const canDeleteSales = roleLower === 'superadmin';
@@ -70,18 +72,35 @@ function SalesPage() {
   function branchLabel(sale) {
     return sale.branchName || (branches.find(b => b.id === sale.branchId)?.name || sale.branchId || '-');
   }
+  const canUseCompetitionScope = canViewCashierCompetitionAssigned;
+  const competitionAllowedBranchIds = useMemo(() => {
+    if (canViewCashierCompetitionAll) return (branches || []).map((branch) => String(branch.id || '')).filter(Boolean);
+    return allowedBranches.map((branch) => String(branch.id || '')).filter(Boolean);
+  }, [allowedBranches, branches, canViewCashierCompetitionAll]);
+  const competitionAllowedBranchIdSet = useMemo(() => new Set(competitionAllowedBranchIds), [competitionAllowedBranchIds]);
   const filteredByBranch = useMemo(() => {
     let list = sales;
+    if (tab === 'leaderboard' || tab === 'branches') {
+      if (selectedBranchId) {
+        list = list.filter(sale => String(sale.branchId || '') === String(selectedBranchId));
+      } else if (canUseCompetitionScope) {
+        list = list.filter(sale => competitionAllowedBranchIdSet.has(String(sale.branchId || '')));
+      } else {
+        const scoped = sales.filter(sale => String(sale.branchId || '') === String(effectiveBranchId || ''));
+        list = scoped.length > 0 ? scoped : sales;
+      }
+      return list;
+    }
     if (!(canSeeAll && showAll)) {
       const scoped = sales.filter(sale => String(sale.branchId || '') === String(effectiveBranchId || ''));
       list = scoped.length > 0 ? scoped : sales;
     }
     if (selectedBranchId) list = list.filter(sale => String(sale.branchId || '') === String(selectedBranchId));
     return list;
-  }, [canSeeAll, effectiveBranchId, sales, selectedBranchId, showAll]);
+  }, [canSeeAll, canUseCompetitionScope, competitionAllowedBranchIdSet, effectiveBranchId, sales, selectedBranchId, showAll, tab]);
   const filteredSales = useMemo(() => {
     let list = filteredByBranch;
-    if (roleLower === 'cashier') {
+    if (roleLower === 'cashier' && !canUseCompetitionScope) {
       const me = String(auth.user?.name || '').trim().toLowerCase();
       list = list.filter(s => String(s.sellerName || '').trim().toLowerCase() === me);
     }
@@ -106,7 +125,7 @@ function SalesPage() {
       list = list.filter(s => String(s.posType || 'retail') === 'wholesale' && Array.isArray(s.payment_methods) && s.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy'));
     }
     return list;
-  }, [auth.user?.name, creditKind, dateFrom, dateTo, filteredByBranch, periodMode, roleLower, saleKind]);
+  }, [auth.user?.name, canUseCompetitionScope, creditKind, dateFrom, dateTo, filteredByBranch, periodMode, roleLower, saleKind]);
 
   const summary = useMemo(() => {
     const totalRevenue = filteredSales.reduce((sum, sale) => sum + (Number(sale.total) || 0), 0);
@@ -313,8 +332,8 @@ function SalesPage() {
           <label>
             <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Branch</div>
             <select className="select" value={selectedBranchId} onChange={e => setSelectedBranchId(e.target.value)}>
-              <option value="">All Branches</option>
-              {branches.map(branch => <option key={branch.id} value={branch.id}>{branch.name || branch.code || branch.id}</option>)}
+              <option value="">{canViewCashierCompetitionAll ? 'All Branches' : 'Assigned Branches'}</option>
+              {(canViewCashierCompetitionAll ? branches : (canUseCompetitionScope ? allowedBranches : branches)).map(branch => <option key={branch.id} value={branch.id}>{branch.name || branch.code || branch.id}</option>)}
             </select>
           </label>
         </div>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import { formatCurrency } from '../utils/currency';
@@ -18,8 +18,14 @@ function DashboardPage() {
   const auth = useSelector(s => s.auth);
   const roleLower = String(auth.role || '').toLowerCase();
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
+  const isPrivilegedDashboardViewer = roleLower === 'superadmin' || roleLower === 'admin';
   const canViewRevenue = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_revenue') || grants.includes('view_financials');
   const canViewProfit = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_profit') || grants.includes('view_financials');
+  const canViewCashierCompetitionAll = isPrivilegedDashboardViewer || grants.includes('view_dashboard_cashier_all');
+  const canViewCashierCompetitionAssigned = canViewCashierCompetitionAll || grants.includes('view_dashboard_cashier_assigned');
+  const canViewBranchCompetitionAll = isPrivilegedDashboardViewer || grants.includes('view_dashboard_branch_comparison_all');
+  const canViewBranchCompetitionAssigned = canViewBranchCompetitionAll || grants.includes('view_dashboard_branch_comparison_assigned');
+  const canUseScopedDashboardBranches = canViewCashierCompetitionAssigned || canViewBranchCompetitionAssigned;
   const canUseExpenses = isFeatureEnabled(settings, 'modules.expenses') && (
     roleLower === 'superadmin' ||
     roleLower === 'admin' ||
@@ -33,11 +39,57 @@ function DashboardPage() {
   const [periodMode, setPeriodMode] = useState('range');
   const [dateFrom, setDateFrom] = useState(defaultFromIso);
   const [dateTo, setDateTo] = useState(todayIso);
-  const [branchId, setBranchId] = useState((roleLower === 'superadmin' || roleLower === 'admin') ? '' : settings.currentBranchId);
+  const [customerLeaderboardMode, setCustomerLeaderboardMode] = useState('amount');
+  const assignedBranchIds = useMemo(() => {
+    const assigned = auth.user?.assignedBranches;
+    const ids = [
+      String(auth.user?.branchId || '').trim(),
+      ...(assigned === 'all'
+        ? branches.map((branch) => String(branch.id || '').trim())
+        : (Array.isArray(assigned) ? assigned : [assigned]).map((value) => String(value || '').trim()))
+    ].filter(Boolean);
+    return Array.from(new Set(ids));
+  }, [auth.user?.assignedBranches, auth.user?.branchId, branches]);
+  const allowedDashboardBranchIds = useMemo(() => {
+    if (canViewCashierCompetitionAll || canViewBranchCompetitionAll) {
+      return branches.map((branch) => String(branch.id || '').trim()).filter(Boolean);
+    }
+    if (canUseScopedDashboardBranches) return assignedBranchIds;
+    return [String(settings.currentBranchId || '').trim()].filter(Boolean);
+  }, [assignedBranchIds, branches, canUseScopedDashboardBranches, canViewBranchCompetitionAll, canViewCashierCompetitionAll, settings.currentBranchId]);
+  const allowedDashboardBranchIdSet = useMemo(() => new Set(allowedDashboardBranchIds), [allowedDashboardBranchIds]);
+  const dashboardBranchOptions = useMemo(() => {
+    if (canViewCashierCompetitionAll || canViewBranchCompetitionAll) return branches;
+    if (canUseScopedDashboardBranches) return branches.filter((branch) => allowedDashboardBranchIdSet.has(String(branch.id || '').trim()));
+    return branches.filter((branch) => String(branch.id || '').trim() === String(settings.currentBranchId || '').trim());
+  }, [allowedDashboardBranchIdSet, branches, canUseScopedDashboardBranches, canViewBranchCompetitionAll, canViewCashierCompetitionAll, settings.currentBranchId]);
+  const [branchId, setBranchId] = useState(() => (
+    isPrivilegedDashboardViewer || canUseScopedDashboardBranches
+      ? ''
+      : (settings.currentBranchId || '')
+  ));
+  const dashboardScopeModeRef = useRef('');
 
   useEffect(() => {
-    if (!(roleLower === 'superadmin' || roleLower === 'admin')) setBranchId(settings.currentBranchId);
-  }, [roleLower, settings.currentBranchId]);
+    const nextScopeMode = isPrivilegedDashboardViewer
+      ? 'all'
+      : (canUseScopedDashboardBranches ? 'scoped' : 'current');
+    if (dashboardScopeModeRef.current !== nextScopeMode) {
+      dashboardScopeModeRef.current = nextScopeMode;
+      setBranchId(nextScopeMode === 'current' ? (settings.currentBranchId || '') : '');
+      return;
+    }
+    if (isPrivilegedDashboardViewer) return;
+    if (!canUseScopedDashboardBranches) {
+      setBranchId(settings.currentBranchId || '');
+      return;
+    }
+    const current = String(branchId || '').trim();
+    if (!current) return;
+    if (!allowedDashboardBranchIdSet.has(current)) {
+      setBranchId(allowedDashboardBranchIds[0] || settings.currentBranchId || '');
+    }
+  }, [allowedDashboardBranchIdSet, allowedDashboardBranchIds, branchId, canUseScopedDashboardBranches, isPrivilegedDashboardViewer, settings.currentBranchId]);
 
   const inRange = useCallback((iso) => {
     if (periodMode === 'all_time') return true;
@@ -48,10 +100,17 @@ function DashboardPage() {
     return ts >= fromTs && ts <= toTs;
   }, [dateFrom, dateTo, periodMode]);
   const matchBranch = useCallback((value) => {
-    if (!(roleLower === 'superadmin' || roleLower === 'admin')) return String(value || '') === String(settings.currentBranchId || '');
-    if (!branchId) return true;
-    return String(value || '') === String(branchId);
-  }, [roleLower, settings.currentBranchId, branchId]);
+    const key = String(value || '').trim();
+    if (canViewCashierCompetitionAll || canViewBranchCompetitionAll) {
+      if (!branchId) return true;
+      return key === String(branchId || '').trim();
+    }
+    if (canUseScopedDashboardBranches) {
+      if (!branchId) return allowedDashboardBranchIdSet.has(key);
+      return key === String(branchId || '').trim();
+    }
+    return key === String(settings.currentBranchId || '').trim();
+  }, [allowedDashboardBranchIdSet, branchId, canUseScopedDashboardBranches, canViewBranchCompetitionAll, canViewCashierCompetitionAll, settings.currentBranchId]);
 
   useEffect(() => {
     let alive = true;
@@ -63,7 +122,12 @@ function DashboardPage() {
       const to = periodMode === 'all_time' ? undefined : (dateTo || todayIso);
       const from = periodMode === 'all_time' ? undefined : (dateFrom || defaultFromIso);
       try {
-        const list = await expensesApi.list({ branchId: (roleLower === 'superadmin' || roleLower === 'admin') ? (branchId || undefined) : settings.currentBranchId, from, to });
+        const expenseBranchId = isPrivilegedDashboardViewer
+          ? (branchId || undefined)
+          : (canUseScopedDashboardBranches
+            ? (branchId || undefined)
+            : settings.currentBranchId);
+        const list = await expensesApi.list({ branchId: expenseBranchId, from, to });
         if (!alive) return;
         setExpenses(Array.isArray(list) ? list : []);
       } catch {
@@ -72,7 +136,7 @@ function DashboardPage() {
       }
     })();
     return () => { alive = false; };
-  }, [settings.currentBranchId, roleLower, canUseExpenses, branchId, dateFrom, dateTo, todayIso, defaultFromIso, periodMode]);
+  }, [settings.currentBranchId, isPrivilegedDashboardViewer, canUseScopedDashboardBranches, canUseExpenses, branchId, dateFrom, dateTo, todayIso, defaultFromIso, periodMode]);
 
   useEffect(() => {
     let alive = true;
@@ -120,6 +184,7 @@ function DashboardPage() {
 
   const metrics = useMemo(() => {
     const sourceSales = sales.filter((s) => matchBranch(s.branchId) && inRange(s.created_at));
+    const branchNameById = new Map(branches.map((branch) => [String(branch.id), branch.name || branch.code || branch.id]));
     let todayTotal = 0;
     let todayProfit = 0;
     let last30Revenue = 0;
@@ -130,8 +195,8 @@ function DashboardPage() {
     const perDayPayments = {}; // { 'YYYY-MM-DD': { cash: x, card: y, ... } }
     const categoryTotals = {};
     const productUnits = {}; // sku -> qty
-    const cashierTotals = {};
-    const cashierProfit = {};
+    const cashierMap = new Map();
+    const customerMap = new Map();
     const productProfit = new Map();
     for (const sale of sourceSales) {
       const day = new Date(sale.created_at).toISOString().slice(0, 10);
@@ -144,8 +209,46 @@ function DashboardPage() {
       todayTotal += sale.total;
       todayProfit += Number(sale.profitTotal || 0);
       const seller = sale.sellerName || 'Unknown';
-      cashierTotals[seller] = (cashierTotals[seller] || 0) + (sale.total || 0);
-      cashierProfit[seller] = (cashierProfit[seller] || 0) + (Number(sale.profitTotal || 0));
+      const saleBranchId = String(sale.branchId || '').trim();
+      const saleBranchName = branchNameById.get(saleBranchId) || sale.branchName || saleBranchId || '—';
+      const cashierKey = `${saleBranchId}::${seller}`;
+      if (!cashierMap.has(cashierKey)) {
+        cashierMap.set(cashierKey, {
+          key: cashierKey,
+          branchId: saleBranchId,
+          branchName: saleBranchName,
+          seller,
+          sales: 0,
+          revenue: 0,
+          profit: 0
+        });
+      }
+      const cashierRow = cashierMap.get(cashierKey);
+      cashierRow.sales += 1;
+      cashierRow.revenue += Number(sale.total || 0);
+      cashierRow.profit += Number(sale.profitTotal || 0);
+      const customerId = String(sale.customerId || '').trim();
+      const customerCode = String(sale.customerCode || '').trim();
+      const customerName = String(sale.customerName || '').trim();
+      const customerLabel = customerName || customerCode || customerId;
+      const normalizedCustomerLabel = customerLabel.toLowerCase();
+      if (customerLabel && !['walk-in', 'walk in', '—', '-'].includes(normalizedCustomerLabel)) {
+        const customerKey = customerId || customerCode || normalizedCustomerLabel;
+        if (!customerMap.has(customerKey)) {
+          customerMap.set(customerKey, {
+            key: customerKey,
+            customerId,
+            customerCode,
+            customerName: customerLabel,
+            sales: 0,
+            amount: 0,
+            products: 0
+          });
+        }
+        const customerRow = customerMap.get(customerKey);
+        customerRow.sales += 1;
+        customerRow.amount += Number(sale.total || 0);
+      }
       for (const it of sale.items) {
         itemsSold += it.qty;
         const prod = products.find(p => p.sku === it.sku);
@@ -164,6 +267,16 @@ function DashboardPage() {
         row.revenue += qty * price;
         row.cost += qty * (Number.isFinite(cp) ? cp : 0);
         row.profit = row.revenue - row.cost;
+        const customerId = String(sale.customerId || '').trim();
+        const customerCode = String(sale.customerCode || '').trim();
+        const customerName = String(sale.customerName || '').trim();
+        const customerLabel = customerName || customerCode || customerId;
+        const normalizedCustomerLabel = customerLabel.toLowerCase();
+        if (customerLabel && !['walk-in', 'walk in', '—', '-'].includes(normalizedCustomerLabel)) {
+          const customerKey = customerId || customerCode || normalizedCustomerLabel;
+          const customerRow = customerMap.get(customerKey);
+          if (customerRow) customerRow.products += qty;
+        }
       }
     }
     const filteredDates = sourceSales.map((sale) => new Date(sale.created_at).getTime()).filter((ts) => !Number.isNaN(ts)).sort((a, b) => a - b);
@@ -242,20 +355,28 @@ function DashboardPage() {
       scales: { y: { beginAtZero: true } }
     };
     const barOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, indexAxis: 'y' };
-    const cashierTop = Object.entries(cashierTotals).sort((a,b)=>b[1]-a[1]).slice(0,6);
+    const cashierRows = Array.from(cashierMap.values()).sort((a, b) => b.revenue - a.revenue);
+    const multiBranchCashierView = !branchId;
+    const cashierTop = cashierRows.slice(0, 6);
     const cashierBar = {
-      labels: cashierTop.map(x => x[0]),
-      datasets: [{ label: 'Revenue', data: cashierTop.map(x => +(x[1]||0).toFixed(2)), backgroundColor: '#16a34a' }]
+      labels: cashierTop.map((row) => (multiBranchCashierView ? `${row.branchName} • ${row.seller}` : row.seller)),
+      datasets: [{ label: 'Revenue', data: cashierTop.map((row) => +(row.revenue || 0).toFixed(2)), backgroundColor: '#16a34a' }]
     };
-    const cashierLeaderboard = Object.entries(cashierTotals)
-      .map(([seller, revenue]) => ({ seller, revenue: Number(revenue || 0), profit: Number(cashierProfit[seller] || 0) }))
-      .sort((a, b) => b.revenue - a.revenue)
+    const cashierLeaderboard = cashierRows.slice(0, 10);
+    const customerRows = Array.from(customerMap.values());
+    const customerLeaderboardByAmount = customerRows
+      .slice()
+      .sort((a, b) => b.amount - a.amount || b.products - a.products || a.customerName.localeCompare(b.customerName))
+      .slice(0, 10);
+    const customerLeaderboardByProducts = customerRows
+      .slice()
+      .sort((a, b) => b.products - a.products || b.amount - a.amount || a.customerName.localeCompare(b.customerName))
       .slice(0, 10);
 
     const topProfitProducts = Array.from(productProfit.values()).sort((a, b) => b.profit - a.profit).slice(0, 10);
 
-    return { todayTotal, todayProfit, itemsSold, transactionCount: sourceSales.length, lineData, paymentBar, doughData, topBar, stackedOptions, lineOptions, barOptions, cashierBar, last30Revenue, last30Profit, last30Cost, marginPct, cashierLeaderboard, topProfitProducts };
-  }, [sales, products, dateFrom, dateTo, inRange, matchBranch, defaultFromIso, todayIso, periodMode]);
+    return { todayTotal, todayProfit, itemsSold, transactionCount: sourceSales.length, lineData, paymentBar, doughData, topBar, stackedOptions, lineOptions, barOptions, cashierBar, last30Revenue, last30Profit, last30Cost, marginPct, cashierLeaderboard, customerLeaderboardByAmount, customerLeaderboardByProducts, topProfitProducts, multiBranchCashierView };
+  }, [sales, products, branches, branchId, dateFrom, dateTo, inRange, matchBranch, defaultFromIso, todayIso, periodMode]);
 
   const finance = useMemo(() => {
     const expenseTotal = expenses.reduce((s, x) => s + (Number(x.amount) || 0), 0);
@@ -277,13 +398,11 @@ function DashboardPage() {
   }
 
   const branchComparison = useMemo(() => {
-    if (!(roleLower === 'admin' || roleLower === 'superadmin')) return [];
-    const byId = new Map(branches.map(b => [b.id, b.name || b.code || b.id]));
-    const fromTs = Date.now() - 30 * 24 * 3600 * 1000;
+    if (!(canViewBranchCompetitionAssigned || canViewBranchCompetitionAll)) return [];
+    const byId = new Map(branches.map(b => [String(b.id), b.name || b.code || b.id]));
     const map = new Map();
     for (const s of sales) {
-      const ts = new Date(s.created_at).getTime();
-      if (ts < fromTs) continue;
+      if (!inRange(s.created_at) || !matchBranch(s.branchId)) continue;
       const key = String(s.branchId || '');
       if (!map.has(key)) map.set(key, { branchId: key, name: byId.get(key) || key, revenue: 0, profit: 0, sales: 0 });
       const row = map.get(key);
@@ -292,7 +411,27 @@ function DashboardPage() {
       row.sales += 1;
     }
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
-  }, [sales, branches, roleLower]);
+  }, [sales, branches, inRange, matchBranch, canViewBranchCompetitionAssigned, canViewBranchCompetitionAll]);
+  const customerLeaderboard = useMemo(() => (
+    customerLeaderboardMode === 'products'
+      ? metrics.customerLeaderboardByProducts
+      : metrics.customerLeaderboardByAmount
+  ), [customerLeaderboardMode, metrics.customerLeaderboardByAmount, metrics.customerLeaderboardByProducts]);
+  const customerLeaderboardChart = useMemo(() => {
+    const label = customerLeaderboardMode === 'products' ? 'Products Bought' : 'Amount Spent';
+    return {
+      labels: customerLeaderboard.map((row) => row.customerName),
+      datasets: [{
+        label,
+        data: customerLeaderboard.map((row) => +(customerLeaderboardMode === 'products' ? row.products : row.amount).toFixed(2)),
+        backgroundColor: customerLeaderboardMode === 'products' ? '#0ea5e9' : '#2563eb',
+        borderRadius: 6,
+        maxBarThickness: 28,
+        categoryPercentage: 0.7,
+        barPercentage: 0.8
+      }]
+    };
+  }, [customerLeaderboard, customerLeaderboardMode]);
 
   const warehouseStats = useMemo(() => {
     const warehouseBranches = branches.filter(b => String(b.branchType || 'retail').toLowerCase() === 'warehouse');
@@ -363,7 +502,13 @@ function DashboardPage() {
           </label>
           <label>
             <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Branch</div>
-            <BranchSelect value={branchId} onChange={setBranchId} includeAll allLabel="All Branches" />
+            <BranchSelect
+              value={branchId}
+              onChange={setBranchId}
+              includeAll={isPrivilegedDashboardViewer || canUseScopedDashboardBranches}
+              allLabel={canViewCashierCompetitionAll || canViewBranchCompetitionAll ? 'All Branches' : 'Assigned Branches'}
+              overrideBranches={dashboardBranchOptions}
+            />
           </label>
         </div>
       </div>
@@ -393,7 +538,7 @@ function DashboardPage() {
           <div style={{ fontSize: 28, fontWeight: 700 }}>{maskProfit(finance.net)}</div>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, alignItems: 'start' }}>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <h2 style={{ marginTop: 0 }}>Revenue (Selected Range)</h2>
           <div style={{ height: 260 }}>
@@ -419,7 +564,7 @@ function DashboardPage() {
           <Doughnut data={metrics.doughData} />
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginTop: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginTop: 16, alignItems: 'start' }}>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>Revenue</div>
           <div style={{ fontSize: 22, fontWeight: 800 }}>{maskRevenue(metrics.last30Revenue)}</div>
@@ -440,7 +585,7 @@ function DashboardPage() {
           </div>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: 16, marginTop: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: 16, marginTop: 16, alignItems: 'start' }}>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>Wholesale Locations</div>
           <div style={{ fontSize: 28, fontWeight: 700 }}>{wholesaleStats.wholesaleCount}</div>
@@ -473,7 +618,7 @@ function DashboardPage() {
           </table>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: 16, marginTop: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: 16, marginTop: 16, alignItems: 'start' }}>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <div style={{ color: '#64748b' }}>Warehouse Locations</div>
           <div style={{ fontSize: 28, fontWeight: 700 }}>{warehouseStats.warehouseCount}</div>
@@ -506,7 +651,7 @@ function DashboardPage() {
           </table>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16, alignItems: 'start' }}>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <h2 style={{ marginTop: 0 }}>Top Products (Units)</h2>
           <div style={{ height: 220 }}>
@@ -520,6 +665,88 @@ function DashboardPage() {
           </div>
         </div>
       </div>
+      <div style={{ background: '#fff', padding: 16, borderRadius: 12, marginTop: 16 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+          <div>
+            <h2 style={{ margin: 0 }}>Customer Leaderboard (Top 10)</h2>
+            <div style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+              Ranked by the current dashboard filters.
+            </div>
+          </div>
+          <label style={{ minWidth: 220 }}>
+            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Rank By</div>
+            <select className="select" value={customerLeaderboardMode} onChange={e => setCustomerLeaderboardMode(e.target.value)}>
+              <option value="amount">Amount Spent</option>
+              <option value="products">Products Bought</option>
+            </select>
+          </label>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16, alignItems: 'start' }}>
+          <div style={{ height: 280 }}>
+            <Bar
+              data={customerLeaderboardChart}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { display: false },
+                  tooltip: {
+                    callbacks: {
+                      label: (ctx) => {
+                        const raw = ctx.parsed?.y ?? ctx.parsed?.x ?? 0;
+                        if (customerLeaderboardMode === 'products') return `${ctx.label || 'Customer'}: ${raw} products`;
+                        return canViewRevenue ? `${ctx.label || 'Customer'}: ${formatCurrency(raw, settings)}` : `${ctx.label || 'Customer'}: ***`;
+                      }
+                    }
+                  }
+                },
+                scales: {
+                  x: {
+                    ticks: {
+                      autoSkip: false,
+                      maxRotation: 40,
+                      minRotation: 40
+                    },
+                    grid: { display: false }
+                  },
+                  y: {
+                    beginAtZero: true,
+                    ticks: {
+                      callback: (value) => (customerLeaderboardMode === 'products' || canViewRevenue ? value : '***')
+                    }
+                  }
+                }
+              }}
+            />
+          </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="table">
+              <thead>
+                <tr>
+                  <th align="left">#</th>
+                  <th align="left">Customer</th>
+                  <th align="left">Sales</th>
+                  <th align="left">Products</th>
+                  <th align="left">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                {customerLeaderboard.map((row, idx) => (
+                  <tr key={row.key}>
+                    <td>{idx + 1}</td>
+                    <td>{row.customerName}</td>
+                    <td>{row.sales}</td>
+                    <td>{row.products}</td>
+                    <td>{maskRevenue(row.amount)}</td>
+                  </tr>
+                ))}
+                {customerLeaderboard.length === 0 && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>No customer data</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      {(canViewCashierCompetitionAssigned || canViewCashierCompetitionAll) && (
       <div style={{ background: '#fff', padding: 16, borderRadius: 12, marginTop: 16 }}>
         <h2 style={{ marginTop: 0 }}>Cashier Performance (Filtered Revenue)</h2>
         <div style={{ height: 240 }}>
@@ -552,7 +779,8 @@ function DashboardPage() {
           />
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16, alignItems: 'start' }}>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <h2 style={{ marginTop: 0 }}>Product Profitability (Top 10)</h2>
           <table className="table">
@@ -575,32 +803,38 @@ function DashboardPage() {
             </tbody>
           </table>
         </div>
+        {(canViewCashierCompetitionAssigned || canViewCashierCompetitionAll) && (
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
           <h2 style={{ marginTop: 0 }}>Sales Rep Leaderboard (Filtered)</h2>
           <table className="table">
             <thead>
               <tr>
+                {metrics.multiBranchCashierView && <th align="left">Branch</th>}
                 <th align="left">Seller</th>
+                <th align="left">Sales</th>
                 <th align="left">Revenue</th>
                 <th align="left">Profit</th>
               </tr>
             </thead>
             <tbody>
               {metrics.cashierLeaderboard.map(x => (
-                <tr key={x.seller}>
+                <tr key={x.key}>
+                  {metrics.multiBranchCashierView && <td>{x.branchName}</td>}
                   <td>{x.seller}</td>
+                  <td>{x.sales}</td>
                   <td>{maskRevenue(x.revenue)}</td>
                   <td>{maskProfit(x.profit)}</td>
                 </tr>
               ))}
-              {metrics.cashierLeaderboard.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>No data</td></tr>}
+              {metrics.cashierLeaderboard.length === 0 && <tr><td colSpan={metrics.multiBranchCashierView ? 5 : 4} style={{ padding: 12, color: '#64748b' }}>No data</td></tr>}
             </tbody>
           </table>
         </div>
+        )}
       </div>
-      {(roleLower === 'admin' || roleLower === 'superadmin') && (
+      {(canViewBranchCompetitionAssigned || canViewBranchCompetitionAll) && (
         <div style={{ background: '#fff', padding: 16, borderRadius: 12, marginTop: 16 }}>
-          <h2 style={{ marginTop: 0 }}>Branch Comparison (30d)</h2>
+          <h2 style={{ marginTop: 0 }}>Branch Comparison (Filtered)</h2>
           <table className="table">
             <thead>
               <tr>

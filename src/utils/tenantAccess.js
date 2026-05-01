@@ -1,5 +1,9 @@
 export const TENANT_GRANT_CATALOG = [
   { key: 'view_dashboard', label: 'Open Dashboard' },
+  { key: 'view_dashboard_cashier_assigned', label: 'Dashboard Cashier View (Assigned Branches)' },
+  { key: 'view_dashboard_cashier_all', label: 'Dashboard Cashier View (All Branches)' },
+  { key: 'view_dashboard_branch_comparison_assigned', label: 'Dashboard Branch Comparison (Assigned Branches)' },
+  { key: 'view_dashboard_branch_comparison_all', label: 'Dashboard Branch Comparison (All Branches)' },
   { key: 'view_pos', label: 'Use POS' },
   { key: 'view_wholesale_pos', label: 'Use Distribution POS' },
   { key: 'view_retail_price', label: 'See Retail Prices' },
@@ -76,7 +80,7 @@ export const PLAN_DEFAULT_FEATURES = {
     'modules.customers', 'modules.backup', 'admin.users', 'admin.audit',
     'admin.cashDrawer', 'admin.config', 'features.offlineBackup',
     'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
-    'grants.view_dashboard', 'grants.view_pos', 'grants.view_retail_price', 'grants.view_sales',
+    'grants.view_dashboard', 'grants.view_dashboard_cashier_assigned', 'grants.view_dashboard_cashier_all', 'grants.view_dashboard_branch_comparison_assigned', 'grants.view_dashboard_branch_comparison_all', 'grants.view_pos', 'grants.view_retail_price', 'grants.view_sales',
     'grants.add_sales', 'grants.view_products', 'grants.view_distribution_products', 'grants.view_warehouse_products', 'grants.add_products', 'grants.edit_products',
     'grants.view_inventory', 'grants.edit_inventory', 'grants.view_labels', 'grants.view_purchases',
     'grants.add_purchases', 'grants.view_suppliers', 'grants.add_suppliers', 'grants.view_customers',
@@ -153,6 +157,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
     description: 'Top-level sidebar screens that appear on their own.',
     items: [
       { label: 'Dashboard', keys: ['modules.dashboard', 'grants.view_dashboard'] },
+      { label: 'Dashboard Competition Scope', keys: ['modules.dashboard', 'grants.view_dashboard_cashier_assigned', 'grants.view_dashboard_cashier_all', 'grants.view_dashboard_branch_comparison_assigned', 'grants.view_dashboard_branch_comparison_all'] },
       { label: 'Sales', keys: ['modules.sales', 'grants.view_sales', 'grants.add_sales'] },
       { label: 'Invoices', keys: ['modules.invoices'] },
       { label: 'Retail Products', keys: ['modules.products', 'grants.view_products', 'grants.add_products', 'grants.edit_products'] },
@@ -317,7 +322,7 @@ export const TENANT_FEATURE_CATALOG = [
 
   ...TENANT_GRANT_CATALOG.map((item) => {
     let group = 'Permissions / Retail Actions';
-    if (['view_retail_price', 'view_wholesale_price', 'view_agent_price', 'view_revenue', 'view_profit', 'view_financials'].includes(item.key)) {
+    if (['view_retail_price', 'view_wholesale_price', 'view_agent_price', 'view_revenue', 'view_profit', 'view_financials', 'view_dashboard_cashier_assigned', 'view_dashboard_cashier_all', 'view_dashboard_branch_comparison_assigned', 'view_dashboard_branch_comparison_all'].includes(item.key)) {
       group = 'Permissions / Pricing & Visibility';
     } else if (['view_wholesale_pos', 'view_purchases', 'add_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'edit_adjustments', 'approve_adjustments', 'view_credit_control', 'approve_credit_director', 'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_wholesale_director', 'approve_wholesale_manager', 'view_wholesale_invoices', 'view_warehouse_invoices', 'view_warehouse_approvals'].includes(item.key)) {
       group = 'Permissions / Distribution Actions';
