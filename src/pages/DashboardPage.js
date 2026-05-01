@@ -4,6 +4,7 @@ import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import { formatCurrency } from '../utils/currency';
 import { Chart, BarElement, LineElement, PointElement, CategoryScale, LinearScale, ArcElement, Tooltip, Legend, Filler } from 'chart.js';
 import * as expensesApi from '../api/expenses';
+import { getCashReconciliationSummary } from '../api/cashReconciliations';
 import { listOperations } from '../api/wholesale';
 import { isFeatureEnabled } from '../utils/featureFlags';
 import BranchSelect from '../components/BranchSelect';
@@ -26,12 +27,20 @@ function DashboardPage() {
   const canViewBranchCompetitionAll = isPrivilegedDashboardViewer || grants.includes('view_dashboard_branch_comparison_all');
   const canViewBranchCompetitionAssigned = canViewBranchCompetitionAll || grants.includes('view_dashboard_branch_comparison_assigned');
   const canUseScopedDashboardBranches = canViewCashierCompetitionAssigned || canViewBranchCompetitionAssigned;
+  const canUseFinanceReconciliation = isFeatureEnabled(settings, 'modules.finance') && (
+    isPrivilegedDashboardViewer ||
+    grants.includes('view_finance_reconciliation') ||
+    grants.includes('add_finance_reconciliation') ||
+    grants.includes('approve_finance_reconciliation_director') ||
+    grants.includes('approve_finance_reconciliation_manager')
+  );
   const canUseExpenses = isFeatureEnabled(settings, 'modules.expenses') && (
     roleLower === 'superadmin' ||
     roleLower === 'admin' ||
     (Array.isArray(auth.grants) && ['view_expenses', 'see_expenses', 'add_expenses'].some((key) => auth.grants.includes(key)))
   );
   const [expenses, setExpenses] = useState([]);
+  const [financeSummary, setFinanceSummary] = useState({ depositedAmount: 0, awaitingAmount: 0, pendingApprovalAmount: 0, backlogDays: 0 });
   const [warehousePending, setWarehousePending] = useState(0);
   const [wholesalePending, setWholesalePending] = useState(0);
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -73,6 +82,9 @@ function DashboardPage() {
   const [branchId, setBranchId] = useState(() => (
     defaultDashboardBranchId
   ));
+  const financeSummaryBranchId = useMemo(() => (
+    String(branchId || defaultDashboardBranchId || settings.currentBranchId || '').trim()
+  ), [branchId, defaultDashboardBranchId, settings.currentBranchId]);
   const dashboardScopeModeRef = useRef('');
   const dashboardBranchInitRef = useRef(false);
 
@@ -142,6 +154,34 @@ function DashboardPage() {
     })();
     return () => { alive = false; };
   }, [settings.currentBranchId, isPrivilegedDashboardViewer, canUseScopedDashboardBranches, canUseExpenses, branchId, dateFrom, dateTo, todayIso, defaultFromIso, periodMode]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!canUseFinanceReconciliation || !financeSummaryBranchId) {
+        if (alive) setFinanceSummary({ depositedAmount: 0, awaitingAmount: 0, pendingApprovalAmount: 0, backlogDays: 0 });
+        return;
+      }
+      try {
+        const data = await getCashReconciliationSummary({
+          branchId: financeSummaryBranchId,
+          from: periodMode === 'all_time' ? undefined : (dateFrom || defaultFromIso),
+          to: periodMode === 'all_time' ? undefined : (dateTo || todayIso)
+        });
+        if (!alive) return;
+        setFinanceSummary({
+          depositedAmount: Number(data?.depositedAmount || 0),
+          awaitingAmount: Number(data?.awaitingAmount || 0),
+          pendingApprovalAmount: Number(data?.pendingApprovalAmount || 0),
+          backlogDays: Number(data?.backlogDays || 0)
+        });
+      } catch {
+        if (!alive) return;
+        setFinanceSummary({ depositedAmount: 0, awaitingAmount: 0, pendingApprovalAmount: 0, backlogDays: 0 });
+      }
+    })();
+    return () => { alive = false; };
+  }, [canUseFinanceReconciliation, dateFrom, dateTo, defaultFromIso, financeSummaryBranchId, periodMode, todayIso]);
 
   useEffect(() => {
     let alive = true;
@@ -545,6 +585,19 @@ function DashboardPage() {
           <div style={{ color: '#64748b' }}>Net Cashflow</div>
           <div style={{ fontSize: 28, fontWeight: 700 }}>{maskProfit(finance.net)}</div>
         </div>
+        {canUseFinanceReconciliation && (
+        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
+          <div style={{ color: '#64748b' }}>Deposited to Company Account</div>
+          <div style={{ fontSize: 28, fontWeight: 700 }}>{maskRevenue(financeSummary.depositedAmount)}</div>
+        </div>
+        )}
+        {canUseFinanceReconciliation && (
+        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
+          <div style={{ color: '#64748b' }}>Waiting for Deposit</div>
+          <div style={{ fontSize: 28, fontWeight: 700 }}>{maskRevenue(financeSummary.awaitingAmount)}</div>
+          <div style={{ marginTop: 6, color: '#64748b' }}>Backlog days: {financeSummary.backlogDays}</div>
+        </div>
+        )}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, alignItems: 'start' }}>
         <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>

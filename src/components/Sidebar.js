@@ -26,6 +26,7 @@ function Sidebar({ collapsed, onNavigate }) {
   const [warehouseOpen, setWarehouseOpen] = useState(false);
   const [easyBuyOpen, setEasyBuyOpen] = useState(false);
   const [expenseOpen, setExpenseOpen] = useState(false);
+  const [financeOpen, setFinanceOpen] = useState(false);
   const [partnersOpen, setPartnersOpen] = useState(false);
   const [easyBuyOverdue, setEasyBuyOverdue] = useState(0);
   const [easyBuyPendingApprovals, setEasyBuyPendingApprovals] = useState(0);
@@ -68,6 +69,7 @@ function Sidebar({ collapsed, onNavigate }) {
     setWarehouseOpen(group === 'warehouse' ? !warehouseOpen : false);
     setEasyBuyOpen(group === 'credit' ? !easyBuyOpen : false);
     setExpenseOpen(group === 'expense' ? !expenseOpen : false);
+    setFinanceOpen(group === 'finance' ? !financeOpen : false);
     setPartnersOpen(group === 'partners' ? !partnersOpen : false);
   }
   function handleNavClick(event) {
@@ -82,12 +84,14 @@ function Sidebar({ collapsed, onNavigate }) {
     const isWarehouse = ['/warehouse-goods','/warehouse-invoices','/warehouse-purchase','/warehouse-transfer','/warehouse-adjustment','/warehouse-approvals'].some(prefix => path.startsWith(prefix));
     const isCredit = ['/credit-control','/easybuy/'].some(prefix => path.startsWith(prefix));
     const isExpense = ['/expenses','/expense-approvals'].some(prefix => path.startsWith(prefix));
+    const isFinance = ['/cash-reconciliation'].some(prefix => path.startsWith(prefix));
     const isPartners = ['/suppliers','/customers'].some(prefix => path.startsWith(prefix));
     setRetailOpen(isRetail);
     setWholesaleOpen(isDistribution);
     setWarehouseOpen(isWarehouse);
     setEasyBuyOpen(isCredit);
     setExpenseOpen(isExpense);
+    setFinanceOpen(isFinance);
     setPartnersOpen(isPartners);
   }, [location.pathname]);
   useEffect(() => {
@@ -447,6 +451,30 @@ function Sidebar({ collapsed, onNavigate }) {
                   {expensePending}
                 </span>
               )}
+            </NavLink>
+            )}
+          </div>
+          )}
+        </div>
+        )}
+        {(sectionEnabled('sections.finance') && (
+          isFeatureEnabled(settings, 'pages.finance.reconciliation') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_finance_reconciliation','add_finance_reconciliation','approve_finance_reconciliation_director','approve_finance_reconciliation_manager'])
+        )) && (
+        <div>
+          <button className="sidebar-group-toggle" onClick={() => toggleGroup('finance')}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M4 19h16M6 16V9m4 7V5m4 11v-8m4 8v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+              <span className="sidebar-text">Finance</span>
+            </span>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" style={{ transform: financeOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+              <path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="2" />
+            </svg>
+          </button>
+          {financeOpen && (
+          <div className="sidebar-subgroup">
+            {isFeatureEnabled(settings, 'pages.finance.reconciliation') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_finance_reconciliation','add_finance_reconciliation','approve_finance_reconciliation_director','approve_finance_reconciliation_manager']) && (
+            <NavLink to="/cash-reconciliation" className="sidebar-link" title="Cash Reconciliation">
+              <span className="sidebar-text">Cash Reconciliation</span>
             </NavLink>
             )}
           </div>

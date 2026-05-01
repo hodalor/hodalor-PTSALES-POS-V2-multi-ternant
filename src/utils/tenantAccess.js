@@ -56,6 +56,12 @@ export const TENANT_GRANT_CATALOG = [
   { key: 'view_reports', label: 'Open Reports' },
   { key: 'view_revenue', label: 'See Revenue Figures' },
   { key: 'view_profit', label: 'See Profit Figures' },
+  { key: 'view_finance_reconciliation', label: 'Open Cash Reconciliation' },
+  { key: 'add_finance_reconciliation', label: 'Create Cash Reconciliation' },
+  { key: 'view_finance_reconciliation_all_branches', label: 'Finance All Branches View' },
+  { key: 'manage_finance_accounts', label: 'Manage Finance Accounts' },
+  { key: 'approve_finance_reconciliation_director', label: 'Director Reconciliation Approval' },
+  { key: 'approve_finance_reconciliation_manager', label: 'Manager Reconciliation Approval' },
   { key: 'view_stock_records', label: 'Open Stock Records' },
   { key: 'view_wholesale_invoices', label: 'Open Wholesale Invoices' },
   { key: 'view_warehouse_invoices', label: 'Open Warehouse Invoices' },
@@ -76,20 +82,20 @@ export const GRANT_FEATURE_MAP = Object.fromEntries(
 export const PLAN_DEFAULT_FEATURES = {
   basic: [
     'modules.dashboard', 'modules.pos', 'modules.invoices', 'modules.sales', 'modules.products',
-    'modules.inventory', 'modules.labels', 'modules.purchases', 'modules.suppliers',
+    'modules.inventory', 'modules.labels', 'modules.purchases', 'modules.finance', 'modules.suppliers',
     'modules.customers', 'modules.backup', 'admin.users', 'admin.audit',
     'admin.cashDrawer', 'admin.config', 'features.offlineBackup',
     'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
     'grants.view_dashboard', 'grants.view_dashboard_cashier_assigned', 'grants.view_dashboard_cashier_all', 'grants.view_dashboard_branch_comparison_assigned', 'grants.view_dashboard_branch_comparison_all', 'grants.view_pos', 'grants.view_retail_price', 'grants.view_sales',
     'grants.add_sales', 'grants.view_products', 'grants.view_distribution_products', 'grants.view_warehouse_products', 'grants.add_products', 'grants.edit_products',
     'grants.view_inventory', 'grants.edit_inventory', 'grants.view_labels', 'grants.view_purchases',
-    'grants.add_purchases', 'grants.view_suppliers', 'grants.add_suppliers', 'grants.view_customers',
+    'grants.add_purchases', 'grants.view_suppliers', 'grants.add_suppliers', 'grants.view_customers', 'grants.view_finance_reconciliation', 'grants.add_finance_reconciliation',
     'grants.add_customers', 'grants.view_cashdrawer', 'grants.view_users', 'grants.view_config',
     'grants.export_tenant_data', 'grants.import_tenant_data'
   ],
   pro: [
     'modules.dashboard', 'modules.pos', 'modules.wholesalePos', 'modules.invoices', 'modules.sales',
-    'modules.products', 'modules.inventory', 'modules.labels', 'modules.purchases', 'modules.expenses',
+    'modules.products', 'modules.inventory', 'modules.labels', 'modules.purchases', 'modules.expenses', 'modules.finance',
     'modules.transfers', 'modules.adjustments', 'modules.suppliers', 'modules.customers',
     'modules.creditControl', 'modules.approvalsCenter', 'modules.refunds', 'modules.refundApprovals',
     'modules.expenseApprovals', 'modules.reports', 'modules.backup',
@@ -146,6 +152,11 @@ export const FEATURE_GROUP_META = {
     order: 9,
     title: 'Permissions / Admin Actions',
     description: 'Permissions for admin tools, logs, and control screens.'
+  },
+  'Permissions / Finance': {
+    order: 10,
+    title: 'Permissions / Finance',
+    description: 'Permissions for reconciliation, bank account management, and deposit approvals.'
   }
 };
 
@@ -167,6 +178,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
       { label: 'Approvals Center', keys: ['modules.approvalsCenter', 'grants.view_approvals', 'grants.approve_credit_director', 'grants.approve_credit_manager', 'grants.approve_wholesale_director', 'grants.approve_wholesale_manager'] },
       { label: 'Refund Approvals', keys: ['modules.refundApprovals', 'grants.approve_refunds'] },
       { label: 'Reports', keys: ['modules.reports', 'grants.view_reports'] },
+      { label: 'Finance', keys: ['modules.finance', 'pages.finance.reconciliation', 'grants.view_finance_reconciliation', 'grants.add_finance_reconciliation', 'grants.view_finance_reconciliation_all_branches', 'grants.approve_finance_reconciliation_director', 'grants.approve_finance_reconciliation_manager'] },
       { label: 'Revenue / Profit Visibility', keys: ['grants.view_revenue', 'grants.view_profit'] },
       { label: 'Backup', keys: ['modules.backup', 'features.offlineBackup', 'grants.export_tenant_data', 'grants.import_tenant_data'] },
       { label: 'IMEI Conflicts', keys: ['modules.backup', 'grants.view_imei_conflicts'] }
@@ -235,6 +247,16 @@ export const TENANT_SIDEBAR_SECTIONS = [
     items: [
       { label: 'Expenses', keys: ['modules.expenses', 'grants.view_expenses', 'grants.add_expenses'] },
       { label: 'Expense Approvals', keys: ['modules.expenseApprovals', 'grants.approve_expenses'] }
+    ]
+  },
+  {
+    id: 'finance',
+    sectionKey: 'sections.finance',
+    title: 'Finance',
+    description: 'Cash reconciliation and company deposit controls.',
+    items: [
+      { label: 'Cash Reconciliation', keys: ['modules.finance', 'pages.finance.reconciliation', 'grants.view_finance_reconciliation', 'grants.add_finance_reconciliation', 'grants.view_finance_reconciliation_all_branches', 'grants.approve_finance_reconciliation_director', 'grants.approve_finance_reconciliation_manager'] },
+      { label: 'Finance Account Management', keys: ['admin.config', 'grants.view_config', 'grants.manage_finance_accounts'] }
     ]
   },
   {

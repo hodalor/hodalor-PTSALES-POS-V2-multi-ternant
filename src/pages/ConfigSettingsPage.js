@@ -7,6 +7,8 @@ import { useToast } from '../components/ToastProvider';
 import { addAudit } from '../store/auditSlice';
 import { fetchJson, getApiBase, setApiBase } from '../api/client';
 import * as settingsApi from '../api/settings';
+import * as reconciliationAccountsApi from '../api/reconciliationAccounts';
+import { formatCurrency } from '../utils/currency';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import { getBeforeInstallPromptEvent, isInstalled, isRelatedInstalled, checkUpdateAndOpen } from '../pwa/installPrompt';
@@ -29,6 +31,17 @@ function ConfigSettingsPage() {
   const [savingCategories, setSavingCategories] = useState(false);
   const [addingBranch, setAddingBranch] = useState(false);
   const [removingBranchId, setRemovingBranchId] = useState('');
+  const [reconciliationAccounts, setReconciliationAccounts] = useState([]);
+  const [loadingReconciliationAccounts, setLoadingReconciliationAccounts] = useState(false);
+  const [savingReconciliationAccount, setSavingReconciliationAccount] = useState(false);
+  const [reconciliationForm, setReconciliationForm] = useState({
+    name: '',
+    bankName: '',
+    accountName: '',
+    accountNumber: '',
+    sharedAcrossBranches: false,
+    branchIds: []
+  });
   const toast = useToast();
   const initialTaxRef = useRef(settings.taxRate);
   const initialSettingsRef = useRef(settings || {});
@@ -38,6 +51,7 @@ function ConfigSettingsPage() {
   const canManageBranches = roleLower === 'admin' || roleLower === 'superadmin';
   const isSuperAdmin = roleLower === 'superadmin';
   const isMasterSuperAdmin = isSuperAdmin && String(auth.user?.tenantId || '').toLowerCase() === 'master';
+  const canManageFinanceAccounts = isSuperAdmin || roleLower === 'admin' || (Array.isArray(auth.grants) && auth.grants.includes('manage_finance_accounts'));
   const tenantAllowedSettingKeys = useRef(new Set([
     'clientAppName',
     'clientLogoUrl',
@@ -79,6 +93,23 @@ function ConfigSettingsPage() {
       initialSettingsCapturedRef.current = true;
     }
   }, [settings]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!canManageFinanceAccounts) return;
+      try {
+        setLoadingReconciliationAccounts(true);
+        const rows = await reconciliationAccountsApi.listReconciliationAccounts();
+        if (alive) setReconciliationAccounts(Array.isArray(rows) ? rows : []);
+      } catch (e) {
+        if (alive) toast.show(String(e?.message || 'Failed to load finance accounts'), { type: 'error' });
+      } finally {
+        if (alive) setLoadingReconciliationAccounts(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [canManageFinanceAccounts, toast]);
 
   function buildSettingsPayload() {
     const copy = { ...(settings || {}) };
@@ -189,6 +220,170 @@ function ConfigSettingsPage() {
         </div>
         <div style={{ color: '#64748b', fontSize: 12, marginTop: 12 }}>
           Categories saved here are available in the product creation form for this tenant.
+        </div>
+      </div>
+    );
+  }
+
+  async function createFinanceAccount() {
+    if (!canManageFinanceAccounts || savingReconciliationAccount) return;
+    if (!String(reconciliationForm.name || '').trim()) {
+      toast.show('Account name is required', { type: 'error' });
+      return;
+    }
+    if (!reconciliationForm.sharedAcrossBranches && (!Array.isArray(reconciliationForm.branchIds) || reconciliationForm.branchIds.length === 0)) {
+      toast.show('Select at least one branch or mark the account as shared', { type: 'error' });
+      return;
+    }
+    try {
+      setSavingReconciliationAccount(true);
+      const saved = await reconciliationAccountsApi.createReconciliationAccount({
+        ...reconciliationForm,
+        branchIds: reconciliationForm.sharedAcrossBranches ? [] : reconciliationForm.branchIds
+      });
+      setReconciliationAccounts((prev) => [...prev, saved].sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))));
+      setReconciliationForm({
+        name: '',
+        bankName: '',
+        accountName: '',
+        accountNumber: '',
+        sharedAcrossBranches: false,
+        branchIds: []
+      });
+      toast.show('Finance account created', { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to create finance account'), { type: 'error' });
+    } finally {
+      setSavingReconciliationAccount(false);
+    }
+  }
+
+  async function editFinanceAccount(account) {
+    if (!canManageFinanceAccounts) return;
+    const { promptDialog } = await import('../utils/dialogs');
+    const name = await promptDialog('Account name', account.name || '');
+    if (!name || !String(name).trim()) return;
+    const bankName = await promptDialog('Bank name', account.bankName || '');
+    const accountName = await promptDialog('Account name on bank record', account.accountName || '');
+    const accountNumber = await promptDialog('Account number', account.accountNumber || '');
+    const sharedAcrossBranches = window.confirm('Should this account be available to all branches? Click OK for Yes, Cancel for branch-specific.');
+    const payload = {
+      name: String(name || '').trim(),
+      bankName: String(bankName || '').trim(),
+      accountName: String(accountName || '').trim(),
+      accountNumber: String(accountNumber || '').trim(),
+      sharedAcrossBranches,
+      branchIds: sharedAcrossBranches ? [] : (Array.isArray(account.branchIds) ? account.branchIds : [])
+    };
+    try {
+      const saved = await reconciliationAccountsApi.updateReconciliationAccount(account._id, payload);
+      setReconciliationAccounts((prev) => prev.map((item) => String(item._id) === String(saved._id) ? saved : item));
+      toast.show('Finance account updated', { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to update finance account'), { type: 'error' });
+    }
+  }
+
+  async function toggleFinanceAccountActive(account) {
+    if (!canManageFinanceAccounts) return;
+    try {
+      const saved = await reconciliationAccountsApi.updateReconciliationAccount(account._id, {
+        name: account.name,
+        bankName: account.bankName,
+        accountName: account.accountName,
+        accountNumber: account.accountNumber,
+        sharedAcrossBranches: !!account.sharedAcrossBranches,
+        branchIds: account.sharedAcrossBranches ? [] : (account.branchIds || []),
+        active: !account.active
+      });
+      setReconciliationAccounts((prev) => prev.map((item) => String(item._id) === String(saved._id) ? saved : item));
+      toast.show(saved.active ? 'Account activated' : 'Account deactivated', { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to update account'), { type: 'error' });
+    }
+  }
+
+  function renderFinanceAccountsCard() {
+    if (!canManageFinanceAccounts) return null;
+    return (
+      <div className="card" style={{ alignSelf: 'start', padding: 20 }}>
+        <h3 className="section-title" style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>Finance Accounts</h3>
+        <div style={{ color: '#64748b', fontSize: 13, marginTop: 12, marginBottom: 16 }}>
+          Create company deposit accounts here. Accounts can be shared by all branches or limited to specific branches, and balances increase only after reconciliation approval.
+        </div>
+        <div style={{ display: 'grid', gap: 12, marginBottom: 18 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
+            <input className="input" placeholder="Account label" value={reconciliationForm.name} onChange={(e) => setReconciliationForm((prev) => ({ ...prev, name: e.target.value }))} />
+            <input className="input" placeholder="Bank name" value={reconciliationForm.bankName} onChange={(e) => setReconciliationForm((prev) => ({ ...prev, bankName: e.target.value }))} />
+            <input className="input" placeholder="Bank account name" value={reconciliationForm.accountName} onChange={(e) => setReconciliationForm((prev) => ({ ...prev, accountName: e.target.value }))} />
+            <input className="input" placeholder="Account number" value={reconciliationForm.accountNumber} onChange={(e) => setReconciliationForm((prev) => ({ ...prev, accountNumber: e.target.value }))} />
+          </div>
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <input type="checkbox" checked={reconciliationForm.sharedAcrossBranches} onChange={(e) => setReconciliationForm((prev) => ({ ...prev, sharedAcrossBranches: e.target.checked, branchIds: e.target.checked ? [] : prev.branchIds }))} />
+            <span>Available to all branches</span>
+          </label>
+          {!reconciliationForm.sharedAcrossBranches && (
+            <div style={{ display: 'grid', gap: 8 }}>
+              <div style={{ fontSize: 13, color: '#64748b' }}>Assign branches</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+                {branches.map((branch) => {
+                  const checked = reconciliationForm.branchIds.includes(branch.id);
+                  return (
+                    <label key={branch.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, border: '1px solid #e2e8f0', borderRadius: 12, padding: '10px 12px' }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => setReconciliationForm((prev) => ({
+                          ...prev,
+                          branchIds: e.target.checked
+                            ? [...prev.branchIds, branch.id]
+                            : prev.branchIds.filter((item) => String(item) !== String(branch.id))
+                        }))}
+                      />
+                      <span>{branch.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          <div>
+            <button className="btn btn-primary" type="button" onClick={createFinanceAccount} disabled={savingReconciliationAccount}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                {savingReconciliationAccount && <Spinner />}
+                {savingReconciliationAccount ? 'Saving…' : 'Create Finance Account'}
+              </span>
+            </button>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gap: 0 }}>
+          {reconciliationAccounts.map((account) => (
+            <div key={account._id} style={{ padding: '14px 0', borderBottom: '1px solid #e2e8f0', display: 'grid', gap: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 700 }}>{account.name}</div>
+                  <div style={{ color: '#64748b', fontSize: 13 }}>
+                    {[account.bankName, account.accountName, account.accountNumber].filter(Boolean).join(' • ') || 'No bank details yet'}
+                  </div>
+                </div>
+                <div style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button className="btn" type="button" onClick={() => editFinanceAccount(account)}>Edit</button>
+                  <button className="btn" type="button" onClick={() => toggleFinanceAccountActive(account)}>{account.active ? 'Deactivate' : 'Activate'}</button>
+                </div>
+              </div>
+              <div style={{ color: '#475569', fontSize: 13 }}>
+                Scope:
+                {' '}
+                {account.sharedAcrossBranches ? 'All branches' : (branches.filter((branch) => (account.branchIds || []).includes(branch.id)).map((branch) => branch.name).join(', ') || 'No branches')}
+              </div>
+              <div style={{ color: '#0f172a', fontSize: 13, fontWeight: 700 }}>
+                Balance: {formatCurrency(account.balance || 0, settings)}
+              </div>
+            </div>
+          ))}
+          {!loadingReconciliationAccounts && reconciliationAccounts.length === 0 && (
+            <div style={{ color: '#64748b', padding: '8px 0' }}>No finance accounts added yet.</div>
+          )}
         </div>
       </div>
     );
@@ -953,6 +1148,7 @@ function ConfigSettingsPage() {
         </div>
         <div className="config-column" style={{ display: 'grid', gap: 16, alignContent: 'start', alignItems: 'start' }}>
           {renderCategoriesCard()}
+          {renderFinanceAccountsCard()}
           <div className="card config-panel" style={{ alignSelf: 'start', width: '100%' }}>
             <h2 className="section-title" style={{ marginBottom: 6, fontSize: 24, fontWeight: 800 }}>Branches</h2>
             <div style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>

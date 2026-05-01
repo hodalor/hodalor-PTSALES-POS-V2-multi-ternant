@@ -65,6 +65,7 @@ import StockRecordsPage from './pages/StockRecordsPage';
 import ServerLogsPage from './pages/ServerLogsPage';
 import ExpensesPage from './pages/ExpensesPage';
 import ExpenseApprovalsPage from './pages/ExpenseApprovalsPage';
+import CashReconciliationPage from './pages/CashReconciliationPage';
 import GodHandPage from './pages/GodHandPage';
 import BackupPage from './pages/BackupPage';
 import ImeiConflictsPage from './pages/ImeiConflictsPage';
@@ -657,6 +658,7 @@ function App() {
             <Route path="/purchases" element={<ProtectedRoute feature="pages.retail.purchases" roles={['Admin','Manager','Inventory Staff']} grant={['view_purchases','see_purchases']}><PurchasesPage /></ProtectedRoute>} />
             <Route path="/expenses" element={<ProtectedRoute feature="sections.expense" roles={['Admin','Manager']} grant={['view_expenses','see_expenses','add_expenses']}><ExpensesPage /></ProtectedRoute>} />
           <Route path="/expense-approvals" element={<ProtectedRoute feature="sections.expense" roles={['Admin','Manager','SuperAdmin']} grant={['approve_expenses']}><ExpenseApprovalsPage /></ProtectedRoute>} />
+            <Route path="/cash-reconciliation" element={<ProtectedRoute feature="pages.finance.reconciliation" roles={['Admin','Manager','Cashier']} grant={['view_finance_reconciliation','add_finance_reconciliation','approve_finance_reconciliation_director','approve_finance_reconciliation_manager']}><CashReconciliationPage /></ProtectedRoute>} />
             <Route path="/transfers" element={<ProtectedRoute feature="pages.retail.transfers" roles={['Admin','Manager','Inventory Staff']} grant={['view_transfers','see_transfers']}><TransfersPage /></ProtectedRoute>} />
             <Route path="/adjustments" element={<ProtectedRoute feature="pages.retail.adjustments" roles={['Admin','Manager','Inventory Staff']} grant={['view_adjustments','see_adjustments']}><AdjustmentsPage /></ProtectedRoute>} />
             <Route path="/suppliers" element={<ProtectedRoute feature="sections.partners" roles={['Admin','Manager','Inventory Staff']} grant={['view_suppliers','see_suppliers']}><SuppliersPage /></ProtectedRoute>} />
