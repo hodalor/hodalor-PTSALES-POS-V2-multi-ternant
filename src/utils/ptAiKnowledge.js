@@ -37,24 +37,54 @@ export const PT_AI_TOPICS = [
   },
   {
     id: 'purchase-stock',
-    title: 'How Purchases Add Stock',
-    keywords: ['purchase', 'add stock', 'receive stock', 'goods received'],
+    title: 'How To Make A Retail Purchase',
+    keywords: ['purchase', 'retail purchase', 'make purchase', 'add stock', 'receive stock', 'goods received', 'how to make purchases'],
     answer: [
-      'Create the purchase request from the correct branch type: retail, distribution, or warehouse.',
-      'If the product is serialized, enter or scan the unit identifiers during receiving.',
-      'Submit for approval when your workflow requires it.',
-      'When approved, stock is applied to the correct inventory bucket for that branch type.'
+      'Open Retail then Purchases from the sidebar.',
+      'Click Add Purchase to open the purchase entry modal.',
+      'Choose the retail branch and supplier, then search and select the product by name, SKU, or barcode.',
+      'Enter cost, quantity, pack or variant details where needed. If the product is serialized, enter or scan the IMEI or serial lines instead of typing anonymous quantity.',
+      'Add the item to the request list, review the lines, then save or submit the purchase.',
+      'If your approval flow is enabled, wait for approval. After approval, the retail branch stock increases automatically.'
+    ]
+  },
+  {
+    id: 'distribution-purchase',
+    title: 'How To Make A Distribution Purchase',
+    keywords: ['distribution purchase', 'wholesale purchase', 'make distribution purchase', 'receive distribution stock'],
+    answer: [
+      'Open Distribution then Distribution Purchase.',
+      'Choose the distribution branch and supplier, then search for the product by name, SKU, or barcode.',
+      'Select the matching item, enter quantity, cost, and any pack details.',
+      'For serialized items, scan or paste the IMEI or serial numbers so the quantity comes from the unit list.',
+      'Save the request and follow the approval flow if your tenant requires it.',
+      'When approved, the stock is added to the selected distribution branch.'
+    ]
+  },
+  {
+    id: 'warehouse-purchase',
+    title: 'How To Make A Warehouse Purchase',
+    keywords: ['warehouse purchase', 'make warehouse purchase', 'receive warehouse stock'],
+    answer: [
+      'Open Warehouse then Warehouse Purchase.',
+      'Pick the warehouse branch and supplier, then search and choose the product you want to receive.',
+      'Enter the quantity and cost. Use pack conversion if the item is received in cartons or cases.',
+      'If the item is serialized, scan or paste the IMEI or serial numbers instead of using anonymous quantity.',
+      'Submit the warehouse purchase and complete the required approval stage.',
+      'Once approved, the stock appears under the selected warehouse branch.'
     ]
   },
   {
     id: 'transfer-stock',
-    title: 'How Transfers Work Between Inventory Types',
-    keywords: ['transfer', 'move stock', 'retail to warehouse', 'warehouse to distribution', 'cross inventory transfer'],
+    title: 'How To Make A Transfer',
+    keywords: ['transfer', 'move stock', 'retail to warehouse', 'warehouse to distribution', 'cross inventory transfer', 'how to make transfer'],
     answer: [
-      'Create the transfer from the source branch that currently holds the stock.',
-      'Choose the destination branch even if it belongs to another inventory type.',
-      'For serialized products, pick the exact units to move.',
-      'After approval, stock is deducted from the source inventory map and credited to the destination inventory map.'
+      'Open the transfer page that matches where the stock is currently located, such as Retail Transfers, Distribution Transfer, or Warehouse Transfer.',
+      'Click Add Transfer, then choose the source branch, destination branch, and search for the product by name, SKU, or barcode.',
+      'Select the correct item and enter the transfer quantity. For serialized products, select the exact unit records instead of typing a free quantity.',
+      'Review the transaction lines and save the transfer request.',
+      'If approval is required, let the manager or director approve it.',
+      'After approval, stock is deducted from the source branch and credited to the destination branch or inventory type.'
     ]
   },
   {
@@ -62,11 +92,12 @@ export const PT_AI_TOPICS = [
     title: 'How To Make An Adjustment',
     keywords: ['adjustment', 'increase stock', 'decrease stock', 'damage remove', 'stock correction'],
     answer: [
-      'Open the correct adjustment page for retail, distribution, or warehouse.',
-      'Choose the product, branch, quantity, and adjustment type.',
-      'Enter the reason and the required remark before submitting.',
-      'For serialized products, adjust by selecting the actual unit records instead of typing a manual quantity.',
-      'Approvals then apply the signed stock movement for the correct inventory type.'
+      'Open the correct adjustment page for Retail, Distribution, or Warehouse from the sidebar.',
+      'Click Add Adjustment, then choose the branch and search for the product by name, SKU, or barcode.',
+      'Enter the quantity and choose whether the stock should increase or decrease.',
+      'Select the reason, add the required remark, and review the request before saving.',
+      'For serialized items, add stock by entering new unit identifiers or remove stock by selecting the actual existing units.',
+      'After approval, the stock change is applied to the correct branch and inventory type.'
     ]
   },
   {
@@ -81,15 +112,137 @@ export const PT_AI_TOPICS = [
     ]
   },
   {
+    id: 'expense-request',
+    title: 'How To Request An Expense',
+    keywords: ['request expense', 'how to request expense', 'add expense', 'record expense', 'expense request'],
+    answer: [
+      'Open Expense then Expenses from the sidebar.',
+      'Click Add Expense to open the expense form.',
+      'Fill Branch, Date, Category, Amount, and Note.',
+      'Click Save to submit the expense request. If you are offline and backup is enabled, the expense is queued and uploaded later.',
+      'The request then appears in the expense records and can move through the approval flow when required.'
+    ]
+  },
+  {
+    id: 'expense-approval',
+    title: 'How To Approve An Expense',
+    keywords: ['expense approval', 'approve expense', 'expense approvals'],
+    answer: [
+      'Open Expense then Expense Approvals.',
+      'Find the pending request and open or review the row details.',
+      'Check the branch, category, amount, date, and supporting note before deciding.',
+      'Enter the required remark, then use the approval action to approve or reject the expense.',
+      'After approval, the request leaves the pending queue and the final status is recorded.'
+    ]
+  },
+  {
     id: 'cash-reconciliation',
-    title: 'How Cash Reconciliation Works',
+    title: 'How To Record Cash Reconciliation',
     keywords: ['cash reconciliation', 'finance', 'deposit', 'bank', 'backlog', 'proof of deposit'],
     answer: [
       'Open Finance then Cash Reconciliation.',
-      'Select the branch backlog dates that have sales but are not yet deposited.',
-      'The system calculates the expected total automatically from those sales dates.',
-      'Split the deposit into one or more allocations if needed, attach proof, and make sure entered total exactly matches expected total.',
-      'Manager and director approval remarks are required before balances update.'
+      'Use the Backlog & Submit tab, then click Add Reconciliation.',
+      'Select the branch with backlog sales. The page loads the unreconciled sales dates automatically, and you can use Refresh Dates if needed.',
+      'Choose the dates you want to deposit. The expected amount is calculated from those exact sales dates.',
+      'Add one or more allocations by choosing the company account, payment method, amount, and Proof of Deposit for each line. Use Add Another Allocation when one deposit must be split.',
+      'Make sure the total entered amount matches the expected amount exactly, then click Submit for Approval.'
+    ]
+  },
+  {
+    id: 'pos-checkout',
+    title: 'How To Complete A Sale In POS',
+    keywords: ['pos checkout', 'complete sale', 'complete and print', 'complete escpos', 'held sales', 'hold sale', 'add payment', 'quick customer'],
+    answer: [
+      'Open POS from the sidebar and search for the item by name, SKU, barcode, IMEI, or serial where supported.',
+      'Click the product card or list row to add it to the Cart.',
+      'Use the Customer area to search and Select an existing customer, or fill the quick customer fields for Customer name, Phone number, and Address.',
+      'Review the cart, adjust Manual discount if needed, then add payment rows with Add Payment or switch to EasyBuy or Credit Sale when allowed.',
+      'Use Hold if you want to pause the current cart, and use Held (N) to Resume a held sale later.',
+      'Click Complete & Print for the normal receipt flow or Complete (ESC/POS) for the ESC/POS print file flow.'
+    ]
+  },
+  {
+    id: 'sales-records',
+    title: 'How To Find Sales Records',
+    keywords: ['sales record', 'sales history', 'find sale', 'sales page', 'search sales'],
+    answer: [
+      'Open Sales from the sidebar.',
+      'Use the branch, date, seller, or search filters to narrow the sales records.',
+      'Review the table row that matches the sale you need. It shows invoice serial, branch, seller, and total.',
+      'Use the actions on that row to reprint the receipt or inspect the record further.',
+      'Use the export actions when you want to download the filtered sales list.'
+    ]
+  },
+  {
+    id: 'manual-invoices',
+    title: 'How To Create And Find Invoices',
+    keywords: ['create invoice', 'invoice records', 'manual invoice', 'find invoice'],
+    answer: [
+      'Open Invoices from the sidebar.',
+      'Use the New Invoice tab to create a fresh invoice by searching products, adding quantities, and selecting a customer or entering ad-hoc customer details.',
+      'Fill any optional reference fields such as delivery note, payment terms, or destination if your process requires them.',
+      'Save or print the invoice when the item lines are complete.',
+      'To find older invoices, switch to Invoice Records and search by invoice number, customer, or reference fields, then print the matching record.'
+    ]
+  },
+  {
+    id: 'products-setup',
+    title: 'How To Add Products',
+    keywords: ['add product', 'create product', 'product setup', 'sku barcode'],
+    answer: [
+      'Open Products from the sidebar.',
+      'Click Add Product and enter the main details such as name, SKU, barcode, prices, cost, and category.',
+      'If the item uses variants, packs, or attributes, add them in the product form before saving.',
+      'If the item should be tracked one unit at a time, set it to Serialized tracking.',
+      'Save the product, then use purchases or other stock flows to put quantity into the correct branches.'
+    ]
+  },
+  {
+    id: 'inventory-view',
+    title: 'How To Check Inventory',
+    keywords: ['inventory page', 'check stock', 'view inventory', 'branch stock'],
+    answer: [
+      'Open Inventory from the sidebar.',
+      'Choose the branch you want to inspect so the page loads the stock for that branch.',
+      'Search for the product by name, SKU, or barcode to narrow the list quickly.',
+      'For variant products, open the variant details to inspect per-variant stock.',
+      'For serialized products, use Serialized Inventory when you need the exact IMEI or serial unit records.'
+    ]
+  },
+  {
+    id: 'serialized-inventory-help',
+    title: 'How To Use Serialized Inventory',
+    keywords: ['serialized inventory', 'imei records', 'serial records', 'find imei'],
+    answer: [
+      'Open Serialized Inventory from the sidebar.',
+      'Use the search field to enter the IMEI, serial number, product, or related value you want to trace.',
+      'Add branch, inventory type, or status filters if you want to narrow the result further.',
+      'Review the row to see whether that exact unit is in stock, sold, returned, or adjusted out.',
+      'Use this page before selling, transferring, refunding, or adjusting serialized items when you need the exact unit history.'
+    ]
+  },
+  {
+    id: 'labels-printing',
+    title: 'How To Print Product Labels',
+    keywords: ['print labels', 'barcode stickers', 'labels page'],
+    answer: [
+      'Open Labels from the sidebar.',
+      'Search and select the product or variant you want to print.',
+      'Set the number of copies and choose the layout or format you want.',
+      'Preview the labels if needed, then print them.',
+      'Use this for barcode stickers, shelf labels, or packaging labels.'
+    ]
+  },
+  {
+    id: 'credit-sale-help',
+    title: 'How To Use Credit Sale Menus',
+    keywords: ['credit sale', 'easy buy', 'repayment approvals', 'defaulters', 'good clients'],
+    answer: [
+      'Open Credit Sale from the sidebar.',
+      'Use Overview to see the current state of credit sales.',
+      'Use Good Clients and Defaulters to review customer repayment performance.',
+      'Open Payment Approvals when repayments need manager or director action.',
+      'If you create a credit sale from POS, make sure the required customer details are captured before completing the sale.'
     ]
   },
   {
@@ -159,7 +312,9 @@ export const PT_AI_TOPICS = [
     title: 'How To Export Reports',
     keywords: ['report', 'export csv', 'export pdf', 'analytics'],
     answer: [
-      'Open Reports and choose the report type plus the branch and date filters you need.',
+      'Open Reports from the sidebar.',
+      'Choose the report type, branch scope, and date range you want to analyze.',
+      'Apply the filters so the page loads the exact summary you need.',
       'Use the export buttons for CSV or PDF where available.',
       'Revenue and profit visibility still follow the user grants.'
     ]
@@ -171,7 +326,30 @@ export const PT_AI_TOPICS = [
     answer: [
       'You can add customers directly from Customers page or quickly from POS during checkout.',
       'Retail POS saves them as retail customers and Distribution POS saves them as distribution customers.',
-      'Name, phone, and address are the key fast-entry fields when customer details are needed for sale completion.'
+      'Name, phone, and address are the key fast-entry fields when customer details are needed for sale completion.',
+      'In POS, search the customer first, or fill Customer name, Phone number, and Address in the quick customer section when no saved customer is selected.'
+    ]
+  },
+  {
+    id: 'suppliers-page',
+    title: 'How To Add Suppliers',
+    keywords: ['add supplier', 'suppliers page', 'create supplier'],
+    answer: [
+      'Open Partners then Suppliers.',
+      'Click Add Supplier and enter the supplier name first, then add the other available details such as phone, address, or contact person.',
+      'Save the supplier so it becomes selectable in purchase flows.',
+      'If only the name is known during purchase, you can create the supplier quickly first and complete the other details later.'
+    ]
+  },
+  {
+    id: 'customers-page',
+    title: 'How To Add Customers From Customers Page',
+    keywords: ['add customer page', 'customers page', 'create customer'],
+    answer: [
+      'Open Partners then Customers.',
+      'Click Add Customer and enter the main fields such as name, phone, and address.',
+      'Add business name, TIN or TPIN, and other fields when available.',
+      'Save the customer so it can be used later in POS, invoices, or receipt records.'
     ]
   },
   {
@@ -217,12 +395,15 @@ export const PT_AI_TOPICS = [
   },
   {
     id: 'invoice-receipt',
-    title: 'How Invoice And Receipt Details Work',
-    keywords: ['invoice', 'receipt', 'business name', 'tpin', 'address', 'total price'],
+    title: 'How To Access Sales Receipts And Invoice Records',
+    keywords: ['invoice', 'receipt', 'receipt record', 'sales record', 'reprint receipt', 'download receipt', 'access receipt', 'print sales receipt', 'invoice records', 'where is receipt'],
     answer: [
-      'Invoices and receipts can show customer business name, TPIN or TIN, and address when those fields exist on the customer record.',
-      'If a field is empty, the document hides that field instead of showing blank labels.',
-      'Totals are calculated from the selected selling price and quantity for the chosen inventory flow.'
+      'To access past receipt records for sales, open Sales from the sidebar.',
+      'Stay on the Sales tab and use the branch, date, and other filters to find the exact sale record you want.',
+      'Look at the row for that sale. The table shows details such as invoice serial, seller, branch, and total.',
+      'Click the Reprint button on the sale row to open and print the receipt again.',
+      'If you want a printer-friendly text file instead, use the download action next to Reprint for the ESC/POS receipt output.',
+      'If you need invoice-style records, open the Invoices page and use the Invoice Records tab to search, open, print, or save previous invoice records.'
     ]
   },
   {
@@ -230,9 +411,11 @@ export const PT_AI_TOPICS = [
     title: 'How Backup And Sync Work',
     keywords: ['backup', 'sync', 'offline', 'queue', 'imei conflicts'],
     answer: [
-      'When offline, supported actions are queued locally.',
-      'Backup and Sync uploads them later when internet returns.',
-      'Serialized conflicts are shown in IMEI Conflicts for review if a queued serialized sale cannot be applied cleanly.'
+      'Open Backup from the sidebar when you want to review queued offline records.',
+      'The page shows the collections that have pending items waiting to upload.',
+      'Use Backup Now to upload queued records when internet is available.',
+      'Use Sync Now to refresh local data from the server.',
+      'If a serialized offline sale cannot be applied cleanly, review it in IMEI Conflicts.'
     ]
   },
   {
@@ -245,18 +428,115 @@ export const PT_AI_TOPICS = [
     ]
   },
   {
+    id: 'refund-approvals',
+    title: 'How To Use Refund Approvals',
+    keywords: ['refund approvals', 'approve refund', 'refund request review'],
+    answer: [
+      'Open Refund Approvals from the sidebar.',
+      'Find the pending refund request and review the receipt or invoice reference, evidence, and requested amount.',
+      'If the item should return to stock, choose the restock option and quantities or exact units where needed.',
+      'Enter your approval decision and remark, then approve or reject the request.',
+      'Approved refunds reduce revenue and can restock inventory according to the decision taken.'
+    ]
+  },
+  {
+    id: 'stock-records-page',
+    title: 'How To Use Stock Records',
+    keywords: ['stock records page', 'trace stock records', 'stock movement history'],
+    answer: [
+      'Open Admin then Stock Records.',
+      'Use the date, branch, actor, and source filters to narrow the movements you want to inspect.',
+      'Review the rows to see when quantity changed, who triggered it, and which page or source document caused it.',
+      'Export the filtered records if you want to share or print the stock history.'
+    ]
+  },
+  {
+    id: 'config-help',
+    title: 'How To Use Config Settings',
+    keywords: ['config', 'settings', 'receipt settings', 'communication sounds', 'finance accounts'],
+    answer: [
+      'Open Admin then Config.',
+      'Use the different settings areas to manage branding, receipt details, tax, invoice numbering, refresh behavior, communication sounds, and other system options.',
+      'When you need company deposit accounts for finance reconciliation, create them in Config under the finance account area.',
+      'After changing values, save the settings so the rest of the app uses the updated configuration.'
+    ]
+  },
+  {
+    id: 'manual-docs-help',
+    title: 'How To Find Help Pages',
+    keywords: ['manual', 'docs', 'help page', 'system guide'],
+    answer: [
+      'Open Admin then Manual when you want user-friendly operational guidance.',
+      'Open Docs when you need more technical or implementation-oriented reference information.',
+      'Use Ask PT AI when you want to ask a workflow question directly in chat style instead of reading the full manual.'
+    ]
+  },
+  {
+    id: 'tenants-help',
+    title: 'How To Use Tenants',
+    keywords: ['tenants', 'tenant management', 'superadmin tenant page'],
+    answer: [
+      'Open Admin then Tenants if you are logged in as SuperAdmin.',
+      'Use the tenant page to create, review, or manage tenant-level information and access.',
+      'Tenant features and plan-related controls there affect what the tenant can see in the rest of the app.'
+    ]
+  },
+  {
+    id: 'audit-log-help',
+    title: 'How To Use Audit Log',
+    keywords: ['audit log', 'activity log', 'who changed what'],
+    answer: [
+      'Open Admin then Audit Log.',
+      'Apply filters for date, action, actor, or related source when you need to investigate a change.',
+      'Review the rows to see who performed the action and what was affected.',
+      'Use exports when you need to share the audit details externally.'
+    ]
+  },
+  {
+    id: 'server-logs-help',
+    title: 'How To Use Server Logs',
+    keywords: ['server logs', 'backend logs', 'debug logs'],
+    answer: [
+      'Open Admin then Server Logs if you are SuperAdmin.',
+      'Use the page to inspect backend events, errors, status codes, and runtime messages.',
+      'Refresh or export the logs when you need to troubleshoot a live issue with technical detail.'
+    ]
+  },
+  {
+    id: 'cashdrawer-help',
+    title: 'How To Use Cash Drawer',
+    keywords: ['cash drawer', 'open session', 'cash in', 'cash out', 'close session'],
+    answer: [
+      'Open Admin then Cash Drawer.',
+      'Start by opening a session with the opening float amount.',
+      'Use Cash In and Cash Out to record drawer movements during the shift.',
+      'Review the expected cash before closing the session at the end of the shift.',
+      'Use Open Drawer Now only when you need the physical drawer pulse without recording a sale.'
+    ]
+  },
+  {
+    id: 'godhand-help',
+    title: 'How To Use GodHand',
+    keywords: ['godhand help', 'feature toggles', 'hide menu from sidebar'],
+    answer: [
+      'Open Admin then GodHand as SuperAdmin.',
+      'Turn features, pages, or menu groups on or off based on what the tenant has paid for or should use.',
+      'Save the changes so the sidebar and route access follow the new feature state.',
+      'Use this carefully because disabled features disappear from users and are blocked by route protection.'
+    ]
+  },
+  {
     id: 'communication',
     title: 'How Communication Works',
     keywords: ['communication', 'chat', 'ask pt ai', 'internal message', 'reply to message', 'chat reaction', 'emoji message', 'message popup', 'message ticks', 'copy chat message', 'long press message', 'chat sound', 'notification sound', 'voice call', 'test sound', 'missed call', 'call history', 'ringing tone', 'call sound'],
     answer: [
+      'Open Communication from the sidebar, then choose Chat or Ask PT AI.',
       'Use Chat to send internal messages to other active users inside the same tenant.',
       'Chat supports unread badges, live updates, popup alerts, selectable notification sounds, replies to a specific message, message reactions, emoji, simple one-to-one voice calls, recent call history, and sent or read ticks on your own messages.',
       'Click Reply on a message to quote it, then click the quoted tag later to jump back to the original message when it is visible in the loaded conversation.',
       'To change Communication sounds, go to Config Settings and choose separate Message Sound and Call Sound options such as Off, Soft, Classic, or Bright, then use the test buttons to preview them.',
       'To start a voice call, open Chat, select the user, click Voice Call, and let the other user answer from their chat screen. The caller also hears a progress ringing tone, incoming calls ring for a short time, and unanswered calls can appear as missed calls in recent call history.',
-      'Right-click a message on desktop or long-press it on touch devices to open quick actions such as Reply, React, and Copy.',
-      'Use Ask PT AI when you want help understanding a feature or workflow inside the system.',
-      'Ask PT AI supports typing, browser voice input, recorded voice transcription when available, and voice playback of the answer.'
+      'Use Ask PT AI when you want step-by-step help for any menu or workflow inside the system.'
     ]
   },
   {
@@ -267,6 +547,40 @@ export const PT_AI_TOPICS = [
       'Finance accounts are created in Config and can be shared across branches or limited to selected branches.',
       'When reconciling sales, you can allocate the expected amount into one or more company accounts.',
       'The sum of those allocations must exactly match the expected sales amount before approval can complete.'
+    ]
+  },
+  {
+    id: 'purchase-tabs',
+    title: 'How To Use Purchase Tabs And Approval Buttons',
+    keywords: ['purchase tabs', 'initiate purchase', 'purchase approvals', 'director approve purchase', 'manager approve purchase'],
+    answer: [
+      'Open Retail Purchases and use the Initiate tab to create new purchase requests.',
+      'Click Add Purchase, enter the purchase details, then click Submit For Approval.',
+      'Switch to the Approvals tab to review pending requests when you have approval rights.',
+      'Use Director Approve or Manager Approve based on the current stage, and use Reject when the request should not pass.',
+      'Approved and Rejected filters help you review completed decisions later.'
+    ]
+  },
+  {
+    id: 'transfer-tabs',
+    title: 'How To Use Transfer Tabs And Approval Buttons',
+    keywords: ['transfer tabs', 'initiate transfer', 'transfer approvals', 'approve transfer', 'reject transfer'],
+    answer: [
+      'Open Transfers and use the Initiate tab to create a new transfer request.',
+      'Click Add Transfer, fill the source branch, destination branch, items, and required remark, then click Submit For Approval.',
+      'Use the Approvals tab to review pending transfer requests.',
+      'Approvers use Approve or Reject, and the request detail panel shows the initiation remark and approval or rejection remarks.'
+    ]
+  },
+  {
+    id: 'adjustment-tabs',
+    title: 'How To Use Adjustment Tabs And Approval Buttons',
+    keywords: ['adjustment tabs', 'initiate adjustment', 'adjustment approvals', 'director approve adjustment', 'manager approve adjustment'],
+    answer: [
+      'Open Adjustments and use the Initiate tab to create a new adjustment request.',
+      'Click Add Adjustment, choose the item, set Adjustment Type, enter Reason and Remark (required), then click Submit For Approval.',
+      'Use the Approvals tab to review pending requests.',
+      'Approvers use Director Approve or Manager Approve based on the current stage, or Reject if the request should fail.'
     ]
   }
 ];

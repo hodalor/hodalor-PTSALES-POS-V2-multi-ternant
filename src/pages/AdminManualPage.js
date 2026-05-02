@@ -169,11 +169,21 @@ function AdminManualPage() {
 
       <Section title="Expenses – Track Operational Costs">
         <ul>
-          <li>Filters: Date range and Branch; totals card shows sum and record count.</li>
-          <li>Add Expense: Choose Branch, Date, enter Category, Amount and optional Note, then Save.</li>
+          <li>Open Expense → Expenses to see the expense request page.</li>
+          <li>Use the Date range and Branch filters first when you want to review previous expense records.</li>
+          <li>Add Expense: Click Add Expense, fill Branch, Date, Category, Amount, and optional Note, then click Save.</li>
           <li>Permissions: Admin/Manager/SuperAdmin or users with the add_expenses grant can add/delete.</li>
           <li>Offline: With Backup enabled, new expenses queue when offline and show “Expenses queued”; they upload on Backup/auto‑sync.</li>
           <li>Records: Table lists Date, Branch, Category, Note, Amount; authorized users can delete.</li>
+        </ul>
+      </Section>
+      
+      <Section title="Expense Approvals – Review and Decision">
+        <ul>
+          <li>Open Expense → Expense Approvals to review pending expense requests.</li>
+          <li>Open or inspect the request row to check the branch, date, amount, category, and note.</li>
+          <li>Enter the required approval remark before approving or rejecting.</li>
+          <li>After the decision is saved, the request leaves the pending queue and the final status is recorded.</li>
         </ul>
       </Section>
 
@@ -182,10 +192,12 @@ function AdminManualPage() {
           <li>Search by name, SKU or scan barcode. Variants appear as separate items.</li>
           <li>Stock checks use the current branch and the specific variant’s stock.</li>
           <li>Retail and Distribution POS now place the search box and product display style controls on the same toolbar row for faster browsing.</li>
-          <li>Quick customer creation now happens inline on the POS page using Name, Phone, and Address fields instead of a separate quick-add modal.</li>
+          <li>Quick customer creation now happens inline on the POS page using Customer name, Phone number, and Address fields instead of a separate quick-add modal.</li>
           <li>Easy Buy and Credit Sale can be selected without a preselected customer, but Name, Phone, and Address become required before completion.</li>
           <li>When checkout creates a customer from POS, Retail POS saves a retail customer and Distribution POS saves a distribution customer automatically.</li>
-          <li>Complete Payment is now locked immediately on first click to prevent duplicate customer creation and duplicate sales.</li>
+          <li>Use Add Payment to add more payment rows when one payment method is not enough.</li>
+          <li>Use Hold to park the current sale and Held (N) to search, rename, resume, or delete held sales.</li>
+          <li>Complete & Print and Complete (ESC/POS) are locked immediately on first click to prevent duplicate customer creation and duplicate sales.</li>
           <li>Serialized POS flow:
             <ul>
               <li>Scan IMEI directly into the POS search box to reserve and add the exact unit instantly.</li>
@@ -210,6 +222,25 @@ function AdminManualPage() {
               <li>Multiple held sales are supported and persist across refreshes.</li>
             </ul>
           </li>
+        </ul>
+      </Section>
+
+      <Section title="Credit Sale – Overview, Clients, And Approvals">
+        <ul>
+          <li>Open Credit Sale from the sidebar, then choose Overview, Good Clients, Defaulters, or Payment Approvals.</li>
+          <li>Use Overview for the general credit sales picture and balance status.</li>
+          <li>Use Good Clients to review customers with healthier repayment behavior and Defaulters to review overdue accounts.</li>
+          <li>Use Payment Approvals when submitted repayments need manager or director review.</li>
+          <li>When creating a credit sale from POS, capture the required customer details before completing payment.</li>
+        </ul>
+      </Section>
+
+      <Section title="Approvals Center – Operational Approval Queue">
+        <ul>
+          <li>Open Approvals Center to review requests waiting for manager or director action.</li>
+          <li>Click a row to inspect the details, quantities, branch, reason, and any attached remarks or evidence.</li>
+          <li>Enter the required remark before approving or rejecting the request.</li>
+          <li>After the final approval stage is completed, the related stock or financial effect is applied automatically.</li>
         </ul>
       </Section>
 
@@ -254,7 +285,9 @@ function AdminManualPage() {
 
       <Section title="Reports – Summaries & Exports">
         <ul>
-          <li>Sales summaries by time, seller and branch with CSV/PDF exports.</li>
+          <li>Open Reports from the sidebar, then choose the branch, date range, and report type you want to analyze.</li>
+          <li>Apply the filters first so the page loads only the results you want.</li>
+          <li>Sales summaries by time, seller and branch are available with CSV/PDF exports.</li>
           <li>Revenue and profit visibility now follow separate grants, so one can be shown while the other stays hidden.</li>
           <li>Exports and on-screen values respect those visibility grants.</li>
           <li>All Branches filtering is supported where the user has scope to view broader branch data.</li>
@@ -264,17 +297,20 @@ function AdminManualPage() {
 
       <Section title="Sales – History and Exports">
         <ul>
-          <li>Lists sales with invoice serials, seller, branch and totals.</li>
+          <li>Open Sales to review completed sale records.</li>
+          <li>Use the filters and search tools to find the exact sale by branch, date, seller, invoice serial, or other visible record details.</li>
+          <li>The table lists sales with invoice serials, seller, branch and totals.</li>
           <li>Revenue and profit figures are masked independently based on the logged-in user grants.</li>
-          <li>Click to view/print receipt; public receipt link is accessible from the ID.</li>
+          <li>Use the row actions to reprint the receipt or access the public receipt link where available.</li>
           <li>Use Sales or Reports export actions for analytics, sharing, and print-ready output.</li>
         </ul>
       </Section>
 
       <Section title="Users – Accounts & PIN">
         <ul>
+          <li>Open Admin → Users to manage user accounts.</li>
           <li>Create, rename and delete users; set branch access as needed.</li>
-          <li>Assign roles and grants for fine‑grained permissions.</li>
+          <li>Assign roles and grants for fine‑grained permissions so the user only sees the correct menus and actions.</li>
           <li>Revenue and profit are separate grants, so you can allow one without the other.</li>
           <li>Tenant user grant screens now show those visibility grants under tenant permissions as well, not only for superadmin.</li>
           <li>Reset PIN from Users page or via the Login screen’s Admin Reset PIN flow.</li>
@@ -304,6 +340,9 @@ function AdminManualPage() {
 
       <Section title="Purchases – Receive Stock with Packs & Variants">
         <ul>
+          <li>Open the correct purchase menu from the sidebar: Retail Purchases, Distribution Purchase, or Warehouse Purchase.</li>
+          <li>Retail Purchases uses the Initiate tab for new requests and the Approvals tab for review actions.</li>
+          <li>Click Add Purchase, choose the branch and supplier, then search the product by name, SKU, or barcode.</li>
           <li>Select Product → Variant (if any) → Pack (e.g., Case (24)) → Quantity to receive.</li>
           <li>System converts Pack × Qty to base units and increments that branch/variant stock.</li>
           <li>Audit Log records supplier, cost, chosen pack and conversion factor.</li>
@@ -316,11 +355,15 @@ function AdminManualPage() {
               <li>Approval creates real unit records in the correct retail, wholesale or warehouse inventory area.</li>
             </ul>
           </li>
+          <li>When the request is ready, click Submit For Approval. Approvers use Director Approve, Manager Approve, or Reject depending on the current stage and permissions.</li>
         </ul>
       </Section>
 
       <Section title="Transfers – Move Stock Between Branches">
         <ul>
+          <li>Open the transfer page that matches where the stock currently exists.</li>
+          <li>Transfers uses the Initiate tab for new requests and the Approvals tab for approval work.</li>
+          <li>Click Add Transfer, choose the source branch and destination branch, then search and select the product.</li>
           <li>Select Product → Variant (if any) → From/To Branch → Quantity → Transfer.</li>
           <li>Audit Log records who transferred, from/to branches, variant and quantity.</li>
           <li>Serialized transfer flow:
@@ -331,12 +374,16 @@ function AdminManualPage() {
               <li>Approval moves the selected unit IDs and updates stock correctly at both ends.</li>
             </ul>
           </li>
+          <li>Transfers require a remark during submission. Use Submit For Approval to send the request, then Approve or Reject from the Approvals tab when authorized.</li>
         </ul>
       </Section>
 
       <Section title="Adjustments – Correct Stock">
         <ul>
-          <li>Select Product → Variant (if any) → Branch → Quantity → Adjustment Type → Apply with a required reason and remark.</li>
+          <li>Open the correct adjustment page from the sidebar for Retail, Distribution, or Warehouse.</li>
+          <li>Adjustments uses the Initiate tab for new requests and the Approvals tab for review decisions.</li>
+          <li>Click Add Adjustment, choose the branch, and search/select the product.</li>
+          <li>Select Product → Variant (if any) → Branch → Quantity → Adjustment Type → Apply with a required Reason and Remark.</li>
           <li>Use for corrections, write‑offs or cycle count differences. All actions are audited.</li>
           <li>Damaged/Expired Removal: Use the dedicated removal tool to subtract a quantity with a reason; this records an audit entry and updates branch stock.</li>
           <li>Serialized adjustment flow:
@@ -347,7 +394,7 @@ function AdminManualPage() {
               <li>The same serialized rules apply in retail, wholesale and warehouse adjustment flows.</li>
             </ul>
           </li>
-          <li>Approvals: Staff submit Adjustment Requests; Managers/Admins with the approve_adjustments grant review in the Approvals tab and Approve/Reject with a remark.</li>
+          <li>Use Submit For Approval to send the request. Managers or directors then use Director Approve, Manager Approve, or Reject from the Approvals tab with a required remark.</li>
         </ul>
       </Section>
 
@@ -356,24 +403,29 @@ function AdminManualPage() {
           <li>Use Finance → Cash Reconciliation to match branch sales to company-account deposits.</li>
           <li>Backlog & Submit:
             <ul>
+              <li>Use the Backlog & Submit tab and click Add Reconciliation to open the submission modal.</li>
               <li>Select a branch and backlog dates with real sales that are not yet deposited.</li>
               <li>Expected amount is calculated automatically from the selected sales dates.</li>
+              <li>Use Refresh Dates if you need to reload the backlog list for the current branch.</li>
               <li>The total entered across all allocations must exactly equal the expected amount.</li>
             </ul>
           </li>
           <li>Allocations:
             <ul>
               <li>Split one reconciliation across multiple company accounts and payment methods.</li>
-              <li>Upload proof of deposit for each allocation.</li>
+              <li>Upload Proof of Deposit for each allocation.</li>
+              <li>Use Add Another Allocation when one deposit must be split across multiple accounts or payment methods.</li>
             </ul>
           </li>
           <li>Approvals:
             <ul>
+              <li>Use the Approvals tab to review pending reconciliation records.</li>
               <li>Rows open a detail modal for full review.</li>
-              <li>Approver must enter a remark before approval or rejection.</li>
+              <li>Approver must enter a remark before pressing Approve or Reject.</li>
               <li>Balances only update after the proper approval stage is completed.</li>
             </ul>
           </li>
+          <li>Use the Deposit Records tab to review saved reconciliation submissions and statuses.</li>
           <li>Records and cards show deposited totals, awaiting deposit, pending approval, and backlog days.</li>
         </ul>
       </Section>
@@ -410,6 +462,15 @@ function AdminManualPage() {
               <li>view_pt_ai opens Ask PT AI.</li>
             </ul>
           </li>
+        </ul>
+      </Section>
+
+      <Section title="Partners – Suppliers And Customers">
+        <ul>
+          <li>Open Partners, then choose Suppliers or Customers.</li>
+          <li>Suppliers: Click Add Supplier, enter the supplier name first, then save the remaining details you currently have.</li>
+          <li>Customers: Click Add Customer, enter the main contact details, then add business information such as business name, TIN or TPIN, and address when available.</li>
+          <li>Saved suppliers appear in purchase flows, and saved customers appear in POS, invoice, and receipt-related flows.</li>
         </ul>
       </Section>
 
@@ -486,6 +547,7 @@ function AdminManualPage() {
 
       <Section title="Config – Company & Receipt Settings">
         <ul>
+          <li>Open Admin → Config to manage system-wide operational settings.</li>
           <li>App/Store: Name, website, phone, receipt header/footer.</li>
           <li>Taxes: Default tax rate. Roles may override at POS with remark (audited).</li>
           <li>Invoice: Prefix and next number. System increments after each completed sale.</li>
@@ -502,6 +564,7 @@ function AdminManualPage() {
 
       <Section title="Backup & Sync – Offline Queue">
         <ul>
+          <li>Open Backup when you want to review or upload offline queued data.</li>
           <li>Backup & Sync page shows totals per collection (Sales, Invoices, Customers, etc.) and pending counts.</li>
           <li>Backup Now: Attempts to upload all queued items when online. If you logged in offline, you’ll be prompted for your PIN to obtain a token before backup.</li>
           <li>Sync Now: Refreshes the local data from the server when online.</li>
@@ -521,6 +584,7 @@ function AdminManualPage() {
 
       <Section title="Stock Records – Unified Changes">
         <ul>
+          <li>Open Admin → Stock Records when you need a branch-by-branch stock movement history.</li>
           <li>Scope: Consolidates stock changes from Purchases (receive), Transfers, Adjustments (incl. damage/expiry), Inventory manual set, Products initial stock, POS sales (stock deduct), and Refund Approvals (restock).</li>
           <li>Filters: Date range, Actor, Branch, Source page.</li>
           <li>Columns: Timestamp, Actor, Branch, Source, Action, Product, Variant, Delta, Remark.</li>
@@ -565,6 +629,14 @@ function AdminManualPage() {
           <li>Effect: Disabled features are removed from the sidebar and blocked by routes (direct URL access is prevented).</li>
           <li>Coverage includes retail menus, distribution and warehouse menus, finance screens, serialized inventory, docs/manual pages, admin tools, runtime tabs, and grant-backed visibility items such as dashboard competition and revenue/profit access.</li>
           <li>Recommendation: Enable only the modules the customer is subscribed to; keep core navigation (like POS) enabled.</li>
+        </ul>
+      </Section>
+
+      <Section title="Tenants – SuperAdmin Control">
+        <ul>
+          <li>Open Admin → Tenants when logged in as SuperAdmin.</li>
+          <li>Use the page to review tenant records, plans, and tenant-level access settings.</li>
+          <li>Changes made there affect which features or branding a tenant can use across the app.</li>
         </ul>
       </Section>
       

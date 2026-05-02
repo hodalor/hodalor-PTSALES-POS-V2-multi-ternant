@@ -3,10 +3,132 @@ import { useToast } from '../components/ToastProvider';
 import { askPtAi as askPtAiApi, transcribePtAi } from '../api/ptAi';
 import { findBestPtAiAnswer, PT_AI_TOPICS } from '../utils/ptAiKnowledge';
 
+function normalizeChatText(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function buildSmallTalkAnswer(query) {
+  const q = normalizeChatText(query);
+  if (!q) return null;
+  if (/^(hi|hello|hey|good morning|good afternoon|good evening)\b/.test(q)) {
+    return {
+      title: 'Hello',
+      answer: [
+        'Hello, I am PT AI.',
+        'How can I help you today with the system?'
+      ],
+      related: PT_AI_TOPICS.slice(0, 3)
+    };
+  }
+  if (q.includes('how are you')) {
+    return {
+      title: 'I am ready to help',
+      answer: [
+        'I am doing well and ready to help you with the system.',
+        'How can I help you today?'
+      ],
+      related: PT_AI_TOPICS.slice(0, 3)
+    };
+  }
+  if (q.includes('who are you') || q.includes('what can you do')) {
+    return {
+      title: 'About PT AI',
+      answer: [
+        'I am PT AI, your in-system assistant for this POS, inventory, approvals, finance, and communication platform.',
+        'You can ask me how to use features, where to find pages, or how a workflow should work.',
+        'What would you like help with today?'
+      ],
+      related: PT_AI_TOPICS.slice(0, 4)
+    };
+  }
+  if (q.includes('thank you') || q === 'thanks' || q.includes('thanks pt ai')) {
+    return {
+      title: 'You are welcome',
+      answer: [
+        'You are welcome.',
+        'Is there anything else you want me to help you with?'
+      ],
+      related: []
+    };
+  }
+  if (q === 'bye' || q === 'goodbye' || q.includes('see you')) {
+    return {
+      title: 'Goodbye',
+      answer: [
+        'Goodbye for now.',
+        'Come back anytime if you want help with the system.'
+      ],
+      related: []
+    };
+  }
+  return null;
+}
+
+function ensureFollowUp(lines, followUp = 'Is there anything else you want me to help you with?') {
+  const next = Array.isArray(lines) ? lines.filter(Boolean) : [];
+  if (!next.length) return [followUp];
+  if (next.some((line) => String(line || '').toLowerCase().includes('anything else'))) return next;
+  return [...next, followUp];
+}
+
+function looksLikeHowToQuestion(query) {
+  const q = normalizeChatText(query);
+  return q.includes('how do i')
+    || q.includes('how can i')
+    || q.includes('where can i')
+    || q.includes('where do i')
+    || q.includes('how to')
+    || q.includes('access')
+    || q.includes('find')
+    || q.includes('open')
+    || q.includes('print')
+    || q.includes('reprint')
+    || q.includes('download');
+}
+
+function buildConversationalAnswer(query, result, fallbackTitle = 'PT AI Answer') {
+  const smallTalk = buildSmallTalkAnswer(query);
+  if (smallTalk) return smallTalk;
+
+  const localMatch = findBestPtAiAnswer(query);
+  const title = String(result?.title || fallbackTitle).trim() || fallbackTitle;
+  const answerLines = Array.isArray(result?.answer)
+    ? result.answer.map((line) => String(line || '').trim()).filter(Boolean)
+    : String(result?.answer || result?.text || '').split(/\n{2,}|\r\n\r\n/).map((line) => line.trim()).filter(Boolean);
+  const normalizedResult = title.toLowerCase();
+  const intro = normalizedResult.includes('clearer question')
+    ? 'I can help with that, but I need a little more detail.'
+    : looksLikeHowToQuestion(query)
+      ? `Sure. Follow these steps for "${String(query || '').trim()}".`
+      : `Sure, here is the best help I found for "${String(query || '').trim()}".`;
+  const related = Array.isArray(result?.related) && result.related.length
+    ? result.related
+    : (Array.isArray(localMatch?.related) ? localMatch.related : []);
+
+  return {
+    ...result,
+    title,
+    answer: ensureFollowUp([intro, ...answerLines]),
+    related
+  };
+}
+
 function AskPtAiPage() {
+  const defaultAnswer = useMemo(() => buildConversationalAnswer('hello', findBestPtAiAnswer('serialized item'), 'PT AI Local Help'), []);
   const [query, setQuery] = useState('');
-  const [answer, setAnswer] = useState(() => findBestPtAiAnswer('serialized item'));
+  const [answer, setAnswer] = useState(defaultAnswer);
   const [history, setHistory] = useState([]);
+  const [conversation, setConversation] = useState(() => ([
+    {
+      id: 'welcome-ai',
+      role: 'ai',
+      title: defaultAnswer.title,
+      answer: defaultAnswer.answer,
+      related: defaultAnswer.related,
+      meta: 'Built-in workflow guidance',
+      pending: false
+    }
+  ]));
   const [listening, setListening] = useState(false);
   const [recording, setRecording] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -20,6 +142,7 @@ function AskPtAiPage() {
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const audioChunksRef = useRef([]);
+  const bottomRef = useRef(null);
   const toast = useToast();
 
   const speechRecognition = useMemo(() => (
@@ -42,6 +165,12 @@ function AskPtAiPage() {
     try { window.speechSynthesis?.cancel(); } catch {}
   }, []);
 
+  useEffect(() => {
+    try {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    } catch {}
+  }, [conversation]);
+
   function speakResult(nextAnswer) {
     if (!speechSupported || !nextAnswer) return;
     try {
@@ -58,19 +187,6 @@ function AskPtAiPage() {
     }
   }
 
-  function normalizeAnswer(result, fallbackTitle = 'PT AI Answer') {
-    const title = String(result?.title || fallbackTitle).trim() || fallbackTitle;
-    const answerLines = Array.isArray(result?.answer)
-      ? result.answer.map((line) => String(line || '').trim()).filter(Boolean)
-      : String(result?.answer || result?.text || '').split(/\n{2,}|\r\n\r\n/).map((line) => line.trim()).filter(Boolean);
-    return {
-      ...result,
-      title,
-      answer: answerLines,
-      related: Array.isArray(result?.related) ? result.related : []
-    };
-  }
-
   function saveHistoryEntry(clean, result) {
     setHistory((prev) => [
       { query: clean, answer: result.title, answerText: (result.answer || []).join('\n') },
@@ -83,10 +199,24 @@ function AskPtAiPage() {
     if (!clean) return;
     const requestId = Date.now();
     requestIdRef.current = requestId;
-    const quickFallback = normalizeAnswer(findBestPtAiAnswer(clean), 'PT AI Local Help');
+    const answerEntryId = `ai-${requestId}`;
+    const quickFallback = buildConversationalAnswer(clean, findBestPtAiAnswer(clean), 'PT AI Local Help');
     setAnswer(quickFallback);
     setAnswerMeta('Built-in workflow guidance');
     saveHistoryEntry(clean, quickFallback);
+    setConversation((prev) => ([
+      ...prev,
+      { id: `user-${requestId}`, role: 'user', text: clean },
+      {
+        id: answerEntryId,
+        role: 'ai',
+        title: quickFallback.title,
+        answer: quickFallback.answer,
+        related: quickFallback.related,
+        meta: 'Built-in workflow guidance',
+        pending: true
+      }
+    ]));
     if (options.autoSpeakQuick) speakResult(quickFallback);
     setAsking(true);
     try {
@@ -95,16 +225,40 @@ function AskPtAiPage() {
         history: history.slice(0, 4).map((item) => ({ question: item.query, answer: item.answerText || item.answer }))
       });
       if (requestIdRef.current !== requestId) return;
-      const normalized = normalizeAnswer(aiResult);
+      const normalized = buildConversationalAnswer(clean, aiResult);
       setAnswer(normalized);
       setAnswerMeta(`${aiResult?.provider || 'AI backend'}${aiResult?.model ? ` • ${aiResult.model}` : ''}`);
       saveHistoryEntry(clean, normalized);
+      setConversation((prev) => prev.map((entry) => (
+        entry.id === answerEntryId
+          ? {
+            ...entry,
+            title: normalized.title,
+            answer: normalized.answer,
+            related: normalized.related,
+            meta: `${aiResult?.provider || 'AI backend'}${aiResult?.model ? ` • ${aiResult.model}` : ''}`,
+            pending: false
+          }
+          : entry
+      )));
       if (options.autoSpeak) speakResult(normalized);
     } catch (error) {
       if (requestIdRef.current !== requestId) return;
       setAnswer(quickFallback);
       setAnswerMeta('Built-in workflow guidance');
       saveHistoryEntry(clean, quickFallback);
+      setConversation((prev) => prev.map((entry) => (
+        entry.id === answerEntryId
+          ? {
+            ...entry,
+            title: quickFallback.title,
+            answer: quickFallback.answer,
+            related: quickFallback.related,
+            meta: 'Built-in workflow guidance',
+            pending: false
+          }
+          : entry
+      )));
       if (!fallbackNoticeShownRef.current) {
         fallbackNoticeShownRef.current = true;
         toast.show('PT AI gave the fast built-in answer while the live AI backend was unavailable or slow.', { type: 'warning' });
@@ -235,105 +389,183 @@ function AskPtAiPage() {
 
   const quickTopics = PT_AI_TOPICS.slice(0, 8);
 
+  function onComposerKeyDown(event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
+      if (!recording) ask(query);
+    }
+  }
+
   return (
-    <div className="page-shell">
+    <div className="page-shell chat-page-shell ask-ai-page-shell">
       <div className="page-header">
         <div>
           <h1 style={{ margin: 0 }}>Ask PT AI</h1>
-          <div className="page-subtitle-compact">Ask how any part of the system works. PT AI understands common spelling mistakes, workflow questions, and can listen and read answers aloud.</div>
+          <div className="page-subtitle-compact">Ask how any part of the system works in a chat-style workspace. PT AI understands spelling mistakes, workflow questions, and voice requests.</div>
+        </div>
+        <div className="page-header-actions">
+          <span className="status-pill status-pill-neutral">Topics {PT_AI_TOPICS.length}</span>
+          <span className={`status-pill ${(recorderSupported || voiceSupported) ? 'status-pill-approved' : 'status-pill-rejected'}`}>Voice {(recorderSupported || voiceSupported) ? 'Ready' : 'Off'}</span>
+          <span className={`status-pill ${speechSupported ? 'status-pill-approved' : 'status-pill-rejected'}`}>Reply {speechSupported ? 'Ready' : 'Off'}</span>
         </div>
       </div>
 
-      <div className="stats-grid">
-        <div className="card stat-card"><div className="stat-label">Covered Topics</div><div className="stat-value">{PT_AI_TOPICS.length}</div></div>
-        <div className="card stat-card"><div className="stat-label">Voice Input</div><div className="stat-value" style={{ fontSize: '1.2rem' }}>{(recorderSupported || voiceSupported) ? 'Ready' : 'Browser Off'}</div></div>
-        <div className="card stat-card"><div className="stat-label">Voice Reply</div><div className="stat-value" style={{ fontSize: '1.2rem' }}>{speechSupported ? 'Ready' : 'Browser Off'}</div></div>
-      </div>
-
-      <div className="card" style={{ display: 'grid', gap: 12 }}>
-        <div className="field-label">Ask PT AI</div>
-        <textarea
-          className="input"
-          rows={4}
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Example: how do I add a serialized item, how to sell phone imei, how does cash reconciliation work"
-        />
-        <div className="approval-row-actions" style={{ justifyContent: 'space-between' }}>
-          <div className="inline-actions">
-            <button className="btn btn-primary" onClick={() => ask(query)} disabled={recording}>{asking ? 'Refining...' : 'Ask Now'}</button>
-            {recorderSupported ? (
-              recording
-                ? <button className="btn" onClick={stopAudioRecording}>Stop Recording</button>
-                : <button className="btn" onClick={startAudioRecording} disabled={listening}>Record Voice</button>
-            ) : null}
-            {voiceSupported ? (
-              listening
-                ? <button className="btn" onClick={stopVoiceInput}>Stop Voice Input</button>
-                : <button className="btn" onClick={startVoiceInput} disabled={recording}>Use Browser Voice</button>
-            ) : null}
-            {speechSupported ? (
-              speaking
-                ? <button className="btn" onClick={stopSpeaking}>Stop Reading</button>
-                : <button className="btn" onClick={speakAnswer} disabled={!answer}>Read Answer</button>
-            ) : null}
-          </div>
-          <span className="table-meta">
-            {recording ? 'Recording voice...' : listening ? `Listening${transcript ? `: ${transcript}` : '...'}` : asking ? 'Showing fast answer while PT AI refines it...' : speaking ? 'Reading answer aloud...' : 'You can type, record voice, or use browser voice.'}
-          </span>
-        </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.5fr) 360px', gap: 16 }}>
-        <div className="card" style={{ display: 'grid', gap: 12 }}>
-          <div className="section-header">
-            <div>
-              <h2 className="section-title" style={{ margin: 0 }}>{answer?.title || 'Answer'}</h2>
-              <div className="section-note">{answerMeta}</div>
-            </div>
-            {speaking ? <span className="status-pill status-pill-approved">Speaking</span> : null}
-          </div>
-          <div className="surface-panel-muted" style={{ display: 'grid', gap: 10 }}>
-            {(answer?.answer || []).map((line) => (
-              <div key={line} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                <span className="status-pill status-pill-pending" style={{ minWidth: 24, padding: '4px 0' }} />
-                <div style={{ lineHeight: 1.7 }}>{line}</div>
+      <div className="chat-layout ask-ai-layout">
+        <div className="card chat-people-card ask-ai-sidebar-card">
+          <div className="chat-people-top">
+            <div className="section-header">
+              <div>
+                <h2 className="section-title" style={{ margin: 0 }}>AI Workspace</h2>
+                <span className="table-meta">{history.length ? `${history.length} recent question${history.length > 1 ? 's' : ''}` : 'Ready for your first question'}</span>
               </div>
-            ))}
-          </div>
-          {answer?.related?.length ? (
-            <div style={{ display: 'grid', gap: 8 }}>
-              <div className="field-label">Related Help</div>
+              {speaking ? <span className="status-pill status-pill-approved">Speaking</span> : null}
+            </div>
+            <div className="surface-panel-muted ask-ai-status-panel">
+              <div className="mini-record-title">
+                <span>{recording ? 'Recording voice...' : listening ? 'Listening...' : asking ? 'Thinking...' : speaking ? 'Reading answer aloud...' : 'PT AI is ready'}</span>
+              </div>
+              <div className="mini-record-subtle">
+                {transcript
+                  ? transcript
+                  : recording
+                    ? 'Speak clearly and stop when done.'
+                    : listening
+                      ? 'Browser voice capture is active.'
+                      : 'Type or use voice to ask about any workflow in the system.'}
+              </div>
+            </div>
+            <div>
+              <div className="field-label" style={{ marginBottom: 8 }}>Quick Topics</div>
               <div className="inline-actions">
-                {answer.related.map((topic) => (
+                {quickTopics.map((topic) => (
                   <button key={topic.id} className="btn" onClick={() => { setQuery(topic.title); ask(topic.title); }}>
                     {topic.title}
                   </button>
                 ))}
               </div>
             </div>
-          ) : null}
-        </div>
-
-        <div style={{ display: 'grid', gap: 16, alignSelf: 'start' }}>
-          <div className="card" style={{ display: 'grid', gap: 10 }}>
-            <h2 className="section-title" style={{ margin: 0 }}>Quick Topics</h2>
-            <div className="inline-actions">
-              {quickTopics.map((topic) => (
-                <button key={topic.id} className="btn" onClick={() => { setQuery(topic.title); ask(topic.title); }}>
-                  {topic.title}
-                </button>
-              ))}
-            </div>
           </div>
-          <div className="card" style={{ display: 'grid', gap: 10 }}>
-            <h2 className="section-title" style={{ margin: 0 }}>Recent Questions</h2>
+          <div className="chat-people-list">
             {history.length ? history.map((item, index) => (
-              <div key={`${item.query}-${index}`} className="mini-record">
+              <button
+                key={`${item.query}-${index}`}
+                type="button"
+                className="surface-panel chat-person-item"
+                onClick={() => { setQuery(item.query); ask(item.query); }}
+                style={{ textAlign: 'left', cursor: 'pointer' }}
+              >
                 <div className="mini-record-title"><span>{item.query}</span></div>
                 <div className="mini-record-subtle">{item.answer}</div>
+              </button>
+            )) : <div className="surface-panel-muted">Your recent PT AI questions will appear here.</div>}
+          </div>
+        </div>
+
+        <div className="card chat-room-card ask-ai-room-card">
+          <div className="section-header chat-room-header">
+            <div>
+              <h2 className="section-title" style={{ margin: 0 }}>PT AI Conversation</h2>
+              <div className="section-note">{answerMeta || 'Built-in workflow guidance'}</div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span className={`status-pill ${asking ? 'status-pill-pending' : 'status-pill-neutral'}`}>{asking ? 'Refining' : 'Ready'}</span>
+              <span className={`status-pill ${recording || listening ? 'status-pill-approved' : 'status-pill-neutral'}`}>{recording ? 'Recording' : listening ? 'Listening' : 'Idle'}</span>
+            </div>
+          </div>
+
+          <div className="chat-thread ask-ai-thread">
+            {conversation.map((entry) => {
+              const mine = entry.role === 'user';
+              return (
+                <div key={entry.id} className={`chat-message-row${mine ? ' chat-message-row-mine' : ''}`}>
+                  <div className={`chat-message-bubble${mine ? ' chat-message-bubble chat-message-bubble-mine' : ''} ask-ai-message-bubble`}>
+                    {mine ? (
+                      <>
+                        <div className="chat-message-meta-top">
+                          <span className="chat-message-author">You</span>
+                        </div>
+                        <div className="chat-message-text">{entry.text}</div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="chat-message-meta-top">
+                          <div>
+                            <div className="chat-message-author">PT AI</div>
+                            <div className="section-note ask-ai-bubble-meta">{entry.meta}</div>
+                          </div>
+                          {entry.pending ? <span className="status-pill status-pill-pending">Updating</span> : null}
+                        </div>
+                        <div className="ask-ai-answer-title">{entry.title}</div>
+                        <div className="ask-ai-answer-lines">
+                          {(entry.answer || []).map((line) => (
+                            <div key={`${entry.id}-${line}`} className="ask-ai-answer-line">{line}</div>
+                          ))}
+                        </div>
+                        {entry.related?.length ? (
+                          <div className="ask-ai-related-block">
+                            <div className="ask-ai-related-title">Related Help</div>
+                            <div className="inline-actions">
+                              {entry.related.map((topic) => (
+                                <button key={`${entry.id}-${topic.id}`} className="btn" onClick={() => { setQuery(topic.title); ask(topic.title); }}>
+                                  {topic.title}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={bottomRef} />
+          </div>
+
+          <div className="chat-composer ask-ai-composer">
+            {transcript ? (
+              <div className="chat-reply-banner">
+                <div>
+                  <div className="chat-reply-banner-title">Voice Transcript</div>
+                  <div className="chat-reply-banner-text">{transcript}</div>
+                </div>
               </div>
-            )) : <div className="table-meta">Your recent questions will appear here.</div>}
+            ) : null}
+            <div className="chat-compose-row">
+              {recorderSupported ? (
+                recording
+                  ? <button className="btn chat-compose-emoji-btn" onClick={stopAudioRecording} title="Stop recording">■</button>
+                  : <button className="btn chat-compose-emoji-btn" onClick={startAudioRecording} disabled={listening} title="Record voice">Rec</button>
+              ) : (
+                <button className="btn chat-compose-emoji-btn" onClick={startVoiceInput} disabled={!voiceSupported || recording} title="Use browser voice">Mic</button>
+              )}
+              <textarea
+                className="input chat-compose-input"
+                rows={1}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={onComposerKeyDown}
+                placeholder="Ask PT AI anything about the system"
+              />
+              <button className="btn btn-primary chat-compose-send-btn" onClick={() => ask(query)} disabled={recording} title="Ask now">
+                {asking ? '...' : '>'}
+              </button>
+            </div>
+            <div className="inline-actions ask-ai-toolbar">
+              {voiceSupported ? (
+                listening
+                  ? <button className="btn" onClick={stopVoiceInput}>Stop Voice Input</button>
+                  : <button className="btn" onClick={startVoiceInput} disabled={recording}>Use Browser Voice</button>
+              ) : null}
+              {speechSupported ? (
+                speaking
+                  ? <button className="btn" onClick={stopSpeaking}>Stop Reading</button>
+                  : <button className="btn" onClick={speakAnswer} disabled={!answer}>Read Answer</button>
+              ) : null}
+              <span className="table-meta">
+                {recording ? 'Recording voice...' : listening ? 'Listening for your question...' : asking ? 'Showing a fast answer while PT AI refines it...' : 'Press Enter to ask. Use Shift+Enter for a new line.'}
+              </span>
+            </div>
           </div>
         </div>
       </div>

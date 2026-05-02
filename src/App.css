@@ -660,8 +660,79 @@ html, body, #root {
 .chat-action-menu-item:hover {
   background: #f1f5f9;
 }
+.ask-ai-page-shell {
+  height: 100%;
+}
+.ask-ai-layout {
+  grid-template-columns: 320px minmax(0, 1fr);
+}
+.ask-ai-sidebar-card {
+  background:
+    radial-gradient(circle at top left, rgba(124, 58, 237, 0.08), transparent 28%),
+    linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.98) 100%);
+}
+.ask-ai-room-card {
+  background:
+    radial-gradient(circle at top right, rgba(124,58,237,0.09), transparent 22%),
+    radial-gradient(circle at top left, rgba(37,99,235,0.08), transparent 24%),
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+.ask-ai-status-panel {
+  display: grid;
+  gap: 4px;
+}
+.ask-ai-thread {
+  padding: 4px 6px 4px 0;
+  background:
+    radial-gradient(circle at 15% 18%, rgba(124,58,237,0.08), transparent 24%),
+    radial-gradient(circle at 85% 12%, rgba(37,99,235,0.06), transparent 26%),
+    linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+}
+.ask-ai-message-bubble {
+  max-width: min(76%, 680px);
+}
+.ask-ai-bubble-meta {
+  margin-top: 2px;
+}
+.ask-ai-answer-title {
+  margin-top: 6px;
+  font-size: 15px;
+  font-weight: 800;
+  color: #0f172a;
+}
+.ask-ai-answer-lines {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+.ask-ai-answer-line {
+  line-height: 1.65;
+  white-space: pre-wrap;
+}
+.ask-ai-related-block {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #dbe4ef;
+}
+.ask-ai-related-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #475569;
+}
+.ask-ai-composer {
+  gap: 8px;
+}
+.ask-ai-toolbar {
+  justify-content: space-between;
+  align-items: center;
+}
 @media (max-width: 980px) {
   .chat-layout {
+    grid-template-columns: 1fr;
+  }
+  .ask-ai-layout {
     grid-template-columns: 1fr;
   }
   .chat-page-shell {
@@ -680,6 +751,9 @@ html, body, #root {
   }
   .chat-message-bubble {
     max-width: 88%;
+  }
+  .ask-ai-message-bubble {
+    max-width: 92%;
   }
 }
 @media (max-width: 640px) {
@@ -717,6 +791,9 @@ html, body, #root {
     max-height: 76px;
     padding-top: 9px;
     padding-bottom: 9px;
+  }
+  .ask-ai-toolbar {
+    align-items: flex-start;
   }
 }
 .options-grid {
