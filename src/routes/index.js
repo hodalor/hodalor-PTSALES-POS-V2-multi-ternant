@@ -24,6 +24,8 @@ import productUnits from './productUnits.js';
 import reconciliationAccounts from './reconciliationAccounts.js';
 import cashReconciliations from './cashReconciliations.js';
 import tenants from './tenants.js';
+import chatMessages from './chatMessages.js';
+import ptAi from './ptAi.js';
 
 const router = Router();
 router.use('/products', products);
@@ -51,5 +53,7 @@ router.use('/product-units', productUnits);
 router.use('/reconciliation-accounts', reconciliationAccounts);
 router.use('/cash-reconciliations', cashReconciliations);
 router.use('/tenants', tenants);
+router.use('/chat-messages', chatMessages);
+router.use('/pt-ai', ptAi);
 
 export default router;

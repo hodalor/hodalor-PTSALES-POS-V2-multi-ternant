@@ -1,0 +1,206 @@
+const DEFAULT_AI_BASE_URL = 'https://api.openai.com/v1';
+const DEFAULT_AI_MODEL = 'gpt-4o-mini';
+const DEFAULT_AI_TRANSCRIBE_MODEL = 'gpt-4o-mini-transcribe';
+
+const PT_AI_SYSTEM_PROMPT = `
+You are PT AI, the in-product assistant for a multi-tenant POS, inventory, finance, and approvals system.
+
+Your job:
+- Answer clearly and practically for end users, cashiers, managers, inventory staff, tenant admins, and superadmin users.
+- Explain workflows inside this product, not generic theory.
+- Handle spelling mistakes and vague phrasing.
+- Give step-by-step answers when the user asks "how do I".
+- Stay concise but complete.
+- If the question is ambiguous, state the most likely workflow and mention a close alternative.
+
+Core system areas you must understand:
+- Retail POS, Distribution POS, Warehouse operations
+- Products, packs, variants, SKU, barcode, labels
+- Serialized and IMEI item handling
+- Inventory segregation by retail, distribution, and warehouse branch types
+- Purchases, transfers, adjustments, refunds, approvals
+- Customers, suppliers, users, branches, grants, permissions, GodHand feature toggles
+- Sales, invoices, receipts, line totals, business customer fields
+- Finance and cash reconciliation, deposit proof, approvals, backlog handling
+- Reports, stock records, backup/sync, IMEI conflicts
+- Internal communication, tenant-safe data access, branch-specific visibility
+
+Answer style:
+- Prefer numbered or ordered steps when useful.
+- Mention the likely page or menu path when you know it.
+- Do not invent features that are not likely in this system.
+- If you are not sure, say what is most likely and what to verify in the app.
+`.trim();
+
+function normalizeAiBaseUrl(value) {
+  return String(value || DEFAULT_AI_BASE_URL).trim().replace(/\/+$/, '');
+}
+
+function getAiConfig() {
+  const apiKey = String(process.env.PT_AI_API_KEY || process.env.OPENAI_API_KEY || '').trim();
+  const baseUrl = normalizeAiBaseUrl(process.env.PT_AI_BASE_URL || process.env.OPENAI_BASE_URL || DEFAULT_AI_BASE_URL);
+  const model = String(process.env.PT_AI_MODEL || process.env.OPENAI_MODEL || DEFAULT_AI_MODEL).trim() || DEFAULT_AI_MODEL;
+  const transcriptionModel = String(process.env.PT_AI_TRANSCRIBE_MODEL || DEFAULT_AI_TRANSCRIBE_MODEL).trim() || DEFAULT_AI_TRANSCRIBE_MODEL;
+  return {
+    apiKey,
+    baseUrl,
+    model,
+    transcriptionModel,
+    configured: !!apiKey
+  };
+}
+
+function normalizeHistory(history) {
+  return (Array.isArray(history) ? history : [])
+    .slice(-6)
+    .flatMap((item) => {
+      const question = String(item?.question || item?.query || '').trim();
+      const answer = String(item?.answer || '').trim();
+      const out = [];
+      if (question) out.push({ role: 'user', content: question });
+      if (answer) out.push({ role: 'assistant', content: answer });
+      return out;
+    });
+}
+
+function splitAnswer(text) {
+  return String(text || '')
+    .split(/\n{2,}|\r\n\r\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+async function fetchWithTimeout(url, options, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      const err = new Error('PT AI request timed out');
+      err.code = 'PT_AI_TIMEOUT';
+      throw err;
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function askExternalPtAi({ query, history = [] }) {
+  const cleanQuery = String(query || '').trim();
+  if (!cleanQuery) throw new Error('Question is required');
+
+  const config = getAiConfig();
+  if (!config.configured) {
+    const err = new Error('PT AI backend is not configured');
+    err.code = 'PT_AI_NOT_CONFIGURED';
+    throw err;
+  }
+
+  const response = await fetchWithTimeout(`${config.baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.apiKey}`
+    },
+    body: JSON.stringify({
+      model: config.model,
+      temperature: 0.3,
+      messages: [
+        { role: 'system', content: PT_AI_SYSTEM_PROMPT },
+        ...normalizeHistory(history),
+        { role: 'user', content: cleanQuery }
+      ]
+    })
+  }, 12000);
+
+  const raw = await response.text();
+  let parsed = null;
+  try {
+    parsed = raw ? JSON.parse(raw) : null;
+  } catch {}
+
+  if (!response.ok) {
+    const message = String(parsed?.error?.message || parsed?.message || raw || 'PT AI request failed').trim();
+    const err = new Error(message);
+    err.code = `PT_AI_HTTP_${response.status}`;
+    throw err;
+  }
+
+  const text = String(parsed?.choices?.[0]?.message?.content || '').trim();
+  if (!text) {
+    const err = new Error('PT AI returned an empty answer');
+    err.code = 'PT_AI_EMPTY';
+    throw err;
+  }
+
+  return {
+    mode: 'ai',
+    title: 'PT AI Answer',
+    answer: splitAnswer(text),
+    provider: 'openai-compatible',
+    model: config.model
+  };
+}
+
+export async function transcribeExternalPtAi({ audioBase64, mimeType = 'audio/webm' }) {
+  const base64 = String(audioBase64 || '').trim();
+  if (!base64) throw new Error('Audio is required');
+
+  const config = getAiConfig();
+  if (!config.configured) {
+    const err = new Error('PT AI backend is not configured');
+    err.code = 'PT_AI_NOT_CONFIGURED';
+    throw err;
+  }
+
+  const cleanBase64 = base64.includes(',') ? base64.split(',').pop() : base64;
+  const buffer = Buffer.from(cleanBase64, 'base64');
+  if (!buffer.length) {
+    const err = new Error('Audio could not be decoded');
+    err.code = 'PT_AI_AUDIO_INVALID';
+    throw err;
+  }
+
+  const form = new FormData();
+  form.append('model', config.transcriptionModel);
+  form.append('file', new Blob([buffer], { type: String(mimeType || 'audio/webm') }), 'pt-ai-voice.webm');
+
+  const response = await fetchWithTimeout(`${config.baseUrl}/audio/transcriptions`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`
+    },
+    body: form
+  }, 20000);
+
+  const raw = await response.text();
+  let parsed = null;
+  try {
+    parsed = raw ? JSON.parse(raw) : null;
+  } catch {}
+
+  if (!response.ok) {
+    const message = String(parsed?.error?.message || parsed?.message || raw || 'PT AI transcription failed').trim();
+    const err = new Error(message);
+    err.code = `PT_AI_TRANSCRIBE_HTTP_${response.status}`;
+    throw err;
+  }
+
+  const text = String(parsed?.text || parsed?.transcript || '').trim();
+  if (!text) {
+    const err = new Error('PT AI transcription returned empty text');
+    err.code = 'PT_AI_TRANSCRIBE_EMPTY';
+    throw err;
+  }
+
+  return {
+    text,
+    provider: 'openai-compatible',
+    model: config.transcriptionModel
+  };
+}

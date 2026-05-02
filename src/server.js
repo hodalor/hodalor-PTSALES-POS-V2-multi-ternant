@@ -89,6 +89,8 @@ function featureForApiPath(pathname) {
   if (path.startsWith('/wholesale')) return 'modules.wholesalePos';
   if (path.startsWith('/credits')) return 'modules.creditControl';
   if (path.startsWith('/product-units')) return 'modules.products';
+  if (path.startsWith('/chat-messages')) return 'modules.communication';
+  if (path.startsWith('/pt-ai')) return 'modules.communication';
   return '';
 }
 
