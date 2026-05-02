@@ -72,6 +72,17 @@ function serializeCallLog(row, currentUser = '') {
   };
 }
 
+function serializeIncomingCall(row) {
+  return {
+    id: String(row?._id || row?.id || ''),
+    callId: String(row?.callId || ''),
+    callerName: normalizeName(row?.callerName),
+    calleeName: normalizeName(row?.calleeName),
+    status: String(row?.status || 'ringing'),
+    startedAt: row?.startedAt || null
+  };
+}
+
 function issueStreamToken(req) {
   const secret = String(process.env.JWT_SECRET || '').trim();
   if (!secret) {
@@ -205,6 +216,18 @@ r.get('/call-history/:userName', requireAuth, requireFeature('modules.communicat
     ]
   }).sort({ startedAt: -1, createdAt: -1 }).limit(limit).lean();
   res.json(rows.map((row) => serializeCallLog(row, currentUser)));
+});
+
+r.get('/incoming-calls', requireAuth, requireFeature('modules.communication'), requireRoleOrPerm(['Admin', 'Manager', 'Cashier', 'Inventory Staff'], CAN_CHAT), async (req, res) => {
+  const ChatCallLog = ChatCallLogModelFor(req.db);
+  const currentUser = normalizeName(req.user?.name);
+  const rows = await ChatCallLog.find({
+    calleeName: currentUser,
+    status: 'ringing',
+    endedAt: null,
+    startedAt: { $gte: new Date(Date.now() - 45 * 1000) }
+  }).sort({ startedAt: -1, createdAt: -1 }).limit(5).lean();
+  res.json(rows.map(serializeIncomingCall));
 });
 
 r.post('/', requireAuth, requireFeature('modules.communication'), requireRoleOrPerm(['Admin', 'Manager', 'Cashier', 'Inventory Staff'], ['send_chat_messages', 'view_chat']), async (req, res) => {
