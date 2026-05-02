@@ -131,6 +131,10 @@ function PurchasesPage() {
     const ids = new Set(Array.isArray(assigned) ? assigned : [assigned]);
     return branches.filter(b => ids.has(b.id));
   }, [roleLower, assigned, branches]);
+  const retailBranchOptions = useMemo(
+    () => branchOptions.filter((branch) => String(branch.branchType || 'retail').toLowerCase() === 'retail'),
+    [branchOptions]
+  );
   const basePurchases = useMemo(() => audit.filter((entry) => {
     if (entry.actionType !== 'stock_receive') return false;
     const entryTenantId = String(entry?.tenantId || '').trim().toLowerCase();
@@ -602,7 +606,7 @@ function PurchasesPage() {
             </div>
             <label>
               <div style={{ marginBottom: 6, color: '#64748b' }}>Branch</div>
-              <BranchSelect value={branchId} onChange={setBranchId} />
+              <BranchSelect value={branchId} onChange={setBranchId} overrideBranches={retailBranchOptions} />
             </label>
             {(selectedProduct?.variants || []).length > 0 && (
               <label>

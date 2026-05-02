@@ -75,6 +75,7 @@ function AdjustmentsPage() {
   const [loading, setLoading] = useState(false);
   const [busyId, setBusyId] = useState(null);
   const [detail, setDetail] = useState(null);
+  const [approvalRows, setApprovalRows] = useState([]);
   const dispatch = useDispatch();
   const toast = useToast();
   const serializedScanInputRef = useRef(null);
@@ -163,9 +164,8 @@ function AdjustmentsPage() {
       setBranchId(createBranchId);
     }
   }, [openModal, branchId, createBranchId]);
-  const baseRows = useMemo(() => audit.filter(e => e.actionType === 'stock_adjust' || e.actionType === 'stock_damage_remove'), [audit]);
-  const actors = useMemo(() => Array.from(new Set(baseRows.map(e => e.actor).filter(Boolean))).sort(), [baseRows]);
-  const rows = useMemo(() => {
+  const auditRows = useMemo(() => {
+    const baseRows = audit.filter(e => e.actionType === 'stock_adjust' || e.actionType === 'stock_damage_remove');
     const fromTs = periodMode === 'all_time' ? 0 : (dateFrom ? new Date(dateFrom).getTime() : 0);
     const toTs = periodMode === 'all_time' ? Number.MAX_SAFE_INTEGER : (dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER);
     return baseRows.filter(e => {
@@ -190,7 +190,55 @@ function AdjustmentsPage() {
         remark: e.remark || ''
       };
     }).slice().reverse();
-  }, [baseRows, dateFrom, dateTo, fActor, fBranch, periodMode]);
+  }, [audit, dateFrom, dateTo, fActor, fBranch, periodMode]);
+  const requestRows = useMemo(() => {
+    const fromTs = periodMode === 'all_time' ? 0 : (dateFrom ? new Date(dateFrom).getTime() : 0);
+    const toTs = periodMode === 'all_time' ? Number.MAX_SAFE_INTEGER : (dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER);
+    return (Array.isArray(approvalRows) ? approvalRows : [])
+      .filter((row) => ['approved', 'rejected'].includes(String(row.status || '').toLowerCase()))
+      .map((row) => {
+        const product = products.find((p) => String(p.id) === String(row.productId));
+        const variant = row.variantId ? ((product?.variants || []).find((v) => String(v.id) === String(row.variantId))?.label || row.variantId) : '';
+        const ts = row.approved_at || row.rejected_at || row.updatedAt || row.createdAt || new Date().toISOString();
+        const delta = Number(row.delta || (Array.isArray(row.items) ? row.items.reduce((sum, item) => sum + Number(item.delta || 0), 0) : 0));
+        return {
+          id: row._id || row.clientId || `${row.productId}-${ts}`,
+          _id: row._id || row.clientId || `${row.productId}-${ts}`,
+          ts,
+          actor: row.approverName || row.initiatorName || '',
+          product: row.transactionTitle || product?.name || row.productId || '',
+          variant,
+          branchId: row.branchId || '',
+          delta,
+          type: String(row.status || '').toLowerCase() === 'rejected' ? 'Rejected' : 'Adjust',
+          remark: row.approvalRemark || row.managerApprovalRemark || row.rejectionRemark || row.remark || ''
+        };
+      })
+      .filter((row) => {
+        const ts = new Date(row.ts).getTime();
+        if (ts < fromTs || ts > toTs) return false;
+        if (fActor && row.actor !== fActor) return false;
+        if (fBranch && row.branchId !== fBranch) return false;
+        return true;
+      })
+      .slice()
+      .reverse();
+  }, [approvalRows, dateFrom, dateTo, fActor, fBranch, periodMode, products]);
+  const rows = useMemo(() => {
+    if (auditRows.length === 0) return requestRows;
+    const merged = [...auditRows];
+    requestRows.forEach((row) => {
+      const duplicate = auditRows.some((auditRow) =>
+        String(auditRow.branchId || '') === String(row.branchId || '')
+        && String(auditRow.product || '').trim().toLowerCase() === String(row.product || '').trim().toLowerCase()
+        && Number(auditRow.delta || 0) === Number(row.delta || 0)
+        && Math.abs(new Date(auditRow.ts).getTime() - new Date(row.ts).getTime()) < 5 * 60 * 1000
+      );
+      if (!duplicate) merged.push(row);
+    });
+    return merged.slice().sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
+  }, [auditRows, requestRows]);
+  const actors = useMemo(() => Array.from(new Set(rows.map(e => e.actor).filter(Boolean))).sort(), [rows]);
   const summary = useMemo(() => ({
     records: rows.length,
     totalDelta: rows.reduce((sum, row) => sum + Math.abs(Number(row.delta || 0)), 0),
@@ -750,6 +798,7 @@ function AdjustmentsPage() {
           branches={branches}
           byId={byId}
           setDetail={setDetail}
+          onRequestsChange={setApprovalRows}
           busyId={busyId}
           setBusyId={setBusyId}
           toast={toast}
@@ -890,7 +939,7 @@ function AdjustmentsPage() {
   );
 }
 
-function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, statusFilter, setStatusFilter, loading, setLoading, products, branches, byId, setDetail, busyId, setBusyId, toast, auth, dispatch }) {
+function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, statusFilter, setStatusFilter, loading, setLoading, products, branches, byId, setDetail, onRequestsChange, busyId, setBusyId, toast, auth, dispatch }) {
   const [requests, setRequests] = useState([]);
   const [reloadAt, setReloadAt] = useState(0);
   useEffect(() => {
@@ -904,10 +953,15 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
           const wanted = statusFilter === 'pending_director' ? ['pending', 'pending_approval', 'pending_director'] : [statusFilter];
           rows = Array.isArray(all) ? all.filter(r => wanted.includes(String(r.status || ''))) : [];
         }
-        if (alive) setRequests(Array.isArray(rows) ? rows : []);
+        if (alive) {
+          const nextRows = Array.isArray(rows) ? rows : [];
+          setRequests(nextRows);
+          if (typeof onRequestsChange === 'function') onRequestsChange(nextRows);
+        }
       } catch (e) {
         if (alive) {
           setRequests([]);
+          if (typeof onRequestsChange === 'function') onRequestsChange([]);
           try { toast.show(String(e?.message || 'Failed to load requests'), { type: 'error' }); } catch {}
         }
       } finally {
@@ -949,12 +1003,20 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
           });
           void refreshAffectedProducts(dispatch, Array.from(new Set(approvedItems.map((item) => item?.productId).filter(Boolean))));
           toast.show('Adjustment approved and stock updated', { type: 'success' });
-          setRequests(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, ...next } : x));
+          setRequests(prev => {
+            const updated = prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, ...next } : x);
+            if (typeof onRequestsChange === 'function') onRequestsChange(updated);
+            return updated;
+          });
           setStatusFilter('approved');
           setReloadAt(Date.now());
         } else {
           toast.show('Director approval recorded. Waiting for manager approval.', { type: 'success' });
-          setRequests(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, ...next } : x));
+          setRequests(prev => {
+            const updated = prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, ...next } : x);
+            if (typeof onRequestsChange === 'function') onRequestsChange(updated);
+            return updated;
+          });
           setStatusFilter('pending_manager');
           setReloadAt(Date.now());
         }
@@ -984,7 +1046,11 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
         await adjustmentsApi.reject({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
       }
       toast.show('Adjustment rejected', { type: 'success' });
-      setRequests(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, status: 'rejected', approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', rejectionRemark: remark, rejected_at: new Date().toISOString() } : x));
+      setRequests(prev => {
+        const updated = prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, status: 'rejected', approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', rejectionRemark: remark, rejected_at: new Date().toISOString() } : x);
+        if (typeof onRequestsChange === 'function') onRequestsChange(updated);
+        return updated;
+      });
       setStatusFilter('rejected');
       setReloadAt(Date.now());
     } catch (e) {

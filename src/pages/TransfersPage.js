@@ -81,6 +81,10 @@ function TransfersPage() {
     const ids = new Set(Array.isArray(assigned) ? assigned : [assigned]);
     return branches.filter(b => ids.has(b.id));
   }, [roleLower, assigned, branches]);
+  const retailBranchOptions = useMemo(
+    () => branchOptions.filter((branch) => String(branch.branchType || 'retail').toLowerCase() === 'retail'),
+    [branchOptions]
+  );
 
   const byId = useMemo(() => {
     const map = new Map();
@@ -97,6 +101,17 @@ function TransfersPage() {
     return kind === 'warehouse' ? 'warehouse' : kind === 'wholesale' ? 'wholesale' : 'retail';
   }
   const selectedProduct = useMemo(() => products.find(p => p.id === productId) || null, [productId, products]);
+  useEffect(() => {
+    if (!retailBranchOptions.some((branch) => String(branch.id) === String(fromId || ''))) {
+      setFromId(retailBranchOptions[0]?.id || '');
+    }
+  }, [fromId, retailBranchOptions]);
+  useEffect(() => {
+    if (!branchOptions.some((branch) => String(branch.id) === String(toId || ''))) {
+      const nextTo = branchOptions.find((branch) => String(branch.id) !== String(fromId || ''))?.id || branchOptions[0]?.id || '';
+      setToId(nextTo);
+    }
+  }, [branchOptions, fromId, toId]);
   const filteredProducts = useMemo(() => {
     const term = String(productQuery || '').trim().toLowerCase();
     if (!term) return [];
@@ -544,11 +559,11 @@ function TransfersPage() {
             )}
             <label>
               <div style={{ marginBottom: 6, color: '#64748b' }}>From</div>
-              <BranchSelect value={fromId} onChange={setFromId} />
+              <BranchSelect value={fromId} onChange={setFromId} overrideBranches={retailBranchOptions} />
             </label>
             <label>
               <div style={{ marginBottom: 6, color: '#64748b' }}>To</div>
-              <BranchSelect value={toId} onChange={setToId} />
+              <BranchSelect value={toId} onChange={setToId} overrideBranches={branchOptions} />
             </label>
             <label>
               <div style={{ marginBottom: 6, color: '#64748b' }}>Quantity</div>
