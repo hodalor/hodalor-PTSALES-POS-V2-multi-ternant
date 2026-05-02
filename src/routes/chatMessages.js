@@ -282,4 +282,33 @@ r.post('/react', requireAuth, requireFeature('modules.communication'), requireRo
   res.json(payload);
 });
 
+r.post('/call-signal', requireAuth, requireFeature('modules.communication'), requireRoleOrPerm(['Admin', 'Manager', 'Cashier', 'Inventory Staff'], ['view_chat', 'send_chat_messages']), async (req, res) => {
+  const User = UserModelFor(req.db);
+  const senderName = normalizeName(req.user?.name);
+  const recipientName = normalizeName(req.body?.recipientName);
+  const callId = String(req.body?.callId || '').trim();
+  const signalType = String(req.body?.signalType || '').trim();
+  const payload = req.body?.payload && typeof req.body.payload === 'object' ? req.body.payload : {};
+  const allowedSignalTypes = new Set(['invite', 'accepted', 'rejected', 'offer', 'answer', 'ice', 'end', 'busy']);
+  if (!recipientName) return res.status(400).json({ error: 'Recipient is required' });
+  if (!callId) return res.status(400).json({ error: 'Call id is required' });
+  if (!allowedSignalTypes.has(signalType)) return res.status(400).json({ error: 'Invalid call signal type' });
+  const recipient = await User.findOne({ name: recipientName, active: { $ne: false } }).lean();
+  if (!recipient) return res.status(404).json({ error: 'Recipient not found' });
+
+  const event = {
+    type: 'call.signal',
+    conversationKey: buildConversationKey(senderName, recipientName),
+    participants: [senderName, recipientName],
+    senderName,
+    recipientName,
+    callId,
+    signalType,
+    payload,
+    at: new Date().toISOString()
+  };
+  publishChatEvent(tenantKey(req), event);
+  res.json({ ok: true });
+});
+
 export default r;

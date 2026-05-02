@@ -12,6 +12,7 @@ const TENANT_ADMIN_ALLOWED_KEYS = new Set([
   'clientAppName',
   'clientLogoUrl',
   'receiptBrandName',
+  'chatNotificationSound',
   'receiptHeader',
   'receiptFooter',
   'businessPhone',
