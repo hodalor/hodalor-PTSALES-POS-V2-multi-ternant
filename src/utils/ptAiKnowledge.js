@@ -247,13 +247,13 @@ export const PT_AI_TOPICS = [
   {
     id: 'communication',
     title: 'How Communication Works',
-    keywords: ['communication', 'chat', 'ask pt ai', 'internal message', 'reply to message', 'chat reaction', 'emoji message', 'message popup', 'message ticks', 'copy chat message', 'long press message', 'chat sound', 'notification sound', 'voice call', 'test sound'],
+    keywords: ['communication', 'chat', 'ask pt ai', 'internal message', 'reply to message', 'chat reaction', 'emoji message', 'message popup', 'message ticks', 'copy chat message', 'long press message', 'chat sound', 'notification sound', 'voice call', 'test sound', 'missed call', 'call history', 'ringing tone', 'call sound'],
     answer: [
       'Use Chat to send internal messages to other active users inside the same tenant.',
-      'Chat supports unread badges, live updates, popup alerts, selectable notification sounds, replies to a specific message, message reactions, emoji, simple one-to-one voice calls, and sent or read ticks on your own messages.',
+      'Chat supports unread badges, live updates, popup alerts, selectable notification sounds, replies to a specific message, message reactions, emoji, simple one-to-one voice calls, recent call history, and sent or read ticks on your own messages.',
       'Click Reply on a message to quote it, then click the quoted tag later to jump back to the original message when it is visible in the loaded conversation.',
-      'To change the chat notification sound, go to Config Settings and choose Off, Soft, Classic, or Bright, then use the Test Sound button to preview it.',
-      'To start a voice call, open Chat, select the user, click Voice Call, and let the other user answer from their chat screen.',
+      'To change Communication sounds, go to Config Settings and choose separate Message Sound and Call Sound options such as Off, Soft, Classic, or Bright, then use the test buttons to preview them.',
+      'To start a voice call, open Chat, select the user, click Voice Call, and let the other user answer from their chat screen. The caller also hears a progress ringing tone, incoming calls ring for a short time, and unanswered calls can appear as missed calls in recent call history.',
       'Right-click a message on desktop or long-press it on touch devices to open quick actions such as Reply, React, and Copy.',
       'Use Ask PT AI when you want help understanding a feature or workflow inside the system.',
       'Ask PT AI supports typing, browser voice input, recorded voice transcription when available, and voice playback of the answer.'

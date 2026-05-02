@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useToast } from '../components/ToastProvider';
 import * as chatApi from '../api/chatMessages';
+import { startIncomingRingtone, startOutgoingCallTone, stopIncomingRingtone, unlockChatSound } from '../utils/chatSound';
 
 const QUICK_EMOJIS = ['😀', '😂', '😍', '🙏', '👍', '🔥', '🎉', '❤️', '✅', '🤝', '😊', '😎', '😢', '😡', '📦', '💰'];
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '🔥', '🙏', '😮'];
@@ -14,8 +15,18 @@ function createCallId() {
   return `call-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function formatDuration(totalSeconds) {
+  const value = Math.max(0, Number(totalSeconds) || 0);
+  const hours = Math.floor(value / 3600);
+  const minutes = Math.floor((value % 3600) / 60);
+  const seconds = value % 60;
+  if (hours > 0) return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
 function CommunicationChatPage() {
   const auth = useSelector((s) => s.auth);
+  const settings = useSelector((s) => s.settings);
   const toast = useToast();
   const [users, setUsers] = useState([]);
   const [userQuery, setUserQuery] = useState('');
@@ -35,6 +46,8 @@ function CommunicationChatPage() {
   const [callPeerName, setCallPeerName] = useState('');
   const [callMuted, setCallMuted] = useState(false);
   const [incomingCall, setIncomingCall] = useState(null);
+  const [callDurationSec, setCallDurationSec] = useState(0);
+  const [callHistory, setCallHistory] = useState([]);
   const bottomRef = useRef(null);
   const composerRef = useRef(null);
   const remoteAudioRef = useRef(null);
@@ -48,7 +61,10 @@ function CommunicationChatPage() {
   const activeCallRef = useRef({ callId: '', partner: '', role: '' });
   const callStateRef = useRef('idle');
   const incomingCallRef = useRef(null);
+  const callConnectedAtRef = useRef(null);
+  const outgoingCallTimeoutRef = useRef(null);
   const currentUserName = String(auth.user?.name || '').trim();
+  const callSound = String(settings?.callNotificationSound || settings?.chatNotificationSound || 'classic').toLowerCase();
 
   const appendUniqueMessage = useCallback((incoming) => {
     setMessages((prev) => {
@@ -144,6 +160,20 @@ function CommunicationChatPage() {
     }
   }, [loadUsers, toast]);
 
+  const loadCallHistory = useCallback(async (targetUser = selectedUserNameRef.current) => {
+    const target = String(targetUser || '').trim();
+    if (!target) {
+      setCallHistory([]);
+      return;
+    }
+    try {
+      const rows = await chatApi.listCallHistory(target, { limit: 10 });
+      setCallHistory(Array.isArray(rows) ? rows : []);
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to load call history'), { type: 'error' });
+    }
+  }, [toast]);
+
   useEffect(() => {
     loadUsers();
     const tid = setInterval(() => {
@@ -162,8 +192,27 @@ function CommunicationChatPage() {
   }, [selectedUserName, loadMessages]);
 
   useEffect(() => {
+    loadCallHistory(selectedUserName);
+  }, [selectedUserName, loadCallHistory]);
+
+  useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length]);
+
+  useEffect(() => {
+    if (callState !== 'active') {
+      setCallDurationSec(0);
+      if (callState === 'idle') callConnectedAtRef.current = null;
+      return undefined;
+    }
+    if (!callConnectedAtRef.current) callConnectedAtRef.current = Date.now();
+    setCallDurationSec(Math.max(0, Math.floor((Date.now() - callConnectedAtRef.current) / 1000)));
+    const tid = window.setInterval(() => {
+      if (!callConnectedAtRef.current) return;
+      setCallDurationSec(Math.max(0, Math.floor((Date.now() - callConnectedAtRef.current) / 1000)));
+    }, 1000);
+    return () => window.clearInterval(tid);
+  }, [callState]);
 
   const stopLocalStream = useCallback(() => {
     const stream = localStreamRef.current;
@@ -173,6 +222,13 @@ function CommunicationChatPage() {
       });
     }
     localStreamRef.current = null;
+  }, []);
+
+  const clearOutgoingCallTimeout = useCallback(() => {
+    if (outgoingCallTimeoutRef.current) {
+      window.clearTimeout(outgoingCallTimeoutRef.current);
+      outgoingCallTimeoutRef.current = null;
+    }
   }, []);
 
   const closePeerConnection = useCallback(() => {
@@ -188,21 +244,32 @@ function CommunicationChatPage() {
   }, []);
 
   const clearCallState = useCallback(() => {
+    stopIncomingRingtone();
+    clearOutgoingCallTimeout();
     closePeerConnection();
     stopLocalStream();
     if (remoteAudioRef.current) {
       try { remoteAudioRef.current.srcObject = null; } catch {}
     }
+    callConnectedAtRef.current = null;
     activeCallRef.current = { callId: '', partner: '', role: '' };
     setCallState('idle');
     setCallPeerName('');
     setCallMuted(false);
     setIncomingCall(null);
-  }, [closePeerConnection, stopLocalStream]);
+    setCallDurationSec(0);
+  }, [clearOutgoingCallTimeout, closePeerConnection, stopLocalStream]);
 
   useEffect(() => () => {
     clearCallState();
   }, [clearCallState]);
+
+  useEffect(() => {
+    unlockChatSound().catch(() => {});
+    return () => {
+      stopIncomingRingtone();
+    };
+  }, []);
 
   const ensureCallSupport = useCallback(() => {
     if (typeof window === 'undefined' || !window.RTCPeerConnection || !navigator?.mediaDevices?.getUserMedia) {
@@ -250,6 +317,9 @@ function CommunicationChatPage() {
         remoteAudioRef.current.srcObject = remoteStream;
         remoteAudioRef.current.play?.().catch(() => {});
       }
+      stopIncomingRingtone();
+      clearOutgoingCallTimeout();
+      if (!callConnectedAtRef.current) callConnectedAtRef.current = Date.now();
       setCallState('active');
     };
     pc.onicecandidate = (event) => {
@@ -259,6 +329,9 @@ function CommunicationChatPage() {
     pc.onconnectionstatechange = () => {
       const state = String(pc.connectionState || '');
       if (state === 'connected') {
+        stopIncomingRingtone();
+        clearOutgoingCallTimeout();
+        if (!callConnectedAtRef.current) callConnectedAtRef.current = Date.now();
         setCallState('active');
         return;
       }
@@ -268,7 +341,7 @@ function CommunicationChatPage() {
       }
     };
     return pc;
-  }, [clearCallState, closePeerConnection, ensureCallSupport, ensureLocalStream, sendCallSignal, toast]);
+  }, [clearCallState, clearOutgoingCallTimeout, closePeerConnection, ensureCallSupport, ensureLocalStream, sendCallSignal, toast]);
 
   async function startVoiceCall() {
     const partnerName = String(selectedUserName || '').trim();
@@ -284,8 +357,17 @@ function CommunicationChatPage() {
     try {
       setCallPeerName(partnerName);
       setCallState('calling');
+      callConnectedAtRef.current = null;
       await buildPeerConnection('caller', partnerName, callId);
       await sendCallSignal(partnerName, callId, 'invite', {});
+      startOutgoingCallTone(callSound).catch(() => {});
+      clearOutgoingCallTimeout();
+      outgoingCallTimeoutRef.current = window.setTimeout(() => {
+        if (activeCallRef.current.callId !== callId || callStateRef.current === 'active') return;
+        sendCallSignal(partnerName, callId, 'end', { reason: 'timeout' }).catch(() => {});
+        toast.show(`${partnerName} did not answer the call`, { type: 'warning' });
+        clearCallState();
+      }, 30000);
       toast.show(`Calling ${partnerName}...`, { type: 'info' });
     } catch (e) {
       toast.show(String(e?.message || 'Unable to start voice call'), { type: 'error' });
@@ -296,12 +378,15 @@ function CommunicationChatPage() {
   async function answerIncomingCall() {
     if (!incomingCall?.callId || !incomingCall?.senderName) return;
     try {
+      stopIncomingRingtone();
       setSelectedUserName(incomingCall.senderName);
       setCallPeerName(incomingCall.senderName);
       setCallState('connecting');
+      callConnectedAtRef.current = null;
       await buildPeerConnection('callee', incomingCall.senderName, incomingCall.callId);
       await sendCallSignal(incomingCall.senderName, incomingCall.callId, 'accepted', {});
       setIncomingCall(null);
+      await loadCallHistory(incomingCall.senderName);
     } catch (e) {
       toast.show(String(e?.message || 'Unable to answer voice call'), { type: 'error' });
       clearCallState();
@@ -313,16 +398,19 @@ function CommunicationChatPage() {
       setIncomingCall(null);
       return;
     }
+    stopIncomingRingtone();
     await sendCallSignal(incomingCall.senderName, incomingCall.callId, 'rejected', {}).catch(() => {});
+    await loadCallHistory(incomingCall.senderName).catch(() => {});
     setIncomingCall(null);
     setCallPeerName('');
     setCallState('idle');
   }
 
-  async function endCurrentCall() {
+  async function endCurrentCall(reason = 'ended') {
     const { callId, partner } = activeCallRef.current;
     if (callId && partner) {
-      await sendCallSignal(partner, callId, 'end', {}).catch(() => {});
+      await sendCallSignal(partner, callId, 'end', { reason }).catch(() => {});
+      await loadCallHistory(partner).catch(() => {});
     }
     clearCallState();
   }
@@ -405,6 +493,10 @@ function CommunicationChatPage() {
             const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
             const myCall = activeCallRef.current;
             if (!callId || !signalType) return;
+            const otherUser = senderName === currentUserName ? recipientName : senderName;
+            if (otherUser && String(selectedUserNameRef.current || '') === otherUser) {
+              loadCallHistory(otherUser).catch(() => {});
+            }
             if (recipientName === currentUserName && signalType === 'invite') {
               if (callStateRef.current !== 'idle' || incomingCallRef.current || activeCallRef.current.callId) {
                 sendCallSignal(senderName, callId, 'busy', {}).catch(() => {});
@@ -413,12 +505,14 @@ function CommunicationChatPage() {
               setSelectedUserName(senderName);
               setCallPeerName(senderName);
               setIncomingCall({ callId, senderName });
+              startIncomingRingtone(callSound).catch(() => {});
               toast.show(`Incoming voice call from ${senderName}`, { type: 'info', timeout: 5000 });
               return;
             }
             if (!myCall.callId || myCall.callId !== callId) return;
             if (signalType === 'accepted' && myCall.role === 'caller') {
               try {
+                clearOutgoingCallTimeout();
                 const pc = peerConnectionRef.current || await buildPeerConnection('caller', senderName, callId);
                 setCallState('connecting');
                 const offer = await pc.createOffer({ offerToReceiveAudio: true });
@@ -431,17 +525,20 @@ function CommunicationChatPage() {
               return;
             }
             if (signalType === 'rejected') {
+              stopIncomingRingtone();
               toast.show(`${senderName} rejected the voice call`, { type: 'warning' });
               clearCallState();
               return;
             }
             if (signalType === 'busy') {
+              stopIncomingRingtone();
               toast.show(`${senderName} is busy on another call`, { type: 'warning' });
               clearCallState();
               return;
             }
             if (signalType === 'end') {
-              toast.show('Voice call ended', { type: 'warning' });
+              stopIncomingRingtone();
+              toast.show(payload?.reason === 'timeout' ? 'Missed voice call' : 'Voice call ended', { type: 'warning' });
               clearCallState();
               return;
             }
@@ -516,7 +613,7 @@ function CommunicationChatPage() {
       alive = false;
       cleanupStream();
     };
-  }, [appendUniqueMessage, buildPeerConnection, clearCallState, currentUserName, flushPendingIceCandidates, loadUsers, replaceMessage, sendCallSignal, toast]);
+  }, [appendUniqueMessage, buildPeerConnection, callSound, clearCallState, clearOutgoingCallTimeout, currentUserName, flushPendingIceCandidates, loadCallHistory, loadUsers, replaceMessage, sendCallSignal, toast]);
 
   useEffect(() => {
     const textarea = composerRef.current;
@@ -567,6 +664,19 @@ function CommunicationChatPage() {
     () => messages.find((row) => String(row.id || '') === String(actionMenu.messageId || '')) || null,
     [actionMenu.messageId, messages]
   );
+
+  function describeCallStatus(entry) {
+    const status = String(entry?.status || '').toLowerCase();
+    const direction = String(entry?.direction || '').toLowerCase();
+    if (status === 'missed') return direction === 'incoming' ? 'Missed call' : 'No answer';
+    if (status === 'rejected') return direction === 'incoming' ? 'Declined' : 'Rejected';
+    if (status === 'busy') return 'Busy';
+    if (status === 'cancelled') return 'Cancelled';
+    if (status === 'ended') return `Call ended${entry?.durationSec ? ` • ${formatDuration(entry.durationSec)}` : ''}`;
+    if (status === 'accepted') return 'Connected';
+    if (status === 'ringing') return 'Ringing';
+    return status || 'Call';
+  }
 
   function addEmoji(emoji) {
     setDraft((prev) => `${prev || ''}${emoji}`);
@@ -766,7 +876,7 @@ function CommunicationChatPage() {
                   {incomingCall
                     ? 'Answer to start a simple one-to-one audio call.'
                     : callState === 'active'
-                      ? (callMuted ? 'Microphone is muted.' : 'Voice call is active.')
+                      ? `${callMuted ? 'Microphone is muted.' : 'Voice call is active.'} Duration ${formatDuration(callDurationSec)}.`
                       : 'Keep this page open while the call is connecting.'}
                 </div>
               </div>
@@ -784,6 +894,23 @@ function CommunicationChatPage() {
                     <button className="btn" onClick={endCurrentCall}>End</button>
                   </>
                 )}
+              </div>
+            </div>
+          ) : null}
+
+          {selectedUser && callHistory.length ? (
+            <div className="chat-call-history">
+              <div className="chat-call-history-title">Recent Calls</div>
+              <div className="chat-call-history-list">
+                {callHistory.map((entry) => (
+                  <div key={entry.id || entry.callId} className="chat-call-history-item">
+                    <div className="chat-call-history-main">{describeCallStatus(entry)}</div>
+                    <div className="chat-call-history-meta">
+                      <span>{entry.direction === 'incoming' ? 'Incoming' : 'Outgoing'}</span>
+                      <span>{entry.startedAt ? new Date(entry.startedAt).toLocaleString() : ''}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           ) : null}

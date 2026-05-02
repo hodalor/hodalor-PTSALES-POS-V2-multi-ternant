@@ -13,7 +13,7 @@ import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import { getBeforeInstallPromptEvent, isInstalled, isRelatedInstalled, checkUpdateAndOpen } from '../pwa/installPrompt';
 import { clearTenantState } from '../store/persist';
-import { CHAT_SOUND_OPTIONS, playChatSound, unlockChatSound } from '../utils/chatSound';
+import { CHAT_SOUND_OPTIONS, playChatSound, startOutgoingCallTone, stopIncomingRingtone, unlockChatSound } from '../utils/chatSound';
 
 function ConfigSettingsPage() {
   const dispatch = useDispatch();
@@ -36,6 +36,7 @@ function ConfigSettingsPage() {
   const [loadingReconciliationAccounts, setLoadingReconciliationAccounts] = useState(false);
   const [savingReconciliationAccount, setSavingReconciliationAccount] = useState(false);
   const [testingChatSound, setTestingChatSound] = useState(false);
+  const [testingCallSound, setTestingCallSound] = useState(false);
   const [reconciliationForm, setReconciliationForm] = useState({
     name: '',
     bankName: '',
@@ -48,8 +49,9 @@ function ConfigSettingsPage() {
   const initialTaxRef = useRef(settings.taxRate);
   const initialSettingsRef = useRef(settings || {});
   const initialSettingsCapturedRef = useRef(false);
-  const canEditTax = ['Admin','Manager'].includes(auth.role) || String(auth.role || '').toLowerCase() === 'superadmin';
-  const roleLower = String(auth.role || '').toLowerCase();
+  const resolvedRole = String(auth.role || auth.user?.role || '').toLowerCase();
+  const canEditTax = ['admin', 'manager'].includes(resolvedRole) || resolvedRole === 'superadmin';
+  const roleLower = resolvedRole;
   const canManageBranches = roleLower === 'admin' || roleLower === 'superadmin';
   const isSuperAdmin = roleLower === 'superadmin';
   const isMasterSuperAdmin = isSuperAdmin && String(auth.user?.tenantId || '').toLowerCase() === 'master';
@@ -58,6 +60,7 @@ function ConfigSettingsPage() {
     'clientAppName',
     'clientLogoUrl',
     'chatNotificationSound',
+    'callNotificationSound',
     'receiptBrandName',
     'receiptHeader',
     'receiptFooter',
@@ -631,44 +634,87 @@ function ConfigSettingsPage() {
                 Theme Color
                 <input className="input" type="color" value={settings.themeColor || '#16a34a'} onChange={e => setSetting('themeColor', e.target.value)} style={{ display: 'block', width: '100%', marginTop: 6, height: 44 }} />
               </label>
-              <label style={{ display: 'block', marginTop: 8 }}>
-                Chat Notification Sound
-                <select
-                  className="select"
-                  value={settings.chatNotificationSound || 'classic'}
-                  onChange={e => setSetting('chatNotificationSound', e.target.value)}
-                  style={{ display: 'block', width: '100%', marginTop: 6 }}
-                >
-                  {CHAT_SOUND_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>{option.label}</option>
-                  ))}
-                </select>
-              </label>
-              <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <button
-                  className="btn"
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      setTestingChatSound(true);
-                      await unlockChatSound().catch(() => {});
-                      await playChatSound(settings.chatNotificationSound || 'classic');
-                    } catch {
-                      toast.show('Unable to play the selected sound on this device right now.', { type: 'error' });
-                    } finally {
-                      setTestingChatSound(false);
-                    }
-                  }}
-                  disabled={testingChatSound}
-                >
-                  {testingChatSound ? 'Testing...' : 'Test Sound'}
-                </button>
-                <span style={{ color: '#64748b', fontSize: 12 }}>
-                  Available here for tenant admins and master superadmin.
-                </span>
-              </div>
-              <div style={{ marginTop: 6, color: '#64748b', fontSize: 12 }}>
-                Choose the sound that should play when a new internal chat message arrives.
+              <div style={{ marginTop: 12, padding: 12, borderRadius: 14, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                <h3 className="section-title" style={{ margin: '0 0 8px 0' }}>Communication Sounds</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={{ display: 'block' }}>
+                      Message Sound
+                      <select
+                        className="select"
+                        value={settings.chatNotificationSound || 'classic'}
+                        onChange={e => setSetting('chatNotificationSound', e.target.value)}
+                        style={{ display: 'block', width: '100%', marginTop: 6 }}
+                      >
+                        {CHAT_SOUND_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        className="btn"
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            setTestingChatSound(true);
+                            await unlockChatSound().catch(() => {});
+                            await playChatSound(settings.chatNotificationSound || 'classic');
+                          } catch {
+                            toast.show('Unable to play the selected message sound right now.', { type: 'error' });
+                          } finally {
+                            setTestingChatSound(false);
+                          }
+                        }}
+                        disabled={testingChatSound}
+                      >
+                        {testingChatSound ? 'Testing...' : 'Test Message Sound'}
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ display: 'block' }}>
+                      Call Sound
+                      <select
+                        className="select"
+                        value={settings.callNotificationSound || 'classic'}
+                        onChange={e => setSetting('callNotificationSound', e.target.value)}
+                        style={{ display: 'block', width: '100%', marginTop: 6 }}
+                      >
+                        {CHAT_SOUND_OPTIONS.map((option) => (
+                          <option key={`call-${option.value}`} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <button
+                        className="btn"
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            setTestingCallSound(true);
+                            await unlockChatSound().catch(() => {});
+                            await startOutgoingCallTone(settings.callNotificationSound || 'classic');
+                            window.setTimeout(() => {
+                              stopIncomingRingtone();
+                              setTestingCallSound(false);
+                            }, 2200);
+                          } catch {
+                            stopIncomingRingtone();
+                            setTestingCallSound(false);
+                            toast.show('Unable to play the selected call sound right now.', { type: 'error' });
+                          }
+                        }}
+                        disabled={testingCallSound}
+                      >
+                        {testingCallSound ? 'Testing...' : 'Test Call Sound'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div style={{ marginTop: 8, color: '#64748b', fontSize: 12 }}>
+                  Available here for tenant admins and master superadmin. Message Sound is for new messages. Call Sound is for incoming and outgoing call ringing.
+                </div>
               </div>
               <label style={{ display: 'block', marginTop: 8 }}>
                 Subscription Payment Unavailable Message

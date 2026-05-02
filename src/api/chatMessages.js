@@ -11,6 +11,13 @@ export function listConversation(userName, { limit } = {}) {
   return fetchJson(`/api/chat-messages/conversation/${encodeURIComponent(String(userName || ''))}${qs ? `?${qs}` : ''}`);
 }
 
+export function listCallHistory(userName, { limit } = {}) {
+  const params = new URLSearchParams();
+  if (limit != null) params.set('limit', String(limit));
+  const qs = params.toString();
+  return fetchJson(`/api/chat-messages/call-history/${encodeURIComponent(String(userName || ''))}${qs ? `?${qs}` : ''}`);
+}
+
 export function sendChatMessage(payload) {
   return fetchJson('/api/chat-messages', {
     method: 'POST',

@@ -361,6 +361,46 @@ html, body, #root {
   gap: 8px;
   flex-wrap: wrap;
 }
+.chat-call-history {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  background: linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,250,252,0.96) 100%);
+}
+.chat-call-history-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #0f172a;
+}
+.chat-call-history-list {
+  display: grid;
+  gap: 8px;
+}
+.chat-call-history-item {
+  display: grid;
+  gap: 3px;
+  padding: 9px 11px;
+  border-radius: 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+.chat-call-history-main {
+  font-size: 13px;
+  font-weight: 800;
+  color: #0f172a;
+}
+.chat-call-history-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: #64748b;
+}
 .chat-thread {
   display: grid;
   gap: 10px;

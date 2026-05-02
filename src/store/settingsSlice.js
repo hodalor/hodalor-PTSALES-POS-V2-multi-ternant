@@ -15,6 +15,7 @@ const initialState = {
   clientLogoUrl: '',
   themeColor: '',
   chatNotificationSound: 'classic',
+  callNotificationSound: 'classic',
   subscriptionPaymentUnavailableMessage: 'Online payment is currently unavailable contact Prynovatechnologies@gmail.com for activation code.',
   subscriptionPlan: 'basic',
   subscriptionExpiresAt: null,
@@ -76,6 +77,7 @@ const settingsSlice = createSlice({
       state.hydrated = true;
       const backfill = {
         chatNotificationSound: initialState.chatNotificationSound,
+        callNotificationSound: initialState.callNotificationSound,
         invoiceFooter: initialState.invoiceFooter,
         invoiceDeclaration: initialState.invoiceDeclaration,
         invoiceSignatoryLabel: initialState.invoiceSignatoryLabel,
