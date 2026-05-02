@@ -198,6 +198,63 @@ function buildConversationalAnswer(query, result, fallbackTitle = 'PT AI Answer'
   };
 }
 
+function AnimatedAnswerLines({ entryId, lines, animate }) {
+  const fullText = useMemo(
+    () => (Array.isArray(lines) ? lines.map((line) => String(line || '')).join('\n') : ''),
+    [lines]
+  );
+  const [visibleLength, setVisibleLength] = useState(animate ? 0 : fullText.length);
+
+  useEffect(() => {
+    if (!animate) {
+      setVisibleLength(fullText.length);
+      return undefined;
+    }
+
+    setVisibleLength(0);
+    if (!fullText) return undefined;
+
+    let cancelled = false;
+    let timeoutId;
+    let nextLength = 0;
+
+    const tick = () => {
+      if (cancelled) return;
+      const char = fullText[nextLength] || '';
+      const step = char === '\n' ? 1 : fullText.length - nextLength > 220 ? 3 : fullText.length - nextLength > 120 ? 2 : 1;
+      nextLength = Math.min(fullText.length, nextLength + step);
+      setVisibleLength(nextLength);
+      if (nextLength >= fullText.length) return;
+      const delay = char === '\n' ? 180 : char === ' ' ? 34 : 28;
+      timeoutId = window.setTimeout(tick, delay);
+    };
+
+    timeoutId = window.setTimeout(tick, 120);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [entryId, fullText, animate]);
+
+  const visibleText = fullText.slice(0, visibleLength);
+  const visibleLines = visibleText ? visibleText.split('\n') : [];
+  const showCursor = animate && visibleLength < fullText.length;
+
+  return (
+    <div className={`ask-ai-answer-lines${animate ? ' ask-ai-answer-lines-typing' : ''}`}>
+      {visibleLines.map((line, index) => (
+        <div key={`${entryId}-${index}`} className="ask-ai-answer-line">{line}</div>
+      ))}
+      {showCursor ? (
+        <div className="ask-ai-answer-line ask-ai-answer-line-cursor">
+          <span className="ask-ai-typing-cursor" />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function AskPtAiPage() {
   const defaultAnswer = useMemo(() => buildConversationalAnswer('hello', findBestPtAiAnswer('serialized item'), 'PT AI Local Help'), []);
   const [query, setQuery] = useState('');
@@ -228,6 +285,7 @@ function AskPtAiPage() {
   const mediaStreamRef = useRef(null);
   const audioChunksRef = useRef([]);
   const bottomRef = useRef(null);
+  const [animatedEntryId, setAnimatedEntryId] = useState(null);
   const toast = useToast();
 
   const speechRecognition = useMemo(() => (
@@ -305,6 +363,7 @@ function AskPtAiPage() {
         pending: true
       }
     ]));
+    setAnimatedEntryId(answerEntryId);
     if (options.autoSpeakQuick) speakResult(quickFallback);
     if (prohibitedResult || offTopicResult) {
       setAsking(false);
@@ -595,11 +654,11 @@ function AskPtAiPage() {
                           {entry.pending ? <span className="status-pill status-pill-pending">Updating</span> : null}
                         </div>
                         <div className="ask-ai-answer-title">{entry.title}</div>
-                        <div className="ask-ai-answer-lines">
-                          {(entry.answer || []).map((line) => (
-                            <div key={`${entry.id}-${line}`} className="ask-ai-answer-line">{line}</div>
-                          ))}
-                        </div>
+                        <AnimatedAnswerLines
+                          entryId={entry.id}
+                          lines={entry.answer || []}
+                          animate={entry.id === animatedEntryId}
+                        />
                         {entry.related?.length ? (
                           <div className="ask-ai-related-block">
                             <div className="ask-ai-related-title">Related Help</div>
