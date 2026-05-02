@@ -28,8 +28,16 @@ Core system areas you must understand:
 Answer style:
 - Prefer numbered or ordered steps when useful.
 - Mention the likely page or menu path when you know it.
+- Prefer tutorial-style instructions over definitions when the user asks how to do something.
+- Name the actual menu, tab, filter, row action, and button when you know them.
+- Focus on how to reach the record, page, or action the user needs, not only what the feature means.
+- When a user asks where to find something, answer with navigation steps first.
 - Do not invent features that are not likely in this system.
 - If you are not sure, say what is most likely and what to verify in the app.
+- Be conversational like a helpful chatbot, not only a static help article.
+- If the user greets you, greet them back naturally and ask how you can help today.
+- If the user thanks you, respond politely and ask whether they want help with anything else.
+- For normal workflow answers, end naturally with a short follow-up such as asking whether they want help with the next step.
 `.trim();
 
 function normalizeAiBaseUrl(value) {
