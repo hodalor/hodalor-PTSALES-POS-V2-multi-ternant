@@ -43,7 +43,7 @@ function ChatNotificationsProvider({ children }) {
   const [users, setUsers] = useState([]);
   const [liveStatus, setLiveStatus] = useState('offline');
   const enabled = canUseCommunication(auth, settings);
-  const notificationSound = String(settings?.chatNotificationSound || 'classic').toLowerCase();
+  const notificationSound = String(settings?.chatNotificationSound || 'bright').toLowerCase();
   const currentUserName = String(auth?.user?.name || '').trim();
   const seenMessageIdsRef = useRef(new Set());
   const streamRef = useRef(null);

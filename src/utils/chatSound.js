@@ -54,14 +54,14 @@ export async function unlockChatSound() {
   }
 }
 
-export async function playChatSound(soundKey = 'classic') {
+export async function playChatSound(soundKey = 'bright') {
   const audio = getContext();
   if (!audio) return false;
   try {
     if (audio.state === 'suspended') await audio.resume();
-    const mode = String(soundKey || 'classic').toLowerCase();
+    const mode = String(soundKey || 'bright').toLowerCase();
     if (mode === 'off') return true;
-    const preset = CHAT_SOUND_PRESETS[mode] || CHAT_SOUND_PRESETS.classic;
+    const preset = CHAT_SOUND_PRESETS[mode] || CHAT_SOUND_PRESETS.bright;
     const now = audio.currentTime;
     const master = audio.createGain();
     master.connect(audio.destination);
@@ -83,14 +83,14 @@ export async function playChatSound(soundKey = 'classic') {
   }
 }
 
-export async function startIncomingRingtone(soundKey = 'classic') {
+export async function startIncomingRingtone(soundKey = 'bright') {
   const audio = getContext();
   if (!audio) return false;
   try {
     if (audio.state === 'suspended') await audio.resume();
     stopIncomingRingtone();
-    const mode = String(soundKey || 'classic').toLowerCase();
-    const preset = CHAT_SOUND_PRESETS[mode] || CHAT_SOUND_PRESETS.classic;
+    const mode = String(soundKey || 'bright').toLowerCase();
+    const preset = CHAT_SOUND_PRESETS[mode] || CHAT_SOUND_PRESETS.bright;
     const ringOnce = () => {
       const now = audio.currentTime;
       const master = audio.createGain();
@@ -123,14 +123,14 @@ export async function startIncomingRingtone(soundKey = 'classic') {
   }
 }
 
-export async function startOutgoingCallTone(soundKey = 'classic') {
+export async function startOutgoingCallTone(soundKey = 'bright') {
   const audio = getContext();
   if (!audio) return false;
   try {
     if (audio.state === 'suspended') await audio.resume();
     stopIncomingRingtone();
-    const mode = String(soundKey || 'classic').toLowerCase();
-    const preset = CHAT_SOUND_PRESETS[mode] || CHAT_SOUND_PRESETS.classic;
+    const mode = String(soundKey || 'bright').toLowerCase();
+    const preset = CHAT_SOUND_PRESETS[mode] || CHAT_SOUND_PRESETS.bright;
     const ringOnce = () => {
       const now = audio.currentTime;
       const master = audio.createGain();

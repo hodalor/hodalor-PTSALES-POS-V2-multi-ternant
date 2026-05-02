@@ -642,7 +642,7 @@ function ConfigSettingsPage() {
                       Message Sound
                       <select
                         className="select"
-                        value={settings.chatNotificationSound || 'classic'}
+                        value={settings.chatNotificationSound || 'bright'}
                         onChange={e => setSetting('chatNotificationSound', e.target.value)}
                         style={{ display: 'block', width: '100%', marginTop: 6 }}
                       >
@@ -659,7 +659,7 @@ function ConfigSettingsPage() {
                           try {
                             setTestingChatSound(true);
                             await unlockChatSound().catch(() => {});
-                            await playChatSound(settings.chatNotificationSound || 'classic');
+                            await playChatSound(settings.chatNotificationSound || 'bright');
                           } catch {
                             toast.show('Unable to play the selected message sound right now.', { type: 'error' });
                           } finally {
@@ -677,7 +677,7 @@ function ConfigSettingsPage() {
                       Call Sound
                       <select
                         className="select"
-                        value={settings.callNotificationSound || 'classic'}
+                        value={settings.callNotificationSound || 'bright'}
                         onChange={e => setSetting('callNotificationSound', e.target.value)}
                         style={{ display: 'block', width: '100%', marginTop: 6 }}
                       >
@@ -694,7 +694,7 @@ function ConfigSettingsPage() {
                           try {
                             setTestingCallSound(true);
                             await unlockChatSound().catch(() => {});
-                            await startOutgoingCallTone(settings.callNotificationSound || 'classic');
+                            await startOutgoingCallTone(settings.callNotificationSound || 'bright');
                             window.setTimeout(() => {
                               stopIncomingRingtone();
                               setTestingCallSound(false);

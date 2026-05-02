@@ -64,7 +64,7 @@ function CommunicationChatPage() {
   const callConnectedAtRef = useRef(null);
   const outgoingCallTimeoutRef = useRef(null);
   const currentUserName = String(auth.user?.name || '').trim();
-  const callSound = String(settings?.callNotificationSound || settings?.chatNotificationSound || 'classic').toLowerCase();
+  const callSound = String(settings?.callNotificationSound || settings?.chatNotificationSound || 'bright').toLowerCase();
 
   const appendUniqueMessage = useCallback((incoming) => {
     setMessages((prev) => {
