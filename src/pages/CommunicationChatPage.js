@@ -6,11 +6,25 @@ import { startIncomingRingtone, startOutgoingCallTone, stopIncomingRingtone, unl
 
 const QUICK_EMOJIS = ['😀', '😂', '😍', '🙏', '👍', '🔥', '🎉', '❤️', '✅', '🤝', '😊', '😎', '😢', '😡', '📦', '💰'];
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '🔥', '🙏', '😮'];
-const CALL_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 const PENDING_INCOMING_CALL_KEY = 'ptSales:pendingIncomingCall';
 const AUTO_ANSWER_INCOMING_CALL_KEY = 'ptSales:autoAnswerIncomingCall';
 const INCOMING_CALL_EVENT = 'ptSales:incoming-call';
 const CLEAR_INCOMING_CALL_EVENT = 'ptSales:incoming-call-cleared';
+
+function parseIceServers(rawValue) {
+  const source = String(rawValue || '').trim() || 'stun:stun.l.google.com:19302';
+  const lines = source.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const servers = lines.map((line) => {
+    const [urlsPart, usernamePart = '', credentialPart = ''] = line.split('|').map((part) => String(part || '').trim());
+    if (!urlsPart) return null;
+    const urls = urlsPart.split(',').map((item) => String(item || '').trim()).filter(Boolean);
+    const next = { urls: urls.length === 1 ? urls[0] : urls };
+    if (usernamePart) next.username = usernamePart;
+    if (credentialPart) next.credential = credentialPart;
+    return next;
+  }).filter(Boolean);
+  return servers.length ? servers : [{ urls: 'stun:stun.l.google.com:19302' }];
+}
 
 function buildCallSignalKey(event) {
   const signalType = String(event?.signalType || '').trim();
@@ -94,6 +108,13 @@ function CommunicationChatPage() {
   const [incomingCall, setIncomingCall] = useState(null);
   const [callDurationSec, setCallDurationSec] = useState(0);
   const [callHistory, setCallHistory] = useState([]);
+  const [showCallHistory, setShowCallHistory] = useState(false);
+  const [callConnectionInfo, setCallConnectionInfo] = useState({
+    localAudioReady: false,
+    remoteAudioReady: false,
+    peerConnectionState: 'new',
+    iceConnectionState: 'new'
+  });
   const bottomRef = useRef(null);
   const composerRef = useRef(null);
   const remoteAudioRef = useRef(null);
@@ -110,8 +131,12 @@ function CommunicationChatPage() {
   const callConnectedAtRef = useRef(null);
   const outgoingCallTimeoutRef = useRef(null);
   const processedCallSignalsRef = useRef(new Set());
+  const latestOfferPayloadRef = useRef(null);
+  const latestAnswerPayloadRef = useRef(null);
+  const remoteTrackStartedRef = useRef(false);
   const currentUserName = String(auth.user?.name || '').trim();
   const callSound = String(settings?.callNotificationSound || settings?.chatNotificationSound || 'bright').toLowerCase();
+  const iceServers = useMemo(() => parseIceServers(settings?.webRtcIceServers), [settings?.webRtcIceServers]);
 
   const appendUniqueMessage = useCallback((incoming) => {
     setMessages((prev) => {
@@ -145,6 +170,7 @@ function CommunicationChatPage() {
     setEmojiOpen(false);
     setReactionPickerFor('');
     setActionMenu({ open: false, x: 0, y: 0, messageId: '' });
+    setShowCallHistory(false);
   }, [selectedUserName]);
 
   useEffect(() => {
@@ -300,6 +326,15 @@ function CommunicationChatPage() {
       try { remoteAudioRef.current.srcObject = null; } catch {}
     }
     callConnectedAtRef.current = null;
+    remoteTrackStartedRef.current = false;
+    latestOfferPayloadRef.current = null;
+    latestAnswerPayloadRef.current = null;
+    setCallConnectionInfo({
+      localAudioReady: false,
+      remoteAudioReady: false,
+      peerConnectionState: 'new',
+      iceConnectionState: 'new'
+    });
     activeCallRef.current = { callId: '', partner: '', role: '' };
     setCallState('idle');
     setCallPeerName('');
@@ -328,8 +363,21 @@ function CommunicationChatPage() {
   const ensureLocalStream = useCallback(async () => {
     ensureCallSupport();
     if (localStreamRef.current) return localStreamRef.current;
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        channelCount: 1
+      },
+      video: false
+    });
+    stream.getAudioTracks().forEach((track) => {
+      track.enabled = true;
+      try { track.contentHint = 'speech'; } catch {}
+    });
     localStreamRef.current = stream;
+    setCallConnectionInfo((prev) => ({ ...prev, localAudioReady: stream.getAudioTracks().some((track) => track.readyState === 'live') }));
     setCallMuted(false);
     return stream;
   }, [ensureCallSupport]);
@@ -360,17 +408,33 @@ function CommunicationChatPage() {
     ensureCallSupport();
     closePeerConnection();
     const stream = await ensureLocalStream();
-    const pc = new window.RTCPeerConnection(CALL_CONFIG);
+    const pc = new window.RTCPeerConnection({ iceServers });
     peerConnectionRef.current = pc;
     activeCallRef.current = { callId, partner: partnerName, role };
+    remoteTrackStartedRef.current = false;
+    try {
+      pc.addTransceiver('audio', { direction: 'sendrecv' });
+    } catch {}
     stream.getTracks().forEach((track) => {
       try { pc.addTrack(track, stream); } catch {}
     });
     pc.ontrack = (event) => {
-      const remoteStream = event.streams?.[0];
+      const remoteStream = event.streams?.[0] || new window.MediaStream(event.track ? [event.track] : []);
+      remoteTrackStartedRef.current = true;
       if (remoteAudioRef.current && remoteStream) {
         remoteAudioRef.current.srcObject = remoteStream;
+        remoteAudioRef.current.muted = false;
+        remoteAudioRef.current.volume = 1;
         remoteAudioRef.current.play?.().catch(() => {});
+      }
+      setCallConnectionInfo((prev) => ({ ...prev, remoteAudioReady: true }));
+      if (event.track) {
+        event.track.onunmute = () => {
+          remoteTrackStartedRef.current = true;
+          setCallConnectionInfo((prev) => ({ ...prev, remoteAudioReady: true }));
+          if (remoteAudioRef.current) remoteAudioRef.current.play?.().catch(() => {});
+          markCallActive();
+        };
       }
       markCallActive();
     };
@@ -380,6 +444,7 @@ function CommunicationChatPage() {
     };
     pc.onconnectionstatechange = () => {
       const state = String(pc.connectionState || '');
+      setCallConnectionInfo((prev) => ({ ...prev, peerConnectionState: state || 'new' }));
       if (state === 'connected') {
         markCallActive();
         return;
@@ -399,8 +464,9 @@ function CommunicationChatPage() {
     };
     pc.oniceconnectionstatechange = () => {
       const state = String(pc.iceConnectionState || '');
+      setCallConnectionInfo((prev) => ({ ...prev, iceConnectionState: state || 'new' }));
       if (state === 'connected' || state === 'completed') {
-        markCallActive();
+        if (remoteTrackStartedRef.current || pc.connectionState === 'connected') markCallActive();
         return;
       }
       if (state === 'checking') {
@@ -417,7 +483,7 @@ function CommunicationChatPage() {
       }
     };
     return pc;
-  }, [clearCallState, closePeerConnection, ensureCallSupport, ensureLocalStream, markCallActive, sendCallSignal, toast]);
+  }, [clearCallState, closePeerConnection, ensureCallSupport, ensureLocalStream, iceServers, markCallActive, sendCallSignal, toast]);
 
   async function startVoiceCall() {
     const partnerName = String(selectedUserName || '').trim();
@@ -598,6 +664,7 @@ function CommunicationChatPage() {
         setCallState('connecting');
         const offer = await pc.createOffer({ offerToReceiveAudio: true });
         await pc.setLocalDescription(offer);
+        latestOfferPayloadRef.current = { sdp: offer };
         await sendCallSignal(senderName, callId, 'offer', { sdp: offer });
       } catch (e) {
         toast.show(String(e?.message || 'Failed to start voice call'), { type: 'error' });
@@ -633,6 +700,7 @@ function CommunicationChatPage() {
         await flushPendingIceCandidates();
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
+        latestAnswerPayloadRef.current = { sdp: answer };
         setCallState('connecting');
         await sendCallSignal(senderName, callId, 'answer', { sdp: answer });
       } catch (e) {
@@ -789,6 +857,34 @@ function CommunicationChatPage() {
       window.clearInterval(intervalId);
     };
   }, [currentUserName, handleCallSignalEvent]);
+
+  useEffect(() => {
+    if (callState !== 'connecting') return undefined;
+    let cancelled = false;
+
+    const retryHandshake = async () => {
+      const activeCall = activeCallRef.current;
+      const pc = peerConnectionRef.current;
+      if (cancelled || !activeCall.callId || !activeCall.partner || !pc) return;
+      if (remoteTrackStartedRef.current || callStateRef.current === 'active') return;
+      try {
+        if (activeCall.role === 'caller' && latestOfferPayloadRef.current?.sdp) {
+          await sendCallSignal(activeCall.partner, activeCall.callId, 'offer', latestOfferPayloadRef.current);
+        } else if (activeCall.role === 'callee' && latestAnswerPayloadRef.current?.sdp) {
+          await sendCallSignal(activeCall.partner, activeCall.callId, 'answer', latestAnswerPayloadRef.current);
+        }
+      } catch {}
+    };
+
+    const intervalId = window.setInterval(() => {
+      retryHandshake().catch(() => {});
+    }, 3000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+    };
+  }, [callState, sendCallSignal]);
 
   useEffect(() => {
     const textarea = composerRef.current;
@@ -1026,6 +1122,11 @@ function CommunicationChatPage() {
                   {callState === 'idle' ? 'Voice Call' : 'Call Busy'}
                 </button>
               ) : null}
+              {selectedUser ? (
+                <button className="btn" onClick={() => setShowCallHistory((prev) => !prev)} disabled={!selectedUserName}>
+                  {showCallHistory ? 'Hide Call Records' : 'Call Records'}
+                </button>
+              ) : null}
               {(callState !== 'idle' || incomingCall) ? (
                 <button className="btn" onClick={endCurrentCall} disabled={callState === 'idle' && !incomingCall}>
                   End Call
@@ -1052,8 +1153,13 @@ function CommunicationChatPage() {
                     ? 'Answer to start a simple one-to-one audio call.'
                     : callState === 'active'
                       ? `${callMuted ? 'Microphone is muted.' : 'Voice call is active.'} Duration ${formatDuration(callDurationSec)}.`
-                      : 'Keep this page open while the call is connecting.'}
+                      : 'Connecting microphone and live audio. Keep this page open while the call finishes linking both sides.'}
                 </div>
+                {!incomingCall ? (
+                  <div className="chat-call-note" style={{ marginTop: 6, fontSize: 12 }}>
+                    Mic {callConnectionInfo.localAudioReady ? 'ready' : 'waiting'} • Remote audio {callConnectionInfo.remoteAudioReady ? 'linked' : 'waiting'} • Peer {callConnectionInfo.peerConnectionState || 'new'} • ICE {callConnectionInfo.iceConnectionState || 'new'}
+                  </div>
+                ) : null}
               </div>
               <div className="chat-call-actions">
                 {incomingCall ? (
@@ -1073,11 +1179,11 @@ function CommunicationChatPage() {
             </div>
           ) : null}
 
-          {selectedUser && callHistory.length ? (
+          {selectedUser && showCallHistory ? (
             <div className="chat-call-history">
-              <div className="chat-call-history-title">Recent Calls</div>
+              <div className="chat-call-history-title">Call Records</div>
               <div className="chat-call-history-list">
-                {callHistory.map((entry) => (
+                {callHistory.length ? callHistory.map((entry) => (
                   <div key={entry.id || entry.callId} className="chat-call-history-item">
                     <div className="chat-call-history-main">{describeCallStatus(entry)}</div>
                     <div className="chat-call-history-meta">
@@ -1085,7 +1191,14 @@ function CommunicationChatPage() {
                       <span>{entry.startedAt ? new Date(entry.startedAt).toLocaleString() : ''}</span>
                     </div>
                   </div>
-                ))}
+                )) : (
+                  <div className="chat-call-history-item">
+                    <div className="chat-call-history-main">No call records yet</div>
+                    <div className="chat-call-history-meta">
+                      <span>Start or receive a call to see it here.</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ) : null}

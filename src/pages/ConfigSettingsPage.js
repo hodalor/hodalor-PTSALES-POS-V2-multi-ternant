@@ -61,6 +61,7 @@ function ConfigSettingsPage() {
     'clientLogoUrl',
     'chatNotificationSound',
     'callNotificationSound',
+    'webRtcIceServers',
     'receiptBrandName',
     'receiptHeader',
     'receiptFooter',
@@ -714,6 +715,22 @@ function ConfigSettingsPage() {
                 </div>
                 <div style={{ marginTop: 8, color: '#64748b', fontSize: 12 }}>
                   Available here for tenant admins and master superadmin. Message Sound is for new messages. Call Sound is for incoming and outgoing call ringing.
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <label style={{ display: 'block' }}>
+                    WebRTC ICE Servers
+                    <textarea
+                      className="input"
+                      rows="4"
+                      value={settings.webRtcIceServers || 'stun:stun.l.google.com:19302'}
+                      onChange={e => setSetting('webRtcIceServers', e.target.value)}
+                      style={{ display: 'block', width: '100%', marginTop: 6 }}
+                      placeholder={'stun:stun.l.google.com:19302\nturn:your-turn-server:3478|turnUser|turnPassword'}
+                    />
+                  </label>
+                  <div style={{ marginTop: 6, color: '#64748b', fontSize: 12 }}>
+                    One server per line. Use `stun:host:port` for STUN, or `turn:host:port|username|password` for TURN relay support on difficult networks.
+                  </div>
                 </div>
               </div>
               <label style={{ display: 'block', marginTop: 8 }}>
