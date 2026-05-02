@@ -75,7 +75,7 @@ function GodHandPage() {
         <h1 style={{ margin: 0 }}>GodHand</h1>
         <OfflineQueueIndicator collection="settings" label="Settings queued" />
       </div>
-      <div style={{ color: '#64748b', marginTop: 6, marginBottom: 12 }}>
+      <div className="page-subtitle-compact" style={{ marginBottom: 12 }}>
         Toggle features ON/OFF for the whole system. Hidden features are removed from menus and blocked by routes.
       </div>
       <div className="card" style={{ marginBottom: 12 }}>

@@ -500,10 +500,13 @@ function CustomersPage() {
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 style={{ margin: 0 }}>Customers</h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="page-shell">
+      <div className="page-header">
+        <div>
+          <h1 style={{ margin: 0 }}>Customers</h1>
+          <div className="page-subtitle-compact">Manage customer profiles, business details, loyalty data, and customer rankings from one place.</div>
+        </div>
+        <div className="page-header-actions">
           <OfflineQueueIndicator collection="customers" label="Customers queued" />
           {canAddCustomers && (
             <button className="btn btn-primary" onClick={openCreate}>
@@ -513,17 +516,16 @@ function CustomersPage() {
           )}
         </div>
       </div>
-      <p>Manage customer profiles and purchase history.</p>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+      <div className="page-tabs">
         <button className={pageTab === 'customers' ? 'btn btn-primary' : 'btn'} onClick={() => setPageTab('customers')}>Customers</button>
         <button className={pageTab === 'leaderboard' ? 'btn btn-primary' : 'btn'} onClick={() => setPageTab('leaderboard')}>Customer Leaderboard</button>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Customers</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.total}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Retail</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.retail}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Distribution</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.distribution}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>VIP</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.vip}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Business Profiles</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.businessProfiles}</div></div>
+      <div className="stats-grid">
+        <div className="card stat-card"><div className="stat-label">Customers</div><div className="stat-value">{summary.total}</div></div>
+        <div className="card stat-card"><div className="stat-label">Retail</div><div className="stat-value">{summary.retail}</div></div>
+        <div className="card stat-card"><div className="stat-label">Distribution</div><div className="stat-value">{summary.distribution}</div></div>
+        <div className="card stat-card"><div className="stat-label">VIP</div><div className="stat-value">{summary.vip}</div></div>
+        <div className="card stat-card"><div className="stat-label">Business Profiles</div><div className="stat-value">{summary.businessProfiles}</div></div>
       </div>
 
       {pageTab === 'leaderboard' && (
@@ -538,14 +540,14 @@ function CustomersPage() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, minWidth: 'min(100%, 420px)' }}>
                 <label>
-                  <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Rank By</div>
+                  <div className="field-label">Rank By</div>
                   <select className="select" value={leaderboardMode} onChange={e => setLeaderboardMode(e.target.value)}>
                     <option value="amount">Amount Spent</option>
                     <option value="products">Products Bought</option>
                   </select>
                 </label>
                 <label>
-                  <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Customer Type</div>
+                  <div className="field-label">Customer Type</div>
                   <select className="select" value={leaderboardTypeFilter} onChange={e => setLeaderboardTypeFilter(e.target.value)}>
                     <option value="all">All Customers</option>
                     <option value="retail">Retail Customers</option>

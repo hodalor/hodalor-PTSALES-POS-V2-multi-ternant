@@ -714,10 +714,13 @@ function ProductsPage() {
   }, [sales, products, currentBranchId]);
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <h1>Products</h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="page-shell">
+      <div className="page-header">
+        <div>
+          <h1 style={{ margin: 0 }}>Products</h1>
+          <div className="page-subtitle-compact">Manage catalog structure, pricing, stock signals, expiry, and profitability from one polished workspace.</div>
+        </div>
+        <div className="page-header-actions">
           <OfflineQueueIndicator collection="products" label="Products queued" />
           <OfflineQueueIndicator collection="audits" label="Stock queued" />
           {canAddProducts && (
@@ -729,7 +732,7 @@ function ProductsPage() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+      <div className="page-tabs">
         <button className={tab === 'catalog' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('catalog')}>Catalog</button>
         <button className={tab === 'reorder' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('reorder')}>Auto Reorder</button>
         <button className={tab === 'expiry' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('expiry')}>Expiry Alerts</button>
@@ -741,11 +744,11 @@ function ProductsPage() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 className="section-title">Auto Reorder Suggestions</h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ color: '#64748b' }}>Lead days</span>
+              <span className="section-note">Lead days</span>
               <input className="input" type="number" min="0" max="60" value={leadDays} onChange={e => setLeadDays(Number(e.target.value))} style={{ width: 90 }} />
             </div>
           </div>
-          <div style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>Based on last 14 days sales + low stock ({currentBranchLabel})</div>
+          <div className="section-note" style={{ marginBottom: 8 }}>Based on last 14 days sales + low stock ({currentBranchLabel})</div>
           <table className="table">
             <thead>
               <tr>
@@ -804,7 +807,7 @@ function ProductsPage() {
       {tab === 'profitability' && (
         <div className="card">
           <h2 className="section-title">Product-level Profitability (Top 20)</h2>
-          <div style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>Last 30 days ({currentBranchLabel}). Profit requires cost price.</div>
+          <div className="section-note" style={{ marginBottom: 8 }}>Last 30 days ({currentBranchLabel}). Profit requires cost price.</div>
           <table className="table">
             <thead>
               <tr>
@@ -834,11 +837,11 @@ function ProductsPage() {
         <h2 className="section-title">Catalog</h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 12, marginBottom: 12 }}>
           <label>
-            Search
+            <div className="field-label">Search</div>
             <input className="input" value={catalogQuery} onChange={(e) => setCatalogQuery(e.target.value)} placeholder="Name, SKU, barcode, spec" />
           </label>
           <label>
-            Category
+            <div className="field-label">Category</div>
             <select className="select" value={catalogCategory} onChange={(e) => setCatalogCategory(e.target.value)}>
               <option value="all">All Categories</option>
               {categoryOptions.map((item) => <option key={item} value={item}>{item}</option>)}

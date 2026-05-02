@@ -250,7 +250,7 @@ function BackupPage() {
       <div className="card" style={{ padding: 16, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <div>
           <h1 style={{ margin: 0 }}>Backup & Sync</h1>
-          <div style={{ color: '#64748b', marginTop: 6 }}>
+          <div className="page-subtitle-compact">
             Offline queue for cloud-first syncing. Pending: {Number(summary?.total || 0)}
           </div>
         </div>

@@ -557,12 +557,12 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
 
   return (
     <div style={{ padding: 16, display: 'grid', gap: 12 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+      <div className="page-header">
         <div>
           <h1 style={{ margin: 0 }}>{normalizedArea === 'warehouse' ? 'Warehouse Operations' : 'Distribution Operations'}</h1>
-          <div style={{ color: '#64748b', fontSize: 13 }}>Initiate {normalizedArea} purchases, transfers, adjustments, and refund restocks through the 2-step approval workflow.</div>
+          <div className="page-subtitle-compact">Initiate {normalizedArea} purchases, transfers, adjustments, and refund restocks through the 2-step approval workflow.</div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="page-header-actions">
           <OfflineQueueIndicator collection="wholesaleoperations" label={`${normalizedArea === 'warehouse' ? 'Warehouse' : 'Distribution'} queued`} />
           <button className="btn btn-primary" onClick={() => setIsCreateOpen(true)}>
             New Request
@@ -572,7 +572,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
 
       <div className="card" style={{ display: 'grid', gap: 12 }}>
         <h2 className="section-title" style={{ margin: 0 }}>{labelForArea(normalizedArea, operationType)}</h2>
-        <div style={{ color: '#64748b', fontSize: 13 }}>
+        <div className="section-note">
           Open the request modal to initiate a new {labelForArea(normalizedArea, operationType).toLowerCase()} and then track director and manager approvals below.
         </div>
       </div>

@@ -544,10 +544,13 @@ function PurchasesPage() {
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <h1 style={{ margin: 0 }}>Purchases</h1>
-        <div className="filter-actions">
+    <div className="page-shell">
+      <div className="page-header">
+        <div>
+          <h1 style={{ margin: 0 }}>Purchases</h1>
+          <div className="page-subtitle-compact">Create, review, and approve retail purchase requests with a cleaner workflow.</div>
+        </div>
+        <div className="page-header-actions">
           {tab === 'initiate' && (
           <button className="btn btn-primary" onClick={() => { setOpenModal(true); }}>
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2"/></svg>
@@ -558,16 +561,16 @@ function PurchasesPage() {
           <OfflineQueueIndicator collection="audits" label="Stock queued" />
         </div>
       </div>
-      <div className="filter-actions" style={{ marginBottom: 12 }}>
+      <div className="page-tabs">
         <button className={tab === 'initiate' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('initiate')}>Initiate</button>
         <button className={tab === 'approvals' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('approvals')} disabled={!canApprove}>Approvals</button>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Purchase Records</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.records}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Units Purchased</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.totalQty}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Purchase Value</div><div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(summary.totalCost, settings)}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Products</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.uniqueProducts}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Pending Approvals</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.pendingApprovals}</div></div>
+      <div className="stats-grid">
+        <div className="card stat-card"><div className="stat-label">Purchase Records</div><div className="stat-value">{summary.records}</div></div>
+        <div className="card stat-card"><div className="stat-label">Units Purchased</div><div className="stat-value">{summary.totalQty}</div></div>
+        <div className="card stat-card"><div className="stat-label">Purchase Value</div><div className="stat-value-compact">{formatCurrency(summary.totalCost, settings)}</div></div>
+        <div className="card stat-card"><div className="stat-label">Products</div><div className="stat-value">{summary.uniqueProducts}</div></div>
+        <div className="card stat-card"><div className="stat-label">Pending Approvals</div><div className="stat-value">{summary.pendingApprovals}</div></div>
       </div>
       {openModal && (
         <Modal title="Add Purchase" onClose={() => setOpenModal(false)} footer={
@@ -605,12 +608,12 @@ function PurchasesPage() {
               />
             </div>
             <label>
-              <div style={{ marginBottom: 6, color: '#64748b' }}>Branch</div>
+              <div className="field-label">Branch</div>
               <BranchSelect value={branchId} onChange={setBranchId} overrideBranches={retailBranchOptions} />
             </label>
             {(selectedProduct?.variants || []).length > 0 && (
               <label>
-                <div style={{ marginBottom: 6, color: '#64748b' }}>Variant</div>
+                <div className="field-label">Variant</div>
                 <select className="select" value={variantId} onChange={e => setVariantId(e.target.value)}>
                   <option value="">None (base)</option>
                   {(selectedProduct?.variants || []).map(v => (
@@ -621,7 +624,7 @@ function PurchasesPage() {
             )}
             {selectedProduct && (
               <label>
-                <div style={{ marginBottom: 6, color: '#64748b' }}>Pack</div>
+                <div className="field-label">Pack</div>
                 <select className="select" value={packName} onChange={e => setPackName(e.target.value)} disabled={selectedTrackType === 'serialized'}>
                   <option value="">Base Unit</option>
                   {(selectedProduct?.packs || []).map(pk => (
@@ -631,12 +634,12 @@ function PurchasesPage() {
               </label>
             )}
             <label>
-              <div style={{ marginBottom: 6, color: '#64748b' }}>Quantity</div>
+              <div className="field-label">Quantity</div>
               <input className="input" type="number" min="1" value={qty} onChange={e => setQty(Number(e.target.value))} disabled={selectedTrackType === 'serialized'} />
             </label>
             {selectedTrackType === 'serialized' && (
               <label style={{ gridColumn: '1 / -1' }}>
-                <div style={{ marginBottom: 6, color: '#64748b' }}>IMEI / Serial Numbers</div>
+                <div className="field-label">IMEI / Serial Numbers</div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
                   <button type="button" className={serializedBatchMode ? 'btn btn-primary' : 'btn'} onClick={() => { setSerializedBatchMode(v => !v); setTimeout(() => { try { serializedScanInputRef.current?.focus(); } catch {} }, 0); }}>
                     {serializedBatchMode ? 'Batch Mode On' : 'Batch Mode Off'}
@@ -667,29 +670,29 @@ function PurchasesPage() {
               </label>
             )}
             <label>
-              <div style={{ marginBottom: 6, color: '#64748b' }}>Supplier</div>
+              <div className="field-label">Supplier</div>
               <input className="input" placeholder="e.g., FreshCo" value={supplier} onChange={e => setSupplier(e.target.value)} list="suppliers-list" />
               <SuppliersDatalist />
             </label>
             <label>
-              <div style={{ marginBottom: 6, color: '#64748b' }}>Transaction Title</div>
+              <div className="field-label">Transaction Title</div>
               <input className="input" placeholder="Optional bulk purchase title" value={transactionTitle} onChange={e => setTransactionTitle(e.target.value)} />
             </label>
             <label>
-              <div style={{ marginBottom: 6, color: '#64748b' }}>Cost Price</div>
+              <div className="field-label">Cost Price</div>
               <input className="input" type="number" min="0" step="0.01" placeholder="0.00" value={cost} onChange={e => setCost(e.target.value)} />
             </label>
             <label>
-              <div style={{ marginBottom: 6, color: '#64748b' }}>Expiry Date</div>
+              <div className="field-label">Expiry Date</div>
               <input className="input" type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
             </label>
             <label style={{ gridColumn: '1 / -1' }}>
-              <div style={{ marginBottom: 6, color: '#64748b' }}>Remark</div>
+              <div className="field-label">Remark</div>
               <input className="input" placeholder="Optional note" value={note} onChange={e => setNote(e.target.value)} />
             </label>
           </div>
           <div style={{ marginTop: 12 }}>
-            <div style={{ marginBottom: 6, color: '#64748b' }}>Items In This Request</div>
+            <div className="field-label">Items In This Request</div>
             <div className="table-wrap">
             <table className="table">
               <thead>
@@ -732,10 +735,10 @@ function PurchasesPage() {
       />
       {tab === 'approvals' && (
         <div className="card" style={{ marginBottom: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="approval-toolbar">
             <h2 className="section-title" style={{ marginBottom: 8 }}>Approvals</h2>
             <div className="card-scroll-x">
-            <div style={{ display: 'flex', gap: 6 }}>
+            <div className="page-tabs">
               <button className={statusFilter === 'pending_director' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_director')}>Pending Director</button>
               <button className={statusFilter === 'pending_manager' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_manager')}>Pending Manager</button>
               <button className={statusFilter === 'approved' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('approved')}>Approved</button>
@@ -762,7 +765,7 @@ function PurchasesPage() {
                 const branchName = byId.get(r.branchId) || r.branchId;
                 const title = String(r.transactionTitle || '').trim() || (Array.isArray(r.items) && r.items.length > 1 ? `${p?.name || r.productId} +${r.items.length - 1} more` : (p?.name || r.productId));
                 return (
-                  <tr key={r._id || r.clientId} style={{ borderTop: '1px solid #e2e8f0', cursor: 'pointer' }} onClick={() => setDetail(r)}>
+                  <tr key={r._id || r.clientId} style={{ cursor: 'pointer' }} onClick={() => setDetail(r)}>
                     <td>{title}</td>
                     <td>{branchName}</td>
                     <td>{r.baseUnits}</td>
@@ -770,12 +773,12 @@ function PurchasesPage() {
                     <td>{Number.isFinite(Number(r.cost)) ? formatCurrency(Number(r.cost), settings) : '—'}</td>
                     <td>
                       {['pending_approval', 'pending_director', 'pending_manager'].includes(String(r.status || '')) ? (
-                        <>
+                        <div className="approval-row-actions">
                           <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={((String(r.status || '') === 'pending_director' && !canDirectorApprove) || (String(r.status || '') === 'pending_manager' && !canManagerApprove) || busyId === (r._id || r.clientId))}>{busyId === (r._id || r.clientId) ? 'Working…' : String(r.status || '') === 'pending_manager' ? 'Manager Approve' : 'Director Approve'}</button>
-                          <button className="btn" onClick={(e) => { e.stopPropagation(); reject(r); }} style={{ marginLeft: 6 }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? 'Working…' : 'Reject'}</button>
-                        </>
+                          <button className="btn" onClick={(e) => { e.stopPropagation(); reject(r); }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? 'Working…' : 'Reject'}</button>
+                        </div>
                       ) : (
-                        <span style={{ color: r.status === 'approved' ? '#10b981' : '#ef4444', fontWeight: 600 }}>{r.status}</span>
+                        <span className={`status-pill ${r.status === 'approved' ? 'status-pill-approved' : 'status-pill-rejected'}`}>{r.status}</span>
                       )}
                     </td>
                   </tr>
@@ -789,27 +792,27 @@ function PurchasesPage() {
       )}
       {detail && (
         <Modal title="Purchase Details" onClose={() => setDetail(null)}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div><div style={{ color: '#64748b' }}>Status</div><div>{detail.status}</div></div>
-            <div><div style={{ color: '#64748b' }}>Branch</div><div>{byId.get(detail.branchId) || detail.branchId}</div></div>
-            <div><div style={{ color: '#64748b' }}>Title</div><div>{detail.transactionTitle || '—'}</div></div>
-            <div><div style={{ color: '#64748b' }}>Product</div><div>{products.find(p => p.id === detail.productId)?.name || detail.productId}</div></div>
-            {detail.variantId ? <div><div style={{ color: '#64748b' }}>Variant</div><div>{(products.find(p => p.id === detail.productId)?.variants || []).find(v => v.id === detail.variantId)?.label || detail.variantId}</div></div> : null}
-            <div><div style={{ color: '#64748b' }}>Base Units</div><div>{detail.baseUnits}</div></div>
-            <div><div style={{ color: '#64748b' }}>Pack</div><div>{detail.pack || 'Base Unit'}</div></div>
-            <div><div style={{ color: '#64748b' }}>Supplier</div><div>{detail.supplier || '—'}</div></div>
-            <div><div style={{ color: '#64748b' }}>Cost</div><div>{Number.isFinite(Number(detail.cost)) ? formatCurrency(Number(detail.cost), settings) : '—'}</div></div>
-            <div><div style={{ color: '#64748b' }}>Initiator</div><div>{detail.initiatorName} {detail.initiatorRole ? `(${detail.initiatorRole})` : ''}</div></div>
-            <div><div style={{ color: '#64748b' }}>Initiation Remark</div><div>{detail.remark || '—'}</div></div>
-            <div><div style={{ color: '#64748b' }}>Approver</div><div>{detail.approverName ? `${detail.approverName}${detail.approverRole ? ` (${detail.approverRole})` : ''}` : '—'}</div></div>
-            {detail.status === 'approved' && <div><div style={{ color: '#64748b' }}>Approval Remark</div><div>{detail.approvalRemark || '—'}</div></div>}
-            {detail.status === 'rejected' && <div><div style={{ color: '#64748b' }}>Rejection Remark</div><div>{detail.rejectionRemark || '—'}</div></div>}
-            <div><div style={{ color: '#64748b' }}>Created</div><div>{detail.createdAt ? new Date(detail.createdAt).toLocaleString() : '—'}</div></div>
-            <div><div style={{ color: '#64748b' }}>Updated</div><div>{detail.updatedAt ? new Date(detail.updatedAt).toLocaleString() : '—'}</div></div>
+          <div className="detail-grid">
+            <div className="detail-field"><div className="detail-label">Status</div><div className="detail-value"><span className={`status-pill ${detail.status === 'approved' ? 'status-pill-approved' : detail.status === 'rejected' ? 'status-pill-rejected' : 'status-pill-pending'}`}>{detail.status}</span></div></div>
+            <div className="detail-field"><div className="detail-label">Branch</div><div className="detail-value">{byId.get(detail.branchId) || detail.branchId}</div></div>
+            <div className="detail-field"><div className="detail-label">Title</div><div className="detail-value">{detail.transactionTitle || '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">Product</div><div className="detail-value">{products.find(p => p.id === detail.productId)?.name || detail.productId}</div></div>
+            {detail.variantId ? <div className="detail-field"><div className="detail-label">Variant</div><div className="detail-value">{(products.find(p => p.id === detail.productId)?.variants || []).find(v => v.id === detail.variantId)?.label || detail.variantId}</div></div> : null}
+            <div className="detail-field"><div className="detail-label">Base Units</div><div className="detail-value">{detail.baseUnits}</div></div>
+            <div className="detail-field"><div className="detail-label">Pack</div><div className="detail-value">{detail.pack || 'Base Unit'}</div></div>
+            <div className="detail-field"><div className="detail-label">Supplier</div><div className="detail-value">{detail.supplier || '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">Cost</div><div className="detail-value">{Number.isFinite(Number(detail.cost)) ? formatCurrency(Number(detail.cost), settings) : '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">Initiator</div><div className="detail-value">{detail.initiatorName} {detail.initiatorRole ? `(${detail.initiatorRole})` : ''}</div></div>
+            <div className="detail-field"><div className="detail-label">Initiation Remark</div><div className="detail-value">{detail.remark || '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">Approver</div><div className="detail-value">{detail.approverName ? `${detail.approverName}${detail.approverRole ? ` (${detail.approverRole})` : ''}` : '—'}</div></div>
+            {detail.status === 'approved' && <div className="detail-field"><div className="detail-label">Approval Remark</div><div className="detail-value">{detail.approvalRemark || '—'}</div></div>}
+            {detail.status === 'rejected' && <div className="detail-field"><div className="detail-label">Rejection Remark</div><div className="detail-value">{detail.rejectionRemark || '—'}</div></div>}
+            <div className="detail-field"><div className="detail-label">Created</div><div className="detail-value">{detail.createdAt ? new Date(detail.createdAt).toLocaleString() : '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">Updated</div><div className="detail-value">{detail.updatedAt ? new Date(detail.updatedAt).toLocaleString() : '—'}</div></div>
           </div>
           {Array.isArray(detail.items) && detail.items.length > 0 && (
             <div style={{ marginTop: 12 }}>
-              <div style={{ marginBottom: 6, color: '#64748b' }}>Request Items</div>
+              <div className="field-label">Request Items</div>
               <div className="table-wrap">
               <table className="table">
                 <thead>
@@ -848,37 +851,37 @@ function PurchasesPage() {
       )}
       <div className="card" style={{ marginTop: 12 }}>
         <div className="card-scroll-x">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr) auto', gap: 8, marginBottom: 8 }}>
+        <div className="record-filters">
           <label>
-            Period
+            <div className="field-label">Period</div>
             <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
               <option value="range">Custom Range</option>
               <option value="all_time">All Time</option>
             </select>
           </label>
           <label>
-            From
+            <div className="field-label">From</div>
             <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
-            To
+            <div className="field-label">To</div>
             <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
-            Actor
+            <div className="field-label">Actor</div>
             <select className="select" value={fActor} onChange={e => setFActor(e.target.value)}>
               <option value="">All</option>
               {actors.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </label>
           <label>
-            Branch
+            <div className="field-label">Branch</div>
             <select className="select" value={fBranch} onChange={e => setFBranch(e.target.value)}>
               {(roleLower === 'superadmin' || roleLower === 'admin') && <option value="">All</option>}
               {branchOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </label>
-          <div style={{ alignSelf: 'end', display: 'flex', gap: 6 }}>
+          <div className="record-filters-actions">
             <button className="btn" onClick={onExportCsv}>Export CSV</button>
             <button className="btn" onClick={onExportPdf}>Export PDF</button>
             {canDeleteRecords && (
@@ -900,7 +903,7 @@ function PurchasesPage() {
         </div>
         <h2 className="section-title">Recent Purchases</h2>
         <div className="table-wrap">
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <table className="table">
           <thead>
             <tr>
               <th align="left">Timestamp</th>
@@ -930,7 +933,7 @@ function PurchasesPage() {
               const d = e.details || {};
               const branchName = byId.get(e.branchId) || e.branchId || '—';
               return (
-                <tr key={e.id} style={{ borderTop: '1px solid #e2e8f0', cursor: bulkDeleting ? 'default' : 'pointer', opacity: bulkDeleting && selectedRecordIds.includes(String(e._id || e.id || '')) ? 0.55 : 1 }} onClick={() => { if (!bulkDeleting) setAuditDetail(e); }}>
+                <tr key={e.id} style={{ cursor: bulkDeleting ? 'default' : 'pointer', opacity: bulkDeleting && selectedRecordIds.includes(String(e._id || e.id || '')) ? 0.55 : 1 }} onClick={() => { if (!bulkDeleting) setAuditDetail(e); }}>
                   <td>{new Date(e.ts).toLocaleString()}</td>
                   <td>{e.actor}</td>
                   <td>{d.product || '—'}</td>
@@ -961,14 +964,14 @@ function PurchasesPage() {
           </tbody>
         </table>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8 }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        <div className="pagination-row">
+          <div className="pagination-controls">
             <button className="btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>Prev</button>
-            <span>Page {page} of {Math.max(1, Math.ceil(purchases.length / pageSize))}</span>
+            <span className="table-meta">Page {page} of {Math.max(1, Math.ceil(purchases.length / pageSize))}</span>
             <button className="btn" onClick={() => setPage(p => Math.min(Math.max(1, Math.ceil(purchases.length / pageSize)), p + 1))} disabled={page >= Math.max(1, Math.ceil(purchases.length / pageSize))}>Next</button>
           </div>
           <label>
-            <span style={{ marginRight: 6 }}>Rows</span>
+            <span className="field-label" style={{ marginBottom: 0, marginRight: 6 }}>Rows</span>
             <select className="select" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}>
               <option value={10}>10</option>
               <option value={25}>25</option>
@@ -980,17 +983,17 @@ function PurchasesPage() {
       </div>
       {auditDetail && (
         <Modal title="Purchase Record" onClose={() => setAuditDetail(null)}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-            <div><div style={{ color: '#64748b' }}>Timestamp</div><div>{auditDetail.ts ? new Date(auditDetail.ts).toLocaleString() : '—'}</div></div>
-            <div><div style={{ color: '#64748b' }}>Actor</div><div>{auditDetail.actor || '—'}</div></div>
-            <div><div style={{ color: '#64748b' }}>Product</div><div>{(auditDetail.details || {}).product || '—'}</div></div>
-            <div><div style={{ color: '#64748b' }}>Branch</div><div>{byId.get(auditDetail.branchId) || auditDetail.branchId || '—'}</div></div>
-            <div><div style={{ color: '#64748b' }}>Qty</div><div>{(auditDetail.details || {}).qty ?? '—'}</div></div>
-            <div><div style={{ color: '#64748b' }}>Pack</div><div>{(auditDetail.details || {}).pack || 'Base Unit'}</div></div>
-            <div><div style={{ color: '#64748b' }}>Base Units</div><div>{(auditDetail.details || {}).baseUnits ?? '—'}</div></div>
-            <div><div style={{ color: '#64748b' }}>Supplier</div><div>{(auditDetail.details || {}).supplier || '—'}</div></div>
-            <div><div style={{ color: '#64748b' }}>Cost</div><div>{Number.isFinite(Number((auditDetail.details || {}).cost)) ? formatCurrency(Number((auditDetail.details || {}).cost), settings) : '—'}</div></div>
-            <div style={{ gridColumn: '1 / -1' }}><div style={{ color: '#64748b' }}>Remark</div><div>{auditDetail.remark || '—'}</div></div>
+          <div className="detail-grid">
+            <div className="detail-field"><div className="detail-label">Timestamp</div><div className="detail-value">{auditDetail.ts ? new Date(auditDetail.ts).toLocaleString() : '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">Actor</div><div className="detail-value">{auditDetail.actor || '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">Product</div><div className="detail-value">{(auditDetail.details || {}).product || '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">Branch</div><div className="detail-value">{byId.get(auditDetail.branchId) || auditDetail.branchId || '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">Qty</div><div className="detail-value">{(auditDetail.details || {}).qty ?? '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">Pack</div><div className="detail-value">{(auditDetail.details || {}).pack || 'Base Unit'}</div></div>
+            <div className="detail-field"><div className="detail-label">Base Units</div><div className="detail-value">{(auditDetail.details || {}).baseUnits ?? '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">Supplier</div><div className="detail-value">{(auditDetail.details || {}).supplier || '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">Cost</div><div className="detail-value">{Number.isFinite(Number((auditDetail.details || {}).cost)) ? formatCurrency(Number((auditDetail.details || {}).cost), settings) : '—'}</div></div>
+            <div className="detail-field detail-field-full"><div className="detail-label">Remark</div><div className="detail-value">{auditDetail.remark || '—'}</div></div>
           </div>
         </Modal>
       )}

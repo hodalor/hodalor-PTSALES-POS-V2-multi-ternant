@@ -539,10 +539,13 @@ function AdjustmentsPage() {
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <h1 style={{ margin: 0 }}>Adjustments</h1>
-        <div className="filter-actions">
+    <div className="page-shell">
+      <div className="page-header">
+        <div>
+          <h1 style={{ margin: 0 }}>Adjustments</h1>
+          <div className="page-subtitle-compact">Record inventory corrections with a clearer approval flow for retail, distribution, and serialized stock.</div>
+        </div>
+        <div className="page-header-actions">
           {tab === 'initiate' && (
             <button className="btn btn-primary" onClick={() => setOpenModal(true)}>
               <svg viewBox="0 0 24 24" fill="none"><path d="M12 6v12M6 12h12" stroke="currentColor" strokeWidth="2"/></svg>
@@ -552,16 +555,16 @@ function AdjustmentsPage() {
           <OfflineQueueIndicator collection="adjustmentrequests" label="Adjustments queued" />
         </div>
       </div>
-      <div className="filter-actions" style={{ marginBottom: 12 }}>
+      <div className="page-tabs">
         <button className={tab === 'initiate' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('initiate')}>Initiate</button>
         <button className={tab === 'approvals' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('approvals')} disabled={!canApprove}>Approvals</button>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Adjustment Records</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.records}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Total Units Adjusted</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.totalDelta}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Increases</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.increaseCount}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Decreases</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.decreaseCount}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Products</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.products}</div></div>
+      <div className="stats-grid">
+        <div className="card stat-card"><div className="stat-label">Adjustment Records</div><div className="stat-value">{summary.records}</div></div>
+        <div className="card stat-card"><div className="stat-label">Total Units Adjusted</div><div className="stat-value">{summary.totalDelta}</div></div>
+        <div className="card stat-card"><div className="stat-label">Increases</div><div className="stat-value">{summary.increaseCount}</div></div>
+        <div className="card stat-card"><div className="stat-label">Decreases</div><div className="stat-value">{summary.decreaseCount}</div></div>
+        <div className="card stat-card"><div className="stat-label">Products</div><div className="stat-value">{summary.products}</div></div>
       </div>
       {openModal && (
         <Modal title="Add Adjustment" onClose={() => setOpenModal(false)} footer={
@@ -598,7 +601,7 @@ function AdjustmentsPage() {
             </div>
             {(selectedProduct?.variants || []).length > 0 && (
               <label>
-                <div style={{ marginBottom: 6, color: '#64748b' }}>Variant</div>
+                <div className="field-label">Variant</div>
                 <select className="select" value={variantId} onChange={e => setVariantId(e.target.value)} style={{ minWidth: 180 }}>
                   <option value="">Base</option>
                   {(selectedProduct?.variants || []).map(v => (
@@ -608,7 +611,7 @@ function AdjustmentsPage() {
               </label>
             )}
             <label>
-              <div style={{ marginBottom: 6, color: '#64748b' }}>Branch</div>
+              <div className="field-label">Branch</div>
               <select className="select" value={createBranchId} onChange={e => setBranchId(e.target.value)} style={{ width: '100%' }}>
                 {retailBranches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
               </select>
@@ -616,7 +619,7 @@ function AdjustmentsPage() {
             {selectedTrackType !== 'serialized' ? (
               <>
                 <label>
-                  <div style={{ marginBottom: 6, color: '#64748b' }}>Quantity</div>
+                  <div className="field-label">Quantity</div>
                   <input
                     className="input"
                     type="number"
@@ -628,7 +631,7 @@ function AdjustmentsPage() {
                   />
                 </label>
                 <label>
-                  <div style={{ marginBottom: 6, color: '#64748b' }}>Adjustment Type</div>
+                  <div className="field-label">Adjustment Type</div>
                   <select className="select" value={adjustmentType} onChange={e => setAdjustmentType(e.target.value)}>
                     <option value="increase">Increase</option>
                     <option value="decrease">Decrease</option>
@@ -637,7 +640,7 @@ function AdjustmentsPage() {
               </>
             ) : (
               <label>
-                <div style={{ marginBottom: 6, color: '#64748b' }}>Delta</div>
+                <div className="field-label">Delta</div>
                 <input className="input" type="number" value={delta} readOnly disabled />
               </label>
             )}
@@ -720,20 +723,20 @@ function AdjustmentsPage() {
               </div>
             )}
             <label style={{ gridColumn: '1 / -1' }}>
-              <div style={{ marginBottom: 6, color: '#64748b' }}>Transaction Title</div>
+              <div className="field-label">Transaction Title</div>
               <input className="input" value={transactionTitle} onChange={e => setTransactionTitle(e.target.value)} placeholder="Optional bulk adjustment title" />
             </label>
             <label style={{ gridColumn: '1 / -1' }}>
-              <div style={{ marginBottom: 6, color: '#64748b' }}>Reason</div>
+              <div className="field-label">Reason</div>
               <input className="input" value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason for adjustment" />
             </label>
             <label style={{ gridColumn: '1 / -1' }}>
-              <div style={{ marginBottom: 6, color: '#64748b' }}>Remark (required)</div>
+              <div className="field-label">Remark (required)</div>
               <input className="input" value={remark} onChange={e => setRemark(e.target.value)} placeholder="Reason or note" />
             </label>
           </div>
           <div style={{ marginTop: 12 }}>
-            <div style={{ marginBottom: 6, color: '#64748b' }}>Items In This Request</div>
+            <div className="field-label">Items In This Request</div>
             <div className="table-wrap">
             <table className="table">
               <thead>
@@ -808,34 +811,34 @@ function AdjustmentsPage() {
       )}
       <div className="card" style={{ marginTop: 12 }}>
         <div className="card-scroll-x">
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, marginBottom: 8 }}>
+        <div className="record-filters">
           <label>
-            Period
+            <div className="field-label">Period</div>
             <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
               <option value="range">Custom Range</option>
               <option value="all_time">All Time</option>
             </select>
           </label>
           <label>
-            From
+            <div className="field-label">From</div>
             <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
-            To
+            <div className="field-label">To</div>
             <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
-            Actor
+            <div className="field-label">Actor</div>
             <select className="select" value={fActor} onChange={e => setFActor(e.target.value)}>
               <option value="">All</option>
               {actors.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </label>
           <label>
-            Branch
+            <div className="field-label">Branch</div>
             <BranchSelect value={fBranch} onChange={setFBranch} />
           </label>
-          <div style={{ alignSelf: 'end', display: 'flex', gap: 6 }}>
+          <div className="record-filters-actions">
             <button className="btn" onClick={onExportCsv}>Export CSV</button>
             <button className="btn" onClick={onExportPdf}>Export PDF</button>
             {canDeleteRecords && (
@@ -913,14 +916,14 @@ function AdjustmentsPage() {
           </tbody>
         </table>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8 }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+        <div className="pagination-row">
+          <div className="pagination-controls">
             <button className="btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>Prev</button>
-            <span>Page {page} of {Math.max(1, Math.ceil(rows.length / pageSize))}</span>
+            <span className="table-meta">Page {page} of {Math.max(1, Math.ceil(rows.length / pageSize))}</span>
             <button className="btn" onClick={() => setPage(p => Math.min(Math.max(1, Math.ceil(rows.length / pageSize)), p + 1))} disabled={page >= Math.max(1, Math.ceil(rows.length / pageSize))}>Next</button>
           </div>
           <label>
-            <span style={{ marginRight: 6 }}>Rows</span>
+            <span className="field-label" style={{ marginBottom: 0, marginRight: 6 }}>Rows</span>
             <select className="select" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}>
               <option value={10}>10</option>
               <option value={25}>25</option>
@@ -1059,10 +1062,10 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
   }
   return (
     <div className="card" style={{ marginBottom: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      <div className="approval-toolbar">
         <h2 className="section-title" style={{ marginBottom: 8 }}>Approvals</h2>
         <div className="card-scroll-x">
-        <div style={{ display: 'flex', gap: 6 }}>
+        <div className="page-tabs">
           <button className={statusFilter === 'pending_director' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_director')}>Pending Director</button>
           <button className={statusFilter === 'pending_manager' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_manager')}>Pending Manager</button>
           <button className={statusFilter === 'approved' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('approved')}>Approved</button>
@@ -1089,19 +1092,19 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
             const adjustment = getAdjustmentDisplay(r);
             const title = String(r.transactionTitle || '').trim() || (Array.isArray(r.items) && r.items.length > 1 ? `${p?.name || r.productId} +${r.items.length - 1} more` : `${p?.name || r.productId}${r.variantId ? ` • ${(p?.variants || []).find(v => v.id === r.variantId)?.label || r.variantId}` : ''}`);
             return (
-              <tr key={r._id || r.clientId} style={{ borderTop: '1px solid #e2e8f0', cursor: 'pointer' }} onClick={() => setDetail(r)}>
+              <tr key={r._id || r.clientId} style={{ cursor: 'pointer' }} onClick={() => setDetail(r)}>
                 <td>{title}</td>
                 <td>{byId.get(r.branchId) || r.branchId}</td>
                 <td>{adjustment.typeLabel}</td>
                 <td>{adjustment.quantity}</td>
                 <td>
                   {['pending_approval', 'pending_director', 'pending_manager'].includes(String(r.status || '')) ? (
-                    <>
+                    <div className="approval-row-actions">
                       <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={((String(r.status || '') === 'pending_director' && !canDirectorApprove) || (String(r.status || '') === 'pending_manager' && !canManagerApprove) || busyId === (r._id || r.clientId))}>{busyId === (r._id || r.clientId) ? 'Working…' : String(r.status || '') === 'pending_manager' ? 'Manager Approve' : 'Director Approve'}</button>
-                      <button className="btn" onClick={(e) => { e.stopPropagation(); reject(r); }} style={{ marginLeft: 6 }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? 'Working…' : 'Reject'}</button>
-                    </>
+                      <button className="btn" onClick={(e) => { e.stopPropagation(); reject(r); }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? 'Working…' : 'Reject'}</button>
+                    </div>
                   ) : (
-                    <span style={{ color: r.status === 'approved' ? '#10b981' : '#ef4444', fontWeight: 600 }}>{r.status}</span>
+                    <span className={`status-pill ${r.status === 'approved' ? 'status-pill-approved' : 'status-pill-rejected'}`}>{r.status}</span>
                   )}
                 </td>
               </tr>
@@ -1121,24 +1124,24 @@ function RequestDetail({ detail, products, byId }) {
   const adjustment = getAdjustmentDisplay(detail);
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <div><div style={{ color: '#64748b' }}>Status</div><div>{detail.status}</div></div>
-        <div><div style={{ color: '#64748b' }}>Title</div><div>{detail.transactionTitle || '—'}</div></div>
-        <div><div style={{ color: '#64748b' }}>Product</div><div>{p?.name || detail.productId}{vLabel ? ` • ${vLabel}` : ''}</div></div>
-        <div><div style={{ color: '#64748b' }}>Branch</div><div>{byId.get(detail.branchId) || detail.branchId}</div></div>
-        <div><div style={{ color: '#64748b' }}>Adjustment Type</div><div>{adjustment.typeLabel}</div></div>
-        <div><div style={{ color: '#64748b' }}>Quantity</div><div>{adjustment.quantity}</div></div>
-        <div><div style={{ color: '#64748b' }}>Initiator</div><div>{detail.initiatorName} {detail.initiatorRole ? `(${detail.initiatorRole})` : ''}</div></div>
-        <div><div style={{ color: '#64748b' }}>Initiation Remark</div><div>{detail.remark || '—'}</div></div>
-        <div><div style={{ color: '#64748b' }}>Approver</div><div>{detail.approverName ? `${detail.approverName}${detail.approverRole ? ` (${detail.approverRole})` : ''}` : '—'}</div></div>
-        {detail.status === 'approved' && <div><div style={{ color: '#64748b' }}>Approval Remark</div><div>{detail.approvalRemark || '—'}</div></div>}
-        {detail.status === 'rejected' && <div><div style={{ color: '#64748b' }}>Rejection Remark</div><div>{detail.rejectionRemark || '—'}</div></div>}
-        <div><div style={{ color: '#64748b' }}>Created</div><div>{detail.createdAt ? new Date(detail.createdAt).toLocaleString() : '—'}</div></div>
-        <div><div style={{ color: '#64748b' }}>Updated</div><div>{detail.updatedAt ? new Date(detail.updatedAt).toLocaleString() : '—'}</div></div>
+      <div className="detail-grid">
+        <div className="detail-field"><div className="detail-label">Status</div><div className="detail-value"><span className={`status-pill ${detail.status === 'approved' ? 'status-pill-approved' : detail.status === 'rejected' ? 'status-pill-rejected' : 'status-pill-pending'}`}>{detail.status}</span></div></div>
+        <div className="detail-field"><div className="detail-label">Title</div><div className="detail-value">{detail.transactionTitle || '—'}</div></div>
+        <div className="detail-field"><div className="detail-label">Product</div><div className="detail-value">{p?.name || detail.productId}{vLabel ? ` • ${vLabel}` : ''}</div></div>
+        <div className="detail-field"><div className="detail-label">Branch</div><div className="detail-value">{byId.get(detail.branchId) || detail.branchId}</div></div>
+        <div className="detail-field"><div className="detail-label">Adjustment Type</div><div className="detail-value">{adjustment.typeLabel}</div></div>
+        <div className="detail-field"><div className="detail-label">Quantity</div><div className="detail-value">{adjustment.quantity}</div></div>
+        <div className="detail-field"><div className="detail-label">Initiator</div><div className="detail-value">{detail.initiatorName} {detail.initiatorRole ? `(${detail.initiatorRole})` : ''}</div></div>
+        <div className="detail-field"><div className="detail-label">Initiation Remark</div><div className="detail-value">{detail.remark || '—'}</div></div>
+        <div className="detail-field"><div className="detail-label">Approver</div><div className="detail-value">{detail.approverName ? `${detail.approverName}${detail.approverRole ? ` (${detail.approverRole})` : ''}` : '—'}</div></div>
+        {detail.status === 'approved' && <div className="detail-field"><div className="detail-label">Approval Remark</div><div className="detail-value">{detail.approvalRemark || '—'}</div></div>}
+        {detail.status === 'rejected' && <div className="detail-field"><div className="detail-label">Rejection Remark</div><div className="detail-value">{detail.rejectionRemark || '—'}</div></div>}
+        <div className="detail-field"><div className="detail-label">Created</div><div className="detail-value">{detail.createdAt ? new Date(detail.createdAt).toLocaleString() : '—'}</div></div>
+        <div className="detail-field"><div className="detail-label">Updated</div><div className="detail-value">{detail.updatedAt ? new Date(detail.updatedAt).toLocaleString() : '—'}</div></div>
       </div>
       {Array.isArray(detail.items) && detail.items.length > 0 && (
         <div style={{ marginTop: 12 }}>
-          <div style={{ marginBottom: 6, color: '#64748b' }}>Request Items</div>
+          <div className="field-label">Request Items</div>
           <div className="table-wrap">
           <table className="table">
             <thead>

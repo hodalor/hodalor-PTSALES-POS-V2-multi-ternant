@@ -26,7 +26,7 @@ function ImeiConflictsPage() {
       <div className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
         <div>
           <h1 style={{ margin: 0 }}>IMEI Sync Conflicts</h1>
-          <div style={{ color: '#64748b', marginTop: 6 }}>Review serialized sales that failed to sync after being captured offline.</div>
+          <div className="page-subtitle-compact">Review serialized sales that failed to sync after being captured offline.</div>
         </div>
         <button className="btn" onClick={clearAll} disabled={items.length === 0}>Clear All</button>
       </div>

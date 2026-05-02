@@ -130,25 +130,25 @@ function SerializedInventoryPage() {
   }
 
   return (
-    <div style={{ padding: 16, display: 'grid', gap: 12 }}>
+    <div className="page-shell">
       <div className="card">
         <h1 style={{ margin: 0 }}>Serialized Inventory</h1>
-        <div style={{ color: '#64748b', marginTop: 6 }}>Search unit-level stock by branch, status, inventory type, IMEI, or serial number.</div>
+        <div className="page-subtitle-compact">Search unit-level stock by branch, status, inventory type, IMEI, or serial number.</div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Total Units</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.totalUnits}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Visible Rows</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.visibleRows}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>In Stock</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.inStock}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Sold</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.sold}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Products</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.uniqueProducts}</div></div>
+      <div className="stats-grid">
+        <div className="card stat-card"><div className="stat-label">Total Units</div><div className="stat-value">{summary.totalUnits}</div></div>
+        <div className="card stat-card"><div className="stat-label">Visible Rows</div><div className="stat-value">{summary.visibleRows}</div></div>
+        <div className="card stat-card"><div className="stat-label">In Stock</div><div className="stat-value">{summary.inStock}</div></div>
+        <div className="card stat-card"><div className="stat-label">Sold</div><div className="stat-value">{summary.sold}</div></div>
+        <div className="card stat-card"><div className="stat-label">Products</div><div className="stat-value">{summary.uniqueProducts}</div></div>
       </div>
-      <div className="card" style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1fr', gap: 10 }}>
+      <div className="card record-filters">
         <label>
-          <div style={{ marginBottom: 6, color: '#64748b' }}>Search</div>
+          <div className="field-label">Search</div>
           <input className="input" value={query} onChange={e => { setPage(1); setQuery(e.target.value); }} placeholder="IMEI or serial number" />
         </label>
         <label>
-          <div style={{ marginBottom: 6, color: '#64748b' }}>Product</div>
+          <div className="field-label">Product</div>
           <select className="select" value={productId} onChange={e => { setPage(1); setProductId(e.target.value); }}>
             <option value="">All Products</option>
             {products.filter(product => String(product.trackType || 'quantity') === 'serialized').map(product => (
@@ -157,11 +157,11 @@ function SerializedInventoryPage() {
           </select>
         </label>
         <label>
-          <div style={{ marginBottom: 6, color: '#64748b' }}>Branch</div>
+          <div className="field-label">Branch</div>
           <BranchSelect value={branchId} onChange={value => { setPage(1); setBranchId(value); }} includeAll />
         </label>
         <label>
-          <div style={{ marginBottom: 6, color: '#64748b' }}>Inventory Type</div>
+          <div className="field-label">Inventory Type</div>
           <select className="select" value={inventoryType} onChange={e => { setPage(1); setInventoryType(e.target.value); }}>
             <option value="">All</option>
             <option value="retail">Retail</option>
@@ -170,7 +170,7 @@ function SerializedInventoryPage() {
           </select>
         </label>
         <label>
-          <div style={{ marginBottom: 6, color: '#64748b' }}>Status</div>
+          <div className="field-label">Status</div>
           <select className="select" value={status} onChange={e => { setPage(1); setStatus(e.target.value); }}>
             <option value="">All</option>
             <option value="in_stock">In Stock</option>

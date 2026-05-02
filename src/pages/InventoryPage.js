@@ -306,10 +306,13 @@ function InventoryPage() {
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <h1 style={{ margin: 0 }}>Inventory</h1>
-        <div style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+    <div className="page-shell">
+      <div className="page-header">
+        <div>
+          <h1 style={{ margin: 0 }}>Inventory</h1>
+          <div className="page-subtitle-compact">Search stock quickly by branch, category, SKU, barcode, and active inventory type.</div>
+        </div>
+        <div className="page-header-actions">
           <button className="btn" onClick={() => setExportOpen(true)}>
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><path d="M12 3v12m0 0l-3-3m3 3l3-3" stroke="currentColor" strokeWidth="2"/><path d="M5 21h14" stroke="currentColor" strokeWidth="2"/></svg>
             Export
@@ -320,25 +323,25 @@ function InventoryPage() {
       <div className="card" style={{ marginBottom: 12 }}>
         <div className="filter-grid-wide">
           <label>
-            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Branch</div>
+            <div className="field-label">Branch</div>
             <BranchSelect value={branchId} onChange={setBranchId} includeAll allLabel="All Branches" style={{ minWidth: 180 }} />
           </label>
           <label>
-            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Category</div>
+            <div className="field-label">Category</div>
             <select className="select" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
               <option value="all">All Categories</option>
               {categoryOptions.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
           </label>
           <label>
-            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Product</div>
+            <div className="field-label">Product</div>
             <select className="select" value={productFilter} onChange={e => setProductFilter(e.target.value)}>
               <option value="all">All Products</option>
               {productOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
           </label>
           <label>
-            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Search</div>
+            <div className="field-label">Search</div>
             <input className="input" value={search} onChange={e => setSearch(e.target.value)} placeholder="Name, SKU, barcode" />
           </label>
           {!isAllBranches && branch && shouldShowBranchTypeBadge(branch.branchType) && (
@@ -381,13 +384,13 @@ function InventoryPage() {
           </div>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Categories</div><div style={{ fontSize: 32, fontWeight: 800 }}>{summary.categories}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Total Items</div><div style={{ fontSize: 32, fontWeight: 800 }}>{summary.totalItems}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Total Stock</div><div style={{ fontSize: 32, fontWeight: 800 }}>{summary.totalStock}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Total Cost</div><div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(summary.totalCost, settings)}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Expected Revenue</div><div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(summary.expectedRevenue, settings)}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Expected Profit</div><div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(summary.expectedProfit, settings)}</div></div>
+      <div className="stats-grid">
+        <div className="card stat-card"><div className="stat-label">Categories</div><div className="stat-value">{summary.categories}</div></div>
+        <div className="card stat-card"><div className="stat-label">Total Items</div><div className="stat-value">{summary.totalItems}</div></div>
+        <div className="card stat-card"><div className="stat-label">Total Stock</div><div className="stat-value">{summary.totalStock}</div></div>
+        <div className="card stat-card"><div className="stat-label">Total Cost</div><div className="stat-value-compact">{formatCurrency(summary.totalCost, settings)}</div></div>
+        <div className="card stat-card"><div className="stat-label">Expected Revenue</div><div className="stat-value-compact">{formatCurrency(summary.expectedRevenue, settings)}</div></div>
+        <div className="card stat-card"><div className="stat-label">Expected Profit</div><div className="stat-value-compact">{formatCurrency(summary.expectedProfit, settings)}</div></div>
       </div>
       {exportOpen && (
         <Modal
@@ -404,7 +407,7 @@ function InventoryPage() {
           <div style={{ display: 'grid', gap: 14 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
               <label>
-                <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Format</div>
+                <div className="field-label">Format</div>
                 <select className="select" value={exportFormat} onChange={(e) => setExportFormat(e.target.value)}>
                   <option value="pdf">PDF</option>
                   <option value="csv">CSV</option>

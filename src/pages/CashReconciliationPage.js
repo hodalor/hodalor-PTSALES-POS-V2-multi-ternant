@@ -306,7 +306,7 @@ function CashReconciliationPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div>
             <h1 style={{ margin: 0 }}>Cash Reconciliation</h1>
-            <div style={{ color: '#64748b', fontSize: 13, marginTop: 6 }}>
+            <div className="page-subtitle-compact">
               Reconcile branch sales to company accounts, track backlog days, and approve deposits safely.
             </div>
           </div>
