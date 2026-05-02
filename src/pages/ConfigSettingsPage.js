@@ -1151,36 +1151,36 @@ function ConfigSettingsPage() {
           {renderFinanceAccountsCard()}
           <div className="card config-panel" style={{ alignSelf: 'start', width: '100%' }}>
             <h2 className="section-title" style={{ marginBottom: 6, fontSize: 24, fontWeight: 800 }}>Branches</h2>
-            <div style={{ color: '#64748b', fontSize: 13, marginBottom: 16 }}>
+            <div className="page-subtitle-compact" style={{ marginBottom: 16 }}>
               Manage tenant locations here. Branch changes save instantly and are available immediately across the app.
             </div>
             <div style={{ display: 'grid', gap: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
-              <div className="card" style={{ padding: 18 }}>
-                <div style={{ color: '#64748b', fontSize: 12 }}>Retail Branches</div>
-                <div style={{ fontSize: 28, fontWeight: 800 }}>{branches.filter(b => String(b.branchType || 'retail').toLowerCase() === 'retail').length}</div>
+            <div className="stats-grid">
+              <div className="card stat-card">
+                <div className="stat-label">Retail Branches</div>
+                <div className="stat-value">{branches.filter(b => String(b.branchType || 'retail').toLowerCase() === 'retail').length}</div>
               </div>
-              <div className="card" style={{ padding: 18 }}>
-                <div style={{ color: '#64748b', fontSize: 12 }}>Distribution Shops</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: '#1d4ed8' }}>{branches.filter(b => String(b.branchType || 'retail').toLowerCase() === 'wholesale').length}</div>
+              <div className="card stat-card">
+                <div className="stat-label">Distribution Shops</div>
+                <div className="stat-value" style={{ color: '#1d4ed8' }}>{branches.filter(b => String(b.branchType || 'retail').toLowerCase() === 'wholesale').length}</div>
               </div>
-              <div className="card" style={{ padding: 18 }}>
-                <div style={{ color: '#64748b', fontSize: 12 }}>Warehouses</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: '#6d28d9' }}>{branches.filter(b => String(b.branchType || 'retail').toLowerCase() === 'warehouse').length}</div>
+              <div className="card stat-card">
+                <div className="stat-label">Warehouses</div>
+                <div className="stat-value" style={{ color: '#6d28d9' }}>{branches.filter(b => String(b.branchType || 'retail').toLowerCase() === 'warehouse').length}</div>
               </div>
             </div>
-            <div className="card" style={{ padding: 18 }}>
+            <div className="surface-panel">
               <label>
                 <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 4 }}>Current Branch</div>
-                <div style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>Choose the default active branch for this user session.</div>
+                <div className="section-note" style={{ marginBottom: 10 }}>Choose the default active branch for this user session.</div>
                 <select className="select" value={settings.currentBranchId} onChange={e => dispatch(setCurrentBranch(e.target.value))} style={{ display: 'block', width: '100%', marginTop: 6 }}>
                   {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                 </select>
               </label>
             </div>
-            <div className="card" style={{ padding: 18 }}>
+            <div className="surface-panel">
               <h3 className="section-title" style={{ margin: '0 0 8px 0', fontSize: 18 }}>Create Location</h3>
-              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 12 }}>Create retail branches, wholesale shops, or warehouse locations from here. Saves immediately.</div>
+              <div className="section-note" style={{ marginBottom: 12 }}>Create retail branches, wholesale shops, or warehouse locations from here. Saves immediately.</div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr auto', gap: 8 }}>
                 <input className="input" placeholder="Branch name" value={branchName} onChange={e => setBranchName(e.target.value)} disabled={!canManageBranches} />
                 <input className="input" placeholder="Code" value={branchCode} onChange={e => setBranchCode(e.target.value)} disabled={!canManageBranches} />

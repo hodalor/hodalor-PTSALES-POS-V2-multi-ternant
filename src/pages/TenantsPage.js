@@ -1116,9 +1116,9 @@ function TenantsPage() {
                 <input className="input" type="password" value={form.adminPin} onChange={(e) => setValue('adminPin', e.target.value)} />
               </label>
             </div>
-            <div className="card" style={{ padding: 14, border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a' }}>
+            <div className="surface-panel">
               <div style={{ fontWeight: 800, marginBottom: 6 }}>User Limits</div>
-              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
+              <div className="section-note" style={{ marginBottom: 10 }}>
                 Leave override fields blank to use the plan default. You can override a tenant regardless of its package.
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -1132,16 +1132,16 @@ function TenantsPage() {
                 </label>
               </div>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, color: '#64748b', fontSize: 13 }}>
-              <span>Subscription status: {form.subscriptionPermanent ? 'Permanent access enabled' : daysLeftLabel(form.subscriptionExpiresAt)}</span>
+            <div className="section-header" style={{ color: '#64748b', fontSize: 13 }}>
+              <span className="section-note">Subscription status: {form.subscriptionPermanent ? 'Permanent access enabled' : daysLeftLabel(form.subscriptionExpiresAt)}</span>
               <button className="btn" type="button" onClick={applyPlanDefaults}>Reset Features To Plan Default</button>
             </div>
             {editing && (
-              <div className="card" style={{ padding: 14, border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+              <div className="surface-panel">
+                <div className="section-header" style={{ marginBottom: 8 }}>
                   <div>
                     <div style={{ fontWeight: 800 }}>Tenant Activation Code</div>
-                    <div style={{ color: '#64748b', fontSize: 12 }}>Only superadmin can view and refresh this code. Share it with the tenant after payment.</div>
+                    <div className="section-note">Only superadmin can view and refresh this code. Share it with the tenant after payment.</div>
                   </div>
                   <button className="btn" type="button" onClick={refreshActivationCodeForCurrentTenant} disabled={refreshingActivation}>
                     {refreshingActivation ? 'Refreshing…' : 'Refresh Code'}
@@ -1164,25 +1164,25 @@ function TenantsPage() {
               </div>
             )}
             {editing && (
-              <div className="card" style={{ padding: 14, border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a' }}>
+              <div className="surface-panel">
                 <div style={{ fontWeight: 800, marginBottom: 8 }}>Payment Records</div>
                 {(form.paymentHistory || []).length === 0 ? (
-                  <div style={{ color: '#64748b', fontSize: 13 }}>No payment records yet. Records will appear here after live payment checkout is configured and used.</div>
+                  <div className="section-note">No payment records yet. Records will appear here after live payment checkout is configured and used.</div>
                 ) : (
                   <div style={{ display: 'grid', gap: 8, maxHeight: 240, overflow: 'auto' }}>
                     {(form.paymentHistory || []).slice().reverse().map((entry, index) => (
-                      <div key={`${entry.transactionRef || index}:${index}`} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: '#f8fafc' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
-                          <span style={{ fontWeight: 700 }}>{entry.provider || 'payment'} • {entry.method || 'method'}</span>
-                          <span style={{ color: '#64748b', fontSize: 12 }}>{entry.createdAt ? new Date(entry.createdAt).toLocaleString() : ''}</span>
+                      <div key={`${entry.transactionRef || index}:${index}`} className="mini-record">
+                        <div className="mini-record-title">
+                          <span>{entry.provider || 'payment'} • {entry.method || 'method'}</span>
+                          <span className="mini-record-subtle">{entry.createdAt ? new Date(entry.createdAt).toLocaleString() : ''}</span>
                         </div>
-                        <div style={{ color: '#475569', fontSize: 12 }}>
+                        <div className="mini-record-meta">
                           Status: {entry.status || 'unknown'} • Amount: {entry.amount == null ? 'Not set' : Number(entry.amount).toLocaleString()} {entry.currencyCode || ''}
                           {' • '}
                           Months: {entry.months || '-'}
                           {entry.network ? ` • Network: ${entry.network}` : ''}
                         </div>
-                        <div style={{ color: '#64748b', fontSize: 12 }}>
+                        <div className="mini-record-subtle">
                           Ref: {entry.transactionRef || '-'} • Provider Txn: {entry.providerTransactionId || '-'}
                         </div>
                       </div>
@@ -1192,26 +1192,26 @@ function TenantsPage() {
               </div>
             )}
             {editing && (
-              <div className="card" style={{ padding: 14, border: '1px solid #e2e8f0', background: '#ffffff', color: '#0f172a' }}>
+              <div className="surface-panel">
                 <div style={{ fontWeight: 800, marginBottom: 8 }}>Renewal History</div>
                 {(form.renewalHistory || []).length === 0 ? (
-                  <div style={{ color: '#64748b', fontSize: 13 }}>No renewal history yet.</div>
+                  <div className="section-note">No renewal history yet.</div>
                 ) : (
                   <div style={{ display: 'grid', gap: 8, maxHeight: 260, overflow: 'auto' }}>
                     {(form.renewalHistory || []).slice().reverse().map((entry, index) => (
-                      <div key={`${entry.createdAt || index}:${index}`} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: '#f8fafc' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 4 }}>
-                          <span style={{ fontWeight: 700 }}>{String(entry.source || 'renewal').replace(/_/g, ' ')}</span>
-                          <span style={{ color: '#64748b', fontSize: 12 }}>{entry.createdAt ? new Date(entry.createdAt).toLocaleString() : ''}</span>
+                      <div key={`${entry.createdAt || index}:${index}`} className="mini-record">
+                        <div className="mini-record-title">
+                          <span>{String(entry.source || 'renewal').replace(/_/g, ' ')}</span>
+                          <span className="mini-record-subtle">{entry.createdAt ? new Date(entry.createdAt).toLocaleString() : ''}</span>
                         </div>
-                        <div style={{ color: '#475569', fontSize: 12 }}>
+                        <div className="mini-record-meta">
                           Amount: {entry.amount == null ? 'Not set' : Number(entry.amount).toLocaleString()}
                           {' • '}
                           Previous Expiry: {entry.previousExpiry ? new Date(entry.previousExpiry).toLocaleString() : 'None'}
                           {' • '}
                           New Expiry: {entry.newExpiry ? new Date(entry.newExpiry).toLocaleString() : (entry.permanentAfter ? 'Permanent' : 'None')}
                         </div>
-                        <div style={{ color: '#64748b', fontSize: 12 }}>
+                        <div className="mini-record-subtle">
                           Actor: {entry.actorName || 'System'} • Note: {entry.note || 'Subscription updated'}
                         </div>
                       </div>
@@ -1222,7 +1222,7 @@ function TenantsPage() {
             )}
             <div>
               <div style={{ fontWeight: 700, marginBottom: 8 }}>Feature Overrides</div>
-              <div style={{ fontSize: 13, color: '#475569', marginBottom: 10 }}>
+              <div className="section-note" style={{ marginBottom: 10 }}>
                 Features now follow the sidebar structure. Turning on a section like Distribution or Warehouse brings in its submenu items and related approvals by default, and you can still remove any child item manually.
               </div>
               <div style={{ display: 'grid', gap: 12 }}>

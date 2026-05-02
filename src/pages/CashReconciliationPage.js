@@ -301,16 +301,16 @@ function CashReconciliationPage() {
   }
 
   return (
-    <div style={{ padding: 16, display: 'grid', gap: 12 }}>
+    <div className="page-shell">
       <div className="card">
-        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+        <div className="page-header">
           <div>
             <h1 style={{ margin: 0 }}>Cash Reconciliation</h1>
             <div className="page-subtitle-compact">
               Reconcile branch sales to company accounts, track backlog days, and approve deposits safely.
             </div>
           </div>
-          <div className="filter-actions">
+          <div className="page-tabs">
             <button className={tab === 'submit' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('submit')}>Backlog & Submit</button>
             <button className={tab === 'records' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('records')}>Deposit Records</button>
             {canApproveAnything && (
@@ -321,17 +321,17 @@ function CashReconciliationPage() {
       </div>
 
       <div className="card" style={{ display: 'grid', gap: 12 }}>
-        <div className="responsive-filter-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(160px, 1fr))', gap: 12 }}>
+        <div className="record-filters">
           <label style={{ display: 'grid', gap: 6 }}>
-            <span>From</span>
+            <span className="field-label">From</span>
             <input className="input" type="date" value={filters.from} onChange={(e) => setFilters((prev) => ({ ...prev, from: e.target.value }))} />
           </label>
           <label style={{ display: 'grid', gap: 6 }}>
-            <span>To</span>
+            <span className="field-label">To</span>
             <input className="input" type="date" value={filters.to} onChange={(e) => setFilters((prev) => ({ ...prev, to: e.target.value }))} />
           </label>
           <label style={{ display: 'grid', gap: 6 }}>
-            <span>Records Branch</span>
+            <span className="field-label">Records Branch</span>
             <BranchSelect
               value={filters.branchId}
               onChange={(value) => setFilters((prev) => ({ ...prev, branchId: value }))}
@@ -341,7 +341,7 @@ function CashReconciliationPage() {
             />
           </label>
           <label style={{ display: 'grid', gap: 6 }}>
-            <span>Account</span>
+            <span className="field-label">Account</span>
             <select className="select" value={filters.accountId} onChange={(e) => setFilters((prev) => ({ ...prev, accountId: e.target.value }))}>
               <option value="">All Accounts</option>
               {accounts.map((account) => (
@@ -350,7 +350,7 @@ function CashReconciliationPage() {
             </select>
           </label>
           <label style={{ display: 'grid', gap: 6 }}>
-            <span>Status</span>
+            <span className="field-label">Status</span>
             <select className="select" value={filters.status} onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}>
               <option value="">All Statuses</option>
               <option value="pending_director">Pending Director</option>
@@ -362,50 +362,29 @@ function CashReconciliationPage() {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, alignItems: 'start' }}>
-        <div className="card">
-          <div style={{ color: '#64748b' }}>Deposited (Approved)</div>
-          <div style={{ fontSize: 28, fontWeight: 800 }}>{formatCurrency(summary.depositedAmount || 0, settings)}</div>
-        </div>
-        <div className="card">
-          <div style={{ color: '#64748b' }}>Awaiting Deposit</div>
-          <div style={{ fontSize: 28, fontWeight: 800 }}>{formatCurrency(summary.awaitingAmount || 0, settings)}</div>
-        </div>
-        <div className="card">
-          <div style={{ color: '#64748b' }}>Pending Approval</div>
-          <div style={{ fontSize: 28, fontWeight: 800 }}>{formatCurrency(summary.pendingApprovalAmount || 0, settings)}</div>
-        </div>
-        <div className="card">
-          <div style={{ color: '#64748b' }}>Backlog Days</div>
-          <div style={{ fontSize: 28, fontWeight: 800 }}>{summary.backlogDays || 0}</div>
-        </div>
+      <div className="stats-grid">
+        <div className="card stat-card"><div className="stat-label">Deposited (Approved)</div><div className="stat-value-compact">{formatCurrency(summary.depositedAmount || 0, settings)}</div></div>
+        <div className="card stat-card"><div className="stat-label">Awaiting Deposit</div><div className="stat-value-compact">{formatCurrency(summary.awaitingAmount || 0, settings)}</div></div>
+        <div className="card stat-card"><div className="stat-label">Pending Approval</div><div className="stat-value-compact">{formatCurrency(summary.pendingApprovalAmount || 0, settings)}</div></div>
+        <div className="card stat-card"><div className="stat-label">Backlog Days</div><div className="stat-value">{summary.backlogDays || 0}</div></div>
       </div>
 
       {tab === 'submit' && (
         <>
           <div className="card" style={{ display: 'grid', gap: 12 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div className="section-header">
               <div>
                 <h2 style={{ margin: 0 }}>Branch Reconciliation</h2>
-                <div style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+                <div className="section-note" style={{ marginTop: 4 }}>
                   Create a transfer only when needed. The add modal loads sales dates that have revenue but are not yet deposited.
                 </div>
               </div>
               <button className="btn btn-primary" onClick={openSubmitModal} disabled={!canSubmit}>Add Reconciliation</button>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-              <div className="card" style={{ background: '#f8fafc' }}>
-                <div style={{ color: '#64748b' }}>Awaiting Deposit</div>
-                <div style={{ fontSize: 28, fontWeight: 800 }}>{formatCurrency(summary.awaitingAmount || 0, settings)}</div>
-              </div>
-              <div className="card" style={{ background: '#f8fafc' }}>
-                <div style={{ color: '#64748b' }}>Pending Approval</div>
-                <div style={{ fontSize: 28, fontWeight: 800 }}>{formatCurrency(summary.pendingApprovalAmount || 0, settings)}</div>
-              </div>
-              <div className="card" style={{ background: '#f8fafc' }}>
-                <div style={{ color: '#64748b' }}>Backlog Days</div>
-                <div style={{ fontSize: 28, fontWeight: 800 }}>{summary.backlogDays || 0}</div>
-              </div>
+            <div className="stats-grid">
+              <div className="surface-panel"><div className="stat-label">Awaiting Deposit</div><div className="stat-value-compact">{formatCurrency(summary.awaitingAmount || 0, settings)}</div></div>
+              <div className="surface-panel"><div className="stat-label">Pending Approval</div><div className="stat-value-compact">{formatCurrency(summary.pendingApprovalAmount || 0, settings)}</div></div>
+              <div className="surface-panel"><div className="stat-label">Backlog Days</div><div className="stat-value">{summary.backlogDays || 0}</div></div>
             </div>
           </div>
         </>
@@ -414,14 +393,14 @@ function CashReconciliationPage() {
       {tab === 'records' && (
         <>
           <div className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div className="section-header">
               <div>
                 <h2 style={{ margin: 0 }}>Deposits into Selected Account</h2>
-                <div style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+                <div className="section-note" style={{ marginTop: 4 }}>
                   Total for the current filters and account selection.
                 </div>
               </div>
-              <div style={{ fontSize: 28, fontWeight: 800 }}>{formatCurrency(accountTotals.total || 0, settings)}</div>
+              <div className="stat-value-compact" style={{ marginTop: 0 }}>{formatCurrency(accountTotals.total || 0, settings)}</div>
             </div>
           </div>
           <div className="card">
@@ -448,9 +427,9 @@ function CashReconciliationPage() {
                       <td align="right">{formatCurrency(row.depositedAmount || 0, settings)}</td>
                       <td>{row.status}</td>
                       <td>
-                        <div style={{ display: 'grid', gap: 6 }}>
+                        <div className="options-grid" style={{ gap: 6 }}>
                           {(row.allocations || []).map((item, index) => (
-                            <div key={`${row._id}-alloc-${index}`} style={{ fontSize: 13 }}>
+                            <div key={`${row._id}-alloc-${index}`} className="mini-record-subtle">
                               {item.accountName} • {item.paymentMethod} • {formatCurrency(item.amount || 0, settings)}
                             </div>
                           ))}
@@ -468,10 +447,10 @@ function CashReconciliationPage() {
 
       {tab === 'approvals' && canApproveAnything && (
         <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="section-header">
             <div>
               <h2 style={{ margin: 0 }}>Pending Approvals</h2>
-              <div style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+              <div className="section-note" style={{ marginTop: 4 }}>
                 Review deposit proofs and confirm the total matches the sales days before approval.
               </div>
             </div>
@@ -504,7 +483,7 @@ function CashReconciliationPage() {
                     <td align="right">{formatCurrency(row.expectedAmount || 0, settings)}</td>
                     <td align="right">{formatCurrency(row.depositedAmount || 0, settings)}</td>
                     <td>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <div className="inline-actions">
                         {(row.allocations || []).map((item, index) => item.proofImage ? (
                           <a key={`${row._id}-proof-${index}`} href={item.proofImage} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>
                             <img src={item.proofImage} alt={item.proofName || 'proof'} style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 10, border: '1px solid #e2e8f0' }} />
@@ -512,19 +491,19 @@ function CashReconciliationPage() {
                         ) : null)}
                       </div>
                     </td>
-                    <td>{row.status}</td>
+                    <td><span className={`status-pill ${row.status === 'approved' ? 'status-pill-approved' : row.status === 'rejected' ? 'status-pill-rejected' : 'status-pill-pending'}`}>{row.status}</span></td>
                     <td>
                       {(row.status === 'pending_director' && canApproveDirector) || (row.status === 'pending_manager' && canApproveManager) ? (
-                        <>
+                        <div className="approval-row-actions">
                           <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); onApproveRecord(row); }} disabled={workingApprovalId === row.approvalId}>
                             {workingApprovalId === row.approvalId ? 'Working…' : 'Approve'}
                           </button>
-                          <button className="btn" onClick={(e) => { e.stopPropagation(); onRejectRecord(row); }} disabled={workingApprovalId === row.approvalId} style={{ marginLeft: 6 }}>
+                          <button className="btn" onClick={(e) => { e.stopPropagation(); onRejectRecord(row); }} disabled={workingApprovalId === row.approvalId}>
                             {workingApprovalId === row.approvalId ? 'Working…' : 'Reject'}
                           </button>
-                        </>
+                        </div>
                       ) : (
-                        <span style={{ color: '#64748b' }}>Waiting</span>
+                        <span className="status-pill status-pill-neutral">Waiting</span>
                       )}
                     </td>
                   </tr>

@@ -464,27 +464,31 @@ function UsersPage() {
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <h1 style={{ margin: 0 }}>Users</h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+    <div className="page-shell">
+      <div className="page-header">
+        <div>
+          <h1 style={{ margin: 0 }}>Users</h1>
+          <div className="page-subtitle-compact">Create users, assign branch access, and control feature visibility with a cleaner admin workflow.</div>
+        </div>
+        <div className="page-header-actions">
           <OfflineQueueIndicator collection="users" label="Users queued" />
           <OfflineQueueIndicator collection="settings" label="Settings queued" />
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Users</div><div style={{ fontSize: 28, fontWeight: 800 }}>{userSummary.total}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Active</div><div style={{ fontSize: 28, fontWeight: 800 }}>{userSummary.active}</div></div>
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Inactive</div><div style={{ fontSize: 28, fontWeight: 800 }}>{userSummary.inactive}</div></div>
-        {isSuper ? <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Super Admins</div><div style={{ fontSize: 28, fontWeight: 800 }}>{visibleSuperAdminsCount}</div></div> : null}
-        <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Assigned Branches</div><div style={{ fontSize: 28, fontWeight: 800 }}>{userSummary.branches}</div></div>
+      <div className="stats-grid">
+        <div className="card stat-card"><div className="stat-label">Users</div><div className="stat-value">{userSummary.total}</div></div>
+        <div className="card stat-card"><div className="stat-label">Active</div><div className="stat-value">{userSummary.active}</div></div>
+        <div className="card stat-card"><div className="stat-label">Inactive</div><div className="stat-value">{userSummary.inactive}</div></div>
+        {isSuper ? <div className="card stat-card"><div className="stat-label">Super Admins</div><div className="stat-value">{visibleSuperAdminsCount}</div></div> : null}
+        <div className="card stat-card"><div className="stat-label">Assigned Branches</div><div className="stat-value">{userSummary.branches}</div></div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16 }}>
-        <div style={{ background: '#fff', borderRadius: 12, padding: 16 }}>
-          <h2>Create User</h2>
-          <input placeholder="username" value={name} onChange={e => setName(e.target.value)} style={{ display: 'block', width: '100%', padding: 10, marginBottom: 8 }} />
-          <input placeholder="PIN (4-6 digits)" type="password" value={pin} onChange={e => setPin(e.target.value)} style={{ display: 'block', width: '100%', padding: 10, marginBottom: 8 }} />
-          <select value={role} onChange={e => setRole(e.target.value)} style={{ display: 'block', width: '100%', padding: 10, marginBottom: 8 }}>
+        <div className="card">
+          <h2 className="section-title">Create User</h2>
+          <div className="section-note" style={{ marginBottom: 12 }}>Set the user role, branch scope, and extra feature access before saving.</div>
+          <input className="input" placeholder="username" value={name} onChange={e => setName(e.target.value)} style={{ display: 'block', width: '100%', marginBottom: 8 }} />
+          <input className="input" placeholder="PIN (4-6 digits)" type="password" value={pin} onChange={e => setPin(e.target.value)} style={{ display: 'block', width: '100%', marginBottom: 8 }} />
+          <select className="select" value={role} onChange={e => setRole(e.target.value)} style={{ display: 'block', width: '100%', marginBottom: 8 }}>
             {rolesForUi.map(r => <option key={r}>{r}</option>)}
           </select>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
@@ -493,14 +497,14 @@ function UsersPage() {
           </label>
           {!((role==='SuperAdmin'||role==='Admin') ? true : allBranches) && (
             <>
-              <select value={branchId} onChange={e => setBranchId(e.target.value)} style={{ display: 'block', width: '100%', padding: 10, marginBottom: 8 }}>
+              <select className="select" value={branchId} onChange={e => setBranchId(e.target.value)} style={{ display: 'block', width: '100%', marginBottom: 8 }}>
                 {branchOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
-              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, marginBottom: 8 }}>
-                <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Assign additional branches</div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+              <div className="surface-panel-muted" style={{ marginBottom: 8 }}>
+                <div className="field-label">Assign additional branches</div>
+                <div className="check-grid">
                   {branchOptions.map(b => (
-                    <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <label key={b.id} className="check-item">
                       <input
                         type="checkbox"
                         checked={selectedBranches.includes(b.id) || b.id === branchId}
@@ -522,20 +526,20 @@ function UsersPage() {
               </div>
             </>
           )}
-          <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, marginBottom: 8 }}>
-            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 6 }}>Feature Access</div>
-            <div style={{ display: 'grid', gap: 12 }}>
+          <div className="surface-panel-muted" style={{ marginBottom: 8 }}>
+            <div className="field-label">Feature Access</div>
+            <div className="options-grid">
               {groupedGrantOptions.map((section) => (
-                <div key={section.id} className="card" style={{ padding: 12, border: '1px solid #e2e8f0' }}>
+                <div key={section.id} className="surface-panel">
                   <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', marginBottom: 4 }}>{section.title}</div>
-                  <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}>{section.description}</div>
-                  <div style={{ display: 'grid', gap: 10 }}>
+                  <div className="section-note" style={{ marginBottom: 8 }}>{section.description}</div>
+                  <div className="options-grid" style={{ gap: 10 }}>
                     {section.items.map((item) => (
                       <div key={`${section.id}:${item.label}`}>
                         <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 6 }}>{item.label}</div>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+                        <div className="check-grid">
                           {item.grants.map((g) => (
-                            <label key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <label key={g.key} className="check-item">
                               <input
                                 type="checkbox"
                                 checked={grants.includes(g.key)}
@@ -559,7 +563,7 @@ function UsersPage() {
               ))}
             </div>
           </div>
-          <input placeholder="Remark (required)" value={remark} onChange={e => setRemark(e.target.value)} style={{ display: 'block', width: '100%', padding: 10, marginBottom: 8 }} />
+          <input className="input" placeholder="Remark (required)" value={remark} onChange={e => setRemark(e.target.value)} style={{ display: 'block', width: '100%', marginBottom: 8 }} />
           <button className="btn btn-primary" onClick={add} disabled={savingCreate}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               {savingCreate && <InlineSpinner />}
@@ -568,9 +572,10 @@ function UsersPage() {
           </button>
           {createError ? <div style={{ marginTop: 8, color: '#b91c1c', fontSize: 13 }}>{createError}</div> : null}
         </div>
-        <div style={{ background: '#fff', borderRadius: 12, padding: 16 }}>
-          <h2>Existing Users</h2>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div className="card">
+          <h2 className="section-title">Existing Users</h2>
+          <div className="table-wrap">
+          <table className="table">
             <thead>
               <tr>
                 <th align="left">Name</th>
@@ -586,12 +591,12 @@ function UsersPage() {
                   : (Array.isArray(u.assignedBranches) ? `${u.assignedBranches.length} branches` : (u.branchId || '—'));
                 const active = u.active !== false;
                 return (
-                  <tr key={u.id} style={{ borderTop: '1px solid #e2e8f0' }}>
+                  <tr key={u.id}>
                     <td>{u.name}</td>
                     <td>{u.role}</td>
                     <td>{access}</td>
                     <td>{active ? 'Active' : 'Disabled'}</td>
-                    <td style={{ display: 'flex', gap: 8 }}>
+                    <td><div className="inline-actions">
                       <button className="btn" onClick={() => startEdit(u)} disabled={!isSuper && u.role === 'SuperAdmin'}>Edit</button>
                       {(isSuper || u.name !== 'superadmin') && (
                         active
@@ -651,12 +656,13 @@ function UsersPage() {
                           {workingUserName === String(u.name || '') ? 'Working…' : 'Remove'}
                         </span>
                       </button>
-                    </td>
+                    </div></td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
+          </div>
         </div>
         {editingId && (
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.5)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, overflowY: 'auto' }}>

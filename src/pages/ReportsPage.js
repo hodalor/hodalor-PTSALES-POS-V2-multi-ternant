@@ -464,33 +464,36 @@ function ReportsPage() {
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      <h1>Reports</h1>
-      <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 12 }}>
+    <div className="page-shell">
+      <div className="card">
+        <h1 style={{ margin: 0 }}>Reports</h1>
+        <div className="page-subtitle-compact">Export sales, stock, operations, analytics, and finance views with cleaner controls and summaries.</div>
+      </div>
+      <div className="card record-filters">
         <label>
-          Period
+          <div className="field-label">Period</div>
           <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
             <option value="range">Custom Range</option>
             <option value="all_time">All Time</option>
           </select>
         </label>
         <label>
-          From
+          <div className="field-label">From</div>
           <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
         </label>
         <label>
-          To
+          <div className="field-label">To</div>
           <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
         </label>
         <label>
-          Branch
+          <div className="field-label">Branch</div>
           <BranchSelect value={branchId} onChange={setBranchId} includeAll allLabel="All Branches" />
         </label>
       </div>
       <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
-        <div style={{ gridColumn: '1 / span 2', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+        <div className="record-filters" style={{ gridColumn: '1 / span 2' }}>
           <label>
-            Report
+            <div className="field-label">Report</div>
             <select className="select" value={reportType} onChange={e => setReportType(e.target.value)}>
               <option value="all">All Sections</option>
               <option value="sales">Sales</option>
@@ -511,7 +514,7 @@ function ReportsPage() {
             </select>
           </label>
           <label>
-            Heatmap
+            <div className="field-label">Heatmap</div>
             <select className="select" value={heatMode} onChange={e => setHeatMode(e.target.value)}>
               <option value="day">Daily</option>
               <option value="week">Weekly</option>
@@ -520,111 +523,111 @@ function ReportsPage() {
           </label>
         </div>
         {show('sales') && (
-        <div>
+        <div className="surface-panel">
           <h2 className="section-title">Sales</h2>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="inline-actions">
             <button className="btn" onClick={() => exportSales('csv')} disabled={!canViewRevenue}>Export CSV</button>
             <button className="btn" onClick={() => exportSales('pdf')} disabled={!canViewRevenue}>Export PDF</button>
           </div>
         </div>
         )}
         {show('purchases') && (
-        <div>
+        <div className="surface-panel">
           <h2 className="section-title">Purchases</h2>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="inline-actions">
             <button className="btn" onClick={() => exportPurchases('csv')} disabled={!canViewProfit}>Export CSV</button>
             <button className="btn" onClick={() => exportPurchases('pdf')} disabled={!canViewProfit}>Export PDF</button>
           </div>
         </div>
         )}
         {show('transfers') && (
-        <div>
+        <div className="surface-panel">
           <h2 className="section-title">Transfers</h2>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="inline-actions">
             <button className="btn" onClick={() => exportTransfers('csv')}>Export CSV</button>
             <button className="btn" onClick={() => exportTransfers('pdf')}>Export PDF</button>
           </div>
         </div>
         )}
         {show('adjustments') && (
-        <div>
+        <div className="surface-panel">
           <h2 className="section-title">Adjustments</h2>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="inline-actions">
             <button className="btn" onClick={() => exportAdjustments('csv')}>Export CSV</button>
             <button className="btn" onClick={() => exportAdjustments('pdf')}>Export PDF</button>
           </div>
         </div>
         )}
         {show('stock') && (
-        <div>
+        <div className="surface-panel">
           <h2 className="section-title">Stock Records</h2>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="inline-actions">
             <button className="btn" onClick={() => exportStockRecords('csv')}>Export CSV</button>
             <button className="btn" onClick={() => exportStockRecords('pdf')}>Export PDF</button>
           </div>
         </div>
         )}
         {show('refunds') && (
-        <div>
+        <div className="surface-panel">
           <h2 className="section-title">Refunds</h2>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="inline-actions">
             <button className="btn" onClick={() => exportRefunds('csv')} disabled={!canViewRevenue}>Export CSV</button>
             <button className="btn" onClick={() => exportRefunds('pdf')} disabled={!canViewRevenue}>Export PDF</button>
           </div>
         </div>
         )}
         {show('warehouse-ops') && (
-        <div>
+        <div className="surface-panel">
           <h2 className="section-title">Warehouse Operations</h2>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="inline-actions">
             <button className="btn" onClick={() => exportWarehouseOperations('csv')} disabled={!canViewProfit}>Export CSV</button>
             <button className="btn" onClick={() => exportWarehouseOperations('pdf')} disabled={!canViewProfit}>Export PDF</button>
           </div>
         </div>
         )}
         {show('retail-stock') && (
-        <div>
+        <div className="surface-panel">
           <h2 className="section-title">Retail Stock</h2>
-          <div style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+          <div className="section-note" style={{ marginBottom: 8 }}>
             Scope: {selectedBranch ? `Selected branch (${selectedBranch.name || selectedBranch.code || selectedBranch.id})` : 'All branches'}
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="inline-actions">
             <button className="btn" onClick={() => exportRetailStock('csv')}>Export CSV</button>
             <button className="btn" onClick={() => exportRetailStock('pdf')}>Export PDF</button>
           </div>
         </div>
         )}
         {show('distribution-stock') && (
-        <div>
+        <div className="surface-panel">
           <h2 className="section-title">Distribution Stock</h2>
-          <div style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+          <div className="section-note" style={{ marginBottom: 8 }}>
             Scope: {selectedBranch ? `Selected branch (${selectedBranch.name || selectedBranch.code || selectedBranch.id})` : 'All branches'}
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="inline-actions">
             <button className="btn" onClick={() => exportDistributionStock('csv')}>Export CSV</button>
             <button className="btn" onClick={() => exportDistributionStock('pdf')}>Export PDF</button>
           </div>
         </div>
         )}
         {show('warehouse-stock') && (
-        <div>
+        <div className="surface-panel">
           <h2 className="section-title">Warehouse Stock</h2>
-          <div style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+          <div className="section-note" style={{ marginBottom: 8 }}>
             Scope: {selectedBranch ? `Selected branch (${selectedBranch.name || selectedBranch.code || selectedBranch.id})` : 'All branches'}
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="inline-actions">
             <button className="btn" onClick={() => exportWarehouseStock('csv')}>Export CSV</button>
             <button className="btn" onClick={() => exportWarehouseStock('pdf')}>Export PDF</button>
           </div>
         </div>
         )}
         {show('price-list') && (
-        <div>
+        <div className="surface-panel">
           <h2 className="section-title">Price List</h2>
-          <div style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
+          <div className="section-note" style={{ marginBottom: 8 }}>
             Scope: All products with retail, distribution, and agent prices
           </div>
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="inline-actions">
             <button className="btn" onClick={() => exportPriceList('csv')}>Export CSV</button>
             <button className="btn" onClick={() => exportPriceList('pdf')}>Export PDF</button>
           </div>
@@ -636,10 +639,10 @@ function ReportsPage() {
         <h2 className="section-title">Analytics</h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
           {show('analytics-top') && (
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="surface-panel">
+            <div className="section-header">
               <div style={{ fontWeight: 600 }}>Top Products</div>
-              <div style={{ display: 'flex', gap: 6 }}>
+              <div className="inline-actions">
                 <button className="btn" onClick={() => exportTopProducts('csv')}>CSV</button>
                 <button className="btn" onClick={() => exportTopProducts('pdf')}>PDF</button>
               </div>
@@ -650,10 +653,10 @@ function ReportsPage() {
           </div>
           )}
           {show('analytics-cat') && (
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="surface-panel">
+            <div className="section-header">
               <div style={{ fontWeight: 600 }}>Category Performance</div>
-              <div style={{ display: 'flex', gap: 6 }}>
+              <div className="inline-actions">
                 <button className="btn" onClick={() => exportCategories('csv')}>CSV</button>
                 <button className="btn" onClick={() => exportCategories('pdf')}>PDF</button>
               </div>
@@ -664,10 +667,10 @@ function ReportsPage() {
           </div>
           )}
           {show('analytics-cashier') && (
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="surface-panel">
+            <div className="section-header">
               <div style={{ fontWeight: 600 }}>Cashier Performance</div>
-              <div style={{ display: 'flex', gap: 6 }}>
+              <div className="inline-actions">
                 <button className="btn" onClick={() => exportCashiers('csv')} disabled={!canViewRevenue}>CSV</button>
                 <button className="btn" onClick={() => exportCashiers('pdf')} disabled={!canViewRevenue}>PDF</button>
               </div>

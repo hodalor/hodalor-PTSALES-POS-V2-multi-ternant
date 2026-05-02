@@ -1191,7 +1191,7 @@ function ProductsPage() {
 
             {advancedOpen && (
               <>
-                <div style={{ border: '1px solid #111827', borderRadius: 12, padding: 12, background: '#000' }}>
+                <div className="dark-panel">
                   <button className="btn" onClick={() => setPricingOpen(v => !v)} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>Pricing & Expiry</span>
                     <span style={{ display: 'inline-flex', width: 18, height: 18 }}>
@@ -1206,19 +1206,19 @@ function ProductsPage() {
                     <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                       <label>
                         <div className="label" style={{ color: '#cbd5e1' }}>Cost Price (per unit)</div>
-                        <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>Your purchase price (capital). Used to calculate profit.</div>
+                        <div className="section-note" style={{ marginTop: 4 }}>Your purchase price (capital). Used to calculate profit.</div>
                         <input className="input" type="number" min="0" step="0.01" placeholder="e.g. 10.00" value={costPrice} onChange={e => setCostPrice(e.target.value)} />
                       </label>
                       <label>
                         <div className="label" style={{ color: '#cbd5e1' }}>Expiry Date</div>
-                        <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>Use for products that expire (alerts and inventory planning).</div>
+                        <div className="section-note" style={{ marginTop: 4 }}>Use for products that expire (alerts and inventory planning).</div>
                         <input className="input" type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
                       </label>
                     </div>
                   )}
                 </div>
 
-                <div style={{ border: '1px solid #111827', borderRadius: 12, padding: 12, background: '#000' }}>
+                <div className="dark-panel">
                   <button className="btn" onClick={() => setCreditOpen(v => !v)} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>EasyBuy Product Rules</span>
                     <span style={{ display: 'inline-flex', width: 18, height: 18 }}>
@@ -1246,7 +1246,7 @@ function ProductsPage() {
                   )}
                 </div>
 
-                <div style={{ border: '1px solid #111827', borderRadius: 12, padding: 12, background: '#000' }}>
+                <div className="dark-panel">
                   <button className="btn" onClick={() => setUnitsOpen(v => !v)} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>Units & Size</span>
                     <span style={{ display: 'inline-flex', width: 18, height: 18 }}>
@@ -1259,12 +1259,12 @@ function ProductsPage() {
                   </button>
                   {unitsOpen && (
                     <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      <div style={{ gridColumn: '1 / span 2', color: '#94a3b8', fontSize: 12 }}>
+                      <div className="section-note" style={{ gridColumn: '1 / span 2' }}>
                         Use this when the same product needs a clear size/measurement shown in POS and invoices.
                       </div>
                       <label>
                         <div className="label" style={{ color: '#cbd5e1' }}>Type</div>
-                        <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>Choose how to describe the product (e.g. volume for drinks, size for clothing).</div>
+                        <div className="section-note" style={{ marginTop: 4 }}>Choose how to describe the product (e.g. volume for drinks, size for clothing).</div>
                         <select className="select" value={unitKind} onChange={e => setUnitKind(e.target.value)}>
                           <option value="none">None</option>
                           <option value="volume">Volume</option>
@@ -1278,7 +1278,7 @@ function ProductsPage() {
                         <>
                           <label>
                             <div className="label" style={{ color: '#cbd5e1' }}>Value</div>
-                            <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>Example: 500 with Unit mL means “500mL”.</div>
+                            <div className="section-note" style={{ marginTop: 4 }}>Example: 500 with Unit mL means "500mL".</div>
                             <input className="input" type="number" placeholder="e.g. 500" value={unitValue} onChange={e => setUnitValue(e.target.value)} />
                           </label>
                           <label>
@@ -1293,14 +1293,14 @@ function ProductsPage() {
                       {unitKind === 'size' && (
                         <label style={{ gridColumn: '1 / span 2' }}>
                           <div className="label" style={{ color: '#cbd5e1' }}>Size</div>
-                          <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>Use for clothing sizes (shown on receipts and sales reports).</div>
+                          <div className="section-note" style={{ marginTop: 4 }}>Use for clothing sizes (shown on receipts and sales reports).</div>
                           <input className="input" value={sizeLabel} onChange={e => setSizeLabel(e.target.value)} placeholder="e.g. Shirt: L, XL" />
                         </label>
                       )}
                       {unitKind === 'shoe' && (
                         <label style={{ gridColumn: '1 / span 2' }}>
                           <div className="label" style={{ color: '#cbd5e1' }}>Shoe Size</div>
-                          <div style={{ color: '#94a3b8', fontSize: 12, marginTop: 4 }}>Use when shoes have different sizes (EU/US).</div>
+                          <div className="section-note" style={{ marginTop: 4 }}>Use when shoes have different sizes (EU/US).</div>
                           <input className="input" value={shoeSize} onChange={e => setShoeSize(e.target.value)} placeholder="e.g. Shoe EU 46 / US 9" />
                         </label>
                       )}
@@ -1308,7 +1308,7 @@ function ProductsPage() {
                   )}
                 </div>
 
-                <div style={{ border: '1px solid #111827', borderRadius: 12, padding: 12, background: '#000' }}>
+                <div className="dark-panel">
                   <button className="btn" onClick={() => setAttrsOpen(v => !v)} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>Attributes</span>
                     <span style={{ display: 'inline-flex', width: 18, height: 18 }}>
@@ -1321,7 +1321,7 @@ function ProductsPage() {
                   </button>
                   {attrsOpen && (
                     <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
-                      <div style={{ color: '#94a3b8', fontSize: 12 }}>
+                      <div className="section-note">
                         Use attributes for extra details like Brand, Color, Model, Material. Helps searching and reporting.
                       </div>
                       {attrs.map((row, idx) => (
@@ -1342,7 +1342,7 @@ function ProductsPage() {
                   )}
                 </div>
 
-                <div style={{ border: '1px solid #111827', borderRadius: 12, padding: 12, background: '#000' }}>
+                <div className="dark-panel">
                   <button className="btn" onClick={() => setPacksOpen(v => !v)} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>Packs</span>
                     <span style={{ display: 'inline-flex', width: 18, height: 18 }}>
@@ -1355,7 +1355,7 @@ function ProductsPage() {
                   </button>
                   {packsOpen && (
                     <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
-                      <div style={{ color: '#94a3b8', fontSize: 12 }}>
+                      <div className="section-note">
                         Use packs when you sell in multiples (e.g. Carton of 12). POS can use this for faster entry.
                       </div>
                       {packs.map((row, idx) => (
@@ -1376,7 +1376,7 @@ function ProductsPage() {
                   )}
                 </div>
 
-                <div style={{ border: '1px solid #111827', borderRadius: 12, padding: 12, background: '#000' }}>
+                <div className="dark-panel">
                   <button className="btn" onClick={() => setVariantsOpen(v => !v)} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span>Variants</span>
                     <span style={{ display: 'inline-flex', width: 18, height: 18 }}>
@@ -1389,7 +1389,7 @@ function ProductsPage() {
                   </button>
                   {variantsOpen && (
                     <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
-                      <div style={{ color: '#94a3b8', fontSize: 12 }}>
+                      <div className="section-note">
                         Use variants when one product has different options with their own SKU/price/stock (e.g. colors, sizes, 500mL vs 1L).
                       </div>
                       {variants.map((row, idx) => (
@@ -1439,7 +1439,7 @@ function ProductsPage() {
           )}
         >
           <div style={{ display: 'grid', gap: 12 }}>
-            <div style={{ color: '#64748b', fontSize: 12 }}>
+            <div className="section-note">
               Enter one IMEI or serial per line. You can also use IMEI,SerialNumber on the same line.
             </div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -1494,14 +1494,14 @@ function ProductsPage() {
                 </tbody>
               </table>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <div className="pagination-row">
+              <div className="pagination-controls">
                 <button className="btn" onClick={() => { const next = Math.max(1, serializedPage - 1); setSerializedPage(next); loadSerializedUnitsPage(serializedModalProduct, serializedQuery, next, serializedPageSize); }} disabled={serializedPage <= 1 || loadingSerialized}>Prev</button>
-                <span style={{ color: '#111827' }}>Page {serializedPage} of {Math.max(1, Math.ceil(serializedTotal / serializedPageSize))}</span>
+                <span className="table-meta" style={{ color: '#111827' }}>Page {serializedPage} of {Math.max(1, Math.ceil(serializedTotal / serializedPageSize))}</span>
                 <button className="btn" onClick={() => { const next = Math.min(Math.max(1, Math.ceil(serializedTotal / serializedPageSize)), serializedPage + 1); setSerializedPage(next); loadSerializedUnitsPage(serializedModalProduct, serializedQuery, next, serializedPageSize); }} disabled={serializedPage >= Math.max(1, Math.ceil(serializedTotal / serializedPageSize)) || loadingSerialized}>Next</button>
               </div>
               <label style={{ color: '#111827' }}>
-                <span style={{ marginRight: 6 }}>Rows</span>
+                <span className="field-label" style={{ marginBottom: 0, marginRight: 6, color: '#111827' }}>Rows</span>
                 <select className="select" value={serializedPageSize} onChange={e => { const nextSize = Number(e.target.value); setSerializedPageSize(nextSize); setSerializedPage(1); loadSerializedUnitsPage(serializedModalProduct, serializedQuery, 1, nextSize); }} style={{ color: '#111827', background: '#ffffff' }}>
                   <option value={10}>10</option>
                   <option value={25}>25</option>
