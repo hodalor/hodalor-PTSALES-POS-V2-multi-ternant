@@ -527,29 +527,123 @@ function DashboardPage() {
       lowStockRows
     };
   }, [branches, products]);
+  const summaryCardStyle = {
+    background: '#fff',
+    padding: 14,
+    borderRadius: 16,
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 10px 24px rgba(15, 23, 42, 0.06)',
+    position: 'relative',
+    overflow: 'hidden'
+  };
+  const summaryCardAccentStyle = (accent) => ({
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 4,
+    background: `linear-gradient(90deg, ${accent} 0%, ${accent}cc 100%)`
+  });
+  const summaryCardBadgeStyle = (accent, tint) => ({
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    background: tint,
+    color: accent,
+    display: 'grid',
+    placeItems: 'center',
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: 0.3,
+    flexShrink: 0,
+    boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.5)'
+  });
+  const summaryCards = [
+    { key: 'sales', label: 'Sales (Filtered Range)', value: maskRevenue(metrics.todayTotal), subtitle: periodMode === 'all_time' ? 'All recorded time' : 'Current selected range', accent: '#2563eb', tint: '#dbeafe', badge: 'SL' },
+    { key: 'profit', label: 'Profit (Filtered Range)', value: maskProfit(metrics.todayProfit), subtitle: canViewProfit ? 'Live profit summary' : 'Profit access masked', accent: '#7c3aed', tint: '#ede9fe', badge: 'PF' },
+    { key: 'items', label: 'Items Sold', value: metrics.itemsSold, subtitle: 'Units moved in scope', accent: '#0f766e', tint: '#ccfbf1', badge: 'IT' },
+    { key: 'transactions', label: 'Transactions', value: metrics.transactionCount, subtitle: 'Completed sales count', accent: '#f59e0b', tint: '#fef3c7', badge: 'TX' },
+    { key: 'margin', label: 'Margin', value: maskProfitText(`${metrics.marginPct}%`), subtitle: 'Gross margin percentage', accent: '#ec4899', tint: '#fce7f3', badge: 'MG' },
+    { key: 'cashflow', label: 'Net Cashflow', value: maskProfit(finance.net), subtitle: 'Revenue minus expenses', accent: '#16a34a', tint: '#dcfce7', badge: 'CF' },
+    ...(canUseFinanceReconciliation ? [
+      { key: 'deposited', label: 'Deposited to Company Account', value: maskRevenue(financeSummary.depositedAmount), subtitle: 'Approved reconciliations', accent: '#14b8a6', tint: '#ccfbf1', badge: 'DP' },
+      { key: 'awaiting', label: 'Waiting for Deposit', value: maskRevenue(financeSummary.awaitingAmount), subtitle: `Backlog days: ${financeSummary.backlogDays}`, accent: '#ef4444', tint: '#fee2e2', badge: 'WD' }
+    ] : [])
+  ];
+  const sectionCardStyle = {
+    background: '#fff',
+    padding: 14,
+    borderRadius: 16,
+    border: '1px solid #e2e8f0',
+    boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)'
+  };
+  const pageTitleStyle = {
+    margin: '0 0 10px',
+    fontSize: 30,
+    lineHeight: 1.1,
+    fontWeight: 800,
+    color: '#0f172a',
+    letterSpacing: -0.6
+  };
+  const sectionTitleStyle = {
+    margin: 0,
+    fontSize: 17,
+    lineHeight: 1.2,
+    fontWeight: 800,
+    color: '#0f172a',
+    letterSpacing: -0.25
+  };
+  const fieldLabelStyle = {
+    color: '#64748b',
+    fontSize: 12,
+    fontWeight: 700,
+    marginBottom: 6
+  };
+  const bodyMutedStyle = {
+    color: '#64748b',
+    fontSize: 12.5,
+    fontWeight: 500
+  };
+  const miniStatLabelStyle = {
+    color: '#64748b',
+    fontSize: 12,
+    fontWeight: 700
+  };
+  const miniStatValueStyle = {
+    fontSize: 22,
+    lineHeight: 1.15,
+    fontWeight: 800,
+    color: '#0f172a'
+  };
+  const tableHeaderStyle = {
+    color: '#475569',
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: 0.2
+  };
 
   return (
-    <div style={{ padding: 16 }}>
-      <h1>Dashboard</h1>
-      <div className="card" style={{ padding: 16, marginBottom: 16 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, alignItems: 'end' }}>
+    <div style={{ padding: 12 }}>
+      <h1 style={pageTitleStyle}>Dashboard</h1>
+      <div className="card" style={{ padding: 12, marginBottom: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, alignItems: 'end' }}>
           <label>
-            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Period</div>
+            <div style={fieldLabelStyle}>Period</div>
             <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
               <option value="range">Custom Range</option>
               <option value="all_time">All Time</option>
             </select>
           </label>
           <label>
-            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>From</div>
+            <div style={fieldLabelStyle}>From</div>
             <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
-            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>To</div>
+            <div style={fieldLabelStyle}>To</div>
             <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
-            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Branch</div>
+            <div style={fieldLabelStyle}>Branch</div>
             <BranchSelect
               value={branchId}
               onChange={setBranchId}
@@ -560,49 +654,26 @@ function DashboardPage() {
           </label>
         </div>
       </div>
-      <div className="summary-grid" style={{ marginBottom: 16 }}>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>Sales (Filtered Range)</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{maskRevenue(metrics.todayTotal)}</div>
-        </div>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>Profit (Filtered Range)</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{maskProfit(metrics.todayProfit)}</div>
-        </div>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>Items Sold</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{metrics.itemsSold}</div>
-        </div>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>Transactions</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{metrics.transactionCount}</div>
-        </div>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>Margin</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{maskProfitText(`${metrics.marginPct}%`)}</div>
-        </div>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>Net Cashflow</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{maskProfit(finance.net)}</div>
-        </div>
-        {canUseFinanceReconciliation && (
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>Deposited to Company Account</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{maskRevenue(financeSummary.depositedAmount)}</div>
-        </div>
-        )}
-        {canUseFinanceReconciliation && (
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>Waiting for Deposit</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{maskRevenue(financeSummary.awaitingAmount)}</div>
-          <div style={{ marginTop: 6, color: '#64748b' }}>Backlog days: {financeSummary.backlogDays}</div>
-        </div>
-        )}
+      <div className="summary-grid" style={{ marginBottom: 12, gap: 12 }}>
+        {summaryCards.map((card) => (
+          <div key={card.key} style={summaryCardStyle}>
+            <div style={summaryCardAccentStyle(card.accent)} />
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ color: '#64748b', fontSize: 12, fontWeight: 700 }}>{card.label}</div>
+                <div style={{ fontSize: 27, lineHeight: 1.15, fontWeight: 800, color: '#0f172a', marginTop: 8 }}>{card.value}</div>
+                <div style={{ marginTop: 8, color: '#64748b', fontSize: 12 }}>{card.subtitle}</div>
+              </div>
+              <div style={summaryCardBadgeStyle(card.accent, card.tint)}>{card.badge}</div>
+            </div>
+            <div style={{ marginTop: 12, height: 4, borderRadius: 999, background: `linear-gradient(90deg, ${card.accent} 0%, ${card.accent}99 72%, rgba(255,255,255,0) 100%)` }} />
+          </div>
+        ))}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16, alignItems: 'start' }}>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <h2 style={{ marginTop: 0 }}>Revenue (Selected Range)</h2>
-          <div style={{ height: 260 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, alignItems: 'start' }}>
+        <div style={sectionCardStyle}>
+          <h2 style={sectionTitleStyle}>Revenue (Selected Range)</h2>
+          <div style={{ height: 220 }}>
             <Line data={metrics.lineData} options={{
               ...metrics.lineOptions,
               scales: {
@@ -620,130 +691,64 @@ function DashboardPage() {
             }} />
           </div>
         </div>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <h2 style={{ marginTop: 0 }}>Units by Category</h2>
+        <div style={sectionCardStyle}>
+          <h2 style={sectionTitleStyle}>Units by Category</h2>
           <Doughnut data={metrics.doughData} />
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16, marginTop: 16, alignItems: 'start' }}>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>Revenue</div>
-          <div style={{ fontSize: 22, fontWeight: 800 }}>{maskRevenue(metrics.last30Revenue)}</div>
-          <div style={{ marginTop: 6, color: '#64748b' }}>COGS: {maskProfit(metrics.last30Cost)}</div>
-          <div style={{ marginTop: 2, color: '#64748b' }}>Profit: {maskProfit(metrics.last30Profit)}</div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginTop: 12, alignItems: 'start' }}>
+        <div style={sectionCardStyle}>
+          <div style={miniStatLabelStyle}>Revenue</div>
+          <div style={miniStatValueStyle}>{maskRevenue(metrics.last30Revenue)}</div>
+          <div style={{ ...bodyMutedStyle, marginTop: 6 }}>COGS: {maskProfit(metrics.last30Cost)}</div>
+          <div style={{ ...bodyMutedStyle, marginTop: 2 }}>Profit: {maskProfit(metrics.last30Profit)}</div>
         </div>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>Expenses</div>
-          <div style={{ fontSize: 22, fontWeight: 800 }}>{maskProfit(finance.expenseTotal)}</div>
-          <div style={{ marginTop: 6, color: '#64748b' }}>Projection: {maskProfit(finance.projected30)}</div>
+        <div style={sectionCardStyle}>
+          <div style={miniStatLabelStyle}>Expenses</div>
+          <div style={miniStatValueStyle}>{maskProfit(finance.expenseTotal)}</div>
+          <div style={{ ...bodyMutedStyle, marginTop: 6 }}>Projection: {maskProfit(finance.projected30)}</div>
         </div>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>Cashflow</div>
+        <div style={sectionCardStyle}>
+          <div style={miniStatLabelStyle}>Cashflow</div>
           <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Inflow</span><strong>{maskRevenue(metrics.last30Revenue)}</strong></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Outflow</span><strong>{maskProfit(finance.expenseTotal)}</strong></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>Net</span><strong>{maskProfit(finance.net)}</strong></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', ...bodyMutedStyle }}><span>Inflow</span><strong style={{ color: '#0f172a', fontWeight: 800 }}>{maskRevenue(metrics.last30Revenue)}</strong></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', ...bodyMutedStyle }}><span>Outflow</span><strong style={{ color: '#0f172a', fontWeight: 800 }}>{maskProfit(finance.expenseTotal)}</strong></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', ...bodyMutedStyle }}><span>Net</span><strong style={{ color: '#0f172a', fontWeight: 800 }}>{maskProfit(finance.net)}</strong></div>
           </div>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: 16, marginTop: 16, alignItems: 'start' }}>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>Wholesale Locations</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{wholesaleStats.wholesaleCount}</div>
-        </div>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>Wholesale Units</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{wholesaleStats.wholesaleUnits}</div>
-          <div style={{ marginTop: 6, color: '#64748b' }}>Pending approvals: {wholesalePending}</div>
-        </div>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <h2 style={{ marginTop: 0 }}>Wholesale Low Stock Alerts</h2>
-          <table className="table">
-            <thead>
-              <tr>
-                <th align="left">Product</th>
-                <th align="left">Wholesale Stock</th>
-                <th align="left">Threshold</th>
-              </tr>
-            </thead>
-            <tbody>
-              {wholesaleStats.lowStockRows.map(row => (
-                <tr key={row.id}>
-                  <td>{row.name}</td>
-                  <td>{row.total}</td>
-                  <td>{row.lowStock}</td>
-                </tr>
-              ))}
-              {wholesaleStats.lowStockRows.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>No wholesale low stock alerts</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: 16, marginTop: 16, alignItems: 'start' }}>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>Warehouse Locations</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{warehouseStats.warehouseCount}</div>
-        </div>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <div style={{ color: '#64748b' }}>Warehouse Units</div>
-          <div style={{ fontSize: 28, fontWeight: 700 }}>{warehouseStats.warehouseUnits}</div>
-          <div style={{ marginTop: 6, color: '#64748b' }}>Pending approvals: {warehousePending}</div>
-        </div>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <h2 style={{ marginTop: 0 }}>Warehouse Low Stock Alerts</h2>
-          <table className="table">
-            <thead>
-              <tr>
-                <th align="left">Product</th>
-                <th align="left">Warehouse Stock</th>
-                <th align="left">Threshold</th>
-              </tr>
-            </thead>
-            <tbody>
-              {warehouseStats.lowStockRows.map(row => (
-                <tr key={row.id}>
-                  <td>{row.name}</td>
-                  <td>{row.total}</td>
-                  <td>{row.lowStock}</td>
-                </tr>
-              ))}
-              {warehouseStats.lowStockRows.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>No warehouse low stock alerts</td></tr>}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16, alignItems: 'start' }}>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <h2 style={{ marginTop: 0 }}>Top Products (Units)</h2>
-          <div style={{ height: 220 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12, alignItems: 'start' }}>
+        <div style={sectionCardStyle}>
+          <h2 style={sectionTitleStyle}>Top Products (Units)</h2>
+          <div style={{ height: 190 }}>
             <Bar data={metrics.topBar} options={metrics.barOptions} />
           </div>
         </div>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <h2 style={{ marginTop: 0 }}>Payments by Day (Selected Range)</h2>
-          <div style={{ height: 220 }}>
+        <div style={sectionCardStyle}>
+          <h2 style={sectionTitleStyle}>Payments by Day (Selected Range)</h2>
+          <div style={{ height: 190 }}>
             <Bar data={metrics.paymentBar} options={metrics.stackedOptions} />
           </div>
         </div>
       </div>
-      <div style={{ background: '#fff', padding: 16, borderRadius: 12, marginTop: 16 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
+      <div style={{ ...sectionCardStyle, marginTop: 12 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
           <div>
-            <h2 style={{ margin: 0 }}>Customer Leaderboard (Top 10)</h2>
-            <div style={{ color: '#64748b', fontSize: 13, marginTop: 4 }}>
+            <h2 style={sectionTitleStyle}>Customer Leaderboard (Top 10)</h2>
+            <div style={{ ...bodyMutedStyle, marginTop: 4 }}>
               Ranked by the current dashboard filters.
             </div>
           </div>
           <label style={{ minWidth: 220 }}>
-            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Rank By</div>
+            <div style={fieldLabelStyle}>Rank By</div>
             <select className="select" value={customerLeaderboardMode} onChange={e => setCustomerLeaderboardMode(e.target.value)}>
               <option value="amount">Amount Spent</option>
               <option value="products">Products Bought</option>
             </select>
           </label>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 16, alignItems: 'start' }}>
-          <div style={{ height: 280 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12, alignItems: 'start' }}>
+          <div style={{ height: 240 }}>
             <Bar
               data={customerLeaderboardChart}
               options={{
@@ -784,11 +789,11 @@ function DashboardPage() {
             <table className="table">
               <thead>
                 <tr>
-                  <th align="left">#</th>
-                  <th align="left">Customer</th>
-                  <th align="left">Sales</th>
-                  <th align="left">Products</th>
-                  <th align="left">Amount</th>
+                  <th align="left" style={tableHeaderStyle}>#</th>
+                  <th align="left" style={tableHeaderStyle}>Customer</th>
+                  <th align="left" style={tableHeaderStyle}>Sales</th>
+                  <th align="left" style={tableHeaderStyle}>Products</th>
+                  <th align="left" style={tableHeaderStyle}>Amount</th>
                 </tr>
               </thead>
               <tbody>
@@ -801,16 +806,16 @@ function DashboardPage() {
                     <td>{maskRevenue(row.amount)}</td>
                   </tr>
                 ))}
-                {customerLeaderboard.length === 0 && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>No customer data</td></tr>}
+                {customerLeaderboard.length === 0 && <tr><td colSpan="5" style={{ padding: 12, ...bodyMutedStyle }}>No customer data</td></tr>}
               </tbody>
             </table>
           </div>
         </div>
       </div>
       {(canViewCashierCompetitionAssigned || canViewCashierCompetitionAll) && (
-      <div style={{ background: '#fff', padding: 16, borderRadius: 12, marginTop: 16 }}>
-        <h2 style={{ marginTop: 0 }}>Cashier Performance (Filtered Revenue)</h2>
-        <div style={{ height: 240 }}>
+      <div style={{ ...sectionCardStyle, marginTop: 12 }}>
+        <h2 style={sectionTitleStyle}>Cashier Performance (Filtered Revenue)</h2>
+        <div style={{ height: 210 }}>
           <Bar
             data={metrics.cashierBar}
             options={{
@@ -840,84 +845,6 @@ function DashboardPage() {
           />
         </div>
       </div>
-      )}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16, alignItems: 'start' }}>
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <h2 style={{ marginTop: 0 }}>Product Profitability (Top 10)</h2>
-          <table className="table">
-            <thead>
-              <tr>
-                <th align="left">Product</th>
-                <th align="left">Units</th>
-                <th align="left">Profit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {metrics.topProfitProducts.map(p => (
-                <tr key={p.key}>
-                  <td>{p.name}</td>
-                  <td>{p.units}</td>
-                  <td>{maskProfit(p.profit)}</td>
-                </tr>
-              ))}
-              {metrics.topProfitProducts.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>No data</td></tr>}
-            </tbody>
-          </table>
-        </div>
-        {(canViewCashierCompetitionAssigned || canViewCashierCompetitionAll) && (
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-          <h2 style={{ marginTop: 0 }}>Sales Rep Leaderboard (Filtered)</h2>
-          <table className="table">
-            <thead>
-              <tr>
-                {metrics.multiBranchCashierView && <th align="left">Branch</th>}
-                <th align="left">Seller</th>
-                <th align="left">Sales</th>
-                <th align="left">Revenue</th>
-                <th align="left">Profit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {metrics.cashierLeaderboard.map(x => (
-                <tr key={x.key}>
-                  {metrics.multiBranchCashierView && <td>{x.branchName}</td>}
-                  <td>{x.seller}</td>
-                  <td>{x.sales}</td>
-                  <td>{maskRevenue(x.revenue)}</td>
-                  <td>{maskProfit(x.profit)}</td>
-                </tr>
-              ))}
-              {metrics.cashierLeaderboard.length === 0 && <tr><td colSpan={metrics.multiBranchCashierView ? 5 : 4} style={{ padding: 12, color: '#64748b' }}>No data</td></tr>}
-            </tbody>
-          </table>
-        </div>
-        )}
-      </div>
-      {(canViewBranchCompetitionAssigned || canViewBranchCompetitionAll) && (
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12, marginTop: 16 }}>
-          <h2 style={{ marginTop: 0 }}>Branch Comparison (Filtered)</h2>
-          <table className="table">
-            <thead>
-              <tr>
-                <th align="left">Branch</th>
-                <th align="left">Sales</th>
-                <th align="left">Revenue</th>
-                <th align="left">Profit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {branchComparison.map(b => (
-                <tr key={b.branchId}>
-                  <td>{b.name}</td>
-                  <td>{b.sales}</td>
-                  <td>{maskRevenue(b.revenue)}</td>
-                  <td>{maskProfit(b.profit)}</td>
-                </tr>
-              ))}
-              {branchComparison.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No data</td></tr>}
-            </tbody>
-          </table>
-        </div>
       )}
     </div>
   );
