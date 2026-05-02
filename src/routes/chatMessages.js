@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { modelFor as ChatMessageModelFor } from '../models/ChatMessage.js';
+import { modelFor as ChatCallLogModelFor } from '../models/ChatCallLog.js';
 import { modelFor as UserModelFor } from '../models/User.js';
 import { requireAuth, requireFeature, requireRoleOrPerm } from '../middleware/auth.js';
 import { publishChatEvent, subscribeToChatEvents } from '../utils/chatEvents.js';
@@ -46,6 +47,29 @@ function serializeMessage(row) {
 
 function buildConversationKey(a, b) {
   return [normalizeName(a), normalizeName(b)].filter(Boolean).sort().join('::');
+}
+
+function serializeCallLog(row, currentUser = '') {
+  const callerName = normalizeName(row?.callerName);
+  const calleeName = normalizeName(row?.calleeName);
+  const mine = normalizeName(currentUser);
+  const peerName = mine === callerName ? calleeName : callerName;
+  const direction = mine === callerName ? 'outgoing' : 'incoming';
+  return {
+    id: String(row?._id || row?.id || ''),
+    callId: String(row?.callId || ''),
+    callerName,
+    calleeName,
+    peerName,
+    direction,
+    status: String(row?.status || 'ended'),
+    startedAt: row?.startedAt || null,
+    answeredAt: row?.answeredAt || null,
+    endedAt: row?.endedAt || null,
+    durationSec: Number(row?.durationSec || 0),
+    endedBy: normalizeName(row?.endedBy || ''),
+    endReason: String(row?.endReason || '')
+  };
 }
 
 function issueStreamToken(req) {
@@ -168,6 +192,21 @@ r.get('/conversation/:userName', requireAuth, requireFeature('modules.communicat
   res.json(rows.map(serializeMessage));
 });
 
+r.get('/call-history/:userName', requireAuth, requireFeature('modules.communication'), requireRoleOrPerm(['Admin', 'Manager', 'Cashier', 'Inventory Staff'], CAN_CHAT), async (req, res) => {
+  const ChatCallLog = ChatCallLogModelFor(req.db);
+  const currentUser = normalizeName(req.user?.name);
+  const otherUser = normalizeName(req.params.userName);
+  if (!otherUser) return res.status(400).json({ error: 'User is required' });
+  const limit = Math.min(50, Math.max(5, Number(req.query.limit) || 12));
+  const rows = await ChatCallLog.find({
+    $or: [
+      { callerName: currentUser, calleeName: otherUser },
+      { callerName: otherUser, calleeName: currentUser }
+    ]
+  }).sort({ startedAt: -1, createdAt: -1 }).limit(limit).lean();
+  res.json(rows.map((row) => serializeCallLog(row, currentUser)));
+});
+
 r.post('/', requireAuth, requireFeature('modules.communication'), requireRoleOrPerm(['Admin', 'Manager', 'Cashier', 'Inventory Staff'], ['send_chat_messages', 'view_chat']), async (req, res) => {
   const User = UserModelFor(req.db);
   const ChatMessage = ChatMessageModelFor(req.db);
@@ -284,6 +323,7 @@ r.post('/react', requireAuth, requireFeature('modules.communication'), requireRo
 
 r.post('/call-signal', requireAuth, requireFeature('modules.communication'), requireRoleOrPerm(['Admin', 'Manager', 'Cashier', 'Inventory Staff'], ['view_chat', 'send_chat_messages']), async (req, res) => {
   const User = UserModelFor(req.db);
+  const ChatCallLog = ChatCallLogModelFor(req.db);
   const senderName = normalizeName(req.user?.name);
   const recipientName = normalizeName(req.body?.recipientName);
   const callId = String(req.body?.callId || '').trim();
@@ -295,6 +335,60 @@ r.post('/call-signal', requireAuth, requireFeature('modules.communication'), req
   if (!allowedSignalTypes.has(signalType)) return res.status(400).json({ error: 'Invalid call signal type' });
   const recipient = await User.findOne({ name: recipientName, active: { $ne: false } }).lean();
   if (!recipient) return res.status(404).json({ error: 'Recipient not found' });
+
+  if (signalType === 'invite') {
+    await ChatCallLog.findOneAndUpdate(
+      { callId },
+      {
+        $setOnInsert: {
+          callId,
+          callerName: senderName,
+          calleeName: recipientName,
+          status: 'ringing',
+          startedAt: new Date()
+        }
+      },
+      { upsert: true, new: true }
+    );
+  } else if (signalType === 'accepted') {
+    await ChatCallLog.findOneAndUpdate(
+      { callId },
+      { $set: { status: 'accepted', answeredAt: new Date(), endedAt: null, endReason: '' } }
+    );
+  } else if (signalType === 'rejected') {
+    await ChatCallLog.findOneAndUpdate(
+      { callId },
+      { $set: { status: 'rejected', endedAt: new Date(), endedBy: senderName, endReason: 'rejected', durationSec: 0 } }
+    );
+  } else if (signalType === 'busy') {
+    await ChatCallLog.findOneAndUpdate(
+      { callId },
+      { $set: { status: 'busy', endedAt: new Date(), endedBy: senderName, endReason: 'busy', durationSec: 0 } }
+    );
+  } else if (signalType === 'end') {
+    const existing = await ChatCallLog.findOne({ callId }).lean();
+    const endedAt = new Date();
+    const answeredAt = existing?.answeredAt ? new Date(existing.answeredAt) : null;
+    const ringingOnly = !answeredAt && String(existing?.status || '') !== 'accepted';
+    const endReason = String(payload?.reason || '').trim().toLowerCase();
+    const nextStatus = ringingOnly
+      ? (endReason === 'timeout' ? 'missed' : 'cancelled')
+      : 'ended';
+    const baseTime = answeredAt || (existing?.startedAt ? new Date(existing.startedAt) : endedAt);
+    const durationSec = ringingOnly ? 0 : Math.max(0, Math.round((endedAt.getTime() - baseTime.getTime()) / 1000));
+    await ChatCallLog.findOneAndUpdate(
+      { callId },
+      {
+        $set: {
+          status: nextStatus,
+          endedAt,
+          endedBy: senderName,
+          endReason: endReason || nextStatus,
+          durationSec
+        }
+      }
+    );
+  }
 
   const event = {
     type: 'call.signal',
