@@ -24,6 +24,20 @@ function serializeMessage(row) {
     senderRole: row.senderRole || '',
     recipientName: row.recipientName,
     text: row.text || '',
+    replyTo: row.replyTo?.messageId ? {
+      messageId: String(row.replyTo.messageId || ''),
+      senderName: row.replyTo.senderName || '',
+      text: row.replyTo.text || ''
+    } : null,
+    reactions: Array.isArray(row.reactions)
+      ? row.reactions
+        .filter((item) => item?.emoji && Array.isArray(item?.users) && item.users.length > 0)
+        .map((item) => ({
+          emoji: String(item.emoji || ''),
+          users: item.users.map((user) => normalizeName(user)).filter(Boolean),
+          count: Array.isArray(item.users) ? item.users.length : 0
+        }))
+      : [],
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     readAt: row.readAt || null
@@ -160,16 +174,34 @@ r.post('/', requireAuth, requireFeature('modules.communication'), requireRoleOrP
   const senderName = normalizeName(req.user?.name);
   const recipientName = normalizeName(req.body?.recipientName);
   const text = String(req.body?.text || '').trim();
+  const replyToMessageId = String(req.body?.replyToMessageId || '').trim();
   if (!recipientName) return res.status(400).json({ error: 'Recipient is required' });
   if (!text) return res.status(400).json({ error: 'Message cannot be empty' });
   if (text.length > 4000) return res.status(400).json({ error: 'Message is too long' });
   const recipient = await User.findOne({ name: recipientName, active: { $ne: false } }).lean();
   if (!recipient) return res.status(404).json({ error: 'Recipient not found' });
+  let replyTo = null;
+  if (replyToMessageId) {
+    const replyDoc = await ChatMessage.findOne({
+      _id: replyToMessageId,
+      $or: [
+        { senderName, recipientName },
+        { senderName: recipientName, recipientName: senderName }
+      ]
+    }).lean();
+    if (!replyDoc) return res.status(404).json({ error: 'Reply message not found' });
+    replyTo = {
+      messageId: replyDoc._id,
+      senderName: replyDoc.senderName || '',
+      text: String(replyDoc.text || '').slice(0, 280)
+    };
+  }
   const doc = await ChatMessage.create({
     senderName,
     senderRole: String(req.user?.role || ''),
     recipientName,
-    text
+    text,
+    replyTo
   });
   const payload = serializeMessage(doc);
   publishChatEvent(tenantKey(req), {
@@ -205,6 +237,49 @@ r.post('/mark-read', requireAuth, requireFeature('modules.communication'), requi
     });
   }
   res.json({ ok: true, updated });
+});
+
+r.post('/react', requireAuth, requireFeature('modules.communication'), requireRoleOrPerm(['Admin', 'Manager', 'Cashier', 'Inventory Staff'], ['view_chat', 'send_chat_messages']), async (req, res) => {
+  const ChatMessage = ChatMessageModelFor(req.db);
+  const currentUser = normalizeName(req.user?.name);
+  const messageId = String(req.body?.messageId || '').trim();
+  const emoji = String(req.body?.emoji || '').trim();
+  if (!messageId) return res.status(400).json({ error: 'Message is required' });
+  if (!emoji) return res.status(400).json({ error: 'Emoji is required' });
+
+  const doc = await ChatMessage.findById(messageId);
+  if (!doc) return res.status(404).json({ error: 'Message not found' });
+  const participants = [normalizeName(doc.senderName), normalizeName(doc.recipientName)];
+  if (!participants.includes(currentUser)) return res.status(404).json({ error: 'Message not found' });
+
+  const nextReactions = Array.isArray(doc.reactions) ? doc.reactions.map((item) => ({
+    emoji: String(item?.emoji || ''),
+    users: Array.isArray(item?.users) ? item.users.map(normalizeName).filter(Boolean) : []
+  })) : [];
+  const existingIndex = nextReactions.findIndex((item) => item.emoji === emoji);
+  if (existingIndex >= 0) {
+    const exists = nextReactions[existingIndex].users.includes(currentUser);
+    nextReactions[existingIndex].users = exists
+      ? nextReactions[existingIndex].users.filter((user) => user !== currentUser)
+      : [...nextReactions[existingIndex].users, currentUser];
+  } else {
+    nextReactions.push({ emoji, users: [currentUser] });
+  }
+  doc.reactions = nextReactions.filter((item) => item.emoji && Array.isArray(item.users) && item.users.length > 0);
+  await doc.save();
+
+  const payload = serializeMessage(doc);
+  publishChatEvent(tenantKey(req), {
+    type: 'message.reaction',
+    conversationKey: buildConversationKey(doc.senderName, doc.recipientName),
+    participants: [doc.senderName, doc.recipientName],
+    senderName: doc.senderName,
+    recipientName: doc.recipientName,
+    messageId: payload.id,
+    reactions: payload.reactions,
+    message: payload
+  });
+  res.json(payload);
 });
 
 export default r;

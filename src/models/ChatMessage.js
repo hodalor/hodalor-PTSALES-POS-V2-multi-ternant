@@ -6,6 +6,15 @@ const ChatMessageSchema = new mongoose.Schema({
   senderRole: { type: String, default: '' },
   recipientName: { type: String, required: true, index: true },
   text: { type: String, required: true, trim: true },
+  replyTo: {
+    messageId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    senderName: { type: String, default: '' },
+    text: { type: String, default: '' }
+  },
+  reactions: [{
+    emoji: { type: String, required: true },
+    users: [{ type: String }]
+  }],
   readAt: { type: Date, default: null }
 }, { timestamps: true });
 
