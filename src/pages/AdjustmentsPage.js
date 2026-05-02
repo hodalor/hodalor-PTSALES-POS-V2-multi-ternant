@@ -17,6 +17,31 @@ import { removeEntries as removeAuditEntries } from '../store/auditSlice';
 import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 
+function inventoryTypeForBranch(branches, targetBranchId) {
+  const branch = Array.isArray(branches)
+    ? branches.find((item) => String(item.id) === String(targetBranchId))
+    : null;
+  const kind = String(branch?.branchType || 'retail').toLowerCase();
+  return kind === 'warehouse' ? 'warehouse' : kind === 'wholesale' ? 'wholesale' : 'retail';
+}
+
+function isRetailBranch(branch) {
+  const kind = String(branch?.branchType || 'retail').toLowerCase();
+  return kind !== 'warehouse' && kind !== 'wholesale';
+}
+
+function getAdjustmentDisplay(entry) {
+  const rawDelta = Number(entry?.delta || 0);
+  const type = String(entry?.adjustmentType || (rawDelta < 0 ? 'decrease' : 'increase'));
+  const quantity = Math.abs(Number(entry?.quantity || rawDelta || 0));
+  return {
+    type,
+    typeLabel: type === 'decrease' ? 'Decrease' : 'Increase',
+    quantity,
+    delta: rawDelta
+  };
+}
+
 function AdjustmentsPage() {
   const products = useSelector(s => s.products.products);
   const branches = useSelector(s => s.branches.branches);
@@ -28,6 +53,8 @@ function AdjustmentsPage() {
   const [productQuery, setProductQuery] = useState('');
   const [variantId, setVariantId] = useState('');
   const [branchId, setBranchId] = useState(currentBranchId);
+  const [quantity, setQuantity] = useState(0);
+  const [adjustmentType, setAdjustmentType] = useState('increase');
   const [delta, setDelta] = useState(0);
   const [serializedAdjustmentMode, setSerializedAdjustmentMode] = useState('increase');
   const [serializedEntriesText, setSerializedEntriesText] = useState('');
@@ -37,6 +64,7 @@ function AdjustmentsPage() {
   const [serializedUnits, setSerializedUnits] = useState([]);
   const [serializedUnitsQuery, setSerializedUnitsQuery] = useState('');
   const [serializedLoading, setSerializedLoading] = useState(false);
+  const [reason, setReason] = useState('');
   const [remark, setRemark] = useState('');
   const [transactionTitle, setTransactionTitle] = useState('');
   const [savingAdjust, setSavingAdjust] = useState(false);
@@ -62,6 +90,7 @@ function AdjustmentsPage() {
   const [pageSize, setPageSize] = useState(25);
   const roleLower = String(auth.role || '').toLowerCase();
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
+  const assigned = auth.user?.assignedBranches || 'all';
   function has(g) {
     if (!g) return false;
     if (roleLower === 'superadmin') return true;
@@ -75,7 +104,10 @@ function AdjustmentsPage() {
   const [selectedRecordIds, setSelectedRecordIds] = useState([]);
   const [bulkAction, setBulkAction] = useState('');
   const [bulkDeleting, setBulkDeleting] = useState(false);
-  const selectedProduct = useMemo(() => products.find(p => p.id === productId) || null, [productId, products]);
+  const selectedProduct = useMemo(
+    () => products.find((p) => String(p.id) === String(productId)) || null,
+    [productId, products]
+  );
   const filteredProducts = useMemo(() => {
     const term = String(productQuery || '').trim().toLowerCase();
     if (!term) return [];
@@ -88,6 +120,9 @@ function AdjustmentsPage() {
     });
   }, [productQuery, products]);
   const selectedTrackType = String(selectedProduct?.trackType || 'quantity');
+  const effectiveDelta = selectedTrackType === 'serialized'
+    ? Number(delta || 0)
+    : (adjustmentType === 'decrease' ? -Math.abs(Number(quantity) || 0) : Math.abs(Number(quantity) || 0));
   const serializedEntries = useMemo(() => String(serializedEntriesText || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => {
     const parts = line.split(/[,\t|]/).map(part => part.trim()).filter(Boolean);
     return { imei: parts[0] || '', serialNumber: parts[1] || parts[0] || '' };
@@ -98,15 +133,19 @@ function AdjustmentsPage() {
     branches.forEach(b => map.set(b.id, b.name || b.code || b.id));
     return map;
   }, [branches]);
-  const branchTypeById = useMemo(() => {
-    const map = new Map();
-    branches.forEach(branch => map.set(String(branch.id), String(branch.branchType || 'retail').toLowerCase()));
-    return map;
-  }, [branches]);
-  function inventoryTypeForBranch(targetBranchId) {
-    const kind = String(branchTypeById.get(String(targetBranchId)) || 'retail').toLowerCase();
-    return kind === 'warehouse' ? 'warehouse' : kind === 'wholesale' ? 'wholesale' : 'retail';
-  }
+  const branchOptions = useMemo(() => {
+    if (roleLower === 'superadmin' || roleLower === 'admin' || assigned === 'all') return branches;
+    const ids = new Set(Array.isArray(assigned) ? assigned : [assigned]);
+    return branches.filter((branch) => ids.has(branch.id));
+  }, [assigned, branches, roleLower]);
+  const retailBranches = useMemo(
+    () => branchOptions.filter((branch) => isRetailBranch(branch)),
+    [branchOptions]
+  );
+  const createBranchId = useMemo(() => {
+    const hasSelectedRetailBranch = retailBranches.some((branch) => String(branch.id) === String(branchId));
+    return hasSelectedRetailBranch ? String(branchId || '') : String(retailBranches[0]?.id || '');
+  }, [branchId, retailBranches]);
   useEffect(() => { setFBranch(currentBranchId); }, [currentBranchId]);
   useEffect(() => { if (roleLower !== 'superadmin' && roleLower !== 'admin') setFBranch(branchId); }, [roleLower, branchId]);
   useEffect(() => {
@@ -115,7 +154,15 @@ function AdjustmentsPage() {
     setProductQuery('');
     setVariantId('');
     setTransactionTitle('');
+    setReason('');
+    setRemark('');
   }, [openModal]);
+  useEffect(() => {
+    if (!openModal) return;
+    if (String(branchId || '') !== String(createBranchId || '')) {
+      setBranchId(createBranchId);
+    }
+  }, [openModal, branchId, createBranchId]);
   const baseRows = useMemo(() => audit.filter(e => e.actionType === 'stock_adjust' || e.actionType === 'stock_damage_remove'), [audit]);
   const actors = useMemo(() => Array.from(new Set(baseRows.map(e => e.actor).filter(Boolean))).sort(), [baseRows]);
   const rows = useMemo(() => {
@@ -174,7 +221,7 @@ function AdjustmentsPage() {
           productId,
           variantId,
           branchId,
-          inventoryType: 'retail',
+          inventoryType: inventoryTypeForBranch(branches, branchId),
           status: 'in_stock',
           query: serializedUnitsQuery,
           pageSize: 50
@@ -269,25 +316,32 @@ function AdjustmentsPage() {
     if (savingAdjust) return;
     if (!canAdjust) {
       toast.show('Not authorized to adjust stock', { type: 'error' });
-      return;
+      return false;
     }
     const current = (() => {
       if (!selectedProduct) return 0;
+      const inventoryType = inventoryTypeForBranch(branches, createBranchId);
+      const stockField = inventoryType === 'warehouse'
+        ? 'warehouseStockByBranch'
+        : inventoryType === 'wholesale'
+          ? 'wholesaleStockByBranch'
+          : 'stockByBranch';
       if (variantId) {
         const v = (selectedProduct.variants || []).find(vv => vv.id === variantId);
-        return Number((v?.stockByBranch || {})[branchId] || 0);
+        return Number((v?.[stockField] || {})[createBranchId] || 0);
       }
-      return Number((selectedProduct.stockByBranch || {})[branchId] || 0);
+      return Number((selectedProduct?.[stockField] || {})[createBranchId] || 0);
     })();
     const nextItems = items.length > 0 ? items : null;
     const clientId = `adjust-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const payload = {
       productId: nextItems ? nextItems[0]?.productId : productId,
-      branchId,
-      delta: nextItems ? nextItems.reduce((sum, item) => sum + Number(item.delta || 0), 0) : Number(delta),
+      branchId: createBranchId,
+      delta: nextItems ? nextItems.reduce((sum, item) => sum + Number(item.delta || 0), 0) : Number(effectiveDelta),
       actor: auth.user?.name || 'unknown',
       variantId: nextItems ? (nextItems[0]?.variantId || undefined) : (variantId || undefined),
       transactionTitle: transactionTitle.trim() || '',
+      reason: reason.trim(),
       remark,
       initiatorName: auth.user?.name || 'unknown',
       initiatorRole: auth.role || '',
@@ -296,7 +350,10 @@ function AdjustmentsPage() {
         lineId: '1',
         productId,
         variantId: variantId || '',
-        delta: Number(delta),
+        delta: Number(effectiveDelta),
+        quantity: Math.abs(Number(effectiveDelta) || 0),
+        adjustmentType: serializedAdjustmentMode,
+        reason: reason.trim(),
         unitIds: serializedAdjustmentMode === 'decrease' ? serializedUnits.filter(unit => unit.selected).map(unit => unit._id) : [],
         selectedUnits: serializedAdjustmentMode === 'decrease' ? serializedUnits.filter(unit => unit.selected).map(unit => ({ unitId: unit._id, imei: unit.imei || '', serialNumber: unit.serialNumber || '' })) : [],
         serializedEntries: serializedAdjustmentMode === 'increase' ? serializedEntries : [],
@@ -304,42 +361,54 @@ function AdjustmentsPage() {
         status: 'accepted'
       }] : undefined)
     };
-    if (!nextItems && (!productId || !branchId || delta === 0)) {
-      toast.show('Select product/branch and enter non-zero delta', { type: 'error' });
-      return;
+    if (!nextItems && !productId) {
+      toast.show('Select a product', { type: 'error' });
+      return false;
+    }
+    if (!nextItems && (!Number.isFinite(Number(quantity)) || Number(quantity) <= 0) && selectedTrackType !== 'serialized') {
+      toast.show('Quantity must be greater than zero', { type: 'error' });
+      return false;
+    }
+    if (!nextItems && !createBranchId) {
+      toast.show('Select a branch', { type: 'error' });
+      return false;
+    }
+    if (!nextItems && !reason.trim()) {
+      toast.show('Reason is required', { type: 'error' });
+      return false;
     }
     if (!nextItems && selectedTrackType === 'serialized' && serializedAdjustmentMode === 'increase' && serializedEntries.length <= 0) {
       toast.show('Scan or enter IMEI numbers to add serialized stock', { type: 'error' });
-      return;
+      return false;
     }
     if (!nextItems && selectedTrackType === 'serialized' && serializedAdjustmentMode === 'decrease' && serializedUnits.filter(unit => unit.selected).length <= 0) {
       toast.show('Select serialized units to remove', { type: 'error' });
-      return;
+      return false;
     }
-    if (!nextItems && Number(delta) < 0) {
-      const toRemove = Math.abs(Number(delta));
+    if (!nextItems && Number(effectiveDelta) < 0) {
+      const toRemove = Math.abs(Number(effectiveDelta));
       if (toRemove > current) {
         toast.show(`Cannot remove more than available stock (${current})`, { type: 'error' });
-        return;
+        return false;
       }
     }
     if (!remark || !remark.trim()) {
       toast.show('Remark is required for adjustments', { type: 'error' });
-      return;
+      return false;
     }
     setSavingAdjust(true);
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) {
         toast.show('Offline: cannot submit request', { type: 'error' });
         setSavingAdjust(false);
-        return;
+        return false;
       }
       try {
         await enqueueHttp({ collection: 'adjustmentrequests', label: 'Adjustment request', path: '/api/adjustments/requests', method: 'POST', body: payload });
       } catch (e) {
         toast.show(String(e?.message || 'Failed to save offline'), { type: 'error' });
         setSavingAdjust(false);
-        return;
+        return false;
       }
     } else {
       try {
@@ -347,12 +416,15 @@ function AdjustmentsPage() {
       } catch (e) {
         toast.show(String(e?.message || 'Failed to submit request'), { type: 'error' });
         setSavingAdjust(false);
-        return;
+        return false;
       }
     }
+    setQuantity(0);
     setDelta(0);
+    setAdjustmentType('increase');
     setSerializedAdjustmentMode('increase');
     setVariantId('');
+    setReason('');
     setRemark('');
     setTransactionTitle('');
     setItems([]);
@@ -361,11 +433,24 @@ function AdjustmentsPage() {
     setSerializedUnits([]);
     toast.show(navigator.onLine ? 'Adjustment request submitted for approval' : 'Saved offline. Will sync when online.', { type: 'success' });
     setSavingAdjust(false);
+    return true;
   }
 
   function addCurrentItem() {
-    if (!productId || !branchId || delta === 0) {
-      toast.show('Select product/branch and enter non-zero delta', { type: 'error' });
+    if (!productId) {
+      toast.show('Select a product', { type: 'error' });
+      return;
+    }
+    if ((!Number.isFinite(Number(quantity)) || Number(quantity) <= 0) && selectedTrackType !== 'serialized') {
+      toast.show('Quantity must be greater than zero', { type: 'error' });
+      return;
+    }
+    if (!createBranchId) {
+      toast.show('Select a branch', { type: 'error' });
+      return;
+    }
+    if (!reason.trim()) {
+      toast.show('Reason is required', { type: 'error' });
       return;
     }
     if (selectedTrackType === 'serialized' && serializedAdjustmentMode === 'increase' && serializedEntries.length <= 0) {
@@ -380,17 +465,22 @@ function AdjustmentsPage() {
       lineId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       productId,
       variantId: variantId || '',
-      delta: Number(delta),
+      delta: Number(effectiveDelta),
+      quantity: Math.abs(Number(effectiveDelta) || 0),
+      adjustmentType: selectedTrackType === 'serialized' ? serializedAdjustmentMode : adjustmentType,
+      reason: reason.trim(),
       unitIds: selectedTrackType === 'serialized' && serializedAdjustmentMode === 'decrease' ? serializedUnits.filter(unit => unit.selected).map(unit => unit._id) : [],
       selectedUnits: selectedTrackType === 'serialized' && serializedAdjustmentMode === 'decrease' ? serializedUnits.filter(unit => unit.selected).map(unit => ({ unitId: unit._id, imei: unit.imei || '', serialNumber: unit.serialNumber || '' })) : [],
       serializedEntries: selectedTrackType === 'serialized' && serializedAdjustmentMode === 'increase' ? serializedEntries : [],
       remark: remark.trim(),
       status: 'accepted'
     }]);
+    setQuantity(0);
     setDelta(0);
+    setAdjustmentType('increase');
     setSerializedAdjustmentMode('increase');
     setVariantId('');
-    setRemark('');
+    setReason('');
     setSerializedEntriesText('');
     setSerializedScanInput('');
     setSerializedUnits([]);
@@ -430,7 +520,7 @@ function AdjustmentsPage() {
           <>
             <button className="btn" onClick={() => setOpenModal(false)}>Cancel</button>
             <button className="btn" onClick={addCurrentItem}>Add To List</button>
-            <button className="btn btn-primary" onClick={async () => { await adjust(); setOpenModal(false); }} disabled={!canAdjust || savingAdjust}>
+            <button className="btn btn-primary" onClick={async () => { const ok = await adjust(); if (ok) setOpenModal(false); }} disabled={!canAdjust || savingAdjust}>
               <svg viewBox="0 0 24 24" fill="none"><path d="M12 6v12M6 12h12" stroke="currentColor" strokeWidth="2"/></svg>
               {savingAdjust ? 'Saving…' : 'Submit For Approval'}
             </button>
@@ -458,12 +548,12 @@ function AdjustmentsPage() {
                 }}
               />
             </div>
-            {(products.find(p => p.id === productId)?.variants || []).length > 0 && (
+            {(selectedProduct?.variants || []).length > 0 && (
               <label>
                 <div style={{ marginBottom: 6, color: '#64748b' }}>Variant</div>
                 <select className="select" value={variantId} onChange={e => setVariantId(e.target.value)} style={{ minWidth: 180 }}>
                   <option value="">Base</option>
-                  {(products.find(p => p.id === productId)?.variants || []).map(v => (
+                  {(selectedProduct?.variants || []).map(v => (
                     <option key={v.id} value={v.id}>{v.label}</option>
                   ))}
                 </select>
@@ -471,12 +561,38 @@ function AdjustmentsPage() {
             )}
             <label>
               <div style={{ marginBottom: 6, color: '#64748b' }}>Branch</div>
-              <BranchSelect value={branchId} onChange={setBranchId} />
+              <select className="select" value={createBranchId} onChange={e => setBranchId(e.target.value)} style={{ width: '100%' }}>
+                {retailBranches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+              </select>
             </label>
-            <label>
-              <div style={{ marginBottom: 6, color: '#64748b' }}>Delta (+/-)</div>
-              <input className="input" type="number" value={delta} onChange={e => setDelta(Number(e.target.value))} placeholder="Delta (+/-)" disabled={selectedTrackType === 'serialized'} />
-            </label>
+            {selectedTrackType !== 'serialized' ? (
+              <>
+                <label>
+                  <div style={{ marginBottom: 6, color: '#64748b' }}>Quantity</div>
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={quantity}
+                    onChange={e => setQuantity(Number(e.target.value))}
+                    placeholder="Quantity"
+                  />
+                </label>
+                <label>
+                  <div style={{ marginBottom: 6, color: '#64748b' }}>Adjustment Type</div>
+                  <select className="select" value={adjustmentType} onChange={e => setAdjustmentType(e.target.value)}>
+                    <option value="increase">Increase</option>
+                    <option value="decrease">Decrease</option>
+                  </select>
+                </label>
+              </>
+            ) : (
+              <label>
+                <div style={{ marginBottom: 6, color: '#64748b' }}>Delta</div>
+                <input className="input" type="number" value={delta} readOnly disabled />
+              </label>
+            )}
             {selectedTrackType === 'serialized' && (
               <div style={{ gridColumn: '1 / -1', display: 'grid', gap: 8 }}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -560,6 +676,10 @@ function AdjustmentsPage() {
               <input className="input" value={transactionTitle} onChange={e => setTransactionTitle(e.target.value)} placeholder="Optional bulk adjustment title" />
             </label>
             <label style={{ gridColumn: '1 / -1' }}>
+              <div style={{ marginBottom: 6, color: '#64748b' }}>Reason</div>
+              <input className="input" value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason for adjustment" />
+            </label>
+            <label style={{ gridColumn: '1 / -1' }}>
               <div style={{ marginBottom: 6, color: '#64748b' }}>Remark (required)</div>
               <input className="input" value={remark} onChange={e => setRemark(e.target.value)} placeholder="Reason or note" />
             </label>
@@ -571,14 +691,15 @@ function AdjustmentsPage() {
               <thead>
                 <tr>
                   <th align="left">Product</th>
-                  <th align="left">Delta</th>
-                  <th align="left">Units</th>
+                  <th align="left">Adjustment Type</th>
+                  <th align="left">Quantity</th>
                   <th align="left"></th>
                 </tr>
               </thead>
               <tbody>
                 {items.map(item => {
                   const product = products.find(p => p.id === item.productId);
+                  const adjustment = getAdjustmentDisplay(item);
                   return (
                     <tr key={item.lineId}>
                       <td>
@@ -594,8 +715,8 @@ function AdjustmentsPage() {
                           </div>
                         )}
                       </td>
-                      <td>{item.delta}</td>
-                      <td>{Array.isArray(item.unitIds) && item.unitIds.length > 0 ? item.unitIds.length : (Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0 ? item.serializedEntries.length : '—')}</td>
+                      <td>{adjustment.typeLabel}</td>
+                      <td>{adjustment.quantity}</td>
                       <td><button className="btn" onClick={() => removeItem(item.lineId)}>Remove</button></td>
                     </tr>
                   );
@@ -626,6 +747,7 @@ function AdjustmentsPage() {
           loading={loading}
           setLoading={setLoading}
           products={products}
+          branches={branches}
           byId={byId}
           setDetail={setDetail}
           busyId={busyId}
@@ -694,7 +816,8 @@ function AdjustmentsPage() {
               <th align="left">Product</th>
               <th align="left">Variant</th>
               <th align="left">Branch</th>
-              <th align="left">Delta</th>
+              <th align="left">Adjustment Type</th>
+              <th align="left">Quantity</th>
               <th align="left">Type</th>
               <th align="left">Remark</th>
               {canDeleteRecords && (
@@ -710,14 +833,17 @@ function AdjustmentsPage() {
             </tr>
           </thead>
           <tbody>
-            {rows.slice((page-1)*pageSize, (page-1)*pageSize + pageSize).map(r => (
+            {rows.slice((page-1)*pageSize, (page-1)*pageSize + pageSize).map(r => {
+              const adjustment = getAdjustmentDisplay(r);
+              return (
               <tr key={r.id} style={bulkDeleting && selectedRecordIds.includes(String(r._id || r.id || '')) ? { opacity: 0.55 } : undefined}>
                 <td>{new Date(r.ts).toLocaleString()}</td>
                 <td>{r.actor}</td>
                 <td>{r.product || '—'}</td>
                 <td>{r.variant || '—'}</td>
                 <td>{byId.get(r.branchId) || r.branchId || '—'}</td>
-                <td>{r.delta}</td>
+                <td>{adjustment.typeLabel}</td>
+                <td>{adjustment.quantity}</td>
                 <td>{r.type}</td>
                 <td>{r.remark || '—'}</td>
                 {canDeleteRecords && (
@@ -731,9 +857,9 @@ function AdjustmentsPage() {
                   </td>
                 )}
               </tr>
-            ))}
+            )})}
             {rows.length === 0 && (
-              <tr><td colSpan={canDeleteRecords ? 9 : 8} style={{ padding: 12, color: '#64748b' }}>No adjustment records yet</td></tr>
+              <tr><td colSpan={canDeleteRecords ? 10 : 9} style={{ padding: 12, color: '#64748b' }}>No adjustment records yet</td></tr>
             )}
           </tbody>
         </table>
@@ -764,7 +890,7 @@ function AdjustmentsPage() {
   );
 }
 
-function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, statusFilter, setStatusFilter, loading, setLoading, products, byId, setDetail, busyId, setBusyId, toast, auth, dispatch }) {
+function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, statusFilter, setStatusFilter, loading, setLoading, products, branches, byId, setDetail, busyId, setBusyId, toast, auth, dispatch }) {
   const [requests, setRequests] = useState([]);
   const [reloadAt, setReloadAt] = useState(0);
   useEffect(() => {
@@ -817,20 +943,30 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
               variantId: item.variantId || undefined,
               branchId: next.branchId || r.branchId,
               delta: Number(item.delta || 0),
-              inventoryType: inventoryTypeForBranch(next.branchId || r.branchId)
+              inventoryType: inventoryTypeForBranch(branches, next.branchId || r.branchId)
             }));
           });
           void refreshAffectedProducts(dispatch, Array.from(new Set(approvedItems.map((item) => item?.productId).filter(Boolean))));
           toast.show('Adjustment approved and stock updated', { type: 'success' });
           setRequests(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, ...next } : x));
+          setStatusFilter('approved');
+          setReloadAt(Date.now());
         } else {
           toast.show('Director approval recorded. Waiting for manager approval.', { type: 'success' });
           setRequests(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, ...next } : x));
+          setStatusFilter('pending_manager');
+          setReloadAt(Date.now());
         }
         return;
       }
     } catch (e) {
-      toast.show(String(e?.message || 'Failed to approve'), { type: 'error' });
+      const message = String(e?.message || 'Failed to approve');
+      if (/timed out/i.test(message)) {
+        setReloadAt(Date.now());
+        toast.show('Approval is still processing. Refreshing status now.', { type: 'warning' });
+      } else {
+        toast.show(message, { type: 'error' });
+      }
     } finally { setBusyId(null); }
   }
   async function reject(r) {
@@ -847,6 +983,8 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
       }
       toast.show('Adjustment rejected', { type: 'success' });
       setRequests(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, status: 'rejected', approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', rejectionRemark: remark, rejected_at: new Date().toISOString() } : x));
+      setStatusFilter('rejected');
+      setReloadAt(Date.now());
     } catch (e) {
       toast.show(String(e?.message || 'Failed to reject'), { type: 'error' });
     } finally { setBusyId(null); }
@@ -871,20 +1009,23 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
           <tr>
             <th align="left">Product</th>
             <th align="left">Branch</th>
-            <th align="left">Delta</th>
+            <th align="left">Adjustment Type</th>
+            <th align="left">Quantity</th>
             <th align="left"></th>
           </tr>
         </thead>
         <tbody>
-          {loading && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>Loading…</td></tr>}
+          {loading && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>Loading…</td></tr>}
           {!loading && requests.map(r => {
             const p = products.find(x => x.id === r.productId);
+            const adjustment = getAdjustmentDisplay(r);
             const title = String(r.transactionTitle || '').trim() || (Array.isArray(r.items) && r.items.length > 1 ? `${p?.name || r.productId} +${r.items.length - 1} more` : `${p?.name || r.productId}${r.variantId ? ` • ${(p?.variants || []).find(v => v.id === r.variantId)?.label || r.variantId}` : ''}`);
             return (
               <tr key={r._id || r.clientId} style={{ borderTop: '1px solid #e2e8f0', cursor: 'pointer' }} onClick={() => setDetail(r)}>
                 <td>{title}</td>
                 <td>{byId.get(r.branchId) || r.branchId}</td>
-                <td>{r.delta}</td>
+                <td>{adjustment.typeLabel}</td>
+                <td>{adjustment.quantity}</td>
                 <td>
                   {['pending_approval', 'pending_director', 'pending_manager'].includes(String(r.status || '')) ? (
                     <>
@@ -898,7 +1039,7 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
               </tr>
             );
           })}
-          {!loading && requests.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No items</td></tr>}
+          {!loading && requests.length === 0 && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>No items</td></tr>}
         </tbody>
       </table>
       </div>
@@ -909,6 +1050,7 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
 function RequestDetail({ detail, products, byId }) {
   const p = products.find(x => x.id === detail.productId);
   const vLabel = detail.variantId ? ((p?.variants || []).find(v => v.id === detail.variantId)?.label || detail.variantId) : '';
+  const adjustment = getAdjustmentDisplay(detail);
   return (
     <>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -916,7 +1058,8 @@ function RequestDetail({ detail, products, byId }) {
         <div><div style={{ color: '#64748b' }}>Title</div><div>{detail.transactionTitle || '—'}</div></div>
         <div><div style={{ color: '#64748b' }}>Product</div><div>{p?.name || detail.productId}{vLabel ? ` • ${vLabel}` : ''}</div></div>
         <div><div style={{ color: '#64748b' }}>Branch</div><div>{byId.get(detail.branchId) || detail.branchId}</div></div>
-        <div><div style={{ color: '#64748b' }}>Delta</div><div>{detail.delta}</div></div>
+        <div><div style={{ color: '#64748b' }}>Adjustment Type</div><div>{adjustment.typeLabel}</div></div>
+        <div><div style={{ color: '#64748b' }}>Quantity</div><div>{adjustment.quantity}</div></div>
         <div><div style={{ color: '#64748b' }}>Initiator</div><div>{detail.initiatorName} {detail.initiatorRole ? `(${detail.initiatorRole})` : ''}</div></div>
         <div><div style={{ color: '#64748b' }}>Initiation Remark</div><div>{detail.remark || '—'}</div></div>
         <div><div style={{ color: '#64748b' }}>Approver</div><div>{detail.approverName ? `${detail.approverName}${detail.approverRole ? ` (${detail.approverRole})` : ''}` : '—'}</div></div>
@@ -933,14 +1076,15 @@ function RequestDetail({ detail, products, byId }) {
             <thead>
               <tr>
                 <th align="left">Product</th>
-                <th align="left">Delta</th>
-                <th align="left">Units</th>
+                <th align="left">Adjustment Type</th>
+                <th align="left">Quantity</th>
                 <th align="left">Status</th>
               </tr>
             </thead>
             <tbody>
               {detail.items.map((item, index) => {
                 const product = products.find(row => row.id === item.productId);
+                const itemAdjustment = getAdjustmentDisplay(item);
                 return (
                   <tr key={item.lineId || index}>
                     <td>
@@ -956,8 +1100,8 @@ function RequestDetail({ detail, products, byId }) {
                         </div>
                       )}
                     </td>
-                    <td>{item.delta}</td>
-                    <td>{Array.isArray(item.unitIds) && item.unitIds.length > 0 ? item.unitIds.length : (Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0 ? item.serializedEntries.length : '—')}</td>
+                    <td>{itemAdjustment.typeLabel}</td>
+                    <td>{itemAdjustment.quantity}</td>
                     <td>{item.status || 'accepted'}</td>
                   </tr>
                 );

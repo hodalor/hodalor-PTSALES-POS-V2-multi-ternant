@@ -233,7 +233,17 @@ function RefundApprovalsPage() {
         itemsToRestock.forEach(x => {
           const ref = skuToRef.get(x.sku);
           if (ref && x.qty > 0) {
-            dispatch(adjustStock({ productId: ref.productId, variantId: ref.variantId, branchId: saleRef.branchId, delta: x.qty }));
+            dispatch(adjustStock({
+              productId: ref.productId,
+              variantId: ref.variantId,
+              branchId: saleRef.branchId,
+              delta: x.qty,
+              inventoryType: String(saleRef.inventoryType || 'retail').toLowerCase() === 'warehouse'
+                ? 'warehouse'
+                : String(saleRef.inventoryType || 'retail').toLowerCase() === 'wholesale'
+                  ? 'wholesale'
+                  : 'retail'
+            }));
           }
         });
         void refreshAffectedProducts(dispatch, itemsToRestock.map(x => x.productId).filter(Boolean));

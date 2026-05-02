@@ -71,7 +71,10 @@ function PurchasesPage() {
     branches.forEach(b => map.set(b.id, b.name));
     return map;
   }, [branches]);
-  const selectedProduct = useMemo(() => products.find(p => p.id === productId) || null, [productId, products]);
+  const selectedProduct = useMemo(
+    () => products.find((p) => String(p.id) === String(productId)) || null,
+    [productId, products]
+  );
   const filteredProducts = useMemo(() => {
     const term = String(productQuery || '').trim().toLowerCase();
     if (!term) return [];
@@ -83,6 +86,15 @@ function PurchasesPage() {
       return hay.includes(term);
     });
   }, [productQuery, products]);
+  const branchTypeById = useMemo(() => {
+    const map = new Map();
+    branches.forEach(branch => map.set(String(branch.id), String(branch.branchType || 'retail').toLowerCase()));
+    return map;
+  }, [branches]);
+  function inventoryTypeForBranch(targetBranchId) {
+    const kind = String(branchTypeById.get(String(targetBranchId)) || 'retail').toLowerCase();
+    return kind === 'warehouse' ? 'warehouse' : kind === 'wholesale' ? 'wholesale' : 'retail';
+  }
   const selectedTrackType = String(selectedProduct?.trackType || 'quantity');
   useEffect(() => {
     if (!selectedProduct) {
@@ -209,12 +221,12 @@ function PurchasesPage() {
       }
     }
     const nextItems = items.length > 0 ? items : null;
-    if (!nextItems && (!productId || !branchId || (selectedTrackType === 'serialized' ? serializedEntries.length <= 0 : qty <= 0))) {
+    if (!nextItems && (!selectedProduct || !branchId || (selectedTrackType === 'serialized' ? serializedEntries.length <= 0 : qty <= 0))) {
       toast.show('Select product/branch and quantity', { type: 'error' });
       return;
     }
     const price = Number(cost) || 0;
-    const prod = products.find(p => p.id === productId);
+    const prod = selectedProduct;
     const pack = (prod?.packs || []).find(pk => pk.name === packName);
     const factor = selectedTrackType === 'serialized' ? 1 : (pack ? Number(pack.quantity) || 1 : 1);
     const baseUnits = selectedTrackType === 'serialized' ? serializedEntries.length : Number(qty) * factor;
@@ -237,7 +249,7 @@ function PurchasesPage() {
     setSaving(true);
     const clientId = `purchase-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const payload = {
-      productId: nextItems ? nextItems[0]?.productId : productId,
+      productId: nextItems ? nextItems[0]?.productId : selectedProduct?.id,
       branchId,
       baseUnits: nextItems ? nextItems.reduce((sum, item) => sum + Number(item.baseUnits || 0), 0) : baseUnits,
       actor: auth.user?.name || 'unknown',
@@ -254,7 +266,7 @@ function PurchasesPage() {
       clientId,
       items: nextItems || (selectedTrackType === 'serialized' ? [{
         lineId: '1',
-        productId,
+        productId: selectedProduct?.id,
         variantId: variantId || '',
         baseUnits,
         serializedEntries,
@@ -285,7 +297,7 @@ function PurchasesPage() {
       }
     }
     dispatch(createPurchaseRequest({
-      productId,
+      productId: selectedProduct?.id,
       variantId: variantId || null,
       branchId,
       baseUnits,
@@ -360,12 +372,12 @@ function PurchasesPage() {
   }
 
   function addCurrentItem() {
-    if (!productId || !branchId || (selectedTrackType === 'serialized' ? serializedEntries.length <= 0 : qty <= 0)) {
+    if (!selectedProduct || !branchId || (selectedTrackType === 'serialized' ? serializedEntries.length <= 0 : qty <= 0)) {
       toast.show('Select product/branch and quantity', { type: 'error' });
       return;
     }
     const price = Number(cost) || 0;
-    const prod = products.find(p => p.id === productId);
+    const prod = selectedProduct;
     const pack = (prod?.packs || []).find(pk => pk.name === packName);
     const factor = selectedTrackType === 'serialized' ? 1 : (pack ? Number(pack.quantity) || 1 : 1);
     const baseUnits = selectedTrackType === 'serialized' ? serializedEntries.length : Number(qty) * factor;
@@ -376,7 +388,7 @@ function PurchasesPage() {
     const cpu = factor > 0 ? (price / factor) : price;
     setItems(prev => [...prev, {
       lineId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      productId,
+      productId: selectedProduct?.id,
       variantId: variantId || '',
       baseUnits,
       serializedEntries,
@@ -464,8 +476,18 @@ function PurchasesPage() {
         const nextStatus = String(response?.status || '');
         dispatch(approvePurchase({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark, nextStatus }));
         if (nextStatus === 'approved') {
-          dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.branchId, delta: Number(r.baseUnits || 0) }));
-          void refreshAffectedProducts(dispatch, [r.productId]);
+          const approvedItems = Array.isArray(response?.items) && response.items.length > 0 ? response.items : (Array.isArray(r.items) ? r.items : []);
+          approvedItems.forEach((item) => {
+            if (String(item?.status || '').toLowerCase() === 'cancelled') return;
+            dispatch(adjustStock({
+              productId: item.productId,
+              variantId: item.variantId || undefined,
+              branchId: response?.branchId || r.branchId,
+              delta: Number(item.baseUnits || 0),
+              inventoryType: inventoryTypeForBranch(response?.branchId || r.branchId)
+            }));
+          });
+          void refreshAffectedProducts(dispatch, Array.from(new Set(approvedItems.map((item) => item?.productId).filter(Boolean))));
           toast.show('Purchase approved and stock updated', { type: 'success' });
         } else {
           toast.show('Director approval recorded. Waiting for manager approval.', { type: 'success' });
@@ -563,12 +585,12 @@ function PurchasesPage() {
               <div style={{ marginBottom: 6, color: '#64748b' }}>Branch</div>
               <BranchSelect value={branchId} onChange={setBranchId} />
             </label>
-            {(products.find(p => p.id === productId)?.variants || []).length > 0 && (
+            {(selectedProduct?.variants || []).length > 0 && (
               <label>
                 <div style={{ marginBottom: 6, color: '#64748b' }}>Variant</div>
                 <select className="select" value={variantId} onChange={e => setVariantId(e.target.value)}>
                   <option value="">None (base)</option>
-                  {(products.find(p => p.id === productId)?.variants || []).map(v => (
+                  {(selectedProduct?.variants || []).map(v => (
                     <option key={v.id} value={v.id}>{v.label}</option>
                   ))}
                 </select>
@@ -579,7 +601,7 @@ function PurchasesPage() {
                 <div style={{ marginBottom: 6, color: '#64748b' }}>Pack</div>
                 <select className="select" value={packName} onChange={e => setPackName(e.target.value)} disabled={selectedTrackType === 'serialized'}>
                   <option value="">Base Unit</option>
-                  {(products.find(p => p.id === productId)?.packs || []).map(pk => (
+                  {(selectedProduct?.packs || []).map(pk => (
                     <option key={pk.name} value={pk.name}>{pk.name} = {pk.quantity} units</option>
                   ))}
                 </select>

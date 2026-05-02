@@ -260,15 +260,20 @@ function InventoryPage() {
       toast.show('Manual stock editing is disabled', { type: 'warning' });
       return;
     }
+    const stockField = viewInventoryType === 'warehouse'
+      ? 'warehouseStockByBranch'
+      : viewInventoryType === 'wholesale'
+        ? 'wholesaleStockByBranch'
+        : 'stockByBranch';
     const oldQty = variantId
-      ? ((p.variants?.find(v => v.id === variantId)?.stockByBranch || {})[bId] || 0)
-      : (p.stockByBranch?.[bId] || 0);
+      ? ((p.variants?.find(v => v.id === variantId)?.[stockField] || {})[bId] || 0)
+      : ((p[stockField] || {})[bId] || 0);
     const delta = Number(quantity) - Number(oldQty);
     if (!navigator.onLine && !offlineBackupAllowed) {
       toast.show('Offline: cannot save stock changes', { type: 'error' });
       return;
     }
-    dispatch(setStock({ productId: p.id, variantId: variantId || undefined, branchId: bId, quantity: Number(quantity), syncPending: true }));
+    dispatch(setStock({ productId: p.id, variantId: variantId || undefined, branchId: bId, quantity: Number(quantity), inventoryType: viewInventoryType, syncPending: true }));
     dispatch(addAudit({
       actor: auth.user?.name || 'unknown',
       actionType: 'stock_set_manual',
@@ -281,12 +286,13 @@ function InventoryPage() {
       branchId: bId,
       quantity: Number(quantity),
       actor: auth.user?.name || 'unknown',
-      variantId: variantId || undefined
+      variantId: variantId || undefined,
+      inventoryType: viewInventoryType
     };
     if (!navigator.onLine) {
       enqueueHttp({ collection: 'audits', label: 'Stock set', path: '/api/stock/set', method: 'POST', body: payload })
         .catch(() => {
-          dispatch(setStock({ productId: p.id, variantId: variantId || undefined, branchId: bId, quantity: Number(oldQty), syncPending: false }));
+          dispatch(setStock({ productId: p.id, variantId: variantId || undefined, branchId: bId, quantity: Number(oldQty), inventoryType: viewInventoryType, syncPending: false }));
           toast.show('Failed to save offline', { type: 'error' });
         });
       return;
@@ -294,7 +300,7 @@ function InventoryPage() {
     stockApi.setStock(payload)
       .then(() => { void refreshAffectedProducts(dispatch, [p.id]); })
       .catch((e) => {
-        dispatch(setStock({ productId: p.id, variantId: variantId || undefined, branchId: bId, quantity: Number(oldQty), syncPending: false }));
+        dispatch(setStock({ productId: p.id, variantId: variantId || undefined, branchId: bId, quantity: Number(oldQty), inventoryType: viewInventoryType, syncPending: false }));
         toast.show(String(e?.message || 'Failed to save stock'), { type: 'error' });
       });
   }
