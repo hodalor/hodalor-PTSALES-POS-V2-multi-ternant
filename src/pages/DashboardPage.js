@@ -27,6 +27,7 @@ function DashboardPage() {
   const canViewBranchCompetitionAll = isPrivilegedDashboardViewer || grants.includes('view_dashboard_branch_comparison_all');
   const canViewBranchCompetitionAssigned = canViewBranchCompetitionAll || grants.includes('view_dashboard_branch_comparison_assigned');
   const canUseScopedDashboardBranches = canViewCashierCompetitionAssigned || canViewBranchCompetitionAssigned;
+  const canSelectAllDashboardBranches = isPrivilegedDashboardViewer || canUseScopedDashboardBranches;
   const canUseFinanceReconciliation = isFeatureEnabled(settings, 'modules.finance') && (
     isPrivilegedDashboardViewer ||
     grants.includes('view_finance_reconciliation') ||
@@ -82,9 +83,10 @@ function DashboardPage() {
   const [branchId, setBranchId] = useState(() => (
     defaultDashboardBranchId
   ));
-  const financeSummaryBranchId = useMemo(() => (
-    String(branchId || defaultDashboardBranchId || settings.currentBranchId || '').trim()
-  ), [branchId, defaultDashboardBranchId, settings.currentBranchId]);
+  const financeSummaryBranchId = useMemo(() => {
+    if (canSelectAllDashboardBranches && String(branchId ?? '').trim() === '') return '';
+    return String(branchId || defaultDashboardBranchId || settings.currentBranchId || '').trim();
+  }, [branchId, canSelectAllDashboardBranches, defaultDashboardBranchId, settings.currentBranchId]);
   const dashboardScopeModeRef = useRef('');
   const dashboardBranchInitRef = useRef(false);
 
@@ -105,10 +107,11 @@ function DashboardPage() {
       return;
     }
     const current = String(branchId || '').trim();
+    if (canSelectAllDashboardBranches && current === '') return;
     if (current !== String(defaultDashboardBranchId || '').trim() && !allowedDashboardBranchIdSet.has(current) && !branches.some((branch) => String(branch.id || '').trim() === current)) {
       setBranchId(defaultDashboardBranchId);
     }
-  }, [allowedDashboardBranchIdSet, branchId, branches, canUseScopedDashboardBranches, defaultDashboardBranchId, isPrivilegedDashboardViewer]);
+  }, [allowedDashboardBranchIdSet, branchId, branches, canSelectAllDashboardBranches, defaultDashboardBranchId, canUseScopedDashboardBranches, isPrivilegedDashboardViewer]);
 
   const inRange = useCallback((iso) => {
     if (periodMode === 'all_time') return true;
@@ -120,8 +123,11 @@ function DashboardPage() {
   }, [dateFrom, dateTo, periodMode]);
   const matchBranch = useCallback((value) => {
     const key = String(value || '').trim();
+    if (canSelectAllDashboardBranches && String(branchId ?? '').trim() === '') {
+      return allowedDashboardBranchIdSet.has(key);
+    }
     return key === String(branchId || '').trim();
-  }, [branchId]);
+  }, [allowedDashboardBranchIdSet, branchId, canSelectAllDashboardBranches]);
   const matchCompetitionBranch = useCallback((value) => {
     const key = String(value || '').trim();
     if (canViewCashierCompetitionAll || canViewBranchCompetitionAll) return true;
@@ -158,13 +164,13 @@ function DashboardPage() {
   useEffect(() => {
     let alive = true;
     (async () => {
-      if (!canUseFinanceReconciliation || !financeSummaryBranchId) {
+      if (!canUseFinanceReconciliation) {
         if (alive) setFinanceSummary({ depositedAmount: 0, awaitingAmount: 0, pendingApprovalAmount: 0, backlogDays: 0 });
         return;
       }
       try {
         const data = await getCashReconciliationSummary({
-          branchId: financeSummaryBranchId,
+          branchId: financeSummaryBranchId || undefined,
           from: periodMode === 'all_time' ? undefined : (dateFrom || defaultFromIso),
           to: periodMode === 'all_time' ? undefined : (dateTo || todayIso)
         });
@@ -226,6 +232,21 @@ function DashboardPage() {
     })();
     return () => { alive = false; };
   }, []);
+
+  const chartTextColor = '#475569';
+  const chartGridColor = '#e2e8f0';
+  const chartLegendStyle = {
+    position: 'bottom',
+    labels: {
+      color: chartTextColor,
+      usePointStyle: true,
+      pointStyle: 'circle',
+      boxWidth: 8,
+      boxHeight: 8,
+      padding: 16,
+      font: { size: 12, weight: '600' }
+    }
+  };
 
   const metrics = useMemo(() => {
     const sourceSales = sales.filter((s) => matchBranch(s.branchId) && inRange(s.created_at));
@@ -347,9 +368,13 @@ function DashboardPage() {
         data: last30.map(d => +(perDay[d] || 0).toFixed(2)),
         fill: true,
         tension: 0.35,
-        backgroundColor: 'rgba(22,163,74,0.15)',
-        borderColor: '#16a34a',
-        pointRadius: 0
+        backgroundColor: 'rgba(37,99,235,0.12)',
+        borderColor: '#2563eb',
+        pointBackgroundColor: '#2563eb',
+        pointBorderColor: '#ffffff',
+        pointHoverRadius: 4,
+        pointRadius: 2.5,
+        borderWidth: 2.5
       }]
     };
     last30Revenue = last30.reduce((s, d) => s + (Number(perDay[d] || 0)), 0);
@@ -363,7 +388,9 @@ function DashboardPage() {
       datasets: paymentTypes.map((t, idx) => ({
         label: t.charAt(0).toUpperCase() + t.slice(1),
         data: last7.map(d => +(perDayPayments[d]?.[t] || 0).toFixed(2)),
-        backgroundColor: ['#16a34a','#0ea5e9','#8b5cf6','#f59e0b','#64748b'][idx]
+        backgroundColor: ['#2563eb','#14b8a6','#8b5cf6','#f59e0b','#94a3b8'][idx],
+        borderRadius: 8,
+        maxBarThickness: 26
       }))
     };
     const doughLabels = Object.keys(categoryTotals);
@@ -371,7 +398,10 @@ function DashboardPage() {
       labels: doughLabels,
       datasets: [{
         data: doughLabels.map(k => categoryTotals[k]),
-        backgroundColor: ['#0ea5e9','#16a34a','#f59e0b','#ef4444','#8b5cf6','#14b8a6']
+        backgroundColor: ['#2563eb','#14b8a6','#f59e0b','#ef4444','#8b5cf6','#0f766e','#ec4899','#94a3b8'],
+        borderColor: '#ffffff',
+        borderWidth: 2,
+        hoverOffset: 8
       }]
     };
     const top5 = Object.entries(productUnits)
@@ -386,29 +416,68 @@ function DashboardPage() {
       datasets: [{
         label: 'Units',
         data: top5.map(x => x.qty),
-        backgroundColor: '#0ea5e9'
+        backgroundColor: '#2563eb',
+        borderRadius: 8,
+        maxBarThickness: 24
       }]
     };
     const stackedOptions = {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom' } },
-      scales: { x: { stacked: true }, y: { stacked: true } }
+      plugins: { legend: chartLegendStyle },
+      scales: {
+        x: {
+          stacked: true,
+          ticks: { color: chartTextColor, font: { size: 12, weight: '600' } },
+          grid: { display: false }
+        },
+        y: {
+          stacked: true,
+          ticks: { color: chartTextColor, font: { size: 12, weight: '600' } },
+          grid: { color: chartGridColor }
+        }
+      }
     };
     const lineOptions = {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: { legend: { position: 'bottom' } },
+      plugins: { legend: chartLegendStyle },
       interaction: { intersect: false, mode: 'index' },
-      scales: { y: { beginAtZero: true } }
+      scales: {
+        x: {
+          ticks: { color: chartTextColor, font: { size: 12, weight: '600' } },
+          grid: { display: false }
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { color: chartTextColor, font: { size: 12, weight: '600' } },
+          grid: { color: chartGridColor }
+        }
+      }
     };
-    const barOptions = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, indexAxis: 'y' };
+    const barOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      indexAxis: 'y',
+      scales: {
+        x: {
+          beginAtZero: true,
+          ticks: { color: chartTextColor, font: { size: 12, weight: '600' } },
+          grid: { color: chartGridColor }
+        },
+        y: {
+          ticks: { color: chartTextColor, font: { size: 12, weight: '700' } },
+          grid: { display: false }
+        }
+      }
+    };
     const cashierRows = Array.from(cashierMap.values()).sort((a, b) => b.revenue - a.revenue);
     const multiBranchCashierView = new Set(cashierRows.map((row) => String(row.branchId || '').trim()).filter(Boolean)).size > 1;
     const cashierTop = cashierRows.slice(0, 6);
     const cashierBar = {
       labels: cashierTop.map((row) => (multiBranchCashierView ? `${row.branchName} • ${row.seller}` : row.seller)),
-      datasets: [{ label: 'Revenue', data: cashierTop.map((row) => +(row.revenue || 0).toFixed(2)), backgroundColor: '#16a34a' }]
+      datasets: [{ label: 'Revenue', data: cashierTop.map((row) => +(row.revenue || 0).toFixed(2)), backgroundColor: '#14b8a6', borderRadius: 8, maxBarThickness: 22 }]
     };
     const cashierLeaderboard = cashierRows.slice(0, 10);
     const customerRows = Array.from(customerMap.values());
@@ -472,7 +541,7 @@ function DashboardPage() {
       datasets: [{
         label,
         data: customerLeaderboard.map((row) => +(customerLeaderboardMode === 'products' ? row.products : row.amount).toFixed(2)),
-        backgroundColor: customerLeaderboardMode === 'products' ? '#0ea5e9' : '#2563eb',
+        backgroundColor: customerLeaderboardMode === 'products' ? '#14b8a6' : '#2563eb',
         borderRadius: 6,
         maxBarThickness: 28,
         categoryPercentage: 0.7,
@@ -621,7 +690,13 @@ function DashboardPage() {
     fontWeight: 800,
     letterSpacing: 0.2
   };
-
+  const tableCellStyle = {
+    paddingTop: 12,
+    paddingBottom: 12,
+    color: '#334155',
+    fontSize: 13,
+    fontWeight: 500
+  };
   return (
     <div style={{ padding: 12 }}>
       <h1 style={pageTitleStyle}>Dashboard</h1>
@@ -769,6 +844,8 @@ function DashboardPage() {
                 scales: {
                   x: {
                     ticks: {
+                      color: chartTextColor,
+                      font: { size: 11, weight: '600' },
                       autoSkip: false,
                       maxRotation: 40,
                       minRotation: 40
@@ -778,8 +855,11 @@ function DashboardPage() {
                   y: {
                     beginAtZero: true,
                     ticks: {
+                      color: chartTextColor,
+                      font: { size: 12, weight: '600' },
                       callback: (value) => (customerLeaderboardMode === 'products' || canViewRevenue ? value : '***')
-                    }
+                    },
+                    grid: { color: chartGridColor }
                   }
                 }
               }}
@@ -799,11 +879,11 @@ function DashboardPage() {
               <tbody>
                 {customerLeaderboard.map((row, idx) => (
                   <tr key={row.key}>
-                    <td>{idx + 1}</td>
-                    <td>{row.customerName}</td>
-                    <td>{row.sales}</td>
-                    <td>{row.products}</td>
-                    <td>{maskRevenue(row.amount)}</td>
+                    <td style={tableCellStyle}>{idx + 1}</td>
+                    <td style={tableCellStyle}>{row.customerName}</td>
+                    <td style={tableCellStyle}>{row.sales}</td>
+                    <td style={tableCellStyle}>{row.products}</td>
+                    <td style={tableCellStyle}>{maskRevenue(row.amount)}</td>
                   </tr>
                 ))}
                 {customerLeaderboard.length === 0 && <tr><td colSpan="5" style={{ padding: 12, ...bodyMutedStyle }}>No customer data</td></tr>}
@@ -837,8 +917,15 @@ function DashboardPage() {
               scales: {
                 x: {
                   ticks: {
+                    color: chartTextColor,
+                    font: { size: 12, weight: '600' },
                     callback: (value) => (canViewRevenue ? value : '***')
-                  }
+                  },
+                  grid: { color: chartGridColor }
+                },
+                y: {
+                  ticks: { color: chartTextColor, font: { size: 12, weight: '700' } },
+                  grid: { display: false }
                 }
               }
             }}
