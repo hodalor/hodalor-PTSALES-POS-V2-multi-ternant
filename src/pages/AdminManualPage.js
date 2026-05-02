@@ -386,10 +386,13 @@ function AdminManualPage() {
               <li>Shows tenant-only internal conversations with live updates.</li>
               <li>Unread badges appear on the Communication menu and top-right chat button.</li>
               <li>New incoming messages trigger a top-right popup alert for a few seconds and can also trigger browser notifications if allowed.</li>
+              <li>Config Settings can control the chat notification sound, including Off, Soft, Classic, or Bright.</li>
+              <li>Use the Test Sound button in Config Settings to preview the currently selected chat notification sound.</li>
               <li>Users can reply to a specific message; the sent reply keeps a quoted tag that can scroll back to the original message.</li>
               <li>Users can react to messages with emoji and also send emoji as normal message text.</li>
               <li>My messages show status ticks so the sender can tell when a message is sent and when it has been read.</li>
               <li>Right-click on desktop or long-press on touch devices to open message actions such as Reply, React, and Copy.</li>
+              <li>Users can make a simple one-to-one voice call from the chat header and answer or reject the call on the other side.</li>
             </ul>
           </li>
           <li>Ask PT AI:

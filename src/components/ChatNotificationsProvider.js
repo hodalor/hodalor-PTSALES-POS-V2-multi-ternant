@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 import { createChatStream, listChatUsers } from '../api/chatMessages';
 import { useToast } from './ToastProvider';
+import { playChatSound, unlockChatSound } from '../utils/chatSound';
 
 const ChatNotificationsContext = createContext({
   enabled: false,
@@ -42,6 +43,7 @@ function ChatNotificationsProvider({ children }) {
   const [users, setUsers] = useState([]);
   const [liveStatus, setLiveStatus] = useState('offline');
   const enabled = canUseCommunication(auth, settings);
+  const notificationSound = String(settings?.chatNotificationSound || 'classic').toLowerCase();
   const currentUserName = String(auth?.user?.name || '').trim();
   const seenMessageIdsRef = useRef(new Set());
   const streamRef = useRef(null);
@@ -56,6 +58,19 @@ function ChatNotificationsProvider({ children }) {
     const nextUsers = Array.isArray(rows) ? rows : [];
     setUsers(nextUsers);
     return nextUsers;
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    const unlockSound = () => {
+      unlockChatSound().catch(() => {});
+    };
+    window.addEventListener('pointerdown', unlockSound, { passive: true });
+    window.addEventListener('keydown', unlockSound);
+    return () => {
+      window.removeEventListener('pointerdown', unlockSound);
+      window.removeEventListener('keydown', unlockSound);
+    };
   }, [enabled]);
 
   useEffect(() => {
@@ -88,6 +103,7 @@ function ChatNotificationsProvider({ children }) {
       if (String(location.pathname || '').startsWith('/communication/chat')) return;
       const senderName = String(event?.senderName || 'New message').trim() || 'New message';
       const preview = String(event?.message?.text || '').trim();
+      playChatSound(notificationSound).catch(() => {});
       toast.show(`New message from ${senderName}`, {
         message: preview.length > 90 ? `${preview.slice(0, 90)}...` : preview,
         type: 'info',
@@ -168,7 +184,7 @@ function ChatNotificationsProvider({ children }) {
       clearInterval(intervalId);
       clearStream();
     };
-  }, [currentUserName, enabled, location.pathname, refreshUsers, toast]);
+  }, [currentUserName, enabled, location.pathname, notificationSound, refreshUsers, toast]);
 
   const value = useMemo(() => {
     const unreadUsers = (Array.isArray(users) ? users : []).filter((row) => Number(row?.unreadCount || 0) > 0);

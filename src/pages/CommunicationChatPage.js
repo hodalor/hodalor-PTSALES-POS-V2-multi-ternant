@@ -5,6 +5,14 @@ import * as chatApi from '../api/chatMessages';
 
 const QUICK_EMOJIS = ['😀', '😂', '😍', '🙏', '👍', '🔥', '🎉', '❤️', '✅', '🤝', '😊', '😎', '😢', '😡', '📦', '💰'];
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '🔥', '🙏', '😮'];
+const CALL_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+function createCallId() {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  } catch {}
+  return `call-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
 
 function CommunicationChatPage() {
   const auth = useSelector((s) => s.auth);
@@ -23,12 +31,23 @@ function CommunicationChatPage() {
   const [highlightedMessageId, setHighlightedMessageId] = useState('');
   const [reactionPickerFor, setReactionPickerFor] = useState('');
   const [actionMenu, setActionMenu] = useState({ open: false, x: 0, y: 0, messageId: '' });
+  const [callState, setCallState] = useState('idle');
+  const [callPeerName, setCallPeerName] = useState('');
+  const [callMuted, setCallMuted] = useState(false);
+  const [incomingCall, setIncomingCall] = useState(null);
   const bottomRef = useRef(null);
   const composerRef = useRef(null);
+  const remoteAudioRef = useRef(null);
   const selectedUserNameRef = useRef('');
   const streamRef = useRef(null);
   const messageRefs = useRef({});
   const longPressTimerRef = useRef(null);
+  const peerConnectionRef = useRef(null);
+  const localStreamRef = useRef(null);
+  const pendingIceCandidatesRef = useRef([]);
+  const activeCallRef = useRef({ callId: '', partner: '', role: '' });
+  const callStateRef = useRef('idle');
+  const incomingCallRef = useRef(null);
   const currentUserName = String(auth.user?.name || '').trim();
 
   const appendUniqueMessage = useCallback((incoming) => {
@@ -49,6 +68,14 @@ function CommunicationChatPage() {
   useEffect(() => {
     selectedUserNameRef.current = selectedUserName;
   }, [selectedUserName]);
+
+  useEffect(() => {
+    callStateRef.current = callState;
+  }, [callState]);
+
+  useEffect(() => {
+    incomingCallRef.current = incomingCall;
+  }, [incomingCall]);
 
   useEffect(() => {
     setReplyTarget(null);
@@ -135,6 +162,183 @@ function CommunicationChatPage() {
   }, [selectedUserName, loadMessages]);
 
   useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+  }, [messages.length]);
+
+  const stopLocalStream = useCallback(() => {
+    const stream = localStreamRef.current;
+    if (stream) {
+      stream.getTracks().forEach((track) => {
+        try { track.stop(); } catch {}
+      });
+    }
+    localStreamRef.current = null;
+  }, []);
+
+  const closePeerConnection = useCallback(() => {
+    const pc = peerConnectionRef.current;
+    if (pc) {
+      try { pc.onicecandidate = null; } catch {}
+      try { pc.ontrack = null; } catch {}
+      try { pc.onconnectionstatechange = null; } catch {}
+      try { pc.close(); } catch {}
+    }
+    peerConnectionRef.current = null;
+    pendingIceCandidatesRef.current = [];
+  }, []);
+
+  const clearCallState = useCallback(() => {
+    closePeerConnection();
+    stopLocalStream();
+    if (remoteAudioRef.current) {
+      try { remoteAudioRef.current.srcObject = null; } catch {}
+    }
+    activeCallRef.current = { callId: '', partner: '', role: '' };
+    setCallState('idle');
+    setCallPeerName('');
+    setCallMuted(false);
+    setIncomingCall(null);
+  }, [closePeerConnection, stopLocalStream]);
+
+  useEffect(() => () => {
+    clearCallState();
+  }, [clearCallState]);
+
+  const ensureCallSupport = useCallback(() => {
+    if (typeof window === 'undefined' || !window.RTCPeerConnection || !navigator?.mediaDevices?.getUserMedia) {
+      throw new Error('Voice calling is not supported in this browser.');
+    }
+  }, []);
+
+  const ensureLocalStream = useCallback(async () => {
+    ensureCallSupport();
+    if (localStreamRef.current) return localStreamRef.current;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    localStreamRef.current = stream;
+    setCallMuted(false);
+    return stream;
+  }, [ensureCallSupport]);
+
+  const flushPendingIceCandidates = useCallback(async () => {
+    const pc = peerConnectionRef.current;
+    if (!pc || !pc.remoteDescription) return;
+    const queued = pendingIceCandidatesRef.current.splice(0, pendingIceCandidatesRef.current.length);
+    for (const candidate of queued) {
+      try {
+        await pc.addIceCandidate(candidate);
+      } catch {}
+    }
+  }, []);
+
+  const sendCallSignal = useCallback(async (recipientName, callId, signalType, payload = {}) => {
+    await chatApi.sendCallSignal({ recipientName, callId, signalType, payload });
+  }, []);
+
+  const buildPeerConnection = useCallback(async (role, partnerName, callId) => {
+    ensureCallSupport();
+    closePeerConnection();
+    const stream = await ensureLocalStream();
+    const pc = new window.RTCPeerConnection(CALL_CONFIG);
+    peerConnectionRef.current = pc;
+    activeCallRef.current = { callId, partner: partnerName, role };
+    stream.getTracks().forEach((track) => {
+      try { pc.addTrack(track, stream); } catch {}
+    });
+    pc.ontrack = (event) => {
+      const remoteStream = event.streams?.[0];
+      if (remoteAudioRef.current && remoteStream) {
+        remoteAudioRef.current.srcObject = remoteStream;
+        remoteAudioRef.current.play?.().catch(() => {});
+      }
+      setCallState('active');
+    };
+    pc.onicecandidate = (event) => {
+      if (!event.candidate) return;
+      sendCallSignal(partnerName, callId, 'ice', { candidate: event.candidate.toJSON ? event.candidate.toJSON() : event.candidate }).catch(() => {});
+    };
+    pc.onconnectionstatechange = () => {
+      const state = String(pc.connectionState || '');
+      if (state === 'connected') {
+        setCallState('active');
+        return;
+      }
+      if (state === 'failed' || state === 'disconnected') {
+        toast.show('Voice call ended', { type: 'warning' });
+        clearCallState();
+      }
+    };
+    return pc;
+  }, [clearCallState, closePeerConnection, ensureCallSupport, ensureLocalStream, sendCallSignal, toast]);
+
+  async function startVoiceCall() {
+    const partnerName = String(selectedUserName || '').trim();
+    if (!partnerName) {
+      toast.show('Select a user before starting a voice call', { type: 'error' });
+      return;
+    }
+    if (callState !== 'idle' || incomingCall || activeCallRef.current.callId) {
+      toast.show('Finish the current call first', { type: 'warning' });
+      return;
+    }
+    const callId = createCallId();
+    try {
+      setCallPeerName(partnerName);
+      setCallState('calling');
+      await buildPeerConnection('caller', partnerName, callId);
+      await sendCallSignal(partnerName, callId, 'invite', {});
+      toast.show(`Calling ${partnerName}...`, { type: 'info' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Unable to start voice call'), { type: 'error' });
+      clearCallState();
+    }
+  }
+
+  async function answerIncomingCall() {
+    if (!incomingCall?.callId || !incomingCall?.senderName) return;
+    try {
+      setSelectedUserName(incomingCall.senderName);
+      setCallPeerName(incomingCall.senderName);
+      setCallState('connecting');
+      await buildPeerConnection('callee', incomingCall.senderName, incomingCall.callId);
+      await sendCallSignal(incomingCall.senderName, incomingCall.callId, 'accepted', {});
+      setIncomingCall(null);
+    } catch (e) {
+      toast.show(String(e?.message || 'Unable to answer voice call'), { type: 'error' });
+      clearCallState();
+    }
+  }
+
+  async function rejectIncomingCall() {
+    if (!incomingCall?.callId || !incomingCall?.senderName) {
+      setIncomingCall(null);
+      return;
+    }
+    await sendCallSignal(incomingCall.senderName, incomingCall.callId, 'rejected', {}).catch(() => {});
+    setIncomingCall(null);
+    setCallPeerName('');
+    setCallState('idle');
+  }
+
+  async function endCurrentCall() {
+    const { callId, partner } = activeCallRef.current;
+    if (callId && partner) {
+      await sendCallSignal(partner, callId, 'end', {}).catch(() => {});
+    }
+    clearCallState();
+  }
+
+  function toggleMuteCall() {
+    const nextMuted = !callMuted;
+    setCallMuted(nextMuted);
+    const stream = localStreamRef.current;
+    if (stream) {
+      stream.getAudioTracks().forEach((track) => {
+        track.enabled = !nextMuted;
+      });
+    }
+  }
+
+  useEffect(() => {
     let alive = true;
     let retryId = null;
 
@@ -191,6 +395,96 @@ function CommunicationChatPage() {
               replaceMessage(event.message);
             }
             loadUsers(String(event.recipientName || event.senderName || '')).catch(() => {});
+            return;
+          }
+          if (event.type === 'call.signal') {
+            const senderName = String(event.senderName || '').trim();
+            const recipientName = String(event.recipientName || '').trim();
+            const callId = String(event.callId || '').trim();
+            const signalType = String(event.signalType || '').trim();
+            const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
+            const myCall = activeCallRef.current;
+            if (!callId || !signalType) return;
+            if (recipientName === currentUserName && signalType === 'invite') {
+              if (callStateRef.current !== 'idle' || incomingCallRef.current || activeCallRef.current.callId) {
+                sendCallSignal(senderName, callId, 'busy', {}).catch(() => {});
+                return;
+              }
+              setSelectedUserName(senderName);
+              setCallPeerName(senderName);
+              setIncomingCall({ callId, senderName });
+              toast.show(`Incoming voice call from ${senderName}`, { type: 'info', timeout: 5000 });
+              return;
+            }
+            if (!myCall.callId || myCall.callId !== callId) return;
+            if (signalType === 'accepted' && myCall.role === 'caller') {
+              try {
+                const pc = peerConnectionRef.current || await buildPeerConnection('caller', senderName, callId);
+                setCallState('connecting');
+                const offer = await pc.createOffer({ offerToReceiveAudio: true });
+                await pc.setLocalDescription(offer);
+                await sendCallSignal(senderName, callId, 'offer', { sdp: offer });
+              } catch (e) {
+                toast.show(String(e?.message || 'Failed to start voice call'), { type: 'error' });
+                clearCallState();
+              }
+              return;
+            }
+            if (signalType === 'rejected') {
+              toast.show(`${senderName} rejected the voice call`, { type: 'warning' });
+              clearCallState();
+              return;
+            }
+            if (signalType === 'busy') {
+              toast.show(`${senderName} is busy on another call`, { type: 'warning' });
+              clearCallState();
+              return;
+            }
+            if (signalType === 'end') {
+              toast.show('Voice call ended', { type: 'warning' });
+              clearCallState();
+              return;
+            }
+            if (signalType === 'offer' && myCall.role === 'callee') {
+              try {
+                const pc = peerConnectionRef.current || await buildPeerConnection('callee', senderName, callId);
+                await pc.setRemoteDescription(new window.RTCSessionDescription(payload.sdp));
+                await flushPendingIceCandidates();
+                const answer = await pc.createAnswer();
+                await pc.setLocalDescription(answer);
+                setCallState('connecting');
+                await sendCallSignal(senderName, callId, 'answer', { sdp: answer });
+              } catch (e) {
+                toast.show(String(e?.message || 'Failed to answer voice call'), { type: 'error' });
+                clearCallState();
+              }
+              return;
+            }
+            if (signalType === 'answer' && myCall.role === 'caller') {
+              try {
+                const pc = peerConnectionRef.current;
+                if (!pc) return;
+                await pc.setRemoteDescription(new window.RTCSessionDescription(payload.sdp));
+                await flushPendingIceCandidates();
+                setCallState('connecting');
+              } catch (e) {
+                toast.show(String(e?.message || 'Failed to connect voice call'), { type: 'error' });
+                clearCallState();
+              }
+              return;
+            }
+            if (signalType === 'ice') {
+              try {
+                const candidate = payload.candidate ? new window.RTCIceCandidate(payload.candidate) : null;
+                const pc = peerConnectionRef.current;
+                if (!candidate || !pc) return;
+                if (pc.remoteDescription) {
+                  await pc.addIceCandidate(candidate);
+                } else {
+                  pendingIceCandidatesRef.current.push(candidate);
+                }
+              } catch {}
+            }
           }
         });
         if (!alive) {
@@ -222,11 +516,7 @@ function CommunicationChatPage() {
       alive = false;
       cleanupStream();
     };
-  }, [appendUniqueMessage, currentUserName, loadUsers, replaceMessage]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-  }, [messages.length]);
+  }, [appendUniqueMessage, buildPeerConnection, clearCallState, currentUserName, flushPendingIceCandidates, loadUsers, replaceMessage, sendCallSignal, toast]);
 
   useEffect(() => {
     const textarea = composerRef.current;
@@ -445,8 +735,58 @@ function CommunicationChatPage() {
               <h2 className="section-title" style={{ margin: 0 }}>{selectedUser?.name || 'Select a user'}</h2>
               <div className="section-note">{selectedUser ? `${selectedUser.role || 'User'}${selectedUser.branchId ? ` • ${selectedUser.branchId}` : ''}` : 'Choose someone from the left side to start chatting.'}</div>
             </div>
-            <button className="btn" onClick={() => loadMessages(selectedUserName)} disabled={!selectedUserName || loadingMessages}>Refresh</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {selectedUser ? (
+                <button className="btn btn-primary" onClick={startVoiceCall} disabled={callState !== 'idle' || !selectedUserName}>
+                  {callState === 'idle' ? 'Voice Call' : 'Call Busy'}
+                </button>
+              ) : null}
+              {(callState !== 'idle' || incomingCall) ? (
+                <button className="btn" onClick={endCurrentCall} disabled={callState === 'idle' && !incomingCall}>
+                  End Call
+                </button>
+              ) : null}
+              <button className="btn" onClick={() => loadMessages(selectedUserName)} disabled={!selectedUserName || loadingMessages}>Refresh</button>
+            </div>
           </div>
+
+          {(incomingCall || callState !== 'idle') ? (
+            <div className="chat-call-banner">
+              <div>
+                <div className="chat-call-title">
+                  {incomingCall
+                    ? `Incoming voice call from ${incomingCall.senderName}`
+                    : callState === 'calling'
+                      ? `Calling ${callPeerName}...`
+                      : callState === 'connecting'
+                        ? `Connecting voice call with ${callPeerName}...`
+                        : `Voice call with ${callPeerName}`}
+                </div>
+                <div className="chat-call-note">
+                  {incomingCall
+                    ? 'Answer to start a simple one-to-one audio call.'
+                    : callState === 'active'
+                      ? (callMuted ? 'Microphone is muted.' : 'Voice call is active.')
+                      : 'Keep this page open while the call is connecting.'}
+                </div>
+              </div>
+              <div className="chat-call-actions">
+                {incomingCall ? (
+                  <>
+                    <button className="btn btn-primary" onClick={answerIncomingCall}>Answer</button>
+                    <button className="btn" onClick={rejectIncomingCall}>Reject</button>
+                  </>
+                ) : (
+                  <>
+                    <button className="btn" onClick={toggleMuteCall} disabled={callState === 'calling'}>
+                      {callMuted ? 'Unmute' : 'Mute'}
+                    </button>
+                    <button className="btn" onClick={endCurrentCall}>End</button>
+                  </>
+                )}
+              </div>
+            </div>
+          ) : null}
 
           <div className="surface-panel-muted chat-thread">
             {!selectedUser ? <div className="table-meta">No conversation selected yet.</div> : null}
@@ -636,6 +976,7 @@ function CommunicationChatPage() {
           <button type="button" className="chat-action-menu-item" onClick={() => copyMessageText(actionMessage)}>Copy</button>
         </div>
       ) : null}
+      <audio ref={remoteAudioRef} autoPlay />
     </div>
   );
 }

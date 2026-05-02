@@ -32,6 +32,13 @@ export function reactToMessage(payload) {
   });
 }
 
+export function sendCallSignal(payload) {
+  return fetchJson('/api/chat-messages/call-signal', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
 export function createChatStream(onEvent) {
   return fetchJson('/api/chat-messages/stream-token', {
     method: 'POST',
