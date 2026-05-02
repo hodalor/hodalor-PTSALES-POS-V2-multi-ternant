@@ -20,14 +20,32 @@ function buildSmallTalkAnswer(query) {
       related: PT_AI_TOPICS.slice(0, 3)
     };
   }
-  if (q.includes('how are you')) {
+  if (
+    q.includes('how are you')
+    || q.includes('how is your day going')
+    || q.includes('how s your day going')
+    || q.includes('how was your day')
+    || q.includes('how is your day')
+    || q.includes('how are you doing')
+    || q.includes('how are things')
+  ) {
     return {
-      title: 'I am ready to help',
+      title: 'My day is going well',
       answer: [
-        'I am doing well and ready to help you with the system.',
-        'How can I help you today?'
+        'My day is going well, thank you.',
+        'I am here to help with the POS system. How can I help you today?'
       ],
-      related: PT_AI_TOPICS.slice(0, 3)
+      related: []
+    };
+  }
+  if (q.includes('what is up') || q.includes('whats up') || q === 'sup') {
+    return {
+      title: 'I am here to help',
+      answer: [
+        'I am here and ready to help.',
+        'I was built to assist with the POS system. How can I help you today?'
+      ],
+      related: []
     };
   }
   if (q.includes('who are you') || q.includes('what can you do')) {
@@ -117,14 +135,15 @@ function isLikelySystemQuestion(query, localMatch) {
   if (!q) return false;
   if (buildSmallTalkAnswer(query)) return true;
   if (looksLikeHowToQuestion(query)) return true;
-  if (localMatch && String(localMatch.title || '').trim() !== 'I need a clearer question') return true;
   const broadSystemTerms = [
     'pos', 'sale', 'sales', 'receipt', 'invoice', 'product', 'stock', 'inventory', 'purchase', 'transfer',
     'adjustment', 'expense', 'finance', 'cash', 'reconciliation', 'branch', 'customer', 'supplier', 'user',
     'report', 'dashboard', 'approval', 'refund', 'backup', 'sync', 'serial', 'imei', 'communication', 'chat',
     'tenant', 'godhand', 'config', 'settings', 'label'
   ];
-  return broadSystemTerms.some((term) => q.includes(term));
+  if (broadSystemTerms.some((term) => q.includes(term))) return true;
+  if (!localMatch || String(localMatch.title || '').trim() === 'I need a clearer question') return false;
+  return q.split(' ').some((token) => token.length >= 5 && normalizeChatText(localMatch.title).includes(token));
 }
 
 function looksLikeHowToQuestion(query) {
@@ -170,8 +189,7 @@ function isFollowUpQuestion(query, previousQuestion = '') {
   const q = normalizeChatText(query);
   const previous = normalizeChatText(previousQuestion);
   if (!q || !previous) return false;
-  if (q.split(' ').length <= 7) return true;
-  return [
+  const followUpPhrase = [
     'also',
     'what about',
     'how about',
@@ -185,6 +203,10 @@ function isFollowUpQuestion(query, previousQuestion = '') {
     'same thing',
     'another one'
   ].some((phrase) => q.includes(phrase));
+  if (followUpPhrase) return true;
+  const previousTokens = previous.split(' ').filter((token) => token.length >= 4);
+  const sharedTokens = q.split(' ').filter((token) => token.length >= 4 && previousTokens.includes(token));
+  return sharedTokens.length >= 2;
 }
 
 function buildUnknownAnswer(query, previousQuestion = '') {
@@ -323,7 +345,6 @@ function AskPtAiPage() {
   const recognitionRef = useRef(null);
   const transcriptRef = useRef('');
   const requestIdRef = useRef(0);
-  const fallbackNoticeShownRef = useRef(false);
   const mediaRecorderRef = useRef(null);
   const mediaStreamRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -428,10 +449,10 @@ function AskPtAiPage() {
       }
     ]));
     setAnimatedEntryId(answerEntryId);
+    if (!options.keepQuery) setQuery('');
     if (options.autoSpeakQuick) speakResult(quickFallback);
     if (prohibitedResult || offTopicResult) {
       setAsking(false);
-      if (!options.keepQuery) setQuery('');
       return;
     }
     setAsking(true);
@@ -475,10 +496,6 @@ function AskPtAiPage() {
           }
           : entry
       )));
-      if (!fallbackNoticeShownRef.current) {
-        fallbackNoticeShownRef.current = true;
-        toast.show('PT AI gave the fast built-in answer while the live AI backend was unavailable or slow.', { type: 'warning' });
-      }
       if (options.autoSpeak) speakResult(quickFallback);
     } finally {
       if (requestIdRef.current === requestId) setAsking(false);
