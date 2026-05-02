@@ -220,15 +220,17 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_pu
   pr.items = nextItems;
   pr.approved_at = new Date();
   await pr.save();
+  const responsePayload = pr.toObject ? pr.toObject() : pr;
+  res.json(responsePayload);
 
-  await Audit.create({
-    actor: approverName || 'unknown',
-    actionType: 'stock_receive',
-    details: { product: lastProduct?.name || pr.productId, baseUnits: Number(pr.baseUnits), supplier: pr.supplier || '', cost: Number(pr.cost) || 0, costPerUnit: Number(pr.costPerUnit || 0), expiryDate: pr.expiryDate || null, branchId: pr.branchId, itemCount: nextItems.length, acceptedCount: nextItems.filter(item => item.status !== 'cancelled').length },
-    remark: remark || pr.remark || '',
-    branchId: pr.branchId
-  });
-  try {
+  Promise.resolve().then(async () => {
+    await Audit.create({
+      actor: approverName || 'unknown',
+      actionType: 'stock_receive',
+      details: { product: lastProduct?.name || pr.productId, baseUnits: Number(pr.baseUnits), supplier: pr.supplier || '', cost: Number(pr.cost) || 0, costPerUnit: Number(pr.costPerUnit || 0), expiryDate: pr.expiryDate || null, branchId: pr.branchId, itemCount: nextItems.length, acceptedCount: nextItems.filter(item => item.status !== 'cancelled').length },
+      remark: remark || pr.remark || '',
+      branchId: pr.branchId
+    });
     await ServerLog.create({
       level: 'info',
       actor: approverName || req.user?.name || 'unknown',
@@ -237,8 +239,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_pu
       status: 200,
       message: `Purchase approved (${nextItems.filter(item => item.status !== 'cancelled').length} item(s)) @ ${pr.branchId}`
     });
-  } catch {}
-  res.json(pr);
+  }).catch(() => {});
 });
 
 r.post('/reject', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_purchases'), async (req, res) => {
