@@ -43,6 +43,8 @@ function normalizeSettingsData(input = {}) {
   const next = { ...(input || {}) };
   const parsedTax = Number(next.taxRate);
   next.taxRate = Number.isFinite(parsedTax) ? Math.max(0, Math.min(1, parsedTax)) : 0;
+  if (!String(next.chatNotificationSound || '').trim()) next.chatNotificationSound = 'bright';
+  if (!String(next.callNotificationSound || '').trim()) next.callNotificationSound = 'bright';
   return next;
 }
 
