@@ -63,6 +63,7 @@ function AdminManualPage() {
           <li>Refunds: Initiate and approve refunds with two‑step verification.</li>
           <li>Refund Approvals: Manager/Admin approve refund requests and restock if needed.</li>
           <li>Finance: Cash Reconciliation for deposit backlog, company-account allocations, and approval workflow.</li>
+          <li>Communication: Internal live chat with unread badges, pop-up alerts, replies, reactions, emoji, and Ask PT AI guidance.</li>
           <li>Reports: Export sales CSV, totals by time/seller/branch.</li>
           <li>Backup & Sync: View queued offline items, run Backup Now / Sync Now.</li>
           <li>IMEI Conflicts: Review serialized offline sales that failed during sync.</li>
@@ -374,6 +375,37 @@ function AdminManualPage() {
             </ul>
           </li>
           <li>Records and cards show deposited totals, awaiting deposit, pending approval, and backlog days.</li>
+        </ul>
+      </Section>
+
+      <Section title="Communication – Live Chat and Ask PT AI">
+        <ul>
+          <li>Communication menu contains Chat and Ask PT AI when the tenant feature and user grants allow it.</li>
+          <li>Chat:
+            <ul>
+              <li>Shows tenant-only internal conversations with live updates.</li>
+              <li>Unread badges appear on the Communication menu and top-right chat button.</li>
+              <li>New incoming messages trigger a top-right popup alert for a few seconds and can also trigger browser notifications if allowed.</li>
+              <li>Users can reply to a specific message; the sent reply keeps a quoted tag that can scroll back to the original message.</li>
+              <li>Users can react to messages with emoji and also send emoji as normal message text.</li>
+              <li>My messages show status ticks so the sender can tell when a message is sent and when it has been read.</li>
+              <li>Right-click on desktop or long-press on touch devices to open message actions such as Reply, React, and Copy.</li>
+            </ul>
+          </li>
+          <li>Ask PT AI:
+            <ul>
+              <li>Accepts typed questions, browser voice input, and recorded voice transcription when available.</li>
+              <li>Shows a fast built-in answer immediately and can refine with the live AI backend when configured.</li>
+              <li>Can read answers aloud with voice playback.</li>
+            </ul>
+          </li>
+          <li>Permissions:
+            <ul>
+              <li>view_chat opens chat.</li>
+              <li>send_chat_messages sends chat messages and reactions.</li>
+              <li>view_pt_ai opens Ask PT AI.</li>
+            </ul>
+          </li>
         </ul>
       </Section>
 

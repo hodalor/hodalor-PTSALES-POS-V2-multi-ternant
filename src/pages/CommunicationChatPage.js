@@ -3,6 +3,9 @@ import { useSelector } from 'react-redux';
 import { useToast } from '../components/ToastProvider';
 import * as chatApi from '../api/chatMessages';
 
+const QUICK_EMOJIS = ['😀', '😂', '😍', '🙏', '👍', '🔥', '🎉', '❤️', '✅', '🤝', '😊', '😎', '😢', '😡', '📦', '💰'];
+const REACTION_EMOJIS = ['👍', '❤️', '😂', '🔥', '🙏', '😮'];
+
 function CommunicationChatPage() {
   const auth = useSelector((s) => s.auth);
   const toast = useToast();
@@ -15,9 +18,17 @@ function CommunicationChatPage() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [sending, setSending] = useState(false);
   const [liveStatus, setLiveStatus] = useState('connecting');
+  const [replyTarget, setReplyTarget] = useState(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [highlightedMessageId, setHighlightedMessageId] = useState('');
+  const [reactionPickerFor, setReactionPickerFor] = useState('');
+  const [actionMenu, setActionMenu] = useState({ open: false, x: 0, y: 0, messageId: '' });
   const bottomRef = useRef(null);
+  const composerRef = useRef(null);
   const selectedUserNameRef = useRef('');
   const streamRef = useRef(null);
+  const messageRefs = useRef({});
+  const longPressTimerRef = useRef(null);
   const currentUserName = String(auth.user?.name || '').trim();
 
   const appendUniqueMessage = useCallback((incoming) => {
@@ -29,9 +40,37 @@ function CommunicationChatPage() {
     });
   }, []);
 
+  const replaceMessage = useCallback((incoming) => {
+    const incomingId = String(incoming?.id || '');
+    if (!incomingId) return;
+    setMessages((prev) => prev.map((row) => (String(row?.id || '') === incomingId ? { ...row, ...incoming } : row)));
+  }, []);
+
   useEffect(() => {
     selectedUserNameRef.current = selectedUserName;
   }, [selectedUserName]);
+
+  useEffect(() => {
+    setReplyTarget(null);
+    setEmojiOpen(false);
+    setReactionPickerFor('');
+    setActionMenu({ open: false, x: 0, y: 0, messageId: '' });
+  }, [selectedUserName]);
+
+  useEffect(() => {
+    if (!actionMenu.open) return undefined;
+    function closeMenu() {
+      setActionMenu({ open: false, x: 0, y: 0, messageId: '' });
+    }
+    window.addEventListener('click', closeMenu);
+    window.addEventListener('scroll', closeMenu, true);
+    window.addEventListener('resize', closeMenu);
+    return () => {
+      window.removeEventListener('click', closeMenu);
+      window.removeEventListener('scroll', closeMenu, true);
+      window.removeEventListener('resize', closeMenu);
+    };
+  }, [actionMenu.open]);
 
   const loadUsers = useCallback(async (preferredName = '') => {
     setLoadingUsers(true);
@@ -145,6 +184,13 @@ function CommunicationChatPage() {
               )));
             }
             loadUsers(String(event.recipientName || event.senderName || '')).catch(() => {});
+            return;
+          }
+          if (event.type === 'message.reaction') {
+            if (String(event.conversationKey || '') === [currentUserName, String(selectedUserNameRef.current || '')].filter(Boolean).sort().join('::')) {
+              replaceMessage(event.message);
+            }
+            loadUsers(String(event.recipientName || event.senderName || '')).catch(() => {});
           }
         });
         if (!alive) {
@@ -176,11 +222,19 @@ function CommunicationChatPage() {
       alive = false;
       cleanupStream();
     };
-  }, [appendUniqueMessage, currentUserName, loadUsers]);
+  }, [appendUniqueMessage, currentUserName, loadUsers, replaceMessage]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length]);
+
+  useEffect(() => {
+    const textarea = composerRef.current;
+    if (!textarea) return;
+    textarea.style.height = '0px';
+    const nextHeight = Math.min(Math.max(textarea.scrollHeight, 44), 96);
+    textarea.style.height = `${nextHeight}px`;
+  }, [draft]);
 
   async function onSend() {
     const text = String(draft || '').trim();
@@ -194,9 +248,15 @@ function CommunicationChatPage() {
     }
     setSending(true);
     try {
-      const sent = await chatApi.sendChatMessage({ recipientName: selectedUserName, text });
+      const sent = await chatApi.sendChatMessage({
+        recipientName: selectedUserName,
+        text,
+        replyToMessageId: replyTarget?.id || ''
+      });
       appendUniqueMessage(sent);
       setDraft('');
+      setReplyTarget(null);
+      setEmojiOpen(false);
       await loadUsers(selectedUserName);
     } catch (e) {
       toast.show(String(e?.message || 'Failed to send message'), { type: 'error' });
@@ -213,54 +273,159 @@ function CommunicationChatPage() {
 
   const selectedUser = users.find((row) => String(row.name || '') === selectedUserName) || null;
   const unreadThreads = users.filter((row) => Number(row.unreadCount || 0) > 0).length;
+  const actionMessage = useMemo(
+    () => messages.find((row) => String(row.id || '') === String(actionMenu.messageId || '')) || null,
+    [actionMenu.messageId, messages]
+  );
+
+  function addEmoji(emoji) {
+    setDraft((prev) => `${prev || ''}${emoji}`);
+    window.setTimeout(() => composerRef.current?.focus(), 0);
+  }
+
+  function startReply(message) {
+    setReplyTarget({
+      id: String(message?.id || ''),
+      senderName: String(message?.senderName || ''),
+      text: String(message?.text || '')
+    });
+    setEmojiOpen(false);
+    setActionMenu({ open: false, x: 0, y: 0, messageId: '' });
+  }
+
+  async function toggleReaction(messageId, emoji) {
+    const cleanMessageId = String(messageId || '').trim();
+    const cleanEmoji = String(emoji || '').trim();
+    if (!cleanMessageId || !cleanEmoji) return;
+    try {
+      const updated = await chatApi.reactToMessage({ messageId: cleanMessageId, emoji: cleanEmoji });
+      replaceMessage(updated);
+      setReactionPickerFor('');
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to update reaction'), { type: 'error' });
+    }
+  }
+
+  function registerMessageRef(messageId, node) {
+    const cleanId = String(messageId || '');
+    if (!cleanId) return;
+    if (node) {
+      messageRefs.current[cleanId] = node;
+    } else {
+      delete messageRefs.current[cleanId];
+    }
+  }
+
+  function jumpToMessage(messageId) {
+    const cleanId = String(messageId || '').trim();
+    if (!cleanId) return;
+    const node = messageRefs.current[cleanId];
+    if (!node) {
+      toast.show('The original replied message is not visible in this chat window yet.', { type: 'warning' });
+      return;
+    }
+    try {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch {}
+    setHighlightedMessageId(cleanId);
+    window.setTimeout(() => {
+      setHighlightedMessageId((prev) => (prev === cleanId ? '' : prev));
+    }, 2200);
+  }
+
+  function openActionMenuAt(x, y, message) {
+    setActionMenu({
+      open: true,
+      x: Math.max(12, Number(x || 0)),
+      y: Math.max(12, Number(y || 0)),
+      messageId: String(message?.id || '')
+    });
+  }
+
+  function handleMessageContextMenu(event, message) {
+    event.preventDefault();
+    openActionMenuAt(event.clientX, event.clientY, message);
+  }
+
+  function clearLongPress() {
+    if (longPressTimerRef.current) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }
+
+  function handleMessageTouchStart(event, message) {
+    clearLongPress();
+    const touch = event.touches?.[0];
+    if (!touch) return;
+    longPressTimerRef.current = window.setTimeout(() => {
+      openActionMenuAt(touch.clientX, touch.clientY, message);
+      longPressTimerRef.current = null;
+    }, 520);
+  }
+
+  async function copyMessageText(message) {
+    try {
+      await navigator.clipboard.writeText(String(message?.text || ''));
+      toast.show('Message copied', { type: 'success' });
+      setActionMenu({ open: false, x: 0, y: 0, messageId: '' });
+    } catch {
+      toast.show('Copy failed on this device', { type: 'error' });
+    }
+  }
+
+  function formatMessageTime(value) {
+    if (!value) return '';
+    try {
+      return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    } catch {
+      return '';
+    }
+  }
 
   return (
-    <div className="page-shell">
+    <div className="page-shell chat-page-shell">
       <div className="page-header">
         <div>
           <h1 style={{ margin: 0 }}>Chat</h1>
           <div className="page-subtitle-compact">Send internal messages to active users inside this tenant only. Messages stay isolated to the current company.</div>
         </div>
+        <div className="page-header-actions">
+          <span className="status-pill status-pill-neutral">Contacts {users.length}</span>
+          <span className="status-pill status-pill-pending">Unread {unreadThreads}</span>
+          <span className={`status-pill ${liveStatus === 'live' ? 'status-pill-approved' : liveStatus === 'connecting' ? 'status-pill-pending' : 'status-pill-rejected'}`}>
+            {liveStatus === 'live' ? 'Live' : liveStatus === 'connecting' ? 'Connecting' : liveStatus === 'reconnecting' ? 'Reconnecting' : 'Offline'}
+          </span>
+        </div>
       </div>
 
-      <div className="stats-grid">
-        <div className="card stat-card"><div className="stat-label">Active Contacts</div><div className="stat-value">{users.length}</div></div>
-        <div className="card stat-card"><div className="stat-label">Unread Threads</div><div className="stat-value">{unreadThreads}</div></div>
-        <div className="card stat-card"><div className="stat-label">Current Chat Messages</div><div className="stat-value">{messages.length}</div></div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '320px minmax(0, 1fr)', gap: 16 }}>
-        <div className="card" style={{ display: 'grid', gap: 12, alignSelf: 'start' }}>
-          <div className="section-header">
-            <div>
-              <h2 className="section-title" style={{ margin: 0 }}>People</h2>
-              <span className="table-meta">{loadingUsers ? 'Refreshing...' : `${filteredUsers.length} shown`}</span>
+      <div className="chat-layout">
+        <div className="card chat-people-card">
+          <div className="chat-people-top">
+            <div className="section-header">
+              <div>
+                <h2 className="section-title" style={{ margin: 0 }}>People</h2>
+                <span className="table-meta">{loadingUsers ? 'Refreshing...' : `${filteredUsers.length} shown`}</span>
+              </div>
+              <span className={`status-pill ${liveStatus === 'live' ? 'status-pill-approved' : liveStatus === 'connecting' ? 'status-pill-pending' : 'status-pill-rejected'}`}>{liveStatus === 'live' ? 'Live' : liveStatus === 'connecting' ? 'Connecting' : liveStatus === 'reconnecting' ? 'Reconnecting' : 'Offline'}</span>
             </div>
-            <span className={`status-pill ${liveStatus === 'live' ? 'status-pill-approved' : liveStatus === 'connecting' ? 'status-pill-pending' : 'status-pill-rejected'}`}>
-              {liveStatus === 'live' ? 'Live' : liveStatus === 'connecting' ? 'Connecting' : liveStatus === 'reconnecting' ? 'Reconnecting' : 'Offline'}
-            </span>
+            <input
+              className="input"
+              placeholder="Search user, role, branch"
+              value={userQuery}
+              onChange={(e) => setUserQuery(e.target.value)}
+            />
           </div>
-          <input
-            className="input"
-            placeholder="Search user, role, branch"
-            value={userQuery}
-            onChange={(e) => setUserQuery(e.target.value)}
-          />
-          <div style={{ display: 'grid', gap: 8, maxHeight: '62vh', overflow: 'auto' }}>
+          <div className="chat-people-list">
             {filteredUsers.map((row) => {
               const active = String(row.name || '') === selectedUserName;
               return (
                 <button
                   key={row.id || row.name}
                   type="button"
-                  className="surface-panel"
+                  className={`surface-panel chat-person-item${active ? ' chat-person-item-active' : ''}`}
                   onClick={() => setSelectedUserName(String(row.name || ''))}
-                  style={{
-                    textAlign: 'left',
-                    cursor: 'pointer',
-                    background: active ? 'linear-gradient(180deg, #eff6ff 0%, #dbeafe 100%)' : undefined,
-                    borderColor: active ? '#93c5fd' : undefined
-                  }}
+                  style={{ textAlign: 'left', cursor: 'pointer' }}
                 >
                   <div className="section-header" style={{ marginBottom: 4 }}>
                     <strong>{row.name}</strong>
@@ -274,8 +439,8 @@ function CommunicationChatPage() {
           </div>
         </div>
 
-        <div className="card" style={{ display: 'grid', gap: 12 }}>
-          <div className="section-header">
+        <div className="card chat-room-card">
+          <div className="section-header chat-room-header">
             <div>
               <h2 className="section-title" style={{ margin: 0 }}>{selectedUser?.name || 'Select a user'}</h2>
               <div className="section-note">{selectedUser ? `${selectedUser.role || 'User'}${selectedUser.branchId ? ` • ${selectedUser.branchId}` : ''}` : 'Choose someone from the left side to start chatting.'}</div>
@@ -283,34 +448,93 @@ function CommunicationChatPage() {
             <button className="btn" onClick={() => loadMessages(selectedUserName)} disabled={!selectedUserName || loadingMessages}>Refresh</button>
           </div>
 
-          <div className="surface-panel-muted" style={{ display: 'grid', gap: 10, minHeight: 280, maxHeight: '60vh', overflow: 'auto' }}>
+          <div className="surface-panel-muted chat-thread">
             {!selectedUser ? <div className="table-meta">No conversation selected yet.</div> : null}
             {selectedUser && !messages.length && !loadingMessages ? <div className="table-meta">No messages yet. Start the conversation below.</div> : null}
             {messages.map((message) => {
               const mine = String(message.senderName || '') === currentUserName;
+              const reactions = Array.isArray(message.reactions) ? message.reactions : [];
               return (
                 <div
                   key={message.id || `${message.senderName}-${message.createdAt}`}
-                  style={{
-                    display: 'flex',
-                    justifyContent: mine ? 'flex-end' : 'flex-start'
-                  }}
+                  ref={(node) => registerMessageRef(message.id, node)}
+                  className={`chat-message-row${mine ? ' chat-message-row-mine' : ''}`}
                 >
                   <div
-                    style={{
-                      maxWidth: '78%',
-                      padding: '12px 14px',
-                      borderRadius: 16,
-                      background: mine ? 'linear-gradient(135deg, #16a34a 0%, #15803d 100%)' : '#ffffff',
-                      color: mine ? '#ffffff' : '#0f172a',
-                      border: mine ? 'none' : '1px solid #dbe4ef',
-                      boxShadow: '0 8px 18px rgba(15, 23, 42, 0.08)'
-                    }}
+                    className={`chat-message-bubble${mine ? ' chat-message-bubble-mine' : ''}${highlightedMessageId && String(message.id || '') === highlightedMessageId ? ' chat-message-bubble-highlight' : ''}`}
+                    onContextMenu={(event) => handleMessageContextMenu(event, message)}
+                    onTouchStart={(event) => handleMessageTouchStart(event, message)}
+                    onTouchEnd={clearLongPress}
+                    onTouchCancel={clearLongPress}
                   >
-                    <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 4 }}>{mine ? 'You' : message.senderName}</div>
-                    <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{message.text}</div>
-                    <div style={{ marginTop: 6, fontSize: 12, opacity: mine ? 0.9 : 0.6 }}>
-                      {message.createdAt ? new Date(message.createdAt).toLocaleString() : ''}
+                    <div className="chat-message-meta-top">
+                      <div className="chat-message-author">{mine ? 'You' : message.senderName}</div>
+                      <button
+                        type="button"
+                        className={`chat-message-more${mine ? ' chat-message-more-mine' : ''}`}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          const rect = event.currentTarget.getBoundingClientRect();
+                          openActionMenuAt(rect.right - 8, rect.bottom + 6, message);
+                        }}
+                      >
+                        ...
+                      </button>
+                    </div>
+                    {message.replyTo ? (
+                      <button
+                        type="button"
+                        onClick={() => jumpToMessage(message.replyTo?.messageId)}
+                        className={`chat-quoted-block${mine ? ' chat-quoted-block-mine' : ''}`}
+                      >
+                        <div className="chat-quoted-author">
+                          {String(message.replyTo.senderName || '') === currentUserName ? 'You' : message.replyTo.senderName}
+                        </div>
+                        <div className="chat-quoted-text">{message.replyTo.text}</div>
+                      </button>
+                    ) : null}
+                    {reactionPickerFor && String(message.id || '') === reactionPickerFor ? (
+                      <div className="chat-reaction-picker">
+                        {REACTION_EMOJIS.map((emoji) => (
+                          <button
+                            key={`${message.id}-${emoji}`}
+                            type="button"
+                            onClick={() => toggleReaction(message.id, emoji)}
+                            className={`chat-reaction-picker-btn${mine ? ' chat-reaction-picker-btn-mine' : ''}`}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                    <div className="chat-message-text">{message.text}</div>
+                    {reactions.length ? (
+                      <div className="chat-reactions-row">
+                        {reactions.map((reaction) => {
+                          const reactedUsers = Array.isArray(reaction.users) ? reaction.users : [];
+                          const mineReaction = reactedUsers.includes(currentUserName);
+                          return (
+                            <button
+                              key={`${message.id}-${reaction.emoji}`}
+                              type="button"
+                              onClick={() => toggleReaction(message.id, reaction.emoji)}
+                              className={`chat-reaction-chip${mine ? ' chat-reaction-chip-mine' : ''}${mineReaction ? ' chat-reaction-chip-active' : ''}`}
+                              title={reactedUsers.join(', ')}
+                            >
+                              <span style={{ fontSize: 16, lineHeight: 1 }}>{reaction.emoji}</span>
+                              <span style={{ fontSize: 12, fontWeight: 800 }}>{Number(reaction.count || reactedUsers.length || 0)}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ) : null}
+                    <div className={`chat-message-footer${mine ? ' chat-message-footer-mine' : ''}`}>
+                      <span>{formatMessageTime(message.createdAt)}</span>
+                      {mine ? (
+                        <span className={`chat-message-status${message.readAt ? ' chat-message-status-read' : ' chat-message-status-delivered'}`} title={message.readAt ? 'Read' : 'Delivered'}>
+                          ✓✓
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -319,25 +543,102 @@ function CommunicationChatPage() {
             <div ref={bottomRef} />
           </div>
 
-          <div className="surface-panel" style={{ display: 'grid', gap: 10 }}>
+          <div className="surface-panel chat-composer">
+            {replyTarget ? (
+              <div className="chat-reply-banner">
+                <div style={{ minWidth: 0 }}>
+                  <div className="chat-reply-banner-title">
+                    Replying to {String(replyTarget.senderName || '') === currentUserName ? 'yourself' : replyTarget.senderName}
+                  </div>
+                  <div className="chat-reply-banner-text">
+                    {String(replyTarget.text || '').slice(0, 180)}
+                  </div>
+                </div>
+                <button type="button" className="btn" onClick={() => setReplyTarget(null)}>Cancel</button>
+              </div>
+            ) : null}
             <div className="field-label">Message</div>
-            <textarea
-              className="input"
-              rows={4}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              placeholder="Type your message..."
-              disabled={!selectedUserName || sending}
-            />
+            <div className="chat-compose-row">
+              <button
+                type="button"
+                className="btn chat-compose-emoji-btn"
+                onClick={() => setEmojiOpen((prev) => !prev)}
+                disabled={!selectedUserName || sending}
+                aria-label={emojiOpen ? 'Hide emoji picker' : 'Open emoji picker'}
+                title={emojiOpen ? 'Hide emoji picker' : 'Open emoji picker'}
+              >
+                {emojiOpen ? '×' : '☺'}
+              </button>
+              <textarea
+                ref={composerRef}
+                className="input chat-compose-input"
+                rows={2}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder="Type your message..."
+                disabled={!selectedUserName || sending}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    onSend();
+                  }
+                }}
+              />
+              <button
+                className="btn btn-primary chat-compose-send-btn"
+                onClick={onSend}
+                disabled={!selectedUserName || sending}
+                aria-label={sending ? 'Sending message' : 'Send message'}
+                title={sending ? 'Sending message' : 'Send message'}
+              >
+                {sending ? '...' : '➤'}
+              </button>
+            </div>
+            {emojiOpen ? (
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: 8,
+                  padding: '10px 12px',
+                  borderRadius: 14,
+                  background: '#f8fafc',
+                  border: '1px solid #dbe4ef'
+                }}
+              >
+                {QUICK_EMOJIS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    type="button"
+                    className="btn"
+                    onClick={() => addEmoji(emoji)}
+                    style={{ minWidth: 42, padding: '8px 10px', fontSize: 20, lineHeight: 1 }}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <div className="approval-row-actions" style={{ justifyContent: 'space-between' }}>
               <span className="table-meta">Only users inside this tenant can see this chat. Live updates are {liveStatus === 'live' ? 'active' : 'reconnecting'}.</span>
-              <button className="btn btn-primary" onClick={onSend} disabled={!selectedUserName || sending}>
-                {sending ? 'Sending...' : 'Send Message'}
-              </button>
             </div>
           </div>
         </div>
       </div>
+      {actionMenu.open && actionMessage ? (
+        <div
+          className="chat-action-menu"
+          style={{ left: Math.min(actionMenu.x, window.innerWidth - 188), top: Math.min(actionMenu.y, window.innerHeight - 180) }}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <button type="button" className="chat-action-menu-item" onClick={() => startReply(actionMessage)}>Reply</button>
+          <button type="button" className="chat-action-menu-item" onClick={() => {
+            setReactionPickerFor(String(actionMessage.id || ''));
+            setActionMenu({ open: false, x: 0, y: 0, messageId: '' });
+          }}>React</button>
+          <button type="button" className="chat-action-menu-item" onClick={() => copyMessageText(actionMessage)}>Copy</button>
+        </div>
+      ) : null}
     </div>
   );
 }

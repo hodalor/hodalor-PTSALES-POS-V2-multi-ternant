@@ -25,6 +25,13 @@ export function markConversationRead(senderName) {
   });
 }
 
+export function reactToMessage(payload) {
+  return fetchJson('/api/chat-messages/react', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+}
+
 export function createChatStream(onEvent) {
   return fetchJson('/api/chat-messages/stream-token', {
     method: 'POST',

@@ -247,11 +247,14 @@ export const PT_AI_TOPICS = [
   {
     id: 'communication',
     title: 'How Communication Works',
-    keywords: ['communication', 'chat', 'ask pt ai', 'internal message'],
+    keywords: ['communication', 'chat', 'ask pt ai', 'internal message', 'reply to message', 'chat reaction', 'emoji message', 'message popup', 'message ticks', 'copy chat message', 'long press message'],
     answer: [
       'Use Chat to send internal messages to other active users inside the same tenant.',
+      'Chat supports unread badges, live updates, popup alerts, replies to a specific message, message reactions, emoji, and sent or read ticks on your own messages.',
+      'Click Reply on a message to quote it, then click the quoted tag later to jump back to the original message when it is visible in the loaded conversation.',
+      'Right-click a message on desktop or long-press it on touch devices to open quick actions such as Reply, React, and Copy.',
       'Use Ask PT AI when you want help understanding a feature or workflow inside the system.',
-      'Ask PT AI supports typing, voice input, and voice playback of the answer.'
+      'Ask PT AI supports typing, browser voice input, recorded voice transcription when available, and voice playback of the answer.'
     ]
   },
   {
