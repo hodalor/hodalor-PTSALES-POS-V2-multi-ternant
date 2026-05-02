@@ -71,21 +71,6 @@ function ensureFollowUp(lines, followUp = 'Is there anything else you want me to
   return [...next, followUp];
 }
 
-function buildRelatedTopics(primary = [], fallback = []) {
-  const out = [];
-  [...(Array.isArray(primary) ? primary : []), ...(Array.isArray(fallback) ? fallback : []), ...PT_AI_TOPICS]
-    .forEach((topic) => {
-      if (!topic) return;
-      const normalized = typeof topic === 'string'
-        ? (PT_AI_TOPICS.find((item) => item.id === topic || item.title.toLowerCase() === topic.toLowerCase()) || null)
-        : topic;
-      if (!normalized?.title) return;
-      if (out.some((item) => item.id === normalized.id || item.title.toLowerCase() === normalized.title.toLowerCase())) return;
-      out.push(normalized);
-    });
-  return out.slice(0, 4);
-}
-
 function buildOffTopicAnswer() {
   return {
     title: 'I focus on this POS system',
@@ -165,45 +150,103 @@ function formatTutorialLines(lines) {
   });
 }
 
-function buildConversationalAnswer(query, result, fallbackTitle = 'PT AI Answer') {
+function isUnknownResult(result) {
+  const title = String(result?.title || '').trim().toLowerCase();
+  const answerLines = Array.isArray(result?.answer)
+    ? result.answer.map((line) => String(line || '').trim()).filter(Boolean)
+    : String(result?.answer || result?.text || '').split(/\n{2,}|\r\n\r\n/).map((line) => line.trim()).filter(Boolean);
+  return !answerLines.length || title === 'i need a clearer question';
+}
+
+function findPreviousUserQuestion(history, currentQuery) {
+  const current = String(currentQuery || '').trim().toLowerCase();
+  return (Array.isArray(history) ? [...history].reverse() : []).find((item) => {
+    const candidate = String(item?.query || '').trim();
+    return candidate && candidate.toLowerCase() !== current;
+  })?.query || '';
+}
+
+function isFollowUpQuestion(query, previousQuestion = '') {
+  const q = normalizeChatText(query);
+  const previous = normalizeChatText(previousQuestion);
+  if (!q || !previous) return false;
+  if (q.split(' ').length <= 7) return true;
+  return [
+    'also',
+    'what about',
+    'how about',
+    'and if',
+    'then',
+    'for that',
+    'for this',
+    'that one',
+    'this one',
+    'same process',
+    'same thing',
+    'another one'
+  ].some((phrase) => q.includes(phrase));
+}
+
+function buildUnknownAnswer(query, previousQuestion = '') {
+  const connected = previousQuestion
+    ? `I see this is connected to your earlier question about "${previousQuestion}".`
+    : '';
+  return {
+    title: 'I do not have a reliable answer yet',
+    answer: ensureFollowUp([
+      connected,
+      'I do not have a reliable answer for that question right now, so I do not want to guess or mislead you.',
+      'If you want, ask the same question with the exact page, button, menu, or workflow name and I will help with what I know.'
+    ].filter(Boolean), 'Is there another way I can help you inside the system?'),
+    related: []
+  };
+}
+
+function buildConversationalAnswer(query, result, fallbackTitle = 'PT AI Answer', options = {}) {
   const smallTalk = buildSmallTalkAnswer(query);
   if (smallTalk) return smallTalk;
 
-  const localMatch = findBestPtAiAnswer(query);
+  const previousQuestion = String(options.previousQuestion || '').trim();
+  if (isUnknownResult(result)) return buildUnknownAnswer(query, previousQuestion);
+
   const title = String(result?.title || fallbackTitle).trim() || fallbackTitle;
   const rawAnswerLines = Array.isArray(result?.answer)
     ? result.answer.map((line) => String(line || '').trim()).filter(Boolean)
     : String(result?.answer || result?.text || '').split(/\n{2,}|\r\n\r\n/).map((line) => line.trim()).filter(Boolean);
-  const normalizedResult = title.toLowerCase();
   const tutorialMode = looksLikeHowToQuestion(query);
   const answerLines = tutorialMode ? formatTutorialLines(rawAnswerLines) : rawAnswerLines;
-  const intro = normalizedResult.includes('clearer question')
-    ? 'I can help with that, but I need a little more detail.'
+  const followUpMode = isFollowUpQuestion(query, previousQuestion);
+  const intro = followUpMode
+    ? tutorialMode
+      ? `That is a good follow-up question about "${previousQuestion}". Follow these steps.`
+      : `That is a good follow-up question about "${previousQuestion}". Here is what I can confirm.`
     : tutorialMode
       ? `Sure. Follow these steps for "${String(query || '').trim()}".`
       : `Sure, here is the best help I found for "${String(query || '').trim()}".`;
   const followUp = tutorialMode
     ? 'If you want, I can also show the exact menu path or button names for another task. Is there anything else you want me to help you with?'
     : 'Is there anything else you want me to help you with?';
-  const related = buildRelatedTopics(
-    Array.isArray(result?.related) && result.related.length ? result.related : [],
-    Array.isArray(localMatch?.related) ? localMatch.related : []
-  );
 
   return {
     ...result,
     title,
     answer: ensureFollowUp([intro, ...answerLines], followUp),
-    related
+    related: []
   };
 }
 
-function AnimatedAnswerLines({ entryId, lines, animate }) {
+function AnimatedAnswerLines({ entryId, lines, animate, onProgress }) {
   const fullText = useMemo(
     () => (Array.isArray(lines) ? lines.map((line) => String(line || '')).join('\n') : ''),
     [lines]
   );
   const [visibleLength, setVisibleLength] = useState(animate ? 0 : fullText.length);
+
+  useEffect(() => {
+    if (!animate || typeof onProgress !== 'function') return undefined;
+    onProgress();
+    return undefined;
+  }, [animate, visibleLength, onProgress]);
 
   useEffect(() => {
     if (!animate) {
@@ -285,6 +328,7 @@ function AskPtAiPage() {
   const mediaStreamRef = useRef(null);
   const audioChunksRef = useRef([]);
   const bottomRef = useRef(null);
+  const threadRef = useRef(null);
   const [animatedEntryId, setAnimatedEntryId] = useState(null);
   const toast = useToast();
 
@@ -309,10 +353,29 @@ function AskPtAiPage() {
   }, []);
 
   useEffect(() => {
-    try {
-      bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
-    } catch {}
+    scrollThreadToBottom('smooth');
   }, [conversation]);
+
+  function scrollThreadToBottom(behavior = 'auto') {
+    try {
+      if (threadRef.current) {
+        threadRef.current.scrollTo({ top: threadRef.current.scrollHeight, behavior });
+        return;
+      }
+      bottomRef.current?.scrollIntoView({ behavior, block: 'end' });
+    } catch {
+      try {
+        if (threadRef.current) threadRef.current.scrollTop = threadRef.current.scrollHeight;
+      } catch {}
+    }
+  }
+
+  function handleTypingProgress() {
+    if (typeof window === 'undefined') return;
+    window.requestAnimationFrame(() => {
+      scrollThreadToBottom('auto');
+    });
+  }
 
   function speakResult(nextAnswer) {
     if (!speechSupported || !nextAnswer) return;
@@ -340,13 +403,14 @@ function AskPtAiPage() {
   async function ask(nextQuery, options = {}) {
     const clean = String(nextQuery || query || '').trim();
     if (!clean) return;
+    const previousQuestion = findPreviousUserQuestion(history, clean);
     const localMatch = findBestPtAiAnswer(clean);
     const prohibitedResult = isProhibitedQuestion(clean) ? buildProhibitedAnswer() : null;
     const offTopicResult = !prohibitedResult && !isLikelySystemQuestion(clean, localMatch) ? buildOffTopicAnswer() : null;
     const requestId = Date.now();
     requestIdRef.current = requestId;
     const answerEntryId = `ai-${requestId}`;
-    const quickFallback = prohibitedResult || offTopicResult || buildConversationalAnswer(clean, localMatch, 'PT AI Local Help');
+    const quickFallback = prohibitedResult || offTopicResult || buildConversationalAnswer(clean, localMatch, 'PT AI Local Help', { previousQuestion });
     setAnswer(quickFallback);
     setAnswerMeta('Built-in workflow guidance');
     saveHistoryEntry(clean, quickFallback);
@@ -377,7 +441,7 @@ function AskPtAiPage() {
         history: history.slice(0, 4).map((item) => ({ question: item.query, answer: item.answerText || item.answer }))
       });
       if (requestIdRef.current !== requestId) return;
-      const normalized = buildConversationalAnswer(clean, aiResult);
+      const normalized = buildConversationalAnswer(clean, aiResult, 'PT AI Answer', { previousQuestion });
       setAnswer(normalized);
       setAnswerMeta(`${aiResult?.provider || 'AI backend'}${aiResult?.model ? ` • ${aiResult.model}` : ''}`);
       saveHistoryEntry(clean, normalized);
@@ -631,7 +695,7 @@ function AskPtAiPage() {
             </div>
           </div>
 
-          <div className="chat-thread ask-ai-thread">
+          <div ref={threadRef} className="chat-thread ask-ai-thread">
             {conversation.map((entry) => {
               const mine = entry.role === 'user';
               return (
@@ -658,19 +722,8 @@ function AskPtAiPage() {
                           entryId={entry.id}
                           lines={entry.answer || []}
                           animate={entry.id === animatedEntryId}
+                          onProgress={handleTypingProgress}
                         />
-                        {entry.related?.length ? (
-                          <div className="ask-ai-related-block">
-                            <div className="ask-ai-related-title">Related Help</div>
-                            <div className="inline-actions">
-                              {entry.related.map((topic) => (
-                                <button key={`${entry.id}-${topic.id}`} className="btn" onClick={() => { setQuery(topic.title); ask(topic.title); }}>
-                                  {topic.title}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ) : null}
                       </>
                     )}
                   </div>
