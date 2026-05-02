@@ -466,7 +466,7 @@ function CommunicationChatPage() {
     const syncIncomingCallFromStorage = async () => {
       const autoAnswerCall = readStoredIncomingCall(AUTO_ANSWER_INCOMING_CALL_KEY);
       if (autoAnswerCall?.callId && autoAnswerCall?.senderName) {
-        try { localStorage.removeItem(AUTO_ANSWER_INCOMING_CALL_KEY); } catch {}
+        if (liveStatus !== 'live') return;
         if (!cancelled) await answerCallInvite(autoAnswerCall);
         return;
       }
@@ -498,7 +498,7 @@ function CommunicationChatPage() {
       window.removeEventListener(INCOMING_CALL_EVENT, handleIncomingCallEvent);
       window.removeEventListener(CLEAR_INCOMING_CALL_EVENT, handleClearIncomingCall);
     };
-  }, [answerCallInvite, callSound]);
+  }, [answerCallInvite, callSound, liveStatus]);
 
   async function rejectIncomingCall() {
     if (!incomingCall?.callId || !incomingCall?.senderName) {
@@ -628,6 +628,7 @@ function CommunicationChatPage() {
             if (!myCall.callId || myCall.callId !== callId) return;
             if (signalType === 'accepted' && myCall.role === 'caller') {
               try {
+                stopIncomingRingtone();
                 clearOutgoingCallTimeout();
                 const pc = peerConnectionRef.current || await buildPeerConnection('caller', senderName, callId);
                 setCallState('connecting');
@@ -1222,7 +1223,7 @@ function CommunicationChatPage() {
           <button type="button" className="chat-action-menu-item" onClick={() => copyMessageText(actionMessage)}>Copy</button>
         </div>
       ) : null}
-      <audio ref={remoteAudioRef} autoPlay />
+      <audio ref={remoteAudioRef} autoPlay playsInline />
     </div>
   );
 }
