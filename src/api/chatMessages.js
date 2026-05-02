@@ -22,6 +22,14 @@ export function listIncomingCalls() {
   return fetchJson('/api/chat-messages/incoming-calls');
 }
 
+export function listPendingCallSignals(callId, { limit } = {}) {
+  const params = new URLSearchParams();
+  if (callId != null && String(callId || '').trim()) params.set('callId', String(callId || '').trim());
+  if (limit != null) params.set('limit', String(limit));
+  const qs = params.toString();
+  return fetchJson(`/api/chat-messages/call-signals/pending${qs ? `?${qs}` : ''}`);
+}
+
 export function sendChatMessage(payload) {
   return fetchJson('/api/chat-messages', {
     method: 'POST',

@@ -12,6 +12,20 @@ const AUTO_ANSWER_INCOMING_CALL_KEY = 'ptSales:autoAnswerIncomingCall';
 const INCOMING_CALL_EVENT = 'ptSales:incoming-call';
 const CLEAR_INCOMING_CALL_EVENT = 'ptSales:incoming-call-cleared';
 
+function buildCallSignalKey(event) {
+  const signalType = String(event?.signalType || '').trim();
+  const callId = String(event?.callId || '').trim();
+  const senderName = String(event?.senderName || '').trim();
+  const recipientName = String(event?.recipientName || '').trim();
+  if (signalType === 'ice') {
+    const candidate = String(event?.payload?.candidate?.candidate || '').trim();
+    const sdpMid = String(event?.payload?.candidate?.sdpMid || '').trim();
+    const sdpMLineIndex = String(event?.payload?.candidate?.sdpMLineIndex ?? '').trim();
+    return `${callId}|${signalType}|${senderName}|${recipientName}|${candidate}|${sdpMid}|${sdpMLineIndex}`;
+  }
+  return `${callId}|${signalType}|${senderName}|${recipientName}`;
+}
+
 function readStoredIncomingCall(key = PENDING_INCOMING_CALL_KEY) {
   try {
     const raw = localStorage.getItem(key);
@@ -95,6 +109,7 @@ function CommunicationChatPage() {
   const incomingCallRef = useRef(null);
   const callConnectedAtRef = useRef(null);
   const outgoingCallTimeoutRef = useRef(null);
+  const processedCallSignalsRef = useRef(new Set());
   const currentUserName = String(auth.user?.name || '').trim();
   const callSound = String(settings?.callNotificationSound || settings?.chatNotificationSound || 'bright').toLowerCase();
 
@@ -535,6 +550,124 @@ function CommunicationChatPage() {
     }
   }
 
+  const handleCallSignalEvent = useCallback(async (event) => {
+    const senderName = String(event?.senderName || '').trim();
+    const recipientName = String(event?.recipientName || '').trim();
+    const callId = String(event?.callId || '').trim();
+    const signalType = String(event?.signalType || '').trim();
+    const payload = event?.payload && typeof event.payload === 'object' ? event.payload : {};
+    const myCall = activeCallRef.current;
+    if (!callId || !signalType) return;
+
+    const signalKey = buildCallSignalKey({ senderName, recipientName, callId, signalType, payload });
+    if (processedCallSignalsRef.current.has(signalKey)) return;
+    processedCallSignalsRef.current.add(signalKey);
+    if (processedCallSignalsRef.current.size > 500) {
+      processedCallSignalsRef.current = new Set(Array.from(processedCallSignalsRef.current).slice(-250));
+    }
+
+    const otherUser = senderName === currentUserName ? recipientName : senderName;
+    if (otherUser && String(selectedUserNameRef.current || '') === otherUser) {
+      loadCallHistory(otherUser).catch(() => {});
+    }
+    if (recipientName === currentUserName && signalType === 'invite') {
+      if (callStateRef.current !== 'idle' || incomingCallRef.current || activeCallRef.current.callId) {
+        sendCallSignal(senderName, callId, 'busy', {}).catch(() => {});
+        return;
+      }
+      try {
+        localStorage.setItem(PENDING_INCOMING_CALL_KEY, JSON.stringify({
+          callId,
+          senderName,
+          startedAt: event?.at || new Date().toISOString()
+        }));
+      } catch {}
+      setSelectedUserName(senderName);
+      setCallPeerName(senderName);
+      setIncomingCall({ callId, senderName });
+      startIncomingRingtone(callSound).catch(() => {});
+      toast.show(`Incoming voice call from ${senderName}`, { type: 'info', timeout: 5000 });
+      return;
+    }
+    if (!myCall.callId || myCall.callId !== callId) return;
+    if (signalType === 'accepted' && myCall.role === 'caller') {
+      try {
+        stopIncomingRingtone();
+        clearOutgoingCallTimeout();
+        const pc = peerConnectionRef.current || await buildPeerConnection('caller', senderName, callId);
+        setCallState('connecting');
+        const offer = await pc.createOffer({ offerToReceiveAudio: true });
+        await pc.setLocalDescription(offer);
+        await sendCallSignal(senderName, callId, 'offer', { sdp: offer });
+      } catch (e) {
+        toast.show(String(e?.message || 'Failed to start voice call'), { type: 'error' });
+        clearCallState();
+      }
+      return;
+    }
+    if (signalType === 'rejected') {
+      stopIncomingRingtone();
+      clearStoredIncomingCall();
+      toast.show(`${senderName} rejected the voice call`, { type: 'warning' });
+      clearCallState();
+      return;
+    }
+    if (signalType === 'busy') {
+      stopIncomingRingtone();
+      clearStoredIncomingCall();
+      toast.show(`${senderName} is busy on another call`, { type: 'warning' });
+      clearCallState();
+      return;
+    }
+    if (signalType === 'end') {
+      stopIncomingRingtone();
+      clearStoredIncomingCall();
+      toast.show(payload?.reason === 'timeout' ? 'Missed voice call' : 'Voice call ended', { type: 'warning' });
+      clearCallState();
+      return;
+    }
+    if (signalType === 'offer' && myCall.role === 'callee') {
+      try {
+        const pc = peerConnectionRef.current || await buildPeerConnection('callee', senderName, callId);
+        await pc.setRemoteDescription(new window.RTCSessionDescription(payload.sdp));
+        await flushPendingIceCandidates();
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        setCallState('connecting');
+        await sendCallSignal(senderName, callId, 'answer', { sdp: answer });
+      } catch (e) {
+        toast.show(String(e?.message || 'Failed to answer voice call'), { type: 'error' });
+        clearCallState();
+      }
+      return;
+    }
+    if (signalType === 'answer' && myCall.role === 'caller') {
+      try {
+        const pc = peerConnectionRef.current;
+        if (!pc) return;
+        await pc.setRemoteDescription(new window.RTCSessionDescription(payload.sdp));
+        await flushPendingIceCandidates();
+        setCallState('connecting');
+      } catch (e) {
+        toast.show(String(e?.message || 'Failed to connect voice call'), { type: 'error' });
+        clearCallState();
+      }
+      return;
+    }
+    if (signalType === 'ice') {
+      try {
+        const candidate = payload.candidate ? new window.RTCIceCandidate(payload.candidate) : null;
+        const pc = peerConnectionRef.current;
+        if (!candidate || !pc) return;
+        if (pc.remoteDescription) {
+          await pc.addIceCandidate(candidate);
+        } else {
+          pendingIceCandidatesRef.current.push(candidate);
+        }
+      } catch {}
+    }
+  }, [buildPeerConnection, callSound, clearCallState, clearOutgoingCallTimeout, currentUserName, flushPendingIceCandidates, loadCallHistory, sendCallSignal, toast]);
+
   useEffect(() => {
     let alive = true;
     let retryId = null;
@@ -595,113 +728,7 @@ function CommunicationChatPage() {
             return;
           }
           if (event.type === 'call.signal') {
-            const senderName = String(event.senderName || '').trim();
-            const recipientName = String(event.recipientName || '').trim();
-            const callId = String(event.callId || '').trim();
-            const signalType = String(event.signalType || '').trim();
-            const payload = event.payload && typeof event.payload === 'object' ? event.payload : {};
-            const myCall = activeCallRef.current;
-            if (!callId || !signalType) return;
-            const otherUser = senderName === currentUserName ? recipientName : senderName;
-            if (otherUser && String(selectedUserNameRef.current || '') === otherUser) {
-              loadCallHistory(otherUser).catch(() => {});
-            }
-            if (recipientName === currentUserName && signalType === 'invite') {
-              if (callStateRef.current !== 'idle' || incomingCallRef.current || activeCallRef.current.callId) {
-                sendCallSignal(senderName, callId, 'busy', {}).catch(() => {});
-                return;
-              }
-              try {
-                localStorage.setItem(PENDING_INCOMING_CALL_KEY, JSON.stringify({
-                  callId,
-                  senderName,
-                  startedAt: event.at || new Date().toISOString()
-                }));
-              } catch {}
-              setSelectedUserName(senderName);
-              setCallPeerName(senderName);
-              setIncomingCall({ callId, senderName });
-              startIncomingRingtone(callSound).catch(() => {});
-              toast.show(`Incoming voice call from ${senderName}`, { type: 'info', timeout: 5000 });
-              return;
-            }
-            if (!myCall.callId || myCall.callId !== callId) return;
-            if (signalType === 'accepted' && myCall.role === 'caller') {
-              try {
-                stopIncomingRingtone();
-                clearOutgoingCallTimeout();
-                const pc = peerConnectionRef.current || await buildPeerConnection('caller', senderName, callId);
-                setCallState('connecting');
-                const offer = await pc.createOffer({ offerToReceiveAudio: true });
-                await pc.setLocalDescription(offer);
-                await sendCallSignal(senderName, callId, 'offer', { sdp: offer });
-              } catch (e) {
-                toast.show(String(e?.message || 'Failed to start voice call'), { type: 'error' });
-                clearCallState();
-              }
-              return;
-            }
-            if (signalType === 'rejected') {
-              stopIncomingRingtone();
-              clearStoredIncomingCall();
-              toast.show(`${senderName} rejected the voice call`, { type: 'warning' });
-              clearCallState();
-              return;
-            }
-            if (signalType === 'busy') {
-              stopIncomingRingtone();
-              clearStoredIncomingCall();
-              toast.show(`${senderName} is busy on another call`, { type: 'warning' });
-              clearCallState();
-              return;
-            }
-            if (signalType === 'end') {
-              stopIncomingRingtone();
-              clearStoredIncomingCall();
-              toast.show(payload?.reason === 'timeout' ? 'Missed voice call' : 'Voice call ended', { type: 'warning' });
-              clearCallState();
-              return;
-            }
-            if (signalType === 'offer' && myCall.role === 'callee') {
-              try {
-                const pc = peerConnectionRef.current || await buildPeerConnection('callee', senderName, callId);
-                await pc.setRemoteDescription(new window.RTCSessionDescription(payload.sdp));
-                await flushPendingIceCandidates();
-                const answer = await pc.createAnswer();
-                await pc.setLocalDescription(answer);
-                setCallState('connecting');
-                await sendCallSignal(senderName, callId, 'answer', { sdp: answer });
-              } catch (e) {
-                toast.show(String(e?.message || 'Failed to answer voice call'), { type: 'error' });
-                clearCallState();
-              }
-              return;
-            }
-            if (signalType === 'answer' && myCall.role === 'caller') {
-              try {
-                const pc = peerConnectionRef.current;
-                if (!pc) return;
-                await pc.setRemoteDescription(new window.RTCSessionDescription(payload.sdp));
-                await flushPendingIceCandidates();
-                setCallState('connecting');
-              } catch (e) {
-                toast.show(String(e?.message || 'Failed to connect voice call'), { type: 'error' });
-                clearCallState();
-              }
-              return;
-            }
-            if (signalType === 'ice') {
-              try {
-                const candidate = payload.candidate ? new window.RTCIceCandidate(payload.candidate) : null;
-                const pc = peerConnectionRef.current;
-                if (!candidate || !pc) return;
-                if (pc.remoteDescription) {
-                  await pc.addIceCandidate(candidate);
-                } else {
-                  pendingIceCandidatesRef.current.push(candidate);
-                }
-              } catch {}
-            }
+            await handleCallSignalEvent(event);
           }
         });
         if (!alive) {
@@ -733,7 +760,35 @@ function CommunicationChatPage() {
       alive = false;
       cleanupStream();
     };
-  }, [appendUniqueMessage, buildPeerConnection, callSound, clearCallState, clearOutgoingCallTimeout, currentUserName, flushPendingIceCandidates, loadCallHistory, loadUsers, replaceMessage, sendCallSignal, toast]);
+  }, [appendUniqueMessage, currentUserName, handleCallSignalEvent, loadUsers, replaceMessage]);
+
+  useEffect(() => {
+    if (!currentUserName) return undefined;
+    let alive = true;
+
+    const drainPendingSignals = async () => {
+      const activeCallId = String(activeCallRef.current.callId || '').trim();
+      if (!activeCallId) return;
+      try {
+        const rows = await chatApi.listPendingCallSignals(activeCallId, { limit: 120 });
+        if (!alive || !Array.isArray(rows) || !rows.length) return;
+        for (const row of rows) {
+          if (!alive) break;
+          await handleCallSignalEvent(row);
+        }
+      } catch {}
+    };
+
+    drainPendingSignals().catch(() => {});
+    const intervalId = window.setInterval(() => {
+      drainPendingSignals().catch(() => {});
+    }, 1000);
+
+    return () => {
+      alive = false;
+      window.clearInterval(intervalId);
+    };
+  }, [currentUserName, handleCallSignalEvent]);
 
   useEffect(() => {
     const textarea = composerRef.current;
