@@ -334,6 +334,13 @@ function CommunicationChatPage() {
     await chatApi.sendCallSignal({ recipientName, callId, signalType, payload });
   }, []);
 
+  const markCallActive = useCallback(() => {
+    stopIncomingRingtone();
+    clearOutgoingCallTimeout();
+    if (!callConnectedAtRef.current) callConnectedAtRef.current = Date.now();
+    setCallState('active');
+  }, [clearOutgoingCallTimeout]);
+
   const buildPeerConnection = useCallback(async (role, partnerName, callId) => {
     ensureCallSupport();
     closePeerConnection();
@@ -350,10 +357,7 @@ function CommunicationChatPage() {
         remoteAudioRef.current.srcObject = remoteStream;
         remoteAudioRef.current.play?.().catch(() => {});
       }
-      stopIncomingRingtone();
-      clearOutgoingCallTimeout();
-      if (!callConnectedAtRef.current) callConnectedAtRef.current = Date.now();
-      setCallState('active');
+      markCallActive();
     };
     pc.onicecandidate = (event) => {
       if (!event.candidate) return;
@@ -362,19 +366,43 @@ function CommunicationChatPage() {
     pc.onconnectionstatechange = () => {
       const state = String(pc.connectionState || '');
       if (state === 'connected') {
-        stopIncomingRingtone();
-        clearOutgoingCallTimeout();
-        if (!callConnectedAtRef.current) callConnectedAtRef.current = Date.now();
-        setCallState('active');
+        markCallActive();
         return;
       }
-      if (state === 'failed' || state === 'disconnected') {
+      if (state === 'connecting') {
+        setCallState((prev) => (prev === 'calling' ? prev : 'connecting'));
+        return;
+      }
+      if (state === 'disconnected') {
+        setCallState((prev) => (prev === 'active' ? 'connecting' : prev));
+        return;
+      }
+      if (state === 'failed' || state === 'closed') {
+        toast.show('Voice call ended', { type: 'warning' });
+        clearCallState();
+      }
+    };
+    pc.oniceconnectionstatechange = () => {
+      const state = String(pc.iceConnectionState || '');
+      if (state === 'connected' || state === 'completed') {
+        markCallActive();
+        return;
+      }
+      if (state === 'checking') {
+        setCallState((prev) => (prev === 'calling' ? prev : 'connecting'));
+        return;
+      }
+      if (state === 'disconnected') {
+        setCallState((prev) => (prev === 'active' ? 'connecting' : prev));
+        return;
+      }
+      if (state === 'failed' || state === 'closed') {
         toast.show('Voice call ended', { type: 'warning' });
         clearCallState();
       }
     };
     return pc;
-  }, [clearCallState, clearOutgoingCallTimeout, closePeerConnection, ensureCallSupport, ensureLocalStream, sendCallSignal, toast]);
+  }, [clearCallState, closePeerConnection, ensureCallSupport, ensureLocalStream, markCallActive, sendCallSignal, toast]);
 
   async function startVoiceCall() {
     const partnerName = String(selectedUserName || '').trim();
