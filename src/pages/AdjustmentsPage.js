@@ -934,6 +934,7 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
         const response = await adjustmentsApi.approve({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
         const next = response?.request || response;
         const nextStatus = String(next?.status || '');
+        setBusyId(null);
         if (nextStatus === 'approved') {
           const approvedItems = Array.isArray(next?.items) && next.items.length > 0 ? next.items : (Array.isArray(r.items) ? r.items : []);
           approvedItems.forEach((item) => {
@@ -961,6 +962,7 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
       }
     } catch (e) {
       const message = String(e?.message || 'Failed to approve');
+      setBusyId(null);
       if (/timed out/i.test(message)) {
         setReloadAt(Date.now());
         toast.show('Approval is still processing. Refreshing status now.', { type: 'warning' });

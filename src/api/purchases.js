@@ -20,7 +20,7 @@ export function approve(payload) {
   return fetchJson('/api/purchases/approve', {
     method: 'POST',
     body: JSON.stringify(payload),
-    timeoutMs: 60000
+    timeoutMs: 180000
   });
 }
 

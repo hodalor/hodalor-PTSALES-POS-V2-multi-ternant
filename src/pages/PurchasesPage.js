@@ -58,6 +58,7 @@ function PurchasesPage() {
   const [statusFilter, setStatusFilter] = useState('pending_director');
   const [detail, setDetail] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [reloadAt, setReloadAt] = useState(0);
   const dispatch = useDispatch();
   const toast = useToast();
   const serializedScanInputRef = useRef(null);
@@ -109,6 +110,7 @@ function PurchasesPage() {
     return { imei: parts[0] || '', serialNumber: parts[1] || parts[0] || '' };
   }), [serializedEntriesText]);
   const roleLower = String(auth.role || '').toLowerCase();
+  const authTenantId = String(auth.user?.tenantId || '').trim().toLowerCase();
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
   function has(g) {
     if (!g) return false;
@@ -129,7 +131,12 @@ function PurchasesPage() {
     const ids = new Set(Array.isArray(assigned) ? assigned : [assigned]);
     return branches.filter(b => ids.has(b.id));
   }, [roleLower, assigned, branches]);
-  const basePurchases = useMemo(() => audit.filter(e => e.actionType === 'stock_receive'), [audit]);
+  const basePurchases = useMemo(() => audit.filter((entry) => {
+    if (entry.actionType !== 'stock_receive') return false;
+    const entryTenantId = String(entry?.tenantId || '').trim().toLowerCase();
+    if (!entryTenantId) return authTenantId !== 'master';
+    return entryTenantId === authTenantId;
+  }), [audit, authTenantId]);
   const actors = useMemo(() => Array.from(new Set(basePurchases.map(e => e.actor).filter(Boolean))).sort(), [basePurchases]);
   const purchases = useMemo(() => {
     const fromTs = periodMode === 'all_time' ? 0 : (dateFrom ? new Date(dateFrom).getTime() : 0);
@@ -458,7 +465,7 @@ function PurchasesPage() {
     }
     load();
     return () => { alive = false; };
-  }, [tab, statusFilter, fBranch, dispatch]);
+  }, [tab, statusFilter, fBranch, reloadAt, dispatch]);
   async function approve(r) {
     if (!canApprove) { toast.show('Not authorized to approve purchases', { type: 'error' }); return; }
     if (String(r.status || '') === 'pending_director' && !canDirectorApprove) { toast.show('Director approval required', { type: 'error' }); return; }
@@ -489,15 +496,25 @@ function PurchasesPage() {
           });
           void refreshAffectedProducts(dispatch, Array.from(new Set(approvedItems.map((item) => item?.productId).filter(Boolean))));
           toast.show('Purchase approved and stock updated', { type: 'success' });
+          setStatusFilter('approved');
+          setReloadAt(Date.now());
         } else {
           toast.show('Director approval recorded. Waiting for manager approval.', { type: 'success' });
+          setStatusFilter('pending_manager');
+          setReloadAt(Date.now());
         }
         return;
       }
       dispatch(approvePurchase({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark, nextStatus: 'pending_manager' }));
       toast.show('Purchase approval queued offline', { type: 'success' });
     } catch (e) {
-      toast.show(String(e?.message || 'Failed to approve'), { type: 'error' });
+      const message = String(e?.message || 'Failed to approve');
+      if (/timed out/i.test(message)) {
+        setReloadAt(Date.now());
+        toast.show('Approval is still processing. Refreshing status now.', { type: 'warning' });
+      } else {
+        toast.show(message, { type: 'error' });
+      }
     } finally { setBusyId(null); }
   }
   async function reject(r) {
@@ -515,6 +532,8 @@ function PurchasesPage() {
       }
       dispatch(rejectPurchase({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark }));
       toast.show('Purchase rejected', { type: 'success' });
+      setStatusFilter('rejected');
+      setReloadAt(Date.now());
     } catch (e) {
       toast.show(String(e?.message || 'Failed to reject'), { type: 'error' });
     } finally { setBusyId(null); }

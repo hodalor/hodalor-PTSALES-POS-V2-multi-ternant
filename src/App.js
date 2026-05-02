@@ -594,7 +594,7 @@ function App() {
           section('sections.retail') && allow('modules.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']) ? refundsApi.listRequests() : Promise.resolve([]),
           allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? salesApi.list() : Promise.resolve([]),
           section('sections.admin') && allow('admin.users', ['Admin'], ['view_users','see_users']) ? usersApi.list() : Promise.resolve([]),
-          allow('admin.audit', ['Admin'], ['view_audit','see_audit']) ? auditsApi.list() : Promise.resolve([]),
+          (allow('admin.audit', ['Admin'], ['view_audit','see_audit']) && !(roleLower === 'superadmin' && String(authTenantId || '').toLowerCase() === 'master')) ? auditsApi.list() : Promise.resolve([]),
           allow('modules.invoices', ['Admin','Manager','Cashier'], ['view_invoices','see_invoices','view_wholesale_invoices','view_warehouse_invoices']) ? invoicesApi.list() : Promise.resolve([]),
           section('sections.retail') && allow('pages.retail.purchases', ['Admin','Manager','Inventory Staff','Director'], ['approve_purchases','view_purchases','see_purchases']) ? purchasesApi.listRequests({ status: 'pending_director', limit: 200 }) : Promise.resolve([]),
           section('sections.retail') && allow('pages.retail.transfers', ['Admin','Manager','Inventory Staff','Director'], ['approve_transfers','view_transfers','see_transfers']) ? transfersApi.listRequests({ status: 'pending_director', limit: 200 }) : Promise.resolve([]),
