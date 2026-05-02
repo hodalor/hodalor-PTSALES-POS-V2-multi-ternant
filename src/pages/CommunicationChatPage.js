@@ -637,7 +637,14 @@ function CommunicationChatPage() {
       loadCallHistory(otherUser).catch(() => {});
     }
     if (recipientName === currentUserName && signalType === 'invite') {
-      if (callStateRef.current !== 'idle' || incomingCallRef.current || activeCallRef.current.callId) {
+      const currentIncoming = incomingCallRef.current;
+      const currentActiveCall = activeCallRef.current;
+      const sameIncomingCall = String(currentIncoming?.callId || '') === callId && String(currentIncoming?.senderName || '') === senderName;
+      const sameActiveCall = String(currentActiveCall?.callId || '') === callId && String(currentActiveCall?.partner || '') === senderName;
+      if (sameIncomingCall || sameActiveCall) {
+        return;
+      }
+      if (callStateRef.current !== 'idle' || currentIncoming || currentActiveCall.callId) {
         sendCallSignal(senderName, callId, 'busy', {}).catch(() => {});
         return;
       }
