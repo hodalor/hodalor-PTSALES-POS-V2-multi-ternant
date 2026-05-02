@@ -670,6 +670,7 @@ html, body, #root {
   background:
     radial-gradient(circle at top left, rgba(124, 58, 237, 0.08), transparent 28%),
     linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.98) 100%);
+  grid-template-rows: auto minmax(0, 1fr);
 }
 .ask-ai-room-card {
   background:
@@ -680,6 +681,18 @@ html, body, #root {
 .ask-ai-status-panel {
   display: grid;
   gap: 4px;
+}
+.ask-ai-topic-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 4px;
+}
+.ask-ai-topic-list .btn {
+  justify-content: flex-start;
+  text-align: left;
 }
 .ask-ai-thread {
   padding: 4px 6px 4px 0;
@@ -723,6 +736,17 @@ html, body, #root {
 }
 .ask-ai-composer {
   gap: 8px;
+}
+.ask-ai-compose-controls {
+  display: inline-flex;
+  align-items: end;
+  gap: 8px;
+}
+.ask-ai-record-btn {
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 800;
+  padding: 0;
 }
 .ask-ai-toolbar {
   justify-content: space-between;

@@ -227,10 +227,12 @@ function AdminManualPage() {
 
       <Section title="Credit Sale – Overview, Clients, And Approvals">
         <ul>
-          <li>Open Credit Sale from the sidebar, then choose Overview, Good Clients, Defaulters, or Payment Approvals.</li>
-          <li>Use Overview for the general credit sales picture and balance status.</li>
+          <li>Open Credit Sale Control from the sidebar for the main working page, then use Good Clients, Defaulters, or Repayment Approvals when you want the focused credit sub-pages.</li>
+          <li>On Credit Sale Control, use Period, From, To, Branch, and Credit Source to filter by All Sources, Retail EasyBuy, or Distribution Credit Sale.</li>
+          <li>Use the section buttons Client Ranking, Active Sales, and Repayments inside the page to switch the working view.</li>
+          <li>On Active Sales, click Repayment on the row you want, then enter Repayment amount and Repayment remark when prompted.</li>
           <li>Use Good Clients to review customers with healthier repayment behavior and Defaulters to review overdue accounts.</li>
-          <li>Use Payment Approvals when submitted repayments need manager or director review.</li>
+          <li>Use Credit Sale Repayment Approvals when submitted repayments need manager or director review, then switch between Pending Director, Pending Manager, Approved, and Rejected.</li>
           <li>When creating a credit sale from POS, capture the required customer details before completing payment.</li>
         </ul>
       </Section>
@@ -265,10 +267,12 @@ function AdminManualPage() {
           <li>Tabs: “New Invoice” to create, “Invoice Records” to search and print past invoices.</li>
           <li>New Invoice:
             <ul>
-              <li>Select products/variants, set Qty and Rate; tax is applied from Settings.</li>
+              <li>Use the search field “Search name, SKU or scan barcode” to find products, then click Add on the product row.</li>
+              <li>Select products or variants, set Qty and Rate; tax is applied from Settings.</li>
               <li>Customer: choose an existing customer or enter ad‑hoc name/contact/address.</li>
+              <li>If the page shows Invoice Price Tier, choose the tier before generating so rates follow the selected price level.</li>
               <li>References: Delivery Note, Payment Terms, Supplier’s Ref., Other Ref., Buyer’s Order No., Despatch Doc No., Delivery Date/Method, Destination, Terms of Delivery.</li>
-              <li>Generate: Creates an A4 invoice with number = Prefix‑NNNNNN. Payment Status = UNPAID and Source = manual.</li>
+              <li>Generate: Click “Generate Invoice (A4)” to create an A4 invoice with number = Prefix‑NNNNNN. Payment Status = UNPAID and Source = manual.</li>
               <li>Printing: A4 invoice renders immediately for print or PDF save.</li>
               <li>Offline: If offline and Backup is enabled, the invoice is queued for backup and still prints locally.</li>
             </ul>
@@ -285,32 +289,38 @@ function AdminManualPage() {
 
       <Section title="Reports – Summaries & Exports">
         <ul>
-          <li>Open Reports from the sidebar, then choose the branch, date range, and report type you want to analyze.</li>
+          <li>Open Reports from the sidebar, then choose Period, From, To, Branch, and Report Type first.</li>
+          <li>Use All Branches where your access allows it and you want a broader report scope.</li>
           <li>Apply the filters first so the page loads only the results you want.</li>
           <li>Sales summaries by time, seller and branch are available with CSV/PDF exports.</li>
           <li>Revenue and profit visibility now follow separate grants, so one can be shown while the other stays hidden.</li>
           <li>Exports and on-screen values respect those visibility grants.</li>
-          <li>All Branches filtering is supported where the user has scope to view broader branch data.</li>
-          <li>Use filters and export buttons to share reports externally.</li>
+          <li>Each report section has its own Export CSV and Export PDF buttons.</li>
+          <li>Use filters and the matching section export buttons to share reports externally.</li>
         </ul>
       </Section>
 
       <Section title="Sales – History and Exports">
         <ul>
           <li>Open Sales to review completed sale records.</li>
-          <li>Use the filters and search tools to find the exact sale by branch, date, seller, invoice serial, or other visible record details.</li>
+          <li>Use the top buttons to switch between Sales, Sales Rep Leaderboard, and Branch Comparison.</li>
+          <li>Use Branch, Period, From, To, Sale Type, and Credit Type to find the exact sale by branch, date, seller, invoice serial, or other visible record details.</li>
           <li>The table lists sales with invoice serials, seller, branch and totals.</li>
           <li>Revenue and profit figures are masked independently based on the logged-in user grants.</li>
-          <li>Use the row actions to reprint the receipt or access the public receipt link where available.</li>
-          <li>Use Sales or Reports export actions for analytics, sharing, and print-ready output.</li>
+          <li>Use Reprint on the sale row to print the receipt again, or ESC/POS to download the text receipt file.</li>
+          <li>Use Export CSV or Export PDF for the filtered sales table, or use Reports for broader analytics.</li>
         </ul>
       </Section>
 
       <Section title="Users – Accounts & PIN">
         <ul>
           <li>Open Admin → Users to manage user accounts.</li>
-          <li>Create, rename and delete users; set branch access as needed.</li>
-          <li>Assign roles and grants for fine‑grained permissions so the user only sees the correct menus and actions.</li>
+          <li>Create User: Enter username, PIN, choose Role, and decide whether to Assign to all branches or use the selected branch plus Assign additional branches.</li>
+          <li>Use the Feature Access section to tick the exact permissions the user should have.</li>
+          <li>Remark is required before you can click Add User.</li>
+          <li>Edit existing users with the Edit button to change name, role, status, PIN, branch access, and permissions.</li>
+          <li>Use Disable or Enable to control whether the user can still log in.</li>
+          <li>Use Remove only when the account should be deleted, and enter the requested removal remark.</li>
           <li>Revenue and profit are separate grants, so you can allow one without the other.</li>
           <li>Tenant user grant screens now show those visibility grants under tenant permissions as well, not only for superadmin.</li>
           <li>Reset PIN from Users page or via the Login screen’s Admin Reset PIN flow.</li>
@@ -468,8 +478,9 @@ function AdminManualPage() {
       <Section title="Partners – Suppliers And Customers">
         <ul>
           <li>Open Partners, then choose Suppliers or Customers.</li>
-          <li>Suppliers: Click Add Supplier, enter the supplier name first, then save the remaining details you currently have.</li>
-          <li>Customers: Click Add Customer, enter the main contact details, then add business information such as business name, TIN or TPIN, and address when available.</li>
+          <li>Suppliers: Use Search suppliers first if you want to check for an existing record, then enter Name, Contact person, Phone, Email, Address, and Notes and click Add Supplier.</li>
+          <li>Customers: Click Add Customer, use the Profile tab for the main contact fields, and add business information such as Business Name, Tax ID, Registration Number, and address when available.</li>
+          <li>Customers also supports Customer Leaderboard, where you can rank by Amount Spent or Products Bought and filter All Customers, Retail Customers, or Distribution Customers.</li>
           <li>Saved suppliers appear in purchase flows, and saved customers appear in POS, invoice, and receipt-related flows.</li>
         </ul>
       </Section>
@@ -556,21 +567,29 @@ function AdminManualPage() {
           <li>PWA: Install App button appears when eligible; SuperAdmin/Admin can also install from Config “App Installation (PWA)”.</li>
           <li>Branding: Client App Name and Client App Logo control top bar and PWA install name/icon; fallbacks ensure logo displays even if custom fails.</li>
           <li>Currency: Manage supported currencies and active currency; symbols and positions apply across POS, Dashboard, Cash Drawer, Inventory and receipts.</li>
+          <li>Manage Categories: Type a new category and click Add, or remove old categories from the list.</li>
+          <li>Communication Sounds: Choose Message Sound and Call Sound, then use Test Message Sound and Test Call Sound before saving.</li>
+          <li>Finance Accounts: Create the company accounts used during cash reconciliation deposits.</li>
+          <li>Branches: Use the branch creation area at the bottom to create retail, wholesale, or warehouse branches and click Add.</li>
+          <li>API Base: Save API Base only when you intentionally want to point the frontend to a different backend address.</li>
           <li>PAID Stamp: Configure whether a “PAID” stamp appears on A4 invoices for POS sales, along with label text, centering, thank‑you line, date, and color.</li>
           <li>Background Refresh: Control the auto‑refresh interval for lists such as products, suppliers, customers, branches, refunds and sales.</li>
           <li>Subscription Payment Unavailable Message: Superadmin or tenant admin can define the message shown when online renewal gateways are all disabled.</li>
+          <li>Click Save after changing settings so the updates apply to the rest of the app.</li>
         </ul>
       </Section>
 
       <Section title="Backup & Sync – Offline Queue">
         <ul>
           <li>Open Backup when you want to review or upload offline queued data.</li>
-          <li>Backup & Sync page shows totals per collection (Sales, Invoices, Customers, etc.) and pending counts.</li>
+          <li>Backup & Sync page shows totals per collection (Sales, Invoices, Customers, etc.) and pending counts, with the collection list on the left.</li>
           <li>Backup Now: Attempts to upload all queued items when online. If you logged in offline, you’ll be prompted for your PIN to obtain a token before backup.</li>
           <li>Sync Now: Refreshes the local data from the server when online.</li>
+          <li>SuperAdmin can use Delete Selected to remove chosen queued records from the currently opened collection list.</li>
           <li>Indicators: “Queued” badges appear on pages (e.g., POS) and link to the Backup page.</li>
           <li>Auto‑sync: When online and Backup is enabled, background sync uploads queued items automatically.</li>
           <li>IMEI Conflicts page shows serialized offline sales that later failed on sync, so staff can review the affected units.</li>
+          <li>Tenant Import / Export: Use Export Tenant Data to download a backup JSON file, or Import Tenant Data to open the import modal, choose the backup file, choose Keep Current Data or Overwrite Current Data, then click Start Import.</li>
         </ul>
       </Section>
 
@@ -586,9 +605,10 @@ function AdminManualPage() {
         <ul>
           <li>Open Admin → Stock Records when you need a branch-by-branch stock movement history.</li>
           <li>Scope: Consolidates stock changes from Purchases (receive), Transfers, Adjustments (incl. damage/expiry), Inventory manual set, Products initial stock, POS sales (stock deduct), and Refund Approvals (restock).</li>
-          <li>Filters: Date range, Actor, Branch, Source page.</li>
+          <li>Filters: Period, From, To, Actor, Branch, Source.</li>
           <li>Columns: Timestamp, Actor, Branch, Source, Action, Product, Variant, Delta, Remark.</li>
           <li>Exports: CSV and print‑to‑PDF for filtered results; use page header buttons.</li>
+          <li>SuperAdmin can bulk-select rows, choose Delete Selected, and click Apply to remove records when necessary.</li>
           <li>Pagination: Change rows per page (10/25/50/100) and page through results.</li>
           <li>For serialized products, combine Stock Records with Serialized Inventory for both quantity summary and exact unit traceability.</li>
         </ul>

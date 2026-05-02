@@ -71,6 +71,77 @@ function ensureFollowUp(lines, followUp = 'Is there anything else you want me to
   return [...next, followUp];
 }
 
+function buildRelatedTopics(primary = [], fallback = []) {
+  const out = [];
+  [...(Array.isArray(primary) ? primary : []), ...(Array.isArray(fallback) ? fallback : []), ...PT_AI_TOPICS]
+    .forEach((topic) => {
+      if (!topic) return;
+      const normalized = typeof topic === 'string'
+        ? (PT_AI_TOPICS.find((item) => item.id === topic || item.title.toLowerCase() === topic.toLowerCase()) || null)
+        : topic;
+      if (!normalized?.title) return;
+      if (out.some((item) => item.id === normalized.id || item.title.toLowerCase() === normalized.title.toLowerCase())) return;
+      out.push(normalized);
+    });
+  return out.slice(0, 4);
+}
+
+function buildOffTopicAnswer() {
+  return {
+    title: 'I focus on this POS system',
+    answer: [
+      'I can give a brief general idea, but I was built mainly to help employees use this POS, inventory, approvals, finance, and communication system.',
+      'Please ask me about a workflow in this system, such as POS sales, purchases, transfers, adjustments, expenses, cash reconciliation, invoices, customers, users, or reports.',
+      'Is there anything else you want me to help you with inside the system?'
+    ],
+    related: PT_AI_TOPICS.slice(0, 4)
+  };
+}
+
+function buildProhibitedAnswer() {
+  return {
+    title: 'I cannot help with that',
+    answer: [
+      'I was not built to help with hacking, privacy abuse, sexual content, breaches of security, or other harmful activity.',
+      'If you need help, I can assist with safe and lawful use of this POS system, such as sales, stock, approvals, reports, finance, customers, users, or communication workflows.',
+      'Is there anything else you want me to help you with inside the system?'
+    ],
+    related: PT_AI_TOPICS.slice(0, 4)
+  };
+}
+
+function isProhibitedQuestion(query) {
+  const q = normalizeChatText(query);
+  return [
+    /hack/,
+    /bypass/,
+    /crack/,
+    /exploit/,
+    /steal password/,
+    /keylog/,
+    /spy|stalk/,
+    /privacy breach|breach privacy/,
+    /nude|porn|sex/,
+    /ddos|malware|ransomware/,
+    /phish|phishing/
+  ].some((pattern) => pattern.test(q));
+}
+
+function isLikelySystemQuestion(query, localMatch) {
+  const q = normalizeChatText(query);
+  if (!q) return false;
+  if (buildSmallTalkAnswer(query)) return true;
+  if (looksLikeHowToQuestion(query)) return true;
+  if (localMatch && String(localMatch.title || '').trim() !== 'I need a clearer question') return true;
+  const broadSystemTerms = [
+    'pos', 'sale', 'sales', 'receipt', 'invoice', 'product', 'stock', 'inventory', 'purchase', 'transfer',
+    'adjustment', 'expense', 'finance', 'cash', 'reconciliation', 'branch', 'customer', 'supplier', 'user',
+    'report', 'dashboard', 'approval', 'refund', 'backup', 'sync', 'serial', 'imei', 'communication', 'chat',
+    'tenant', 'godhand', 'config', 'settings', 'label'
+  ];
+  return broadSystemTerms.some((term) => q.includes(term));
+}
+
 function looksLikeHowToQuestion(query) {
   const q = normalizeChatText(query);
   return q.includes('how do i')
@@ -86,29 +157,43 @@ function looksLikeHowToQuestion(query) {
     || q.includes('download');
 }
 
+function formatTutorialLines(lines) {
+  const clean = Array.isArray(lines) ? lines.map((line) => String(line || '').trim()).filter(Boolean) : [];
+  return clean.map((line, index) => {
+    if (/^\d+\.\s/.test(line)) return line;
+    return `${index + 1}. ${line}`;
+  });
+}
+
 function buildConversationalAnswer(query, result, fallbackTitle = 'PT AI Answer') {
   const smallTalk = buildSmallTalkAnswer(query);
   if (smallTalk) return smallTalk;
 
   const localMatch = findBestPtAiAnswer(query);
   const title = String(result?.title || fallbackTitle).trim() || fallbackTitle;
-  const answerLines = Array.isArray(result?.answer)
+  const rawAnswerLines = Array.isArray(result?.answer)
     ? result.answer.map((line) => String(line || '').trim()).filter(Boolean)
     : String(result?.answer || result?.text || '').split(/\n{2,}|\r\n\r\n/).map((line) => line.trim()).filter(Boolean);
   const normalizedResult = title.toLowerCase();
+  const tutorialMode = looksLikeHowToQuestion(query);
+  const answerLines = tutorialMode ? formatTutorialLines(rawAnswerLines) : rawAnswerLines;
   const intro = normalizedResult.includes('clearer question')
     ? 'I can help with that, but I need a little more detail.'
-    : looksLikeHowToQuestion(query)
+    : tutorialMode
       ? `Sure. Follow these steps for "${String(query || '').trim()}".`
       : `Sure, here is the best help I found for "${String(query || '').trim()}".`;
-  const related = Array.isArray(result?.related) && result.related.length
-    ? result.related
-    : (Array.isArray(localMatch?.related) ? localMatch.related : []);
+  const followUp = tutorialMode
+    ? 'If you want, I can also show the exact menu path or button names for another task. Is there anything else you want me to help you with?'
+    : 'Is there anything else you want me to help you with?';
+  const related = buildRelatedTopics(
+    Array.isArray(result?.related) && result.related.length ? result.related : [],
+    Array.isArray(localMatch?.related) ? localMatch.related : []
+  );
 
   return {
     ...result,
     title,
-    answer: ensureFollowUp([intro, ...answerLines]),
+    answer: ensureFollowUp([intro, ...answerLines], followUp),
     related
   };
 }
@@ -197,10 +282,13 @@ function AskPtAiPage() {
   async function ask(nextQuery, options = {}) {
     const clean = String(nextQuery || query || '').trim();
     if (!clean) return;
+    const localMatch = findBestPtAiAnswer(clean);
+    const prohibitedResult = isProhibitedQuestion(clean) ? buildProhibitedAnswer() : null;
+    const offTopicResult = !prohibitedResult && !isLikelySystemQuestion(clean, localMatch) ? buildOffTopicAnswer() : null;
     const requestId = Date.now();
     requestIdRef.current = requestId;
     const answerEntryId = `ai-${requestId}`;
-    const quickFallback = buildConversationalAnswer(clean, findBestPtAiAnswer(clean), 'PT AI Local Help');
+    const quickFallback = prohibitedResult || offTopicResult || buildConversationalAnswer(clean, localMatch, 'PT AI Local Help');
     setAnswer(quickFallback);
     setAnswerMeta('Built-in workflow guidance');
     saveHistoryEntry(clean, quickFallback);
@@ -218,6 +306,11 @@ function AskPtAiPage() {
       }
     ]));
     if (options.autoSpeakQuick) speakResult(quickFallback);
+    if (prohibitedResult || offTopicResult) {
+      setAsking(false);
+      if (!options.keepQuery) setQuery('');
+      return;
+    }
     setAsking(true);
     try {
       const aiResult = await askPtAiApi({
@@ -290,7 +383,7 @@ function AskPtAiPage() {
       recognition.continuous = false;
       recognition.onstart = () => {
         setListening(true);
-        setTranscript('');
+        setTranscript('Listening for your question...');
         transcriptRef.current = '';
       };
       recognition.onresult = (event) => {
@@ -307,7 +400,13 @@ function AskPtAiPage() {
         setListening(false);
         recognitionRef.current = null;
         const finalText = String(transcriptRef.current || query || '').trim();
-        if (finalText) ask(finalText, { autoSpeak: true, autoSpeakQuick: true });
+        if (finalText) {
+          setTranscript(finalText);
+          ask(finalText, { autoSpeak: true, autoSpeakQuick: true });
+        } else {
+          setTranscript('');
+          toast.show('No speech was captured. Please try again and speak clearly.', { type: 'warning' });
+        }
       };
       recognitionRef.current = recognition;
       recognition.start();
@@ -365,7 +464,7 @@ function AskPtAiPage() {
         }
       };
       mediaRecorderRef.current = recorder;
-      setTranscript('');
+      setTranscript('Recording voice...');
       setRecording(true);
       recorder.start();
     } catch (error) {
@@ -436,7 +535,7 @@ function AskPtAiPage() {
             </div>
             <div>
               <div className="field-label" style={{ marginBottom: 8 }}>Quick Topics</div>
-              <div className="inline-actions">
+              <div className="inline-actions ask-ai-topic-list">
                 {quickTopics.map((topic) => (
                   <button key={topic.id} className="btn" onClick={() => { setQuery(topic.title); ask(topic.title); }}>
                     {topic.title}
@@ -532,13 +631,18 @@ function AskPtAiPage() {
               </div>
             ) : null}
             <div className="chat-compose-row">
-              {recorderSupported ? (
-                recording
-                  ? <button className="btn chat-compose-emoji-btn" onClick={stopAudioRecording} title="Stop recording">■</button>
-                  : <button className="btn chat-compose-emoji-btn" onClick={startAudioRecording} disabled={listening} title="Record voice">Rec</button>
-              ) : (
-                <button className="btn chat-compose-emoji-btn" onClick={startVoiceInput} disabled={!voiceSupported || recording} title="Use browser voice">Mic</button>
-              )}
+              <div className="ask-ai-compose-controls">
+                {recorderSupported ? (
+                  recording
+                    ? <button className="btn chat-compose-emoji-btn ask-ai-record-btn" onClick={stopAudioRecording} title="Stop recording" aria-label="Stop recording">■</button>
+                    : <button className="btn chat-compose-emoji-btn ask-ai-record-btn" onClick={startAudioRecording} disabled={listening} title="Record voice" aria-label="Record voice">●</button>
+                ) : null}
+                {voiceSupported ? (
+                  listening
+                    ? <button className="btn chat-compose-emoji-btn ask-ai-record-btn" onClick={stopVoiceInput} disabled={recording} title="Stop browser voice" aria-label="Stop browser voice">◼</button>
+                    : <button className="btn chat-compose-emoji-btn ask-ai-record-btn" onClick={startVoiceInput} disabled={recording} title="Use browser voice" aria-label="Use browser voice">🎤</button>
+                ) : null}
+              </div>
               <textarea
                 className="input chat-compose-input"
                 rows={1}
@@ -552,11 +656,6 @@ function AskPtAiPage() {
               </button>
             </div>
             <div className="inline-actions ask-ai-toolbar">
-              {voiceSupported ? (
-                listening
-                  ? <button className="btn" onClick={stopVoiceInput}>Stop Voice Input</button>
-                  : <button className="btn" onClick={startVoiceInput} disabled={recording}>Use Browser Voice</button>
-              ) : null}
               {speechSupported ? (
                 speaking
                   ? <button className="btn" onClick={stopSpeaking}>Stop Reading</button>

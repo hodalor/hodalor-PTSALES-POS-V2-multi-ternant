@@ -88,6 +88,18 @@ function GodHandPage() {
         <div className="card stat-card"><div className="stat-label">Hidden Overrides</div><div className="stat-value">{Object.keys(localFlags || {}).length}</div></div>
       </div>
       <div className="card" style={{ marginBottom: 12 }}>
+        <h2 className="section-title" style={{ marginTop: 0 }}>How To Use GodHand Safely</h2>
+        <div className="section-note" style={{ marginBottom: 10 }}>
+          Use GodHand when you want to show or hide modules, sidebar menus, pages, tabs, and paid capabilities for a tenant.
+        </div>
+        <ol style={{ margin: 0, paddingLeft: 20, display: 'grid', gap: 6 }}>
+          <li>Use the search box to find the page, module, or feature you want to control.</li>
+          <li>Open the matching feature group and switch only the exact items you want to enable or hide.</li>
+          <li>Remember that hiding a feature removes it from the sidebar and also blocks direct route access where supported.</li>
+          <li>Click Save, then test with a user from that tenant to confirm the visible menus now match the paid plan or allowed workflow.</li>
+        </ol>
+      </div>
+      <div className="card" style={{ marginBottom: 12 }}>
         <div className="section-header">
           <input
             className="input"

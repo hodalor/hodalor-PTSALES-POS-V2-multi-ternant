@@ -167,10 +167,11 @@ export const PT_AI_TOPICS = [
     keywords: ['sales record', 'sales history', 'find sale', 'sales page', 'search sales'],
     answer: [
       'Open Sales from the sidebar.',
-      'Use the branch, date, seller, or search filters to narrow the sales records.',
-      'Review the table row that matches the sale you need. It shows invoice serial, branch, seller, and total.',
-      'Use the actions on that row to reprint the receipt or inspect the record further.',
-      'Use the export actions when you want to download the filtered sales list.'
+      'Use the top buttons to stay on Sales, or switch to Sales Rep Leaderboard or Branch Comparison when you need analysis instead of row records.',
+      'Use Branch, Period, From, To, Sale Type, and Credit Type to narrow the list. Users with wider scope can also use All Branches.',
+      'Review the row that matches the sale. It shows invoice serial, seller, branch, and totals.',
+      'Click Reprint to print the receipt again, or click ESC/POS to download the text receipt file.',
+      'Use Export CSV or Export PDF when you want to download the filtered sales list.'
     ]
   },
   {
@@ -179,10 +180,12 @@ export const PT_AI_TOPICS = [
     keywords: ['create invoice', 'invoice records', 'manual invoice', 'find invoice'],
     answer: [
       'Open Invoices from the sidebar.',
-      'Use the New Invoice tab to create a fresh invoice by searching products, adding quantities, and selecting a customer or entering ad-hoc customer details.',
-      'Fill any optional reference fields such as delivery note, payment terms, or destination if your process requires them.',
-      'Save or print the invoice when the item lines are complete.',
-      'To find older invoices, switch to Invoice Records and search by invoice number, customer, or reference fields, then print the matching record.'
+      'Use New Invoice to create a fresh invoice, or Invoice Records to search past invoice rows.',
+      'On New Invoice, search with Search name, SKU or scan barcode, click Add on the product you want, then adjust Qty and Rate on the line items.',
+      'Choose an existing customer or enter ad-hoc Name, Contact, and Address, then fill optional references such as Delivery Note, Payment Terms, Other Ref., Buyer Order No., and Destination when needed.',
+      'If your page allows multiple selling prices, choose the Invoice Price Tier first so product rates follow the selected tier.',
+      'Click Generate Invoice (A4) when the lines are complete.',
+      'To find older invoices, switch to Invoice Records, search by number, customer, order no., or supplier or other refs, then use Print on the matching row.'
     ]
   },
   {
@@ -239,9 +242,11 @@ export const PT_AI_TOPICS = [
     keywords: ['credit sale', 'easy buy', 'repayment approvals', 'defaulters', 'good clients'],
     answer: [
       'Open Credit Sale from the sidebar.',
-      'Use Overview to see the current state of credit sales.',
-      'Use Good Clients and Defaulters to review customer repayment performance.',
-      'Open Payment Approvals when repayments need manager or director action.',
+      'Use Credit Sale Control for the main working screen, then use the section buttons Client Ranking, Active Sales, and Repayments inside that page.',
+      'Use Period, From, To, Branch, and Credit Source to filter by All Sources, Retail EasyBuy, or Distribution Credit Sale.',
+      'On Active Sales, click Repayment on the row you want, then enter Repayment amount and Repayment remark when prompted.',
+      'Use the separate Good Clients and Defaulters sidebar pages when you want filtered customer ranking views only.',
+      'Open Credit Sale Repayment Approvals when repayments need manager or director action, then use Pending Director, Pending Manager, Approved, or Rejected to view the correct queue.',
       'If you create a credit sale from POS, make sure the required customer details are captured before completing the sale.'
     ]
   },
@@ -270,9 +275,12 @@ export const PT_AI_TOPICS = [
     title: 'How To Create Users And Give Access',
     keywords: ['user', 'grant', 'permission', 'role', 'cashier access'],
     answer: [
-      'Open Users and create the user with role, PIN, and assigned branches.',
-      'Use feature access and grants to decide which menus and actions they can use.',
-      'Tenant features and GodHand decide whether a module exists at all, while grants decide what the user may do inside it.'
+      'Open Admin then Users.',
+      'In Create User, enter username, PIN, and choose the Role.',
+      'Use Assign to all branches or choose the main branch and Assign additional branches when the user should not see every branch.',
+      'Use the Feature Access section to tick the exact permissions the user should have.',
+      'Enter Remark (required), then click Add User.',
+      'Use Edit on an existing user to change their role, status, branch access, PIN, and grants later.'
     ]
   },
   {
@@ -313,9 +321,10 @@ export const PT_AI_TOPICS = [
     keywords: ['report', 'export csv', 'export pdf', 'analytics'],
     answer: [
       'Open Reports from the sidebar.',
-      'Choose the report type, branch scope, and date range you want to analyze.',
-      'Apply the filters so the page loads the exact summary you need.',
-      'Use the export buttons for CSV or PDF where available.',
+      'Choose Period, From, To, Branch, and Report Type at the top first.',
+      'Use Branch with All Branches when you want a broader scope and your access allows it.',
+      'Set Report Type to the area you want, such as sales, purchases, transfers, adjustments, stock records, refunds, warehouse operations, or stock snapshots.',
+      'Scroll to the matching report card and click Export CSV or Export PDF on that section.',
       'Revenue and profit visibility still follow the user grants.'
     ]
   },
@@ -336,8 +345,9 @@ export const PT_AI_TOPICS = [
     keywords: ['add supplier', 'suppliers page', 'create supplier'],
     answer: [
       'Open Partners then Suppliers.',
-      'Click Add Supplier and enter the supplier name first, then add the other available details such as phone, address, or contact person.',
-      'Save the supplier so it becomes selectable in purchase flows.',
+      'Use Search suppliers when you first want to check whether the supplier already exists.',
+      'Enter Name (required), Contact person, Phone, Email, Address, and Notes.',
+      'Click Add Supplier to save the record so it becomes selectable in purchase flows.',
       'If only the name is known during purchase, you can create the supplier quickly first and complete the other details later.'
     ]
   },
@@ -347,9 +357,11 @@ export const PT_AI_TOPICS = [
     keywords: ['add customer page', 'customers page', 'create customer'],
     answer: [
       'Open Partners then Customers.',
-      'Click Add Customer and enter the main fields such as name, phone, and address.',
-      'Add business name, TIN or TPIN, and other fields when available.',
-      'Save the customer so it can be used later in POS, invoices, or receipt records.'
+      'Click Add Customer to open the customer modal.',
+      'Use the Profile tab to enter the main fields such as name, phone, email, customer type, and address.',
+      'Add business details such as Business Name, Registration Number, Tax ID, Business Phone, Business Email, and Business Address when available.',
+      'You can also attach Photo, ID Front, ID Back, and Business Certificate files.',
+      'Click Save Customer to create the record so it can be used later in POS, invoices, or receipts.'
     ]
   },
   {
@@ -412,10 +424,11 @@ export const PT_AI_TOPICS = [
     keywords: ['backup', 'sync', 'offline', 'queue', 'imei conflicts'],
     answer: [
       'Open Backup from the sidebar when you want to review queued offline records.',
-      'The page shows the collections that have pending items waiting to upload.',
+      'Use the collection buttons on the left to open the queue you want, such as sales, invoices, customers, or other pending collections.',
       'Use Backup Now to upload queued records when internet is available.',
       'Use Sync Now to refresh local data from the server.',
-      'If a serialized offline sale cannot be applied cleanly, review it in IMEI Conflicts.'
+      'Open IMEI Conflicts when a serialized offline record could not sync cleanly.',
+      'If you are SuperAdmin, you can also use Export Tenant Data or Import Tenant Data from the Tenant Import / Export section.'
     ]
   },
   {
@@ -445,9 +458,10 @@ export const PT_AI_TOPICS = [
     keywords: ['stock records page', 'trace stock records', 'stock movement history'],
     answer: [
       'Open Admin then Stock Records.',
-      'Use the date, branch, actor, and source filters to narrow the movements you want to inspect.',
+      'Use Period, From, To, Actor, Branch, and Source to narrow the movements you want to inspect.',
       'Review the rows to see when quantity changed, who triggered it, and which page or source document caused it.',
-      'Export the filtered records if you want to share or print the stock history.'
+      'Use Export CSV or Export PDF when you want to share or print the filtered stock history.',
+      'If you are SuperAdmin, you can bulk-select rows, choose Delete Selected, and click Apply when records truly need removal.'
     ]
   },
   {
@@ -457,8 +471,34 @@ export const PT_AI_TOPICS = [
     answer: [
       'Open Admin then Config.',
       'Use the different settings areas to manage branding, receipt details, tax, invoice numbering, refresh behavior, communication sounds, and other system options.',
-      'When you need company deposit accounts for finance reconciliation, create them in Config under the finance account area.',
-      'After changing values, save the settings so the rest of the app uses the updated configuration.'
+      'In Communication Sounds, choose Message Sound and Call Sound, then use Test Message Sound or Test Call Sound before saving.',
+      'In Finance Accounts, enter the account form and save the company account used for reconciliation deposits.',
+      'In Manage Categories, type the category name and click Add.',
+      'In the branch area, enter the branch details and click Add to create a retail, wholesale, or warehouse branch.',
+      'After changing values, click Save so the rest of the app uses the updated configuration.'
+    ]
+  },
+  {
+    id: 'backup-import-export',
+    title: 'How To Import Or Export Tenant Data',
+    keywords: ['import tenant data', 'export tenant data', 'backup json', 'tenant backup'],
+    answer: [
+      'Open Backup, then go to the Tenant Import / Export section.',
+      'Click Export Tenant Data to download the current tenant collections as a backup JSON file.',
+      'Click Import Tenant Data to open the import modal.',
+      'Choose the backup file, then select Import Mode as Keep Current Data or Overwrite Current Data.',
+      'Review the Import Preview, then click Start Import.'
+    ]
+  },
+  {
+    id: 'customer-leaderboard-controls',
+    title: 'How To Use Customer Leaderboard',
+    keywords: ['customer leaderboard tab', 'amount spent', 'products bought', 'retail customers', 'distribution customers'],
+    answer: [
+      'Open Partners then Customers, then switch to Customer Leaderboard.',
+      'Use the ranking mode selector to choose Amount Spent or Products Bought.',
+      'Use the type filter to show All Customers, Retail Customers, or Distribution Customers.',
+      'Review the chart for the top entries and the table below for the full ranking list.'
     ]
   },
   {

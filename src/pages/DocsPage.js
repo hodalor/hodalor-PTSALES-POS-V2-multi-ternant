@@ -330,7 +330,25 @@ if (Math.abs(expectedAmount - enteredAmount) > 0.005) {
           <li>GodHand uses the tenant feature catalog to toggle top-level menus, grouped sidebar sections, sub-pages, tabs, runtime capabilities, and grant-backed permissions.</li>
           <li>Newer feature-group coverage now includes finance, dashboard competition scope, serialized inventory access, distribution and warehouse pages, tenant data export/import, and revenue/profit visibility controls.</li>
           <li>Hidden features are removed from menus and also blocked by route and grant checks, which reduces accidental exposure.</li>
+          <li>Recommended operator flow: search the feature by page name, switch only the exact items you want, then click Save and test with a user from that tenant.</li>
         </ul>
+      </Section>
+
+      <Section title="Ask PT AI Guidance Model">
+        <ul>
+          <li>Ask PT AI now blends local workflow knowledge with the backend AI response so users get a fast answer first and a richer answer when available.</li>
+          <li>For “how to” and “where do I find” questions, the response layer now prefers tutorial-style guidance with menu path, tab names, filters, row actions, and button labels.</li>
+          <li>Related Help suggestions are attached to the same AI message so users can continue into nearby workflows without leaving the chat.</li>
+          <li>Manual, Docs, and PT AI knowledge are being aligned so a user sees the same workflow language across all help channels.</li>
+        </ul>
+        <Code>
+{`// AskPtAiPage.js response shaping
+const tutorialMode = looksLikeHowToQuestion(query);
+const answerLines = tutorialMode ? formatTutorialLines(rawAnswerLines) : rawAnswerLines;
+const intro = tutorialMode
+  ? \`Sure. Follow these steps for "\${query}".\`
+  : \`Sure, here is the best help I found for "\${query}".\`;`}
+        </Code>
       </Section>
 
       <Section title="Purchases: Unit Conversion">
