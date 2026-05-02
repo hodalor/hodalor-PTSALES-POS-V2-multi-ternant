@@ -200,6 +200,8 @@ const enabledGateways = hasStoredList
           <li>The older dashboard heatmap has been removed.</li>
           <li>Dashboard, Sales, and Reports now apply separate grant checks for revenue and profit visibility.</li>
           <li>`view_financials` remains supported for backward compatibility, while the active split model uses `view_revenue` and `view_profit`.</li>
+          <li>Dashboard competition scope is also split into assigned-branch and all-branch grants for both cashier leaderboard visibility and branch comparison visibility.</li>
+          <li>Dashboard defaults to today for both From and To, while leaderboard and comparison sections can still expand beyond one branch when the correct grants are present.</li>
         </ul>
         <Code>
 {`const canViewRevenue = roleLower === 'superadmin'
@@ -211,6 +213,22 @@ const canViewProfit = roleLower === 'superadmin'
   || roleLower === 'admin'
   || grants.includes('view_profit')
   || grants.includes('view_financials');`}
+        </Code>
+      </Section>
+
+      <Section title="Customer Leaderboard and Dashboard Competition">
+        <ul>
+          <li>The Dashboard now supports customer leaderboard summaries, cashier competition scope, and branch comparison scope as separate visibility concepts.</li>
+          <li>Customer leaderboard supports top-10 ranking by amount spent or products bought.</li>
+          <li>Customers page includes a dedicated Customer Leaderboard tab for full rankings, plus filters for retail customers, distribution customers, or all customers.</li>
+          <li>Leaderboard and comparison results now respect branch-scope grants instead of always collapsing to only the logged-in cashier.</li>
+        </ul>
+        <Code>
+{`// tenantAccess grants used by Dashboard and Sales
+'view_dashboard_cashier_assigned'
+'view_dashboard_cashier_all'
+'view_dashboard_branch_comparison_assigned'
+'view_dashboard_branch_comparison_all'`}
         </Code>
       </Section>
 
@@ -247,6 +265,7 @@ const canViewProfit = roleLower === 'superadmin'
         <ul>
           <li>Sets stock per branch or variant; calculates delta and records audit entries.</li>
           <li>Queues server write offline; reverts local change on enqueue failure.</li>
+          <li>Retail adjustment entry now follows the distribution-style UX for quantity-based adjustments while still sending a signed backend delta.</li>
         </ul>
         <Code>
 {`function setStockWithAudit(p, variantId, bId, quantity) {
@@ -269,6 +288,49 @@ const canViewProfit = roleLower === 'superadmin'
     .finally(() => setSavingKey(k => (k === key ? null : k)));
 }`}
         </Code>
+      </Section>
+
+      <Section title="Inventory Segregation and Branch-Type Safety">
+        <ul>
+          <li>Stock writes now resolve inventory type from the real branch type instead of assuming everything is retail.</li>
+          <li>Retail, distribution, and warehouse stock are isolated through their own stock maps, and stock-changing routes choose the correct map based on the target branch.</li>
+          <li>This segregation now applies across purchases, refunds, adjustments, transfers, direct stock routes, manual stock setting, and related optimistic frontend updates.</li>
+          <li>Retail create flows intentionally restrict branch selectors to retail branches where appropriate, while cross-inventory transfer targets can still remain broader.</li>
+        </ul>
+        <Code>
+{`// inventory target resolution concept
+const inventoryType = await resolveInventoryTypeFromBranch(branchId, 'retail');
+const target = getStockTarget(productDoc, variantId, inventoryType);
+const current = getMapQty(target.container, branchId);
+setMapQty(target.container, branchId, current + delta);
+markInventoryModified(target);`}
+        </Code>
+      </Section>
+
+      <Section title="Finance and Cash Reconciliation">
+        <ul>
+          <li>The Finance menu currently centers on Cash Reconciliation workflows that compare daily branch sales against deposited company-account totals.</li>
+          <li>Accounts can be branch-specific or shared across branches, and each reconciliation can split deposited amounts across multiple allocations and payment methods.</li>
+          <li>Proof-of-deposit uploads are attached per allocation and approvals require manager/director remarks before balances update.</li>
+          <li>Backlog detection focuses on sales dates that have revenue but are not yet deposited, without blocking new sales days.</li>
+          <li>Dashboard finance summaries and the reconciliation page both derive from approved, pending, and awaiting-deposit totals rather than manual bookkeeping.</li>
+        </ul>
+        <Code>
+{`// reconciliation validation concept
+const expectedAmount = sum(selectedSalesDates);
+const enteredAmount = sum(allocations.map(a => a.amount));
+if (Math.abs(expectedAmount - enteredAmount) > 0.005) {
+  throw new Error('Entered amount must exactly match expected sales total');
+}`}
+        </Code>
+      </Section>
+
+      <Section title="GodHand and Tenant Feature Gating">
+        <ul>
+          <li>GodHand uses the tenant feature catalog to toggle top-level menus, grouped sidebar sections, sub-pages, tabs, runtime capabilities, and grant-backed permissions.</li>
+          <li>Newer feature-group coverage now includes finance, dashboard competition scope, serialized inventory access, distribution and warehouse pages, tenant data export/import, and revenue/profit visibility controls.</li>
+          <li>Hidden features are removed from menus and also blocked by route and grant checks, which reduces accidental exposure.</li>
+        </ul>
       </Section>
 
       <Section title="Purchases: Unit Conversion">

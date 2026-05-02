@@ -62,6 +62,7 @@ function AdminManualPage() {
           <li>Suppliers & Customers: Maintain master data and contacts.</li>
           <li>Refunds: Initiate and approve refunds with two‑step verification.</li>
           <li>Refund Approvals: Manager/Admin approve refund requests and restock if needed.</li>
+          <li>Finance: Cash Reconciliation for deposit backlog, company-account allocations, and approval workflow.</li>
           <li>Reports: Export sales CSV, totals by time/seller/branch.</li>
           <li>Backup & Sync: View queued offline items, run Backup Now / Sync Now.</li>
           <li>IMEI Conflicts: Review serialized offline sales that failed during sync.</li>
@@ -83,6 +84,23 @@ function AdminManualPage() {
           <li>When a tenant subscription is expired, payment actions appear only if at least one gateway is enabled by superadmin.</li>
           <li>If all gateways are disabled, tenants see the configured fallback message instead of Make Payment buttons.</li>
           <li>Tenant admins can edit the fallback renewal message from Config using the Subscription Payment Unavailable Message setting.</li>
+          <li>Master and tenant data should remain isolated even on the same browser session because business datasets are reloaded per tenant instead of trusted from stale persisted lists.</li>
+        </ul>
+      </Section>
+
+      <Section title="Dashboard – Competition, Customers, and Scope">
+        <ul>
+          <li>Dashboard starts each day with From and To set to today.</li>
+          <li>Sales summary areas remain branch-specific by default.</li>
+          <li>Cashier leaderboard and branch comparison can be widened by grants:
+            <ul>
+              <li>Assigned branches only</li>
+              <li>All branches</li>
+            </ul>
+          </li>
+          <li>Customer leaderboard now appears on the dashboard as a top-10 summary and can rank by amount spent or by products bought.</li>
+          <li>Customers page includes a full Customer Leaderboard tab with filters for retail, distribution, or all customers.</li>
+          <li>Revenue and Profit are controlled separately, so a user may be allowed to see one without the other.</li>
         </ul>
       </Section>
 
@@ -238,6 +256,7 @@ function AdminManualPage() {
           <li>Sales summaries by time, seller and branch with CSV/PDF exports.</li>
           <li>Revenue and profit visibility now follow separate grants, so one can be shown while the other stays hidden.</li>
           <li>Exports and on-screen values respect those visibility grants.</li>
+          <li>All Branches filtering is supported where the user has scope to view broader branch data.</li>
           <li>Use filters and export buttons to share reports externally.</li>
         </ul>
       </Section>
@@ -316,7 +335,7 @@ function AdminManualPage() {
 
       <Section title="Adjustments – Correct Stock">
         <ul>
-          <li>Select Product → Variant (if any) → Branch → Delta (+/‑) → Apply with a required remark.</li>
+          <li>Select Product → Variant (if any) → Branch → Quantity → Adjustment Type → Apply with a required reason and remark.</li>
           <li>Use for corrections, write‑offs or cycle count differences. All actions are audited.</li>
           <li>Damaged/Expired Removal: Use the dedicated removal tool to subtract a quantity with a reason; this records an audit entry and updates branch stock.</li>
           <li>Serialized adjustment flow:
@@ -328,6 +347,33 @@ function AdminManualPage() {
             </ul>
           </li>
           <li>Approvals: Staff submit Adjustment Requests; Managers/Admins with the approve_adjustments grant review in the Approvals tab and Approve/Reject with a remark.</li>
+        </ul>
+      </Section>
+
+      <Section title="Cash Reconciliation – Finance Workflow">
+        <ul>
+          <li>Use Finance → Cash Reconciliation to match branch sales to company-account deposits.</li>
+          <li>Backlog & Submit:
+            <ul>
+              <li>Select a branch and backlog dates with real sales that are not yet deposited.</li>
+              <li>Expected amount is calculated automatically from the selected sales dates.</li>
+              <li>The total entered across all allocations must exactly equal the expected amount.</li>
+            </ul>
+          </li>
+          <li>Allocations:
+            <ul>
+              <li>Split one reconciliation across multiple company accounts and payment methods.</li>
+              <li>Upload proof of deposit for each allocation.</li>
+            </ul>
+          </li>
+          <li>Approvals:
+            <ul>
+              <li>Rows open a detail modal for full review.</li>
+              <li>Approver must enter a remark before approval or rejection.</li>
+              <li>Balances only update after the proper approval stage is completed.</li>
+            </ul>
+          </li>
+          <li>Records and cards show deposited totals, awaiting deposit, pending approval, and backlog days.</li>
         </ul>
       </Section>
 
@@ -481,6 +527,7 @@ function AdminManualPage() {
           <li>Purpose: Hide/show modules, admin menus, and selected tabs based on what a company has paid for.</li>
           <li>Location: Admin → GodHand (SuperAdmin only).</li>
           <li>Effect: Disabled features are removed from the sidebar and blocked by routes (direct URL access is prevented).</li>
+          <li>Coverage includes retail menus, distribution and warehouse menus, finance screens, serialized inventory, docs/manual pages, admin tools, runtime tabs, and grant-backed visibility items such as dashboard competition and revenue/profit access.</li>
           <li>Recommendation: Enable only the modules the customer is subscribed to; keep core navigation (like POS) enabled.</li>
         </ul>
       </Section>

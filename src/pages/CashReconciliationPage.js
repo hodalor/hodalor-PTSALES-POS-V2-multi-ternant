@@ -572,18 +572,18 @@ function CashReconciliationPage() {
               </table>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-              <div className="card" style={{ background: '#f8fafc' }}>
-                <div style={{ color: '#64748b' }}>Selected Sales Days</div>
-                <div style={{ fontSize: 28, fontWeight: 800 }}>{selectedDates.length}</div>
+            <div className="stats-grid">
+              <div className="surface-panel">
+                <div className="stat-label">Selected Sales Days</div>
+                <div className="stat-value">{selectedDates.length}</div>
               </div>
-              <div className="card" style={{ background: '#f8fafc' }}>
-                <div style={{ color: '#64748b' }}>Expected Amount</div>
-                <div style={{ fontSize: 28, fontWeight: 800 }}>{formatCurrency(expectedAmount || 0, settings)}</div>
+              <div className="surface-panel">
+                <div className="stat-label">Expected Amount</div>
+                <div className="stat-value-compact">{formatCurrency(expectedAmount || 0, settings)}</div>
               </div>
-              <div className="card" style={{ background: '#f8fafc' }}>
-                <div style={{ color: '#64748b' }}>Entered Amount</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: Math.abs(enteredAmount - expectedAmount) < 0.005 ? '#16a34a' : '#dc2626' }}>{formatCurrency(enteredAmount || 0, settings)}</div>
+              <div className="surface-panel">
+                <div className="stat-label">Entered Amount</div>
+                <div className="stat-value-compact" style={{ color: Math.abs(enteredAmount - expectedAmount) < 0.005 ? '#16a34a' : '#dc2626' }}>{formatCurrency(enteredAmount || 0, settings)}</div>
               </div>
             </div>
 
@@ -597,14 +597,14 @@ function CashReconciliationPage() {
 
             <div style={{ display: 'grid', gap: 12 }}>
               {allocations.map((item, index) => (
-                <div key={`alloc-${index}`} className="card" style={{ background: '#f8fafc', display: 'grid', gap: 12 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+                <div key={`alloc-${index}`} className="surface-panel" style={{ display: 'grid', gap: 12 }}>
+                  <div className="section-header">
                     <strong>Allocation {index + 1}</strong>
                     <button className="btn" onClick={() => removeAllocation(index)} disabled={allocations.length === 1}>Remove</button>
                   </div>
-                  <div className="responsive-filter-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(160px, 1fr))', gap: 12 }}>
+                  <div className="record-filters">
                     <label style={{ display: 'grid', gap: 6 }}>
-                      <span>Account</span>
+                      <span className="field-label">Account</span>
                       <select className="select" value={item.accountId} onChange={(e) => updateAllocation(index, { accountId: e.target.value })}>
                         <option value="">Select account</option>
                         {visibleAccounts.map((account) => (
@@ -613,22 +613,22 @@ function CashReconciliationPage() {
                       </select>
                     </label>
                     <label style={{ display: 'grid', gap: 6 }}>
-                      <span>Payment Method</span>
+                      <span className="field-label">Payment Method</span>
                       <select className="select" value={item.paymentMethod} onChange={(e) => updateAllocation(index, { paymentMethod: e.target.value })}>
                         {PAYMENT_METHOD_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
                       </select>
                     </label>
                     <label style={{ display: 'grid', gap: 6 }}>
-                      <span>Amount</span>
+                      <span className="field-label">Amount</span>
                       <input className="input" type="number" min="0" step="0.01" value={item.amount} onChange={(e) => updateAllocation(index, { amount: e.target.value })} />
                     </label>
                     <label style={{ display: 'grid', gap: 6 }}>
-                      <span>Proof of Deposit</span>
+                      <span className="field-label">Proof of Deposit</span>
                       <input className="input" type="file" accept="image/*" onChange={(e) => onAllocationFileChange(index, e.target.files?.[0] || null)} />
                     </label>
                   </div>
                   <label style={{ display: 'grid', gap: 6 }}>
-                    <span>Allocation Note</span>
+                    <span className="field-label">Allocation Note</span>
                     <input className="input" value={item.note} onChange={(e) => updateAllocation(index, { note: e.target.value })} placeholder="Slip reference, teller, or payment note" />
                   </label>
                   {item.proofImage && (

@@ -70,16 +70,25 @@ function GodHandPage() {
   }
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <h1 style={{ margin: 0 }}>GodHand</h1>
-        <OfflineQueueIndicator collection="settings" label="Settings queued" />
+    <div className="page-shell">
+      <div className="page-header">
+        <div>
+          <h1 style={{ margin: 0 }}>GodHand</h1>
+          <div className="page-subtitle-compact">
+            Control menus, submenus, finance, dashboard competition visibility, distribution and warehouse screens, runtime tabs, and grant-backed feature access from one place.
+          </div>
+        </div>
+        <div className="page-header-actions">
+          <OfflineQueueIndicator collection="settings" label="Settings queued" />
+        </div>
       </div>
-      <div className="page-subtitle-compact" style={{ marginBottom: 12 }}>
-        Toggle features ON/OFF for the whole system. Hidden features are removed from menus and blocked by routes.
+      <div className="stats-grid">
+        <div className="card stat-card"><div className="stat-label">Feature Groups</div><div className="stat-value">{groups.length}</div></div>
+        <div className="card stat-card"><div className="stat-label">Visible Feature Rows</div><div className="stat-value">{filtered.length}</div></div>
+        <div className="card stat-card"><div className="stat-label">Hidden Overrides</div><div className="stat-value">{Object.keys(localFlags || {}).length}</div></div>
       </div>
       <div className="card" style={{ marginBottom: 12 }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="section-header">
           <input
             className="input"
             placeholder="Search feature (e.g. POS, refunds, users)"
@@ -87,30 +96,39 @@ function GodHandPage() {
             onChange={e => setQuery(e.target.value)}
             style={{ flex: 1, minWidth: 240 }}
           />
-          <button className="btn" onClick={onResetAll} disabled={saving}>Enable All</button>
-          <button className="btn btn-primary" onClick={onSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
+          <div className="inline-actions">
+            <button className="btn" onClick={onResetAll} disabled={saving}>Enable All</button>
+            <button className="btn btn-primary" onClick={onSave} disabled={saving}>{saving ? 'Saving...' : 'Save'}</button>
+          </div>
         </div>
       </div>
 
       {groups.map(([groupName, rows]) => (
         <div key={groupName} className="card" style={{ marginBottom: 12 }}>
-          <h2 className="section-title" style={{ marginTop: 0 }}>{groupName}</h2>
+          <div className="section-header" style={{ marginBottom: 8 }}>
+            <div>
+              <h2 className="section-title" style={{ marginTop: 0, marginBottom: 4 }}>{groupName}</h2>
+              <div className="section-note">
+                {rows.length} feature item(s) in this group. Disabling an item hides it from menus and blocks direct route access where applicable.
+              </div>
+            </div>
+          </div>
           <div style={{ display: 'grid', gap: 10 }}>
             {rows.map(row => {
               const enabled = localFlags?.[row.key] !== false;
               return (
-                <div key={row.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: 10, border: '1px solid #e2e8f0', borderRadius: 10 }}>
+                <div key={row.key} className="surface-panel" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 800 }}>{row.label}</div>
-                    <div style={{ color: '#64748b', fontSize: 12, wordBreak: 'break-all' }}>{row.key}</div>
+                    <div className="mini-record-subtle" style={{ wordBreak: 'break-all' }}>{row.key}</div>
                   </div>
-                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                  <label className="inline-actions" style={{ cursor: 'pointer' }}>
                     <input
                       type="checkbox"
                       checked={enabled}
                       onChange={e => setLocalFlags(f => setFeatureFlag(f, row.key, e.target.checked))}
                     />
-                    <span>{enabled ? 'Enabled' : 'Hidden'}</span>
+                    <span className={`status-pill ${enabled ? 'status-pill-approved' : 'status-pill-rejected'}`}>{enabled ? 'Enabled' : 'Hidden'}</span>
                   </label>
                 </div>
               );

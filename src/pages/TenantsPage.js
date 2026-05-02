@@ -624,28 +624,28 @@ function TenantsPage() {
   }
 
   return (
-    <div style={{ padding: 16, display: 'grid', gap: 16 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+    <div className="page-shell" style={{ gap: 16 }}>
+      <div className="page-header">
         <div>
         <h1 style={{ marginBottom: 6 }}>Tenants</h1>
-        <div style={{ color: '#64748b' }}>Create companies, assign plans, and override features from one master control.</div>
+        <div className="page-subtitle-compact">Create companies, assign plans, manage payment and renewal settings, and override tenant features from one master control.</div>
         </div>
         {activeTab === 'tenants' ? <button className="btn btn-primary" onClick={openCreateModal}>Add Tenant</button> : null}
       </div>
 
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+      <div className="page-tabs">
         <button className="btn" type="button" style={{ background: activeTab === 'tenants' ? '#eff6ff' : undefined, borderColor: activeTab === 'tenants' ? '#1d4ed8' : undefined, color: activeTab === 'tenants' ? '#1d4ed8' : undefined }} onClick={() => setActiveTab('tenants')}>Tenants</button>
         <button className="btn" type="button" style={{ background: activeTab === 'subscription_management' ? '#eff6ff' : undefined, borderColor: activeTab === 'subscription_management' ? '#1d4ed8' : undefined, color: activeTab === 'subscription_management' ? '#1d4ed8' : undefined }} onClick={() => setActiveTab('subscription_management')}>Subscription Management</button>
         <button className="btn" type="button" style={{ background: activeTab === 'payment_management' ? '#eff6ff' : undefined, borderColor: activeTab === 'payment_management' ? '#1d4ed8' : undefined, color: activeTab === 'payment_management' ? '#1d4ed8' : undefined }} onClick={() => setActiveTab('payment_management')}>Payment Management</button>
       </div>
 
       {activeTab === 'tenants' ? (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-          <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Total Tenants</div><div style={{ fontSize: 28, fontWeight: 800 }}>{tenantSummary.total}</div></div>
-          <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Active</div><div style={{ fontSize: 28, fontWeight: 800 }}>{tenantSummary.active}</div></div>
-          <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Permanent</div><div style={{ fontSize: 28, fontWeight: 800 }}>{tenantSummary.permanent}</div></div>
-          <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Expiring In 7 Days</div><div style={{ fontSize: 28, fontWeight: 800 }}>{tenantSummary.expiringSoon}</div></div>
-          <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Expired</div><div style={{ fontSize: 28, fontWeight: 800 }}>{tenantSummary.expired}</div></div>
+        <div className="stats-grid">
+          <div className="card stat-card"><div className="stat-label">Total Tenants</div><div className="stat-value">{tenantSummary.total}</div></div>
+          <div className="card stat-card"><div className="stat-label">Active</div><div className="stat-value">{tenantSummary.active}</div></div>
+          <div className="card stat-card"><div className="stat-label">Permanent</div><div className="stat-value">{tenantSummary.permanent}</div></div>
+          <div className="card stat-card"><div className="stat-label">Expiring In 7 Days</div><div className="stat-value">{tenantSummary.expiringSoon}</div></div>
+          <div className="card stat-card"><div className="stat-label">Expired</div><div className="stat-value">{tenantSummary.expired}</div></div>
         </div>
       ) : null}
 
