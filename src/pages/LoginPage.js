@@ -620,7 +620,7 @@ function LoginPage() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="login-form">
-            <input placeholder="tenant id (use master for superadmin)" value={tenantId} onChange={e => setTenantId(e.target.value)} />
+            <input placeholder="tenant id" value={tenantId} onChange={e => setTenantId(e.target.value)} />
             <input placeholder="username" value={name} onChange={e => setName(e.target.value)} />
             <input placeholder="PIN (4-6 digits)" type="password" value={pin} onChange={e => setPin(e.target.value)} />
             <div className="captcha-row">

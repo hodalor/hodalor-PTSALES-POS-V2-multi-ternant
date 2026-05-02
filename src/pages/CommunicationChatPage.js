@@ -619,9 +619,6 @@ function CommunicationChatPage() {
                 ))}
               </div>
             ) : null}
-            <div className="approval-row-actions" style={{ justifyContent: 'space-between' }}>
-              <span className="table-meta">Only users inside this tenant can see this chat. Live updates are {liveStatus === 'live' ? 'active' : 'reconnecting'}.</span>
-            </div>
           </div>
         </div>
       </div>
