@@ -2,6 +2,7 @@ import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { modelFor as ChatMessageModelFor } from '../models/ChatMessage.js';
 import { modelFor as ChatCallLogModelFor } from '../models/ChatCallLog.js';
+import { modelFor as ChatCallSignalModelFor } from '../models/ChatCallSignal.js';
 import { modelFor as UserModelFor } from '../models/User.js';
 import { requireAuth, requireFeature, requireRoleOrPerm } from '../middleware/auth.js';
 import { publishChatEvent, subscribeToChatEvents } from '../utils/chatEvents.js';
@@ -80,6 +81,18 @@ function serializeIncomingCall(row) {
     calleeName: normalizeName(row?.calleeName),
     status: String(row?.status || 'ringing'),
     startedAt: row?.startedAt || null
+  };
+}
+
+function serializeCallSignal(row) {
+  return {
+    id: String(row?._id || row?.id || ''),
+    callId: String(row?.callId || ''),
+    senderName: normalizeName(row?.senderName),
+    recipientName: normalizeName(row?.recipientName),
+    signalType: String(row?.signalType || ''),
+    payload: row?.payload && typeof row.payload === 'object' ? row.payload : {},
+    createdAt: row?.createdAt || null
   };
 }
 
@@ -230,6 +243,27 @@ r.get('/incoming-calls', requireAuth, requireFeature('modules.communication'), r
   res.json(rows.map(serializeIncomingCall));
 });
 
+r.get('/call-signals/pending', requireAuth, requireFeature('modules.communication'), requireRoleOrPerm(['Admin', 'Manager', 'Cashier', 'Inventory Staff'], CAN_CHAT), async (req, res) => {
+  const ChatCallSignal = ChatCallSignalModelFor(req.db);
+  const currentUser = normalizeName(req.user?.name);
+  const callId = String(req.query?.callId || '').trim();
+  const limit = Math.min(200, Math.max(10, Number(req.query.limit) || 80));
+  const query = {
+    recipientName: currentUser,
+    deliveredAt: null,
+    createdAt: { $gte: new Date(Date.now() - 5 * 60 * 1000) }
+  };
+  if (callId) query.callId = callId;
+  const rows = await ChatCallSignal.find(query).sort({ createdAt: 1, _id: 1 }).limit(limit).lean();
+  if (rows.length) {
+    await ChatCallSignal.updateMany(
+      { _id: { $in: rows.map((row) => row._id) } },
+      { $set: { deliveredAt: new Date() } }
+    );
+  }
+  res.json(rows.map(serializeCallSignal));
+});
+
 r.post('/', requireAuth, requireFeature('modules.communication'), requireRoleOrPerm(['Admin', 'Manager', 'Cashier', 'Inventory Staff'], ['send_chat_messages', 'view_chat']), async (req, res) => {
   const User = UserModelFor(req.db);
   const ChatMessage = ChatMessageModelFor(req.db);
@@ -347,6 +381,7 @@ r.post('/react', requireAuth, requireFeature('modules.communication'), requireRo
 r.post('/call-signal', requireAuth, requireFeature('modules.communication'), requireRoleOrPerm(['Admin', 'Manager', 'Cashier', 'Inventory Staff'], ['view_chat', 'send_chat_messages']), async (req, res) => {
   const User = UserModelFor(req.db);
   const ChatCallLog = ChatCallLogModelFor(req.db);
+  const ChatCallSignal = ChatCallSignalModelFor(req.db);
   const senderName = normalizeName(req.user?.name);
   const recipientName = normalizeName(req.body?.recipientName);
   const callId = String(req.body?.callId || '').trim();
@@ -412,6 +447,15 @@ r.post('/call-signal', requireAuth, requireFeature('modules.communication'), req
       }
     );
   }
+
+  await ChatCallSignal.create({
+    callId,
+    senderName,
+    recipientName,
+    signalType,
+    payload,
+    expiresAt: new Date(Date.now() + 10 * 60 * 1000)
+  });
 
   const event = {
     type: 'call.signal',
