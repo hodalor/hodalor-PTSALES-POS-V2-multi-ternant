@@ -5,7 +5,8 @@ import Sale from '../models/Sale.js';
 import Product from '../models/Product.js';
 import { requireAuth, requireRole, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
-import { returnSerializedUnits } from '../utils/productUnits.js';
+import { resolveInventoryTypeFromBranch, returnSerializedUnits } from '../utils/productUnits.js';
+import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from '../utils/inventory.js';
 
 const r = Router();
 
@@ -88,6 +89,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_refunds'), as
 
   // 3. Restock inventory if needed
   if ((restockMode === 'full' || restockMode === 'partial') && Array.isArray(rfd.restockItems) && rfd.restockItems.length > 0) {
+    const inventoryType = await resolveInventoryTypeFromBranch(rfd.branchId, saleRef?.inventoryType || 'retail');
     for (const item of rfd.restockItems) {
       if ((!item.sku && !item.productId) || item.qty <= 0) continue;
       
@@ -123,18 +125,19 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_refunds'), as
         // Update stock
         const bid = rfd.branchId;
         if (variantId) {
-             // It's a variant
-             // We need to update the variant's stock map
-             // Mongoose Map update
-             const vIndex = p.variants.findIndex(v => v.id === variantId || v.sku === item.sku);
-             if (vIndex >= 0) {
-                 const current = p.variants[vIndex].stockByBranch.get(bid) || 0;
-                 p.variants[vIndex].stockByBranch.set(bid, current + item.qty);
+             const target = getStockTarget(p, variantId, inventoryType);
+             if (target) {
+               const current = getMapQty(target.container, bid);
+               setMapQty(target.container, bid, current + Number(item.qty || 0));
+               markInventoryModified(target);
              }
         } else {
-            // Main product
-            const current = p.stockByBranch.get(bid) || 0;
-            p.stockByBranch.set(bid, current + item.qty);
+            const target = getStockTarget(p, '', inventoryType);
+            if (target) {
+              const current = getMapQty(target.container, bid);
+              setMapQty(target.container, bid, current + Number(item.qty || 0));
+              markInventoryModified(target);
+            }
         }
         await p.save();
       }
@@ -148,7 +151,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_refunds'), as
         await returnSerializedUnits({
           unitIds,
           branchId: rfd.branchId,
-          inventoryType: saleRef.inventoryType || 'retail',
+          inventoryType,
           saleId: String(saleRef._id || '')
         });
       }

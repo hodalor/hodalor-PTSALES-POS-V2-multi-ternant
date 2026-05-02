@@ -251,23 +251,26 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_ad
   row.items = nextItems;
   row.approved_at = new Date();
   await row.save();
+  const responsePayload = { ok: true, request: row };
   const varLabel = (Array.isArray(p?.variants) ? p.variants.find(v => v.id === row.variantId)?.label : '') || '';
-  await Audit.create({
-    actor: req.user?.name || 'unknown',
-    actionType: 'stock_adjust',
-    details: { product: p?.name || row.productId, variant: varLabel, delta: Number(row.delta), branchId: row.branchId, itemCount: nextItems.length, acceptedCount: nextItems.filter(item => item.status !== 'cancelled').length },
-    remark: row.remark || '',
-    branchId: row.branchId
-  });
-  await ServerLog.create({
-    level: 'info',
-    actor: req.user?.name || 'unknown',
-    route: '/api/adjustments/approve',
-    method: 'POST',
-    status: 200,
-    message: `Adjustment approved Δ ${Number(row.delta)} for ${p?.name || row.productId} @ ${row.branchId}${row.variantId ? ` (variant ${varLabel})` : ''}`
-  });
-  res.json({ ok: true, request: row });
+  res.json(responsePayload);
+  Promise.resolve().then(async () => {
+    await Audit.create({
+      actor: req.user?.name || 'unknown',
+      actionType: 'stock_adjust',
+      details: { product: p?.name || row.productId, variant: varLabel, delta: Number(row.delta), branchId: row.branchId, itemCount: nextItems.length, acceptedCount: nextItems.filter(item => item.status !== 'cancelled').length },
+      remark: row.remark || '',
+      branchId: row.branchId
+    });
+    await ServerLog.create({
+      level: 'info',
+      actor: req.user?.name || 'unknown',
+      route: '/api/adjustments/approve',
+      method: 'POST',
+      status: 200,
+      message: `Adjustment approved Δ ${Number(row.delta)} for ${p?.name || row.productId} @ ${row.branchId}${row.variantId ? ` (variant ${varLabel})` : ''}`
+    });
+  }).catch(() => {});
 });
 
 r.post('/reject', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_adjustments'), async (req, res) => {

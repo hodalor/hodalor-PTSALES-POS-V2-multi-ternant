@@ -6,6 +6,7 @@ import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import { createSerializedUnits, normalizeTrackType, resolveInventoryTypeFromBranch } from '../utils/productUnits.js';
+import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from '../utils/inventory.js';
 import { safeErrorMessage } from '../utils/safeError.js';
 
 const r = Router();
@@ -183,20 +184,17 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_pu
         continue;
       }
       if (item.variantId) {
-        const variants = Array.isArray(doc.variants) ? doc.variants : [];
-        const idx = variants.findIndex(v => v.id === item.variantId);
-        if (idx < 0) return res.status(400).json({ error: 'Variant not found' });
-        const v = variants[idx];
-        if (!v.stockByBranch) v.stockByBranch = new Map();
-        const cur = getBranchQty(v.stockByBranch, pr.branchId);
-        setBranchQty(v.stockByBranch, pr.branchId, Math.max(0, cur + q));
-        doc.variants[idx] = v;
-        doc.markModified('variants');
+        const target = getStockTarget(doc, item.variantId, inventoryType);
+        if (!target) return res.status(400).json({ error: 'Variant not found' });
+        const cur = getMapQty(target.container, pr.branchId);
+        setMapQty(target.container, pr.branchId, Math.max(0, cur + q));
+        markInventoryModified(target);
       } else {
-        if (!doc.stockByBranch) doc.stockByBranch = new Map();
-        const cur = getBranchQty(doc.stockByBranch, pr.branchId);
-        setBranchQty(doc.stockByBranch, pr.branchId, Math.max(0, cur + Number(q)));
-        doc.markModified('stockByBranch');
+        const target = getStockTarget(doc, '', inventoryType);
+        if (!target) return res.status(400).json({ error: 'Product stock target not found' });
+        const cur = getMapQty(target.container, pr.branchId);
+        setMapQty(target.container, pr.branchId, Math.max(0, cur + Number(q)));
+        markInventoryModified(target);
       }
       const cpu = item.costPerUnit != null ? Number(item.costPerUnit) : null;
       if (cpu != null && Number.isFinite(cpu) && cpu >= 0) doc.costPrice = cpu;

@@ -4,7 +4,8 @@ import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
-import { normalizeTrackType } from '../utils/productUnits.js';
+import { normalizeTrackType, resolveInventoryTypeFromBranch } from '../utils/productUnits.js';
+import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from '../utils/inventory.js';
 import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
 
 const r = Router();
@@ -32,17 +33,28 @@ function setBranchQty(mapLike, branchId, qty) {
   }
 }
 
-async function adjustBaseStock(productId, branchId, delta) {
+async function adjustBaseStock(productId, branchId, delta, inventoryType = 'retail') {
   const p = await Product.findOne(productLookupQuery(productId));
   if (!p) {
     const err = new Error('Product not found');
     err.status = 404;
     throw err;
   }
-  if (!p.stockByBranch) p.stockByBranch = new Map();
-  const cur = getBranchQty(p.stockByBranch, branchId);
-  setBranchQty(p.stockByBranch, branchId, Math.max(0, cur + Number(delta)));
-  p.markModified('stockByBranch');
+  const target = getStockTarget(p, '', inventoryType);
+  if (!target) {
+    const err = new Error('Product stock target not found');
+    err.status = 400;
+    throw err;
+  }
+  const cur = getMapQty(target.container, branchId);
+  const next = cur + Number(delta);
+  if (next < 0) {
+    const err = new Error('Insufficient stock');
+    err.status = 400;
+    throw err;
+  }
+  setMapQty(target.container, branchId, next);
+  markInventoryModified(target);
   await p.save();
   return p;
 }
@@ -67,26 +79,28 @@ async function assertNonSerializedStockMutation(productId) {
   return p;
 }
 
- async function adjustVariantStock(productId, variantId, branchId, delta) {
+ async function adjustVariantStock(productId, variantId, branchId, delta, inventoryType = 'retail') {
   const p = await Product.findOne(productLookupQuery(productId));
   if (!p) {
     const err = new Error('Product not found');
     err.status = 404;
     throw err;
   }
-  const variants = Array.isArray(p.variants) ? p.variants : [];
-  const idx = variants.findIndex(v => v.id === variantId);
-  if (idx < 0) {
+  const target = getStockTarget(p, variantId, inventoryType);
+  if (!target) {
     const err = new Error('Variant not found');
     err.status = 400;
     throw err;
   }
-  const v = variants[idx];
-  if (!v.stockByBranch) v.stockByBranch = new Map();
-  const cur = getBranchQty(v.stockByBranch, branchId);
-  setBranchQty(v.stockByBranch, branchId, Math.max(0, cur + Number(delta)));
-  p.variants[idx] = v;
-  p.markModified('variants');
+  const cur = getMapQty(target.container, branchId);
+  const next = cur + Number(delta);
+  if (next < 0) {
+    const err = new Error('Insufficient stock');
+    err.status = 400;
+    throw err;
+  }
+  setMapQty(target.container, branchId, next);
+  markInventoryModified(target);
   await p.save();
   return p;
 }
@@ -97,11 +111,12 @@ r.post('/adjust', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'add_
   if (!Number.isFinite(Number(delta)) || Number(delta) === 0) return res.status(400).json({ error: 'Delta must be non-zero number' });
   let p;
   try {
+    const inventoryType = await resolveInventoryTypeFromBranch(branchId, 'retail');
     await assertNonSerializedStockMutation(productId);
     if (variantId) {
-      p = await adjustVariantStock(productId, variantId, branchId, delta);
+      p = await adjustVariantStock(productId, variantId, branchId, delta, inventoryType);
     } else {
-      p = await adjustBaseStock(productId, branchId, delta);
+      p = await adjustBaseStock(productId, branchId, delta, inventoryType);
     }
   } catch (e) {
     return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to adjust stock') });
@@ -132,11 +147,12 @@ r.post('/damage-remove', requireRoleOrPerm(['Admin','Manager','Inventory Staff']
   if (!Number.isFinite(q) || q <= 0) return res.status(400).json({ error: 'Qty must be a positive number' });
   let p;
   try {
+    const inventoryType = await resolveInventoryTypeFromBranch(branchId, 'retail');
     await assertNonSerializedStockMutation(productId);
     if (variantId) {
-      p = await adjustVariantStock(productId, variantId, branchId, -q);
+      p = await adjustVariantStock(productId, variantId, branchId, -q, inventoryType);
     } else {
-      p = await adjustBaseStock(productId, branchId, -q);
+      p = await adjustBaseStock(productId, branchId, -q, inventoryType);
     }
   } catch (e) {
     return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to remove stock') });
@@ -167,11 +183,12 @@ r.post('/receive', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'add
   if (!Number.isFinite(u) || u <= 0) return res.status(400).json({ error: 'baseUnits must be a positive number' });
   let p;
   try {
+    const inventoryType = await resolveInventoryTypeFromBranch(branchId, 'retail');
     await assertNonSerializedStockMutation(productId);
     if (variantId) {
-      p = await adjustVariantStock(productId, variantId, branchId, u);
+      p = await adjustVariantStock(productId, variantId, branchId, u, inventoryType);
     } else {
-      p = await adjustBaseStock(productId, branchId, u);
+      p = await adjustBaseStock(productId, branchId, u, inventoryType);
     }
   } catch (e) {
     return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to receive stock') });
@@ -214,13 +231,15 @@ r.post('/transfer', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
   if (!Number.isFinite(q) || q <= 0) return res.status(400).json({ error: 'Qty must be a positive number' });
   let p;
   try {
+    const fromInventoryType = await resolveInventoryTypeFromBranch(from, 'retail');
+    const toInventoryType = await resolveInventoryTypeFromBranch(to, 'retail');
     await assertNonSerializedStockMutation(productId);
     if (variantId) {
-      p = await adjustVariantStock(productId, variantId, from, -q);
-      p = await adjustVariantStock(productId, variantId, to, q);
+      p = await adjustVariantStock(productId, variantId, from, -q, fromInventoryType);
+      p = await adjustVariantStock(productId, variantId, to, q, toInventoryType);
     } else {
-      await adjustBaseStock(productId, from, -q);
-      p = await adjustBaseStock(productId, to, q);
+      await adjustBaseStock(productId, from, -q, fromInventoryType);
+      p = await adjustBaseStock(productId, to, q, toInventoryType);
     }
   } catch (e) {
     return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to transfer stock') });
@@ -251,22 +270,25 @@ r.post('/set', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'edit_in
   if (normalizeTrackType(p.trackType) === 'serialized') {
     return res.status(400).json({ error: 'Serialized products cannot be set by manual stock quantity. Use IMEI or serial unit actions instead.' });
   }
+  const inventoryType = await resolveInventoryTypeFromBranch(branchId, 'retail');
   let current = 0;
   if (variantId) {
-    const v = (Array.isArray(p.variants) ? p.variants.find(v => v.id === variantId) : null);
-    if (!v) return res.status(400).json({ error: 'Variant not found' });
-    current = getBranchQty(v?.stockByBranch, branchId);
+    const target = getStockTarget(p, variantId, inventoryType);
+    if (!target) return res.status(400).json({ error: 'Variant not found' });
+    current = getMapQty(target.container, branchId);
   } else {
-    current = getBranchQty(p.stockByBranch, branchId);
+    const target = getStockTarget(p, '', inventoryType);
+    if (!target) return res.status(400).json({ error: 'Product stock target not found' });
+    current = getMapQty(target.container, branchId);
   }
   const next = Number(quantity);
   if (!Number.isFinite(next) || next < 0) return res.status(400).json({ error: 'Quantity must be a non-negative number' });
   const delta = next - current;
   try {
     if (variantId) {
-      await adjustVariantStock(productId, variantId, branchId, delta);
+      await adjustVariantStock(productId, variantId, branchId, delta, inventoryType);
     } else {
-      await adjustBaseStock(productId, branchId, delta);
+      await adjustBaseStock(productId, branchId, delta, inventoryType);
     }
   } catch (e) {
     return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to set stock') });
