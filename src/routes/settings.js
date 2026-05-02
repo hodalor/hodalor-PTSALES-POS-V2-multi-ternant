@@ -14,6 +14,7 @@ const TENANT_ADMIN_ALLOWED_KEYS = new Set([
   'receiptBrandName',
   'chatNotificationSound',
   'callNotificationSound',
+  'webRtcIceServers',
   'receiptHeader',
   'receiptFooter',
   'businessPhone',
@@ -45,6 +46,7 @@ function normalizeSettingsData(input = {}) {
   next.taxRate = Number.isFinite(parsedTax) ? Math.max(0, Math.min(1, parsedTax)) : 0;
   if (!String(next.chatNotificationSound || '').trim()) next.chatNotificationSound = 'bright';
   if (!String(next.callNotificationSound || '').trim()) next.callNotificationSound = 'bright';
+  if (!String(next.webRtcIceServers || '').trim()) next.webRtcIceServers = 'stun:stun.l.google.com:19302';
   return next;
 }
 
