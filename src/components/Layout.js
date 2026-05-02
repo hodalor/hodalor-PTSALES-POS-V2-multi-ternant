@@ -3,6 +3,7 @@ import Header from './Header';
 import OfflineBanner from './OfflineBanner';
 import Sidebar from './Sidebar';
 import Breadcrumbs from './Breadcrumbs';
+import ChatNotificationsProvider from './ChatNotificationsProvider';
 import { useDispatch, useSelector, useStore } from 'react-redux';
 import { useEffect, useState } from 'react';
 import { setBeforeInstallPromptEvent } from '../pwa/installPrompt';
@@ -98,77 +99,79 @@ function Layout({ bootstrapLoading = false }) {
   const brandedName = settings?.clientAppName || settings?.receiptBrandName || settings?.appName || 'ptSales POS';
   const brandedLogo = settings?.clientLogoUrl || '/clientlogo512.png';
   return (
-    <div className={`layout ${sidebarOpen ? 'sidebar-open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
-      <Sidebar
-        collapsed={sidebarCollapsed}
-        onNavigate={() => {
-          const isMobile = window.matchMedia && window.matchMedia('(max-width: 992px)').matches;
-          if (isMobile) setSidebarOpen(false);
-        }}
-      />
-      {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
-      <div className="content">
-        <Header onToggleSidebar={toggleSidebar} />
-        {showInstall && (
-          <div className="card" style={{ margin: '8px 16px', padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <div>
-              <div style={{ fontWeight: 700 }}>Install App</div>
-              <div style={{ color: '#64748b', fontSize: 12 }}>Install for offline support and faster startup.</div>
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                className="btn btn-primary"
-                onClick={async () => {
-                  if (!installEvt) return;
-                  try {
-                    await installEvt.prompt();
-                    await installEvt.userChoice;
-                  } catch {}
-                  setShowInstall(false);
-                  setInstallEvt(null);
-                }}
-              >
-                Install App
-              </button>
-              <button
-                className="btn"
-                onClick={() => {
-                  setShowInstall(false);
-                  try { localStorage.setItem('ptSales:pwaInstallDismissed', '1'); } catch {}
-                }}
-              >
-                Not now
-              </button>
-            </div>
-          </div>
-        )}
-        <OfflineBanner />
-        <Breadcrumbs />
-        <main className="main">
-          {bootstrapLoading ? (
-            <div className="card" style={{ minHeight: 280, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
-              <div style={{ display: 'grid', gap: 14, justifyItems: 'center', maxWidth: 520 }}>
-                <div className="brand-loader">
-                  <div className="brand-loader-ring" />
-                  <img className="brand-loader-logo" src={brandedLogo} alt="logo" onError={(e) => { e.currentTarget.src = '/logo512.png'; }} />
-                </div>
-                <div className="brand-loader-copy brand-loader-copy-delay-1" style={{ fontSize: 22, fontWeight: 800 }}>{brandedName}</div>
-                <div className="brand-loader-copy brand-loader-copy-delay-2" style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Loading your business data...</div>
-                <div className="brand-loader-copy brand-loader-copy-delay-3" style={{ color: '#64748b', fontSize: 14 }}>
-                  Your tenant access is ready. We are now loading products and stock first, then customers, suppliers, sales, and other business records from the database.
-                </div>
-                <div className="brand-loader-copy brand-loader-copy-delay-3" style={{ color: '#64748b', fontSize: 13 }}>
-                  This does not mean your data is erased.
-                </div>
+    <ChatNotificationsProvider>
+      <div className={`layout ${sidebarOpen ? 'sidebar-open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onNavigate={() => {
+            const isMobile = window.matchMedia && window.matchMedia('(max-width: 992px)').matches;
+            if (isMobile) setSidebarOpen(false);
+          }}
+        />
+        {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+        <div className="content">
+          <Header onToggleSidebar={toggleSidebar} />
+          {showInstall && (
+            <div className="card" style={{ margin: '8px 16px', padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+              <div>
+                <div style={{ fontWeight: 700 }}>Install App</div>
+                <div style={{ color: '#64748b', fontSize: 12 }}>Install for offline support and faster startup.</div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={async () => {
+                    if (!installEvt) return;
+                    try {
+                      await installEvt.prompt();
+                      await installEvt.userChoice;
+                    } catch {}
+                    setShowInstall(false);
+                    setInstallEvt(null);
+                  }}
+                >
+                  Install App
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    setShowInstall(false);
+                    try { localStorage.setItem('ptSales:pwaInstallDismissed', '1'); } catch {}
+                  }}
+                >
+                  Not now
+                </button>
               </div>
             </div>
-          ) : (
-            <Outlet />
           )}
-        </main>
-        <div style={{ padding: 12, color: '#64748b', borderTop: '1px solid #e2e8f0', textAlign: 'right' }}>{footer}</div>
+          <OfflineBanner />
+          <Breadcrumbs />
+          <main className="main">
+            {bootstrapLoading ? (
+              <div className="card" style={{ minHeight: 280, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
+                <div style={{ display: 'grid', gap: 14, justifyItems: 'center', maxWidth: 520 }}>
+                  <div className="brand-loader">
+                    <div className="brand-loader-ring" />
+                    <img className="brand-loader-logo" src={brandedLogo} alt="logo" onError={(e) => { e.currentTarget.src = '/logo512.png'; }} />
+                  </div>
+                  <div className="brand-loader-copy brand-loader-copy-delay-1" style={{ fontSize: 22, fontWeight: 800 }}>{brandedName}</div>
+                  <div className="brand-loader-copy brand-loader-copy-delay-2" style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Loading your business data...</div>
+                  <div className="brand-loader-copy brand-loader-copy-delay-3" style={{ color: '#64748b', fontSize: 14 }}>
+                    Your tenant access is ready. We are now loading products and stock first, then customers, suppliers, sales, and other business records from the database.
+                  </div>
+                  <div className="brand-loader-copy brand-loader-copy-delay-3" style={{ color: '#64748b', fontSize: 13 }}>
+                    This does not mean your data is erased.
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <Outlet />
+            )}
+          </main>
+          <div style={{ padding: 12, color: '#64748b', borderTop: '1px solid #e2e8f0', textAlign: 'right' }}>{footer}</div>
+        </div>
       </div>
-    </div>
+    </ChatNotificationsProvider>
   );
 }
 

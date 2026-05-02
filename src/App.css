@@ -1207,6 +1207,13 @@ html, body, #root {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 .topbar .topbar-branch-select {
   margin-left: 12px;
   min-width: 180px;
@@ -1484,6 +1491,10 @@ html, body, #root {
   .topbar {
     flex-wrap: wrap;
     gap: 8px;
+  }
+  .topbar-actions {
+    width: 100%;
+    justify-content: flex-end;
   }
   .topbar > div:last-child {
     display: flex;

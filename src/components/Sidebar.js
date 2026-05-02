@@ -5,6 +5,7 @@ import { isFeatureEnabled } from '../utils/featureFlags';
 import { listCreditSales } from '../api/credits';
 import { listApprovals } from '../api/approvals';
 import { listOperations } from '../api/wholesale';
+import { useChatNotifications } from './ChatNotificationsProvider';
 
 function Sidebar({ collapsed, onNavigate }) {
   const location = useLocation();
@@ -18,6 +19,7 @@ function Sidebar({ collapsed, onNavigate }) {
   const expensePending = useSelector(s => (s.expenseRequests?.requests || []).filter(r => String(r.status || '') === 'pending_approval').length);
   const refundPending = useSelector(s => (s.refunds?.requests || []).filter(r => String(r.status || '') === 'pending_approval').length);
   const pendingStages = ['pending_approval', 'pending_director', 'pending_manager'];
+  const { unreadCount: communicationUnreadCount } = useChatNotifications();
   const adjustmentPending = useSelector(s => (s.adjustmentRequests?.requests || []).filter(r => pendingStages.includes(String(r.status || ''))).length);
   const purchasePending = useSelector(s => (s.purchases?.requests || []).filter(r => pendingStages.includes(String(r.status || ''))).length);
   const transferPending = useSelector(s => (s.transfers?.requests || []).filter(r => pendingStages.includes(String(r.status || ''))).length);
@@ -27,6 +29,7 @@ function Sidebar({ collapsed, onNavigate }) {
   const [easyBuyOpen, setEasyBuyOpen] = useState(false);
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [financeOpen, setFinanceOpen] = useState(false);
+  const [communicationOpen, setCommunicationOpen] = useState(false);
   const [partnersOpen, setPartnersOpen] = useState(false);
   const [easyBuyOverdue, setEasyBuyOverdue] = useState(0);
   const [easyBuyPendingApprovals, setEasyBuyPendingApprovals] = useState(0);
@@ -70,6 +73,7 @@ function Sidebar({ collapsed, onNavigate }) {
     setEasyBuyOpen(group === 'credit' ? !easyBuyOpen : false);
     setExpenseOpen(group === 'expense' ? !expenseOpen : false);
     setFinanceOpen(group === 'finance' ? !financeOpen : false);
+    setCommunicationOpen(group === 'communication' ? !communicationOpen : false);
     setPartnersOpen(group === 'partners' ? !partnersOpen : false);
   }
   function handleNavClick(event) {
@@ -85,6 +89,7 @@ function Sidebar({ collapsed, onNavigate }) {
     const isCredit = ['/credit-control','/easybuy/'].some(prefix => path.startsWith(prefix));
     const isExpense = ['/expenses','/expense-approvals'].some(prefix => path.startsWith(prefix));
     const isFinance = ['/cash-reconciliation'].some(prefix => path.startsWith(prefix));
+    const isCommunication = ['/communication/chat', '/communication/ask-pt-ai'].some(prefix => path.startsWith(prefix));
     const isPartners = ['/suppliers','/customers'].some(prefix => path.startsWith(prefix));
     setRetailOpen(isRetail);
     setWholesaleOpen(isDistribution);
@@ -92,6 +97,7 @@ function Sidebar({ collapsed, onNavigate }) {
     setEasyBuyOpen(isCredit);
     setExpenseOpen(isExpense);
     setFinanceOpen(isFinance);
+    setCommunicationOpen(isCommunication);
     setPartnersOpen(isPartners);
   }, [location.pathname]);
   useEffect(() => {
@@ -475,6 +481,47 @@ function Sidebar({ collapsed, onNavigate }) {
             {isFeatureEnabled(settings, 'pages.finance.reconciliation') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_finance_reconciliation','add_finance_reconciliation','approve_finance_reconciliation_director','approve_finance_reconciliation_manager']) && (
             <NavLink to="/cash-reconciliation" className="sidebar-link" title="Cash Reconciliation">
               <span className="sidebar-text">Cash Reconciliation</span>
+            </NavLink>
+            )}
+          </div>
+          )}
+        </div>
+        )}
+        {(sectionEnabled('sections.communication') && (
+          isFeatureEnabled(settings, 'modules.communication') && can(['Admin','Manager','Cashier','Inventory Staff','SuperAdmin'], ['view_chat', 'send_chat_messages', 'view_pt_ai'])
+        )) && (
+        <div>
+          <button className="sidebar-group-toggle" onClick={() => toggleGroup('communication')}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none"><path d="M4 6h16v10H7l-3 3V6z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/><path d="M8 10h8M8 13h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+              <span className="sidebar-text">Communication</span>
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+              {communicationUnreadCount > 0 && (
+                <span style={{ minWidth: 22, height: 20, borderRadius: 999, padding: '0 8px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: 12 }}>
+                  {communicationUnreadCount > 99 ? '99+' : communicationUnreadCount}
+                </span>
+              )}
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" style={{ transform: communicationOpen ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s' }}>
+                <path d="M7 10l5 5 5-5" stroke="currentColor" strokeWidth="2" />
+              </svg>
+            </span>
+          </button>
+          {communicationOpen && (
+          <div className="sidebar-subgroup">
+            {isFeatureEnabled(settings, 'pages.communication.chat') && can(['Admin','Manager','Cashier','Inventory Staff','SuperAdmin'], ['view_chat', 'send_chat_messages']) && (
+            <NavLink to="/communication/chat" className="sidebar-link" title="Chat" style={{ display: 'flex', alignItems: 'center' }}>
+              <span className="sidebar-text">Chat</span>
+              {communicationUnreadCount > 0 && (
+                <span style={{ marginLeft: 'auto', minWidth: 22, height: 20, borderRadius: 999, padding: '0 8px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: 12 }}>
+                  {communicationUnreadCount > 99 ? '99+' : communicationUnreadCount}
+                </span>
+              )}
+            </NavLink>
+            )}
+            {isFeatureEnabled(settings, 'pages.communication.askPtAi') && can(['Admin','Manager','Cashier','Inventory Staff','SuperAdmin'], ['view_pt_ai']) && (
+            <NavLink to="/communication/ask-pt-ai" className="sidebar-link" title="Ask PT AI">
+              <span className="sidebar-text">Ask PT AI</span>
             </NavLink>
             )}
           </div>

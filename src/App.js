@@ -73,6 +73,8 @@ import InvoicesPage from './pages/InvoicesPage';
 import WholesaleInvoicesPage from './pages/WholesaleInvoicesPage';
 import WarehouseInvoicesPage from './pages/WarehouseInvoicesPage';
 import TenantsPage from './pages/TenantsPage';
+import CommunicationChatPage from './pages/CommunicationChatPage';
+import AskPtAiPage from './pages/AskPtAiPage';
 import * as authApi from './api/auth';
 import { resetTenantAppState } from './store';
 import * as tenantsApi from './api/tenants';
@@ -659,6 +661,8 @@ function App() {
             <Route path="/expenses" element={<ProtectedRoute feature="sections.expense" roles={['Admin','Manager']} grant={['view_expenses','see_expenses','add_expenses']}><ExpensesPage /></ProtectedRoute>} />
           <Route path="/expense-approvals" element={<ProtectedRoute feature="sections.expense" roles={['Admin','Manager','SuperAdmin']} grant={['approve_expenses']}><ExpenseApprovalsPage /></ProtectedRoute>} />
             <Route path="/cash-reconciliation" element={<ProtectedRoute feature="pages.finance.reconciliation" roles={['Admin','Manager','Cashier']} grant={['view_finance_reconciliation','add_finance_reconciliation','approve_finance_reconciliation_director','approve_finance_reconciliation_manager']}><CashReconciliationPage /></ProtectedRoute>} />
+            <Route path="/communication/chat" element={<ProtectedRoute feature="pages.communication.chat" roles={['Admin','Manager','Cashier','Inventory Staff']} grant={['view_chat','send_chat_messages']}><CommunicationChatPage /></ProtectedRoute>} />
+            <Route path="/communication/ask-pt-ai" element={<ProtectedRoute feature="pages.communication.askPtAi" roles={['Admin','Manager','Cashier','Inventory Staff']} grant={['view_pt_ai']}><AskPtAiPage /></ProtectedRoute>} />
             <Route path="/transfers" element={<ProtectedRoute feature="pages.retail.transfers" roles={['Admin','Manager','Inventory Staff']} grant={['view_transfers','see_transfers']}><TransfersPage /></ProtectedRoute>} />
             <Route path="/adjustments" element={<ProtectedRoute feature="pages.retail.adjustments" roles={['Admin','Manager','Inventory Staff']} grant={['view_adjustments','see_adjustments']}><AdjustmentsPage /></ProtectedRoute>} />
             <Route path="/suppliers" element={<ProtectedRoute feature="sections.partners" roles={['Admin','Manager','Inventory Staff']} grant={['view_suppliers','see_suppliers']}><SuppliersPage /></ProtectedRoute>} />

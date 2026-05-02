@@ -62,6 +62,9 @@ export const TENANT_GRANT_CATALOG = [
   { key: 'manage_finance_accounts', label: 'Manage Finance Accounts' },
   { key: 'approve_finance_reconciliation_director', label: 'Director Reconciliation Approval' },
   { key: 'approve_finance_reconciliation_manager', label: 'Manager Reconciliation Approval' },
+  { key: 'view_chat', label: 'Open Internal Chat' },
+  { key: 'send_chat_messages', label: 'Send Internal Chat Messages' },
+  { key: 'view_pt_ai', label: 'Use Ask PT AI' },
   { key: 'view_stock_records', label: 'Open Stock Records' },
   { key: 'view_wholesale_invoices', label: 'Open Wholesale Invoices' },
   { key: 'view_warehouse_invoices', label: 'Open Warehouse Invoices' },
@@ -82,7 +85,7 @@ export const GRANT_FEATURE_MAP = Object.fromEntries(
 export const PLAN_DEFAULT_FEATURES = {
   basic: [
     'modules.dashboard', 'modules.pos', 'modules.invoices', 'modules.sales', 'modules.products',
-    'modules.inventory', 'modules.labels', 'modules.purchases', 'modules.finance', 'modules.suppliers',
+    'modules.inventory', 'modules.labels', 'modules.purchases', 'modules.finance', 'modules.communication', 'modules.suppliers',
     'modules.customers', 'modules.backup', 'admin.users', 'admin.audit',
     'admin.cashDrawer', 'admin.config', 'features.offlineBackup',
     'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
@@ -90,7 +93,7 @@ export const PLAN_DEFAULT_FEATURES = {
     'grants.add_sales', 'grants.view_products', 'grants.view_distribution_products', 'grants.view_warehouse_products', 'grants.add_products', 'grants.edit_products',
     'grants.view_inventory', 'grants.edit_inventory', 'grants.view_labels', 'grants.view_purchases',
     'grants.add_purchases', 'grants.view_suppliers', 'grants.add_suppliers', 'grants.view_customers', 'grants.view_finance_reconciliation', 'grants.add_finance_reconciliation',
-    'grants.add_customers', 'grants.view_cashdrawer', 'grants.view_users', 'grants.view_config',
+    'grants.view_chat', 'grants.send_chat_messages', 'grants.view_pt_ai', 'grants.add_customers', 'grants.view_cashdrawer', 'grants.view_users', 'grants.view_config',
     'grants.export_tenant_data', 'grants.import_tenant_data'
   ],
   pro: [
@@ -98,7 +101,7 @@ export const PLAN_DEFAULT_FEATURES = {
     'modules.products', 'modules.inventory', 'modules.labels', 'modules.purchases', 'modules.expenses', 'modules.finance',
     'modules.transfers', 'modules.adjustments', 'modules.suppliers', 'modules.customers',
     'modules.creditControl', 'modules.approvalsCenter', 'modules.refunds', 'modules.refundApprovals',
-    'modules.expenseApprovals', 'modules.reports', 'modules.backup',
+    'modules.expenseApprovals', 'modules.reports', 'modules.backup', 'modules.communication',
     'admin.users', 'admin.manual', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords',
     'admin.cashDrawer', 'admin.config', 'features.offlineBackup',
     'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
@@ -157,6 +160,11 @@ export const FEATURE_GROUP_META = {
     order: 10,
     title: 'Permissions / Finance',
     description: 'Permissions for reconciliation, bank account management, and deposit approvals.'
+  },
+  'Permissions / Communication': {
+    order: 11,
+    title: 'Permissions / Communication',
+    description: 'Permissions for tenant chat and Ask PT AI access.'
   }
 };
 
@@ -179,6 +187,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
       { label: 'Refund Approvals', keys: ['modules.refundApprovals', 'grants.approve_refunds'] },
       { label: 'Reports', keys: ['modules.reports', 'grants.view_reports'] },
       { label: 'Finance', keys: ['modules.finance', 'pages.finance.reconciliation', 'grants.view_finance_reconciliation', 'grants.add_finance_reconciliation', 'grants.view_finance_reconciliation_all_branches', 'grants.approve_finance_reconciliation_director', 'grants.approve_finance_reconciliation_manager'] },
+      { label: 'Communication', keys: ['modules.communication', 'pages.communication.chat', 'pages.communication.askPtAi', 'grants.view_chat', 'grants.send_chat_messages', 'grants.view_pt_ai'] },
       { label: 'Revenue / Profit Visibility', keys: ['grants.view_revenue', 'grants.view_profit'] },
       { label: 'Backup', keys: ['modules.backup', 'features.offlineBackup', 'grants.export_tenant_data', 'grants.import_tenant_data'] },
       { label: 'IMEI Conflicts', keys: ['modules.backup', 'grants.view_imei_conflicts'] }
@@ -260,6 +269,16 @@ export const TENANT_SIDEBAR_SECTIONS = [
     ]
   },
   {
+    id: 'communication',
+    sectionKey: 'sections.communication',
+    title: 'Communication',
+    description: 'Internal tenant chat and Ask PT AI guidance.',
+    items: [
+      { label: 'Chat', keys: ['modules.communication', 'pages.communication.chat', 'grants.view_chat', 'grants.send_chat_messages'] },
+      { label: 'Ask PT AI', keys: ['modules.communication', 'pages.communication.askPtAi', 'grants.view_pt_ai'] }
+    ]
+  },
+  {
     id: 'partners',
     sectionKey: 'sections.partners',
     title: 'Partners',
@@ -314,6 +333,7 @@ export const TENANT_FEATURE_CATALOG = [
   { key: 'modules.expenses', label: 'Expenses', group: 'Menus / Retail & General' },
   { key: 'modules.reports', label: 'Reports', group: 'Menus / Retail & General' },
   { key: 'modules.backup', label: 'Backup', group: 'Menus / Retail & General' },
+  { key: 'modules.communication', label: 'Communication', group: 'Menus / Retail & General' },
 
   { key: 'modules.wholesalePos', label: 'Distribution POS', group: 'Menus / Distribution & Wholesale' },
   { key: 'modules.invoices', label: 'Invoices', group: 'Menus / Distribution & Wholesale' },
@@ -346,6 +366,8 @@ export const TENANT_FEATURE_CATALOG = [
     let group = 'Permissions / Retail Actions';
     if (['view_retail_price', 'view_wholesale_price', 'view_agent_price', 'view_revenue', 'view_profit', 'view_financials', 'view_dashboard_cashier_assigned', 'view_dashboard_cashier_all', 'view_dashboard_branch_comparison_assigned', 'view_dashboard_branch_comparison_all'].includes(item.key)) {
       group = 'Permissions / Pricing & Visibility';
+    } else if (['view_chat', 'send_chat_messages', 'view_pt_ai'].includes(item.key)) {
+      group = 'Permissions / Communication';
     } else if (['view_wholesale_pos', 'view_purchases', 'add_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'edit_adjustments', 'approve_adjustments', 'view_credit_control', 'approve_credit_director', 'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_wholesale_director', 'approve_wholesale_manager', 'view_wholesale_invoices', 'view_warehouse_invoices', 'view_warehouse_approvals'].includes(item.key)) {
       group = 'Permissions / Distribution Actions';
     } else if (['view_users', 'view_config', 'view_audit', 'view_stock_records', 'view_cashdrawer', 'view_imei_conflicts', 'export_tenant_data', 'import_tenant_data'].includes(item.key)) {
