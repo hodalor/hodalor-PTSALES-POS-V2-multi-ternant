@@ -7,6 +7,38 @@ import { startIncomingRingtone, startOutgoingCallTone, stopIncomingRingtone, unl
 const QUICK_EMOJIS = ['😀', '😂', '😍', '🙏', '👍', '🔥', '🎉', '❤️', '✅', '🤝', '😊', '😎', '😢', '😡', '📦', '💰'];
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '🔥', '🙏', '😮'];
 const CALL_CONFIG = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+const PENDING_INCOMING_CALL_KEY = 'ptSales:pendingIncomingCall';
+const AUTO_ANSWER_INCOMING_CALL_KEY = 'ptSales:autoAnswerIncomingCall';
+const INCOMING_CALL_EVENT = 'ptSales:incoming-call';
+const CLEAR_INCOMING_CALL_EVENT = 'ptSales:incoming-call-cleared';
+
+function readStoredIncomingCall(key = PENDING_INCOMING_CALL_KEY) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    const callId = String(parsed?.callId || '').trim();
+    const senderName = String(parsed?.senderName || '').trim();
+    if (!callId || !senderName) return null;
+    return {
+      callId,
+      senderName,
+      startedAt: parsed?.startedAt || new Date().toISOString()
+    };
+  } catch {
+    return null;
+  }
+}
+
+function clearStoredIncomingCall() {
+  try {
+    localStorage.removeItem(PENDING_INCOMING_CALL_KEY);
+    localStorage.removeItem(AUTO_ANSWER_INCOMING_CALL_KEY);
+  } catch {}
+  try {
+    window.dispatchEvent(new CustomEvent(CLEAR_INCOMING_CALL_EVENT));
+  } catch {}
+}
 
 function createCallId() {
   try {
@@ -178,7 +210,7 @@ function CommunicationChatPage() {
     loadUsers();
     const tid = setInterval(() => {
       loadUsers();
-    }, 45000);
+    }, 5000);
     return () => clearInterval(tid);
   }, [loadUsers]);
 
@@ -187,7 +219,7 @@ function CommunicationChatPage() {
     if (!selectedUserName) return undefined;
     const tid = setInterval(() => {
       loadMessages(selectedUserName);
-    }, 30000);
+    }, 4000);
     return () => clearInterval(tid);
   }, [selectedUserName, loadMessages]);
 
@@ -248,6 +280,7 @@ function CommunicationChatPage() {
     clearOutgoingCallTimeout();
     closePeerConnection();
     stopLocalStream();
+    clearStoredIncomingCall();
     if (remoteAudioRef.current) {
       try { remoteAudioRef.current.srcObject = null; } catch {}
     }
@@ -375,32 +408,80 @@ function CommunicationChatPage() {
     }
   }
 
-  async function answerIncomingCall() {
-    if (!incomingCall?.callId || !incomingCall?.senderName) return;
+  const answerCallInvite = useCallback(async (callInvite) => {
+    if (!callInvite?.callId || !callInvite?.senderName) return;
     try {
       stopIncomingRingtone();
-      setSelectedUserName(incomingCall.senderName);
-      setCallPeerName(incomingCall.senderName);
+      clearStoredIncomingCall();
+      setSelectedUserName(callInvite.senderName);
+      setCallPeerName(callInvite.senderName);
       setCallState('connecting');
       callConnectedAtRef.current = null;
-      await buildPeerConnection('callee', incomingCall.senderName, incomingCall.callId);
-      await sendCallSignal(incomingCall.senderName, incomingCall.callId, 'accepted', {});
+      await buildPeerConnection('callee', callInvite.senderName, callInvite.callId);
+      await sendCallSignal(callInvite.senderName, callInvite.callId, 'accepted', {});
       setIncomingCall(null);
-      await loadCallHistory(incomingCall.senderName);
+      await loadCallHistory(callInvite.senderName);
     } catch (e) {
       toast.show(String(e?.message || 'Unable to answer voice call'), { type: 'error' });
       clearCallState();
     }
+  }, [buildPeerConnection, clearCallState, loadCallHistory, sendCallSignal, toast]);
+
+  async function answerIncomingCall() {
+    if (!incomingCall?.callId || !incomingCall?.senderName) return;
+    await answerCallInvite(incomingCall);
   }
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const syncIncomingCallFromStorage = async () => {
+      const autoAnswerCall = readStoredIncomingCall(AUTO_ANSWER_INCOMING_CALL_KEY);
+      if (autoAnswerCall?.callId && autoAnswerCall?.senderName) {
+        try { localStorage.removeItem(AUTO_ANSWER_INCOMING_CALL_KEY); } catch {}
+        if (!cancelled) await answerCallInvite(autoAnswerCall);
+        return;
+      }
+      const pendingCall = readStoredIncomingCall(PENDING_INCOMING_CALL_KEY);
+      if (!pendingCall?.callId || !pendingCall?.senderName) return;
+      if (callStateRef.current !== 'idle' || incomingCallRef.current || activeCallRef.current.callId) return;
+      setSelectedUserName(pendingCall.senderName);
+      setCallPeerName(pendingCall.senderName);
+      setIncomingCall({ callId: pendingCall.callId, senderName: pendingCall.senderName });
+      startIncomingRingtone(callSound).catch(() => {});
+    };
+
+    syncIncomingCallFromStorage().catch(() => {});
+
+    const handleIncomingCallEvent = () => {
+      syncIncomingCallFromStorage().catch(() => {});
+    };
+    const handleClearIncomingCall = () => {
+      if (callStateRef.current === 'idle') {
+        stopIncomingRingtone();
+        setIncomingCall(null);
+      }
+    };
+
+    window.addEventListener(INCOMING_CALL_EVENT, handleIncomingCallEvent);
+    window.addEventListener(CLEAR_INCOMING_CALL_EVENT, handleClearIncomingCall);
+    return () => {
+      cancelled = true;
+      window.removeEventListener(INCOMING_CALL_EVENT, handleIncomingCallEvent);
+      window.removeEventListener(CLEAR_INCOMING_CALL_EVENT, handleClearIncomingCall);
+    };
+  }, [answerCallInvite, callSound]);
 
   async function rejectIncomingCall() {
     if (!incomingCall?.callId || !incomingCall?.senderName) {
+      clearStoredIncomingCall();
       setIncomingCall(null);
       return;
     }
     stopIncomingRingtone();
     await sendCallSignal(incomingCall.senderName, incomingCall.callId, 'rejected', {}).catch(() => {});
     await loadCallHistory(incomingCall.senderName).catch(() => {});
+    clearStoredIncomingCall();
     setIncomingCall(null);
     setCallPeerName('');
     setCallState('idle');
@@ -502,6 +583,13 @@ function CommunicationChatPage() {
                 sendCallSignal(senderName, callId, 'busy', {}).catch(() => {});
                 return;
               }
+              try {
+                localStorage.setItem(PENDING_INCOMING_CALL_KEY, JSON.stringify({
+                  callId,
+                  senderName,
+                  startedAt: event.at || new Date().toISOString()
+                }));
+              } catch {}
               setSelectedUserName(senderName);
               setCallPeerName(senderName);
               setIncomingCall({ callId, senderName });
@@ -526,18 +614,21 @@ function CommunicationChatPage() {
             }
             if (signalType === 'rejected') {
               stopIncomingRingtone();
+              clearStoredIncomingCall();
               toast.show(`${senderName} rejected the voice call`, { type: 'warning' });
               clearCallState();
               return;
             }
             if (signalType === 'busy') {
               stopIncomingRingtone();
+              clearStoredIncomingCall();
               toast.show(`${senderName} is busy on another call`, { type: 'warning' });
               clearCallState();
               return;
             }
             if (signalType === 'end') {
               stopIncomingRingtone();
+              clearStoredIncomingCall();
               toast.show(payload?.reason === 'timeout' ? 'Missed voice call' : 'Voice call ended', { type: 'warning' });
               clearCallState();
               return;

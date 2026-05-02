@@ -18,6 +18,10 @@ export function listCallHistory(userName, { limit } = {}) {
   return fetchJson(`/api/chat-messages/call-history/${encodeURIComponent(String(userName || ''))}${qs ? `?${qs}` : ''}`);
 }
 
+export function listIncomingCalls() {
+  return fetchJson('/api/chat-messages/incoming-calls');
+}
+
 export function sendChatMessage(payload) {
   return fetchJson('/api/chat-messages', {
     method: 'POST',
