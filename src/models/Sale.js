@@ -51,6 +51,7 @@ const SaleSchema = new mongoose.Schema({
 }, { timestamps: true });
 
 SaleSchema.index({ created_at: -1 });
+SaleSchema.index({ branchId: 1, created_at: 1 });
 
 const { model, modelFor } = createTenantAwareModel('Sale', SaleSchema);
 export { modelFor };

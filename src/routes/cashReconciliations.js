@@ -45,6 +45,12 @@ function startOfUtcDay(value) {
   return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate(), 0, 0, 0, 0));
 }
 
+function minDate(a, b) {
+  if (!a) return b || null;
+  if (!b) return a || null;
+  return a.getTime() <= b.getTime() ? a : b;
+}
+
 function sameAmount(a, b) {
   return Math.abs(Number(a || 0) - Number(b || 0)) < 0.005;
 }
@@ -77,15 +83,51 @@ async function resolveRequestedBranchIds(req, scope) {
 }
 
 async function listSalesTotalsByDay(branchIds, start, end) {
-  const sales = await Sale.find({
-    branchId: { $in: branchIds },
-    created_at: { $gte: start, $lte: end }
-  }).lean();
   const totals = new Map();
-  for (const sale of sales) {
-    const branchId = normalizeString(sale.branchId);
-    const day = dateKeyFromIso(sale.created_at);
-    if (!branchId || !day) continue;
+  const [totalRows, paymentRows] = await Promise.all([
+    Sale.aggregate([
+      { $match: { branchId: { $in: branchIds }, created_at: { $gte: start, $lte: end } } },
+      {
+        $group: {
+          _id: {
+            branchId: '$branchId',
+            day: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } }
+          },
+          total: { $sum: { $ifNull: ['$total', 0] } }
+        }
+      }
+    ]),
+    Sale.aggregate([
+      { $match: { branchId: { $in: branchIds }, created_at: { $gte: start, $lte: end } } },
+      { $unwind: { path: '$payment_methods', preserveNullAndEmptyArrays: false } },
+      {
+        $group: {
+          _id: {
+            branchId: '$branchId',
+            day: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } },
+            paymentMethod: { $toLower: { $ifNull: ['$payment_methods.type', 'other'] } }
+          },
+          amount: { $sum: { $ifNull: ['$payment_methods.amount', 0] } }
+        }
+      }
+    ])
+  ]);
+  totalRows.forEach((row) => {
+    const branchId = normalizeString(row?._id?.branchId);
+    const day = normalizeDateKey(row?._id?.day);
+    if (!branchId || !day) return;
+    totals.set(`${branchId}:${day}`, {
+      branchId,
+      date: day,
+      total: Number(row?.total || 0),
+      paymentBreakdown: {}
+    });
+  });
+  paymentRows.forEach((row) => {
+    const branchId = normalizeString(row?._id?.branchId);
+    const day = normalizeDateKey(row?._id?.day);
+    const paymentMethod = normalizeString(row?._id?.paymentMethod || 'other').toLowerCase() || 'other';
+    if (!branchId || !day) return;
     const key = `${branchId}:${day}`;
     if (!totals.has(key)) {
       totals.set(key, {
@@ -95,32 +137,70 @@ async function listSalesTotalsByDay(branchIds, start, end) {
         paymentBreakdown: {}
       });
     }
-    const row = totals.get(key);
-    row.total += Number(sale.total || 0);
-    (Array.isArray(sale.payment_methods) ? sale.payment_methods : []).forEach((payment) => {
-      const paymentMethod = normalizeString(payment.type || 'other').toLowerCase() || 'other';
-      row.paymentBreakdown[paymentMethod] = (row.paymentBreakdown[paymentMethod] || 0) + Number(payment.amount || 0);
+    totals.get(key).paymentBreakdown[paymentMethod] = Number(row?.amount || 0);
+  });
+  return totals;
+}
+
+async function listSalesAmountsByDay(branchIds, start, end) {
+  const totals = new Map();
+  const rows = await Sale.aggregate([
+    { $match: { branchId: { $in: branchIds }, created_at: { $gte: start, $lte: end } } },
+    {
+      $group: {
+        _id: {
+          branchId: '$branchId',
+          day: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } }
+        },
+        total: { $sum: { $ifNull: ['$total', 0] } }
+      }
+    }
+  ]);
+  rows.forEach((row) => {
+    const branchId = normalizeString(row?._id?.branchId);
+    const day = normalizeDateKey(row?._id?.day);
+    if (!branchId || !day) return;
+    totals.set(`${branchId}:${day}`, {
+      branchId,
+      date: day,
+      total: Number(row?.total || 0)
     });
-  }
+  });
   return totals;
 }
 
 async function loadCoverageSets(branchIds, start, end) {
-  const rows = await CashReconciliation.find({
-    branchId: { $in: branchIds },
-    status: { $in: ['pending_director', 'pending_manager', 'approved'] }
-  }).lean();
+  const startKey = start.toISOString().slice(0, 10);
+  const endKey = end.toISOString().slice(0, 10);
+  const rows = await CashReconciliation.aggregate([
+    {
+      $match: {
+        branchId: { $in: branchIds },
+        status: { $in: ['pending_director', 'pending_manager', 'approved'] }
+      }
+    },
+    { $unwind: '$selectedDates' },
+    {
+      $match: {
+        selectedDates: { $gte: startKey, $lte: endKey }
+      }
+    },
+    {
+      $project: {
+        branchId: 1,
+        status: 1,
+        day: '$selectedDates'
+      }
+    }
+  ]);
   const coveredAny = new Set();
   const coveredApproved = new Set();
   rows.forEach((row) => {
-    const dates = uniqueDateKeys(row.selectedDates);
-    dates.forEach((day) => {
-      const ts = new Date(`${day}T12:00:00.000Z`).getTime();
-      if (ts < start.getTime() || ts > end.getTime()) return;
-      const key = `${normalizeString(row.branchId)}:${day}`;
-      coveredAny.add(key);
-      if (String(row.status || '') === 'approved') coveredApproved.add(key);
-    });
+    const day = normalizeDateKey(row?.day);
+    const key = `${normalizeString(row?.branchId)}:${day}`;
+    if (!day || !normalizeString(row?.branchId)) return;
+    coveredAny.add(key);
+    if (String(row.status || '') === 'approved') coveredApproved.add(key);
   });
   return { coveredAny, coveredApproved };
 }
@@ -143,16 +223,30 @@ async function resolveTenantCreatedStart(req) {
   }
 }
 
+async function resolveEarliestSaleStart(branchIds) {
+  if (!Array.isArray(branchIds) || branchIds.length === 0) return null;
+  const row = await Sale.findOne({
+    branchId: { $in: branchIds }
+  }).sort({ created_at: 1 }).select({ created_at: 1 }).lean();
+  return startOfUtcDay(row?.created_at) || null;
+}
+
 r.use(requireAuth);
 
 r.get('/backlog', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_finance_reconciliation', 'add_finance_reconciliation']), async (req, res) => {
   const scope = await resolveScope(req);
   const branchIds = await resolveRequestedBranchIds(req, scope);
-  const tenantCreatedStart = await resolveTenantCreatedStart(req);
+  const [tenantCreatedStart, earliestSaleStart] = await Promise.all([
+    resolveTenantCreatedStart(req),
+    resolveEarliestSaleStart(branchIds)
+  ]);
   const end = normalizeDateKey(req.query.to)
     ? new Date(`${normalizeDateKey(req.query.to)}T23:59:59.999Z`)
     : new Date(`${new Date().toISOString().slice(0, 10)}T23:59:59.999Z`);
-  const start = tenantCreatedStart || buildRange(undefined, req.query.to, 120).start;
+  const explicitFrom = normalizeDateKey(req.query.from)
+    ? new Date(`${normalizeDateKey(req.query.from)}T00:00:00.000Z`)
+    : null;
+  const start = explicitFrom || minDate(tenantCreatedStart, earliestSaleStart) || buildRange(undefined, req.query.to, 120).start;
   const [totals, coverage, branchNames] = await Promise.all([
     listSalesTotalsByDay(branchIds, start, end),
     loadCoverageSets(branchIds, start, end),
@@ -174,15 +268,30 @@ r.get('/backlog', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_fina
 r.get('/summary', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_finance_reconciliation', 'add_finance_reconciliation', 'approve_finance_reconciliation_director', 'approve_finance_reconciliation_manager']), async (req, res) => {
   const scope = await resolveScope(req);
   const branchIds = await resolveRequestedBranchIds(req, scope);
-  const { start, end } = buildRange(req.query.from, req.query.to, 30);
-  const tenantCreatedStart = await resolveTenantCreatedStart(req);
-  const backlogStart = tenantCreatedStart || start;
-  const [totals, coverage, backlogTotals, backlogCoverage] = await Promise.all([
-    listSalesTotalsByDay(branchIds, start, end),
-    loadCoverageSets(branchIds, start, end),
-    listSalesTotalsByDay(branchIds, backlogStart, end),
-    loadCoverageSets(branchIds, backlogStart, end)
+  const fromKey = normalizeDateKey(req.query.from);
+  const toKey = normalizeDateKey(req.query.to);
+  const { start, end } = buildRange(fromKey, toKey, 30);
+  const [tenantCreatedStart, earliestSaleStart] = await Promise.all([
+    resolveTenantCreatedStart(req),
+    resolveEarliestSaleStart(branchIds)
   ]);
+  const useFilteredWindowForAwaiting = !!(fromKey || toKey);
+  const backlogStart = useFilteredWindowForAwaiting ? start : (minDate(tenantCreatedStart, earliestSaleStart) || start);
+  const [totals, coverage, backlogTotals, backlogCoverage] = backlogStart.getTime() === start.getTime()
+    ? await Promise.all([
+      listSalesAmountsByDay(branchIds, start, end),
+      loadCoverageSets(branchIds, start, end),
+      Promise.resolve(null),
+      Promise.resolve(null)
+    ])
+    : await Promise.all([
+      listSalesAmountsByDay(branchIds, start, end),
+      loadCoverageSets(branchIds, start, end),
+      listSalesAmountsByDay(branchIds, backlogStart, end),
+      loadCoverageSets(branchIds, backlogStart, end)
+    ]);
+  const awaitingTotals = backlogTotals || totals;
+  const awaitingCoverage = backlogCoverage || coverage;
   let depositedAmount = 0;
   let awaitingAmount = 0;
   let pendingApprovalAmount = 0;
@@ -196,10 +305,10 @@ r.get('/summary', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_fina
       pendingApprovalAmount += Number(row.total || 0);
     }
   });
-  Array.from(backlogTotals.values()).forEach((row) => {
+  Array.from(awaitingTotals.values()).forEach((row) => {
     if (Number(row.total || 0) <= 0) return;
     const key = `${row.branchId}:${row.date}`;
-    if (!backlogCoverage.coveredAny.has(key)) {
+    if (!awaitingCoverage.coveredAny.has(key)) {
       awaitingAmount += Number(row.total || 0);
       backlogDays += 1;
     }
