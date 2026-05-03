@@ -42,6 +42,7 @@ function DashboardPage() {
   );
   const [expenses, setExpenses] = useState([]);
   const [financeSummary, setFinanceSummary] = useState({ depositedAmount: 0, awaitingAmount: 0, pendingApprovalAmount: 0, backlogDays: 0 });
+  const [financeSummaryLoading, setFinanceSummaryLoading] = useState(false);
   const [warehousePending, setWarehousePending] = useState(0);
   const [wholesalePending, setWholesalePending] = useState(0);
   const todayIso = new Date().toISOString().slice(0, 10);
@@ -165,10 +166,12 @@ function DashboardPage() {
     let alive = true;
     (async () => {
       if (!canUseFinanceReconciliation) {
+        if (alive) setFinanceSummaryLoading(false);
         if (alive) setFinanceSummary({ depositedAmount: 0, awaitingAmount: 0, pendingApprovalAmount: 0, backlogDays: 0 });
         return;
       }
       try {
+        if (alive) setFinanceSummaryLoading(true);
         const data = await getCashReconciliationSummary({
           branchId: financeSummaryBranchId || undefined,
           from: periodMode === 'all_time' ? undefined : (dateFrom || defaultFromIso),
@@ -181,8 +184,10 @@ function DashboardPage() {
           pendingApprovalAmount: Number(data?.pendingApprovalAmount || 0),
           backlogDays: Number(data?.backlogDays || 0)
         });
+        setFinanceSummaryLoading(false);
       } catch {
         if (!alive) return;
+        setFinanceSummaryLoading(false);
         setFinanceSummary({ depositedAmount: 0, awaitingAmount: 0, pendingApprovalAmount: 0, backlogDays: 0 });
       }
     })();
@@ -635,8 +640,8 @@ function DashboardPage() {
     { key: 'margin', label: 'Margin', value: maskProfitText(`${metrics.marginPct}%`), subtitle: 'Gross margin percentage', accent: '#ec4899', tint: '#fce7f3', badge: 'MG' },
     { key: 'cashflow', label: 'Net Cashflow', value: maskProfit(finance.net), subtitle: 'Revenue minus expenses', accent: '#16a34a', tint: '#dcfce7', badge: 'CF' },
     ...(canUseFinanceReconciliation ? [
-      { key: 'deposited', label: 'Deposited to Company Account', value: maskRevenue(financeSummary.depositedAmount), subtitle: 'Approved reconciliations', accent: '#14b8a6', tint: '#ccfbf1', badge: 'DP' },
-      { key: 'awaiting', label: 'Waiting for Deposit', value: maskRevenue(financeSummary.awaitingAmount), subtitle: `Backlog days: ${financeSummary.backlogDays}`, accent: '#ef4444', tint: '#fee2e2', badge: 'WD' }
+      { key: 'deposited', label: 'Deposited to Company Account', value: maskRevenue(financeSummary.depositedAmount), subtitle: financeSummaryLoading ? 'Refreshing finance summary' : 'Approved reconciliations', accent: '#14b8a6', tint: '#ccfbf1', badge: 'DP', loading: financeSummaryLoading },
+      { key: 'awaiting', label: 'Waiting for Deposit', value: maskRevenue(financeSummary.awaitingAmount), subtitle: financeSummaryLoading ? 'Refreshing finance summary' : `Backlog days: ${financeSummary.backlogDays}`, accent: '#ef4444', tint: '#fee2e2', badge: 'WD', loading: financeSummaryLoading }
     ] : [])
   ];
   const sectionCardStyle = {
@@ -736,7 +741,15 @@ function DashboardPage() {
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
               <div style={{ minWidth: 0 }}>
                 <div style={{ color: '#64748b', fontSize: 12, fontWeight: 700 }}>{card.label}</div>
-                <div style={{ fontSize: 27, lineHeight: 1.15, fontWeight: 800, color: '#0f172a', marginTop: 8 }}>{card.value}</div>
+                <div style={{ fontSize: 27, lineHeight: 1.15, fontWeight: 800, color: '#0f172a', marginTop: 8 }}>
+                  {card.loading ? (
+                    <span className="dashboard-loading-dots" aria-label="Loading">
+                      <span>.</span>
+                      <span>.</span>
+                      <span>.</span>
+                    </span>
+                  ) : card.value}
+                </div>
                 <div style={{ marginTop: 8, color: '#64748b', fontSize: 12 }}>{card.subtitle}</div>
               </div>
               <div style={summaryCardBadgeStyle(card.accent, card.tint)}>{card.badge}</div>

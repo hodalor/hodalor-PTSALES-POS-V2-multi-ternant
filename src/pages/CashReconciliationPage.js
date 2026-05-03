@@ -29,6 +29,16 @@ function dataUrlFromFile(file) {
   });
 }
 
+function LoadingDots({ label = 'Loading' }) {
+  return (
+    <span className="dashboard-loading-dots" aria-label={label}>
+      <span>.</span>
+      <span>.</span>
+      <span>.</span>
+    </span>
+  );
+}
+
 function CashReconciliationPage() {
   const auth = useSelector((s) => s.auth);
   const settings = useSelector((s) => s.settings);
@@ -77,7 +87,11 @@ function CashReconciliationPage() {
     return branches.filter((branch) => ids.has(String(branch.id || '').trim()));
   }, [auth.user?.assignedBranches, auth.user?.branchId, branches, roleLower]);
 
-  const backlogRows = useMemo(() => allBacklogRows.filter((row) => String(row.branchId || '') === String(submitBranchId || '')), [allBacklogRows, submitBranchId]);
+  const backlogRows = useMemo(() => (
+    submitBranchId
+      ? allBacklogRows.filter((row) => String(row.branchId || '') === String(submitBranchId || ''))
+      : allBacklogRows
+  ), [allBacklogRows, submitBranchId]);
   const visibleAccounts = useMemo(() => accounts.filter((account) => account.sharedAcrossBranches || !submitBranchId || (Array.isArray(account.branchIds) && account.branchIds.some((branchId) => String(branchId) === String(submitBranchId)))), [accounts, submitBranchId]);
   const selectedBacklogRows = useMemo(() => backlogRows.filter((row) => selectedDates.includes(String(row.date))), [backlogRows, selectedDates]);
   const expectedAmount = useMemo(() => selectedBacklogRows.reduce((sum, row) => sum + Number(row.expectedAmount || 0), 0), [selectedBacklogRows]);
@@ -92,24 +106,28 @@ function CashReconciliationPage() {
     return Array.from(map.entries()).map(([paymentMethod, amount]) => ({ paymentMethod, amount }));
   }, [selectedBacklogRows]);
   const enteredAmount = useMemo(() => allocations.reduce((sum, item) => sum + Number(item.amount || 0), 0), [allocations]);
+  const canSelectBacklogRows = !!submitBranchId;
 
   const loadBacklog = useCallback(async (preferredBranchId = '') => {
     setLoadingBacklog(true);
     try {
-      const backlogData = await listCashReconciliationBacklog({ from: filters.from, to: filters.to });
+      const preferred = String(preferredBranchId || '').trim();
+      const backlogData = await listCashReconciliationBacklog(preferred ? { branchId: preferred } : {});
       const rows = Array.isArray(backlogData) ? backlogData : [];
       setAllBacklogRows(rows);
       if (rows.length === 0) {
         setSelectedDates([]);
         return;
       }
-      const preferred = String(preferredBranchId || '').trim();
       const branchIds = Array.from(new Set(rows.map((row) => String(row.branchId || '').trim()).filter(Boolean)));
-      const nextBranchId = branchIds.includes(preferred) ? preferred : branchIds[0] || '';
+      const nextBranchId = branchIds.includes(preferred)
+        ? preferred
+        : (canViewAllBranches ? '' : (branchIds[0] || ''));
       if (nextBranchId) {
         setSubmitBranchId(nextBranchId);
         setSelectedDates(rows.filter((row) => String(row.branchId || '') === nextBranchId).map((row) => String(row.date)).sort());
       } else {
+        setSubmitBranchId('');
         setSelectedDates([]);
       }
     } catch (e) {
@@ -117,7 +135,7 @@ function CashReconciliationPage() {
     } finally {
       setLoadingBacklog(false);
     }
-  }, [filters.from, filters.to, toast]);
+  }, [canViewAllBranches, toast]);
 
   const loadPage = useCallback(async () => {
     setLoading(true);
@@ -296,6 +314,10 @@ function CashReconciliationPage() {
   function handleSubmitBranchChange(value) {
     const nextBranchId = String(value || '').trim();
     setSubmitBranchId(nextBranchId);
+    if (!nextBranchId) {
+      setSelectedDates([]);
+      return;
+    }
     const nextRows = allBacklogRows.filter((row) => String(row.branchId || '') === nextBranchId);
     setSelectedDates(nextRows.map((row) => String(row.date)).sort());
   }
@@ -363,10 +385,10 @@ function CashReconciliationPage() {
       </div>
 
       <div className="stats-grid">
-        <div className="card stat-card"><div className="stat-label">Deposited (Approved)</div><div className="stat-value-compact">{formatCurrency(summary.depositedAmount || 0, settings)}</div></div>
-        <div className="card stat-card"><div className="stat-label">Awaiting Deposit</div><div className="stat-value-compact">{formatCurrency(summary.awaitingAmount || 0, settings)}</div></div>
-        <div className="card stat-card"><div className="stat-label">Pending Approval</div><div className="stat-value-compact">{formatCurrency(summary.pendingApprovalAmount || 0, settings)}</div></div>
-        <div className="card stat-card"><div className="stat-label">Backlog Days</div><div className="stat-value">{summary.backlogDays || 0}</div></div>
+        <div className="card stat-card"><div className="stat-label">Deposited (Approved)</div><div className="stat-value-compact">{loading ? <LoadingDots /> : formatCurrency(summary.depositedAmount || 0, settings)}</div></div>
+        <div className="card stat-card"><div className="stat-label">Awaiting Deposit</div><div className="stat-value-compact">{loading ? <LoadingDots /> : formatCurrency(summary.awaitingAmount || 0, settings)}</div></div>
+        <div className="card stat-card"><div className="stat-label">Pending Approval</div><div className="stat-value-compact">{loading ? <LoadingDots /> : formatCurrency(summary.pendingApprovalAmount || 0, settings)}</div></div>
+        <div className="card stat-card"><div className="stat-label">Backlog Days</div><div className="stat-value">{loading ? <LoadingDots /> : (summary.backlogDays || 0)}</div></div>
       </div>
 
       {tab === 'submit' && (
@@ -382,9 +404,9 @@ function CashReconciliationPage() {
               <button className="btn btn-primary" onClick={openSubmitModal} disabled={!canSubmit}>Add Reconciliation</button>
             </div>
             <div className="stats-grid">
-              <div className="surface-panel"><div className="stat-label">Awaiting Deposit</div><div className="stat-value-compact">{formatCurrency(summary.awaitingAmount || 0, settings)}</div></div>
-              <div className="surface-panel"><div className="stat-label">Pending Approval</div><div className="stat-value-compact">{formatCurrency(summary.pendingApprovalAmount || 0, settings)}</div></div>
-              <div className="surface-panel"><div className="stat-label">Backlog Days</div><div className="stat-value">{summary.backlogDays || 0}</div></div>
+              <div className="surface-panel"><div className="stat-label">Awaiting Deposit</div><div className="stat-value-compact">{loading ? <LoadingDots /> : formatCurrency(summary.awaitingAmount || 0, settings)}</div></div>
+              <div className="surface-panel"><div className="stat-label">Pending Approval</div><div className="stat-value-compact">{loading ? <LoadingDots /> : formatCurrency(summary.pendingApprovalAmount || 0, settings)}</div></div>
+              <div className="surface-panel"><div className="stat-label">Backlog Days</div><div className="stat-value">{loading ? <LoadingDots /> : (summary.backlogDays || 0)}</div></div>
             </div>
           </div>
         </>
@@ -522,7 +544,7 @@ function CashReconciliationPage() {
           footer={
             <>
               <button className="btn" onClick={() => setSubmitModalOpen(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={submitReconciliation} disabled={saving || loadingBacklog}>
+              <button className="btn btn-primary" onClick={submitReconciliation} disabled={saving || loadingBacklog || !submitBranchId}>
                 {saving ? 'Submitting…' : 'Submit for Approval'}
               </button>
             </>
@@ -533,15 +555,30 @@ function CashReconciliationPage() {
               <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', alignItems: 'end' }}>
                 <label style={{ display: 'grid', gap: 6, minWidth: 260 }}>
                   <span>Branch</span>
-                  <BranchSelect value={submitBranchId} onChange={handleSubmitBranchChange} enforceRole={false} overrideBranches={allowedSubmitBranches} />
+                  <BranchSelect
+                    value={submitBranchId}
+                    onChange={handleSubmitBranchChange}
+                    enforceRole={false}
+                    overrideBranches={allowedSubmitBranches}
+                    includeAll={canViewAllBranches}
+                    allLabel="All Branches"
+                  />
                 </label>
                 <button className="btn" onClick={() => loadBacklog(submitBranchId)} disabled={loadingBacklog}>
                   {loadingBacklog ? 'Loading…' : 'Refresh Dates'}
                 </button>
               </div>
               <div style={{ color: '#64748b', fontSize: 13 }}>
-                The system loads only dates with sales that are not yet deposited for the selected branch.
+                {submitBranchId
+                  ? 'The system loads only dates with sales that are not yet deposited for the selected branch.'
+                  : 'The system is showing unreconciled sales dates across all branches you are allowed to see. Select one branch to tick dates and submit a deposit.'}
               </div>
+              {loadingBacklog ? (
+                <div className="surface-panel-muted" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <LoadingDots label="Loading deposit backlog" />
+                  <span className="table-meta">Loading unreconciled sales dates...</span>
+                </div>
+              ) : null}
             </div>
 
             <div className="table-wrap">
@@ -556,9 +593,19 @@ function CashReconciliationPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {loadingBacklog ? (
+                    <tr>
+                      <td colSpan="5" style={{ padding: 14, color: '#64748b' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <LoadingDots label="Loading backlog rows" />
+                          <span>Loading deposit backlog rows...</span>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : null}
                   {backlogRows.map((row) => (
                     <tr key={`${row.branchId}:${row.date}`}>
-                      <td><input type="checkbox" checked={selectedDates.includes(String(row.date))} onChange={() => toggleDate(String(row.date))} /></td>
+                      <td><input type="checkbox" checked={selectedDates.includes(String(row.date))} onChange={() => toggleDate(String(row.date))} disabled={!canSelectBacklogRows} /></td>
                       <td>{row.date}</td>
                       <td>{row.branchName}</td>
                       <td align="right">{formatCurrency(row.expectedAmount || 0, settings)}</td>
@@ -566,7 +613,7 @@ function CashReconciliationPage() {
                     </tr>
                   ))}
                   {!loadingBacklog && backlogRows.length === 0 && (
-                    <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>No unreconciled sales days found for this branch and date range.</td></tr>
+                    <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>No unreconciled sales days found for the selected branch scope.</td></tr>
                   )}
                 </tbody>
               </table>
@@ -575,15 +622,17 @@ function CashReconciliationPage() {
             <div className="stats-grid">
               <div className="surface-panel">
                 <div className="stat-label">Selected Sales Days</div>
-                <div className="stat-value">{selectedDates.length}</div>
+                <div className="stat-value">{loadingBacklog ? <LoadingDots label="Loading selected days" /> : selectedDates.length}</div>
               </div>
               <div className="surface-panel">
                 <div className="stat-label">Expected Amount</div>
-                <div className="stat-value-compact">{formatCurrency(expectedAmount || 0, settings)}</div>
+                <div className="stat-value-compact">{loadingBacklog ? <LoadingDots label="Loading expected amount" /> : formatCurrency(expectedAmount || 0, settings)}</div>
               </div>
               <div className="surface-panel">
                 <div className="stat-label">Entered Amount</div>
-                <div className="stat-value-compact" style={{ color: Math.abs(enteredAmount - expectedAmount) < 0.005 ? '#16a34a' : '#dc2626' }}>{formatCurrency(enteredAmount || 0, settings)}</div>
+                <div className="stat-value-compact" style={{ color: loadingBacklog ? '#0f172a' : (Math.abs(enteredAmount - expectedAmount) < 0.005 ? '#16a34a' : '#dc2626') }}>
+                  {loadingBacklog ? <LoadingDots label="Loading entered amount" /> : formatCurrency(enteredAmount || 0, settings)}
+                </div>
               </div>
             </div>
 
