@@ -5,6 +5,7 @@ import { useToast } from '../components/ToastProvider';
 import Modal from '../components/Modal';
 import { TENANT_SIDEBAR_SECTIONS } from '../utils/tenantAccess';
 import { formatDurationMs, importTenantTransferInSteps, parseTenantTransferFile, summarizeTenantImportResults } from '../utils/tenantTransfer';
+import LoadingDots from '../components/LoadingDots';
 
 const DEFAULT_SUBSCRIPTION_MANAGEMENT = {
   plans: [
@@ -931,7 +932,7 @@ function TenantsPage() {
             </div>
           </div>
         ) : null}
-        {loading ? <div>Loading…</div> : (
+        {loading ? <div><LoadingDots label="Loading tenants" /></div> : (
           <table className="table">
             <thead>
               <tr>

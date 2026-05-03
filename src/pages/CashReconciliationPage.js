@@ -8,6 +8,7 @@ import { promptDialog } from '../utils/dialogs';
 import { approveApproval, rejectApproval } from '../api/approvals';
 import { createCashReconciliation, getAccountDepositTotals, getCashReconciliationSummary, listCashReconciliationBacklog, listCashReconciliations } from '../api/cashReconciliations';
 import { listReconciliationAccounts } from '../api/reconciliationAccounts';
+import LoadingDots from '../components/LoadingDots';
 
 const PAYMENT_METHOD_OPTIONS = ['cash', 'card', 'mobile', 'wallet', 'bank', 'other'];
 
@@ -27,16 +28,6 @@ function dataUrlFromFile(file) {
     reader.onerror = () => reject(new Error('Failed to read file'));
     reader.readAsDataURL(file);
   });
-}
-
-function LoadingDots({ label = 'Loading' }) {
-  return (
-    <span className="dashboard-loading-dots" aria-label={label}>
-      <span>.</span>
-      <span>.</span>
-      <span>.</span>
-    </span>
-  );
 }
 
 function CashReconciliationPage() {
@@ -565,7 +556,7 @@ function CashReconciliationPage() {
                   />
                 </label>
                 <button className="btn" onClick={() => loadBacklog(submitBranchId)} disabled={loadingBacklog}>
-                  {loadingBacklog ? 'Loading…' : 'Refresh Dates'}
+                  {loadingBacklog ? <LoadingDots label="Loading dates" /> : 'Refresh Dates'}
                 </button>
               </div>
               <div style={{ color: '#64748b', fontSize: 13 }}>

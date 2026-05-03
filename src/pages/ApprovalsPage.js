@@ -4,6 +4,7 @@ import { approveApproval, listApprovals, rejectApproval } from '../api/approvals
 import { useToast } from '../components/ToastProvider';
 import { promptDialog } from '../utils/dialogs';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
+import LoadingDots from '../components/LoadingDots';
 
 function ApprovalsPage() {
   const toast = useToast();
@@ -95,7 +96,7 @@ function ApprovalsPage() {
             <option value="rejected">Rejected</option>
             <option value="all">All</option>
           </select>
-          <button className="btn" onClick={() => load(status)} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
+          <button className="btn" onClick={() => load(status)} disabled={loading}>{loading ? <LoadingDots label="Loading approvals" /> : 'Refresh'}</button>
         </div>
       </div>
 

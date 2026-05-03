@@ -8,6 +8,7 @@ import { getCashReconciliationSummary } from '../api/cashReconciliations';
 import { listOperations } from '../api/wholesale';
 import { isFeatureEnabled } from '../utils/featureFlags';
 import BranchSelect from '../components/BranchSelect';
+import LoadingDots from '../components/LoadingDots';
 
 Chart.register(BarElement, LineElement, PointElement, CategoryScale, LinearScale, ArcElement, Tooltip, Legend, Filler);
 
@@ -743,11 +744,7 @@ function DashboardPage() {
                 <div style={{ color: '#64748b', fontSize: 12, fontWeight: 700 }}>{card.label}</div>
                 <div style={{ fontSize: 27, lineHeight: 1.15, fontWeight: 800, color: '#0f172a', marginTop: 8 }}>
                   {card.loading ? (
-                    <span className="dashboard-loading-dots" aria-label="Loading">
-                      <span>.</span>
-                      <span>.</span>
-                      <span>.</span>
-                    </span>
+                    <LoadingDots label="Loading finance summary" />
                   ) : card.value}
                 </div>
                 <div style={{ marginTop: 8, color: '#64748b', fontSize: 12 }}>{card.subtitle}</div>

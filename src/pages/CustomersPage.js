@@ -13,6 +13,7 @@ import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import InlineSpinner from '../components/InlineSpinner';
 import { Bar } from 'react-chartjs-2';
 import { Chart, BarElement, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
+import LoadingDots from '../components/LoadingDots';
 
 Chart.register(BarElement, CategoryScale, LinearScale, Tooltip, Legend);
 
@@ -696,7 +697,7 @@ function CustomersPage() {
                 <td>{c.vip ? 'Yes' : 'No'}</td>
               </tr>
             ))}
-            {loading && <tr><td colSpan={canRemoveCustomers ? 9 : 8} style={{ padding: 12, color: '#64748b' }}>Loading…</td></tr>}
+            {loading && <tr><td colSpan={canRemoveCustomers ? 9 : 8} style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading customers" /></td></tr>}
             {!loading && filtered.length === 0 && <tr><td colSpan={canRemoveCustomers ? 9 : 8} style={{ padding: 12, color: '#64748b' }}>No customers</td></tr>}
           </tbody>
         </table>

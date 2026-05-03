@@ -8,6 +8,7 @@ import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import Modal from '../components/Modal';
 import InlineSpinner from '../components/InlineSpinner';
+import LoadingDots from '../components/LoadingDots';
 
 function ExpensesPage() {
   const settings = useSelector(s => s.settings);
@@ -261,7 +262,7 @@ function ExpensesPage() {
               <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}>No expenses found</td></tr>
             )}
             {loading && (
-              <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}>Loading…</td></tr>
+              <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading expenses" /></td></tr>
             )}
           </tbody>
         </table>

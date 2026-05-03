@@ -7,6 +7,7 @@ import BranchSelect from '../components/BranchSelect';
 import Modal from '../components/Modal';
 import { enqueueHttp } from '../offline/offlineBackup';
 import { promptDialog } from '../utils/dialogs';
+import LoadingDots from '../components/LoadingDots';
 
 function ExpenseApprovalsPage() {
   const settings = useSelector(s => s.settings);
@@ -132,7 +133,7 @@ function ExpenseApprovalsPage() {
             </tr>
           </thead>
           <tbody>
-            {loading && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}>Loading…</td></tr>}
+            {loading && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading expense approvals" /></td></tr>}
             {!loading && filtered.map(r => (
               <tr key={String(r._id || r.id || r.clientId)} style={{ borderTop: '1px solid #e2e8f0', cursor: 'pointer' }} onClick={() => setDetail(r)}>
                 <td>{new Date(r.date).toLocaleDateString()}</td>

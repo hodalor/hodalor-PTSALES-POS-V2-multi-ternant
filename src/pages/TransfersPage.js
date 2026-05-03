@@ -17,6 +17,7 @@ import { approveTransfer, createTransferRequest, rejectTransfer, setTransferRequ
 import { removeEntries as removeAuditEntries } from '../store/auditSlice';
 import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
+import LoadingDots from '../components/LoadingDots';
 
 function TransfersPage() {
   const products = useSelector(s => s.products.products);
@@ -673,7 +674,7 @@ function TransfersPage() {
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>Loading…</td></tr>}
+              {loading && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading transfers" /></td></tr>}
               {!loading && pendingRequests.map(r => {
                 const p = products.find(x => x.id === r.productId);
                 const fromLabel = byId.get(r.fromBranchId || r.from) || r.fromBranchId || r.from;

@@ -7,6 +7,7 @@ import { useSelector } from 'react-redux';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import InlineSpinner from '../components/InlineSpinner';
 import BranchSelect from '../components/BranchSelect';
+import LoadingDots from '../components/LoadingDots';
 
 function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', title = 'Credit Sale Control', description = 'Credit sale balances, overdue tracking, customer rank, and repayment initiation.' }) {
   const settings = useSelector(s => s.settings);
@@ -317,7 +318,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
           <h1 style={{ margin: 0 }}>{title}</h1>
           <div style={{ color: '#64748b', fontSize: 13 }}>{description}</div>
         </div>
-        <button className="btn" onClick={loadAll} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
+        <button className="btn" onClick={loadAll} disabled={loading}>{loading ? <LoadingDots label="Loading credit control" /> : 'Refresh'}</button>
       </div>
       {loading && (
         <div className="card" style={{ padding: 12 }}>

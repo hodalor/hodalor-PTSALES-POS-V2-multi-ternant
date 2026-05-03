@@ -7,6 +7,7 @@ import { formatCurrency } from '../utils/currency';
 import Modal from '../components/Modal';
 import { confirmDialog, promptDialog } from '../utils/dialogs';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
+import LoadingDots from '../components/LoadingDots';
 
 function WarehouseApprovalsPage() {
   const toast = useToast();
@@ -188,7 +189,7 @@ function WarehouseApprovalsPage() {
           <button className={status === 'pending_manager' ? 'btn btn-primary' : 'btn'} onClick={() => setStatus('pending_manager')}>Pending Manager</button>
           <button className={status === 'approved' ? 'btn btn-primary' : 'btn'} onClick={() => setStatus('approved')}>Approved</button>
           <button className={status === 'rejected' ? 'btn btn-primary' : 'btn'} onClick={() => setStatus('rejected')}>Rejected</button>
-          <button className="btn" onClick={load} disabled={loading}>{loading ? 'Loading…' : 'Refresh'}</button>
+          <button className="btn" onClick={load} disabled={loading}>{loading ? <LoadingDots label="Loading warehouse approvals" /> : 'Refresh'}</button>
         </div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>

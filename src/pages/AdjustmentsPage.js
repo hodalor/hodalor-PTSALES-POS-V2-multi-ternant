@@ -16,6 +16,7 @@ import ProductLiveSearchField from '../components/ProductLiveSearchField';
 import { removeEntries as removeAuditEntries } from '../store/auditSlice';
 import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
+import LoadingDots from '../components/LoadingDots';
 
 function inventoryTypeForBranch(branches, targetBranchId) {
   const branch = Array.isArray(branches)
@@ -1086,7 +1087,7 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
           </tr>
         </thead>
         <tbody>
-          {loading && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>Loading…</td></tr>}
+          {loading && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading adjustments" /></td></tr>}
           {!loading && requests.map(r => {
             const p = products.find(x => x.id === r.productId);
             const adjustment = getAdjustmentDisplay(r);

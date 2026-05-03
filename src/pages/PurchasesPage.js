@@ -19,6 +19,7 @@ import InlineSpinner from '../components/InlineSpinner';
 import ProductLiveSearchField from '../components/ProductLiveSearchField';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { ensureSupplierByName } from '../utils/suppliers';
+import LoadingDots from '../components/LoadingDots';
 
 function PurchasesPage() {
   const products = useSelector(s => s.products.products);
@@ -759,7 +760,7 @@ function PurchasesPage() {
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}>Loading…</td></tr>}
+              {loading && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading purchases" /></td></tr>}
               {!loading && pendingRequests.map(r => {
                 const p = products.find(x => x.id === r.productId);
                 const branchName = byId.get(r.branchId) || r.branchId;

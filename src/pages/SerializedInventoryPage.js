@@ -4,6 +4,7 @@ import BranchSelect from '../components/BranchSelect';
 import * as productUnitsApi from '../api/productUnits';
 import { useToast } from '../components/ToastProvider';
 import InlineSpinner from '../components/InlineSpinner';
+import LoadingDots from '../components/LoadingDots';
 
 function SerializedInventoryPage() {
   const toast = useToast();
@@ -256,7 +257,7 @@ function SerializedInventoryPage() {
                 </tr>
               ))}
               {!loading && rows.length === 0 && <tr><td colSpan={(canDeleteUnits ? 1 : 0) + 7 + (canRestoreUnits ? 1 : 0)} style={{ padding: 12, color: '#64748b' }}>No serialized units found</td></tr>}
-              {loading && <tr><td colSpan={(canDeleteUnits ? 1 : 0) + 7 + (canRestoreUnits ? 1 : 0)} style={{ padding: 12, color: '#64748b' }}>Loading…</td></tr>}
+              {loading && <tr><td colSpan={(canDeleteUnits ? 1 : 0) + 7 + (canRestoreUnits ? 1 : 0)} style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading serialized inventory" /></td></tr>}
             </tbody>
           </table>
         </div>

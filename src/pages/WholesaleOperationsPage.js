@@ -11,6 +11,7 @@ import BarcodeScannerModal from '../components/BarcodeScannerModal';
 import ProductLiveSearchField from '../components/ProductLiveSearchField';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { ensureSupplierByName } from '../utils/suppliers';
+import LoadingDots from '../components/LoadingDots';
 
 function labelForArea(area, op) {
   const prefix = String(area || 'wholesale').toLowerCase() === 'warehouse' ? 'Warehouse' : 'Distribution';
@@ -609,7 +610,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}>Loading…</td></tr>}
+              {loading && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading wholesale operations" /></td></tr>}
               {!loading && operations.map(row => {
                 const product = products.find(item => String(item.id) === String(row.productId));
                 const variantLabel = row.variantId ? ((product?.variants || []).find(variant => String(variant.id) === String(row.variantId))?.label || row.variantId) : '';
