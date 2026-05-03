@@ -5,6 +5,8 @@ import Branch from '../models/Branch.js';
 import CashReconciliation from '../models/CashReconciliation.js';
 import ReconciliationAccount from '../models/ReconciliationAccount.js';
 import Sale from '../models/Sale.js';
+import { getMasterConnection } from '../config/tenancy.js';
+import { modelFor as TenantModelFor } from '../models/Tenant.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import { createApprovalForReference } from '../utils/approvalWorkflow.js';
 import { canAccessAccount, normalizeBranchIds, resolveAllowedBranchIds } from './reconciliationAccounts.js';
@@ -35,6 +37,12 @@ function buildRange(from, to, fallbackDays = 90) {
   const start = normalizeDateKey(from) ? new Date(`${normalizeDateKey(from)}T00:00:00.000Z`) : new Date(today.getTime() - fallbackDays * 24 * 3600 * 1000);
   const end = normalizeDateKey(to) ? new Date(`${normalizeDateKey(to)}T23:59:59.999Z`) : new Date(`${today.toISOString().slice(0, 10)}T23:59:59.999Z`);
   return { start, end };
+}
+
+function startOfUtcDay(value) {
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return null;
+  return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate(), 0, 0, 0, 0));
 }
 
 function sameAmount(a, b) {
@@ -122,12 +130,29 @@ async function branchNameMap() {
   return new Map(rows.map((row) => [normalizeString(row.id || row._id), row.name || row.code || row.id || row._id]));
 }
 
+async function resolveTenantCreatedStart(req) {
+  const tenantId = normalizeString(req.user?.tenantId || req.tenantId);
+  if (!tenantId || tenantId.toLowerCase() === 'master') return null;
+  try {
+    const master = await getMasterConnection();
+    const TenantModel = TenantModelFor(master);
+    const tenant = await TenantModel.findOne({ tenantId }, { createdAt: 1 }).lean();
+    return startOfUtcDay(tenant?.createdAt) || null;
+  } catch {
+    return null;
+  }
+}
+
 r.use(requireAuth);
 
 r.get('/backlog', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_finance_reconciliation', 'add_finance_reconciliation']), async (req, res) => {
   const scope = await resolveScope(req);
   const branchIds = await resolveRequestedBranchIds(req, scope);
-  const { start, end } = buildRange(req.query.from, req.query.to, 120);
+  const tenantCreatedStart = await resolveTenantCreatedStart(req);
+  const end = normalizeDateKey(req.query.to)
+    ? new Date(`${normalizeDateKey(req.query.to)}T23:59:59.999Z`)
+    : new Date(`${new Date().toISOString().slice(0, 10)}T23:59:59.999Z`);
+  const start = tenantCreatedStart || buildRange(undefined, req.query.to, 120).start;
   const [totals, coverage, branchNames] = await Promise.all([
     listSalesTotalsByDay(branchIds, start, end),
     loadCoverageSets(branchIds, start, end),
@@ -150,8 +175,14 @@ r.get('/summary', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_fina
   const scope = await resolveScope(req);
   const branchIds = await resolveRequestedBranchIds(req, scope);
   const { start, end } = buildRange(req.query.from, req.query.to, 30);
-  const totals = await listSalesTotalsByDay(branchIds, start, end);
-  const coverage = await loadCoverageSets(branchIds, start, end);
+  const tenantCreatedStart = await resolveTenantCreatedStart(req);
+  const backlogStart = tenantCreatedStart || start;
+  const [totals, coverage, backlogTotals, backlogCoverage] = await Promise.all([
+    listSalesTotalsByDay(branchIds, start, end),
+    loadCoverageSets(branchIds, start, end),
+    listSalesTotalsByDay(branchIds, backlogStart, end),
+    loadCoverageSets(branchIds, backlogStart, end)
+  ]);
   let depositedAmount = 0;
   let awaitingAmount = 0;
   let pendingApprovalAmount = 0;
@@ -163,7 +194,12 @@ r.get('/summary', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_fina
       depositedAmount += Number(row.total || 0);
     } else if (coverage.coveredAny.has(key)) {
       pendingApprovalAmount += Number(row.total || 0);
-    } else {
+    }
+  });
+  Array.from(backlogTotals.values()).forEach((row) => {
+    if (Number(row.total || 0) <= 0) return;
+    const key = `${row.branchId}:${row.date}`;
+    if (!backlogCoverage.coveredAny.has(key)) {
       awaitingAmount += Number(row.total || 0);
       backlogDays += 1;
     }
