@@ -137,7 +137,12 @@ r.get('/users', requireAuth, requireFeature('modules.communication'), requireRol
   const User = UserModelFor(req.db);
   const ChatMessage = ChatMessageModelFor(req.db);
   const currentUser = normalizeName(req.user?.name);
-  const rows = await User.find({ active: { $ne: false } }).sort({ name: 1 }).lean();
+  const currentRole = String(req.user?.role || '').trim().toLowerCase();
+  const userQuery = { active: { $ne: false } };
+  if (currentRole !== 'superadmin') {
+    userQuery.role = { $ne: 'SuperAdmin' };
+  }
+  const rows = await User.find(userQuery).sort({ name: 1 }).lean();
   const unreadRows = await ChatMessage.aggregate([
     { $match: { recipientName: currentUser, readAt: null } },
     { $group: { _id: '$senderName', count: { $sum: 1 }, lastAt: { $max: '$createdAt' } } }
