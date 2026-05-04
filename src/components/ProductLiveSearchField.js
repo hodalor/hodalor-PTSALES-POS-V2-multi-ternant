@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useAppLanguage } from '../utils/localization';
 
 function buildProductLabel(product) {
   return [product?.name, product?.sku ? `SKU: ${product.sku}` : '', product?.barcode ? `Barcode: ${product.barcode}` : '']
@@ -17,6 +18,7 @@ function ProductLiveSearchField({
   emptyText = 'No matching products',
   limit = 10
 }) {
+  const { t } = useAppLanguage();
   const hasSearch = String(query || '').trim().length > 0;
   const selectedProduct = useMemo(
     () => (Array.isArray(allProducts) ? allProducts : products).find((product) => String(product?.id) === String(selectedProductId)) || null,
@@ -32,18 +34,18 @@ function ProductLiveSearchField({
           className="input"
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
-          placeholder="Type name, SKU, barcode"
+          placeholder={t('Type name, SKU, barcode')}
         />
       </label>
       {selectedProduct && !hasSearch ? (
         <div className="product-live-selected">
-          Selected: {buildProductLabel(selectedProduct)}
+          {t('Selected')}: {buildProductLabel(selectedProduct)}
         </div>
       ) : null}
       {hasSearch ? (
         <div className="product-live-results">
           {visibleProducts.length === 0 ? (
-            <div className="product-live-empty">{emptyText}</div>
+            <div className="product-live-empty">{t(emptyText)}</div>
           ) : (
             visibleProducts.map((product) => {
               const selected = String(product?.id) === String(selectedProductId);

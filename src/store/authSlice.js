@@ -25,6 +25,10 @@ const authSlice = createSlice({
     setInitialized(state, action) {
       state.initialized = !!action.payload;
     },
+    setUserPreferredLanguage(state, action) {
+      if (!state.user) return;
+      state.user.preferredLanguage = String(action.payload || '').trim().toLowerCase();
+    },
     logout(state) {
       state.user = null;
       state.role = null;
@@ -35,5 +39,5 @@ const authSlice = createSlice({
   }
 });
 
-export const { loginSuccess, setGrants, setInitialized, logout } = authSlice.actions;
+export const { loginSuccess, setGrants, setInitialized, setUserPreferredLanguage, logout } = authSlice.actions;
 export default authSlice.reducer;

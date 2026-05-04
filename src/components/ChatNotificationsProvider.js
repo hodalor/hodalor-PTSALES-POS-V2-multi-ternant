@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { createChatStream, listChatUsers, listIncomingCalls, sendCallSignal } from '../api/chatMessages';
 import Modal from './Modal';
+import { translateDocumentLanguage } from '../utils/localization';
 import { useToast } from './ToastProvider';
 import { playChatSound, startIncomingRingtone, stopIncomingRingtone, unlockChatSound } from '../utils/chatSound';
 
@@ -185,7 +186,7 @@ function ChatNotificationsProvider({ children }) {
     persistIncomingCall(payload);
     if (!seenIncomingCallIdsRef.current.has(callId)) {
       seenIncomingCallIdsRef.current.add(callId);
-      toast.show(`Incoming voice call from ${senderName}`, { type: 'info', timeout: 5000 });
+      toast.show(translateDocumentLanguage('Incoming voice call from {name}', { name: senderName }), { type: 'info', timeout: 5000 });
     }
     if (!String(location.pathname || '').startsWith('/communication/chat')) {
       setIncomingCall(payload);
@@ -212,8 +213,8 @@ function ChatNotificationsProvider({ children }) {
         if (!recentlyAlerted(dedupeKey)) {
           rememberAlert(dedupeKey);
           playChatSound(notificationSound).catch(() => {});
-          toast.show(`New message from ${senderName}`, {
-            message: 'Open Communication to reply.',
+          toast.show(translateDocumentLanguage('New message from {name}', { name: senderName }), {
+            message: translateDocumentLanguage('Open Communication to reply.'),
             type: 'info',
             timeout: 5000
           });
@@ -260,7 +261,7 @@ function ChatNotificationsProvider({ children }) {
         payload: {}
       });
     } catch (e) {
-      toast.show(String(e?.message || 'Unable to reject the incoming call'), { type: 'error' });
+      toast.show(String(e?.message || translateDocumentLanguage('Unable to reject the incoming call')), { type: 'error' });
     } finally {
       setActingOnIncomingCall(false);
       dismissIncomingCall();
@@ -429,18 +430,18 @@ function ChatNotificationsProvider({ children }) {
       {children}
       {incomingCall && !String(location.pathname || '').startsWith('/communication/chat') ? (
         <Modal
-          title="Incoming Voice Call"
+          title={translateDocumentLanguage('Incoming Voice Call')}
           onClose={rejectIncomingCall}
           footer={(
             <>
-              <button className="btn" type="button" onClick={rejectIncomingCall} disabled={actingOnIncomingCall}>Reject</button>
-              <button className="btn btn-primary" type="button" onClick={acceptIncomingCall} disabled={actingOnIncomingCall}>Answer</button>
+              <button className="btn" type="button" onClick={rejectIncomingCall} disabled={actingOnIncomingCall}>{translateDocumentLanguage('Reject')}</button>
+              <button className="btn btn-primary" type="button" onClick={acceptIncomingCall} disabled={actingOnIncomingCall}>{translateDocumentLanguage('Answer')}</button>
             </>
           )}
         >
           <div style={{ display: 'grid', gap: 10 }}>
-            <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a' }}>{incomingCall.senderName} is calling you.</div>
-            <div style={{ color: '#64748b' }}>Choose Answer to open Chat and connect the call, or Reject to decline it immediately.</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a' }}>{translateDocumentLanguage('{name} is calling you.', { name: incomingCall.senderName })}</div>
+            <div style={{ color: '#64748b' }}>{translateDocumentLanguage('Choose Answer to open Chat and connect the call, or Reject to decline it immediately.')}</div>
           </div>
         </Modal>
       ) : null}

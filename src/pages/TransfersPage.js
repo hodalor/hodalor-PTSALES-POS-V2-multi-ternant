@@ -18,6 +18,7 @@ import { removeEntries as removeAuditEntries } from '../store/auditSlice';
 import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import LoadingDots from '../components/LoadingDots';
+import { useAppLanguage } from '../utils/localization';
 
 function TransfersPage() {
   const products = useSelector(s => s.products.products);
@@ -56,6 +57,7 @@ function TransfersPage() {
   const [wholesaleInbound, setWholesaleInbound] = useState([]);
   const dispatch = useDispatch();
   const toast = useToast();
+  const { t } = useAppLanguage();
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);
   useEffect(() => {
     setFromId(currentBranchId);
@@ -172,7 +174,7 @@ function TransfersPage() {
       { key: 'qty', label: 'Qty', value: e => (e.details || {}).qty ?? '' },
       { key: 'remark', label: 'Remark', value: e => e.remark || '' }
     ];
-    exportTablePdf('Transfers', headers, transfers);
+    exportTablePdf(t('Transfers'), headers, transfers);
   }
 
   async function transfer() {
@@ -493,17 +495,17 @@ function TransfersPage() {
     <div className="page-shell">
       <div className="page-header">
         <div>
-          <h1 style={{ margin: 0 }}>Transfers</h1>
-          <div className="page-subtitle-compact">Move stock between branches with clearer routing, approvals, and inventory segregation.</div>
+          <h1 style={{ margin: 0 }}>{t('Transfers')}</h1>
+          <div className="page-subtitle-compact">{t('Move stock between branches with clearer routing, approvals, and inventory segregation.')}</div>
         </div>
         <div className="page-header-actions">
           {tab === 'initiate' && (
             <button className="btn btn-primary" onClick={() => setOpenModal(true)}>
               <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2"/></svg>
-              Add Transfer
+              {t('Add Transfer')}
             </button>
           )}
-          <OfflineQueueIndicator collection="transferrequests" label="Transfers queued" />
+          <OfflineQueueIndicator collection="transferrequests" label={t('Transfers queued')} />
         </div>
       </div>
       <div className="page-tabs">
@@ -515,10 +517,10 @@ function TransfersPage() {
         <div className="card stat-card"><div className="stat-label">Units Moved</div><div className="stat-value">{summary.transferQty}</div></div>
         <div className="card stat-card"><div className="stat-label">Products</div><div className="stat-value">{summary.uniqueProducts}</div></div>
         <div className="card stat-card"><div className="stat-label">Routes</div><div className="stat-value">{summary.uniqueRoutes}</div></div>
-        <div className="card stat-card"><div className="stat-label">Pending Approvals</div><div className="stat-value">{summary.pendingApprovals}</div></div>
+        <div className="card stat-card"><div className="stat-label">{t('Pending Approvals')}</div><div className="stat-value">{summary.pendingApprovals}</div></div>
       </div>
       {openModal && (
-        <Modal title="Add Transfer" onClose={() => setOpenModal(false)} footer={
+        <Modal title={t('Add Transfer')} onClose={() => setOpenModal(false)} footer={
           <>
             <button className="btn" onClick={() => setOpenModal(false)}>Cancel</button>
             <button className="btn" onClick={addCurrentItem} disabled={!canTransfer || saving}>Add To List</button>
@@ -727,8 +729,8 @@ function TransfersPage() {
           <label>
             <div className="field-label">Period</div>
             <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
-              <option value="range">Custom Range</option>
-              <option value="all_time">All Time</option>
+              <option value="range">{t('Custom Range')}</option>
+              <option value="all_time">{t('All Time')}</option>
             </select>
           </label>
           <label>
@@ -761,8 +763,8 @@ function TransfersPage() {
             </select>
           </label>
           <div className="record-filters-actions">
-            <button className="btn" onClick={onExportCsv}>Export CSV</button>
-            <button className="btn" onClick={onExportPdf}>Export PDF</button>
+            <button className="btn" onClick={onExportCsv}>{t('Export CSV')}</button>
+            <button className="btn" onClick={onExportPdf}>{t('Export PDF')}</button>
             {canDeleteRecords && (
               <>
                 <select className="select" value={bulkAction} onChange={e => setBulkAction(e.target.value)} style={{ width: 180 }} disabled={bulkDeleting}>
@@ -780,7 +782,7 @@ function TransfersPage() {
           </div>
         </div>
         </div>
-        <h2 className="section-title">Recent Transfers</h2>
+        <h2 className="section-title">{t('Recent Transfers')}</h2>
         <div className="table-wrap">
         <table className="table">
           <thead>
@@ -854,7 +856,7 @@ function TransfersPage() {
         </div>
       </div>
       {detail && (
-        <Modal title="Transfer Details" onClose={() => setDetail(null)} footer={
+        <Modal title={t('Transfer Details')} onClose={() => setDetail(null)} footer={
           <>
             <button className="btn" onClick={() => setDetail(null)}>Close</button>
             {(() => {

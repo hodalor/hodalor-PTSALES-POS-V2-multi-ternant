@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Modal from './Modal';
+import { useAppLanguage } from '../utils/localization';
 
 function BarcodeScannerModal({ title = 'Scan Barcode', open, onClose, onDetected }) {
+  const { t } = useAppLanguage();
   const videoRef = useRef(null);
   const streamRef = useRef(null);
   const timerRef = useRef(null);
@@ -13,7 +15,7 @@ function BarcodeScannerModal({ title = 'Scan Barcode', open, onClose, onDetected
     let active = true;
     async function start() {
       if (!supported) {
-        setError('Camera barcode scanning is not supported in this browser. Use a hardware scanner or manual IMEI entry.');
+        setError(t('Camera barcode scanning is not supported in this browser. Use a hardware scanner or manual IMEI entry.'));
         return;
       }
       try {
@@ -41,7 +43,7 @@ function BarcodeScannerModal({ title = 'Scan Barcode', open, onClose, onDetected
           } catch {}
         }, 350);
       } catch (e) {
-        setError(String(e?.message || 'Failed to start camera'));
+        setError(String(e?.message || t('Failed to start camera')));
       }
     }
     setError('');
@@ -55,15 +57,15 @@ function BarcodeScannerModal({ title = 'Scan Barcode', open, onClose, onDetected
         streamRef.current = null;
       }
     };
-  }, [onDetected, open, supported]);
+  }, [onDetected, open, supported, t]);
 
   if (!open) return null;
 
   return (
-    <Modal title={title} onClose={onClose} footer={<button className="btn" onClick={onClose}>Close</button>}>
+    <Modal title={t(title)} onClose={onClose} footer={<button className="btn" onClick={onClose}>{t('Close')}</button>}>
       <div style={{ display: 'grid', gap: 12 }}>
         <div style={{ color: '#64748b', fontSize: 12 }}>
-          Point the camera at the IMEI barcode. Detection runs continuously until a code is found.
+          {t('Point the camera at the IMEI barcode. Detection runs continuously until a code is found.')}
         </div>
         <div style={{ borderRadius: 12, overflow: 'hidden', background: '#000', minHeight: 280, display: 'grid', placeItems: 'center' }}>
           <video ref={videoRef} muted playsInline style={{ width: '100%', maxHeight: 420, objectFit: 'cover' }} />

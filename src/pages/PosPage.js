@@ -24,6 +24,7 @@ import BarcodeScannerModal from '../components/BarcodeScannerModal';
 import { getAllowedPriceTiers, getDisplayPrice, getPreferredPriceTier, getPriceTierLabel } from '../utils/priceVisibility';
 import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
+import { useAppLanguage } from '../utils/localization';
 
 function createReservationToken() {
   return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `RES-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -39,9 +40,10 @@ function PosPage({ mode = 'retail' }) {
   const branchId = useSelector(s => s.settings.currentBranchId);
   const settings = useSelector(s => s.settings);
   const auth = useSelector(s => s.auth);
+  const { t } = useAppLanguage();
   const isWholesale = String(mode || '').toLowerCase() === 'wholesale';
-  const creditModeLabel = isWholesale ? 'Credit Sale' : 'EasyBuy';
-  const modeLabel = isWholesale ? 'Distribution POS' : 'POS';
+  const creditModeLabel = isWholesale ? t('Credit Sale') : t('EasyBuy');
+  const modeLabel = isWholesale ? t('Distribution POS') : t('POS');
   const reservationStorageKey = `ptsales:pos-reservation-token:${String(mode || 'retail').toLowerCase()}`;
   const initialPriceTier = isWholesale ? 'wholesale' : 'retail';
   const roleLower = String(auth.role || '').toLowerCase();
@@ -1158,12 +1160,12 @@ function PosPage({ mode = 'retail' }) {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
               <h2 style={{ marginBottom: 4 }}>{modeLabel}</h2>
-              <div style={{ color: '#64748b', fontSize: 12 }}>{isWholesale ? `Distribution inventory${activeBranch ? ` • ${activeBranch.name}` : ''}` : `Retail inventory${activeBranch ? ` • ${activeBranch.name}` : ''} with EasyBuy support`}</div>
+              <div style={{ color: '#64748b', fontSize: 12 }}>{isWholesale ? `${t('Distribution inventory')}${activeBranch ? ` • ${activeBranch.name}` : ''}` : `${t('Retail inventory')}${activeBranch ? ` • ${activeBranch.name}` : ''} ${t('with EasyBuy support')}`}</div>
             </div>
-            <OfflineQueueIndicator collection="sales" label="Sales queued" />
+            <OfflineQueueIndicator collection="sales" label={t('Sales queued')} />
           </div>
           <div className="toolbar pos-toolbar">
-            <input className="input pos-toolbar-search" placeholder="Search name, SKU, barcode, IMEI, or serial number" value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onSearchKeyDown} />
+            <input className="input pos-toolbar-search" placeholder={t('Search name, SKU, barcode, IMEI, or serial number')} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onSearchKeyDown} />
             {isWholesale && (
             <select className="select pos-toolbar-tier" value={selectedPriceTier} onChange={e => setSelectedPriceTier(e.target.value)}>
               {allowedPriceTiers.map(tier => <option key={tier} value={tier}>{getPriceTierLabel(tier)}</option>)}
@@ -1183,8 +1185,8 @@ function PosPage({ mode = 'retail' }) {
         {query.trim().length >= 4 && (
           <div className="card" style={{ marginTop: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <strong>Serialized Matches</strong>
-              {liveSerializedLoading ? <InlineSpinner label="Searching IMEI / serial..." /> : null}
+              <strong>{t('Serialized Matches')}</strong>
+              {liveSerializedLoading ? <InlineSpinner label={t('Searching IMEI / serial...')} /> : null}
             </div>
             {liveSerializedMatches.length > 0 ? (
               <div style={{ display: 'grid', gap: 8 }}>
@@ -1211,7 +1213,7 @@ function PosPage({ mode = 'retail' }) {
                             </span>
                           </div>
                           {productSpec(product) ? <div style={{ color: '#64748b', fontSize: 12 }}>{productSpec(product)}</div> : null}
-                          <div style={{ color: '#64748b', fontSize: 12 }}>SKU: {product.sku}</div>
+                          <div style={{ color: '#64748b', fontSize: 12 }}>{t('SKU')}: {product.sku}</div>
                           {Array.isArray(product.attributes) && product.attributes.length > 0 ? (
                             <div style={{ color: '#64748b', fontSize: 12 }}>
                               {product.attributes
@@ -1221,21 +1223,21 @@ function PosPage({ mode = 'retail' }) {
                                 .join(' • ')}
                             </div>
                           ) : null}
-                          <div style={{ color: '#64748b', fontSize: 12 }}>IMEI: {renderHighlightedCode(unit.imei || '—', query)}</div>
-                          <div style={{ color: '#64748b', fontSize: 12 }}>Serial: {renderHighlightedCode(unit.serialNumber || '—', query)}</div>
+                          <div style={{ color: '#64748b', fontSize: 12 }}>{t('IMEI')}: {renderHighlightedCode(unit.imei || '—', query)}</div>
+                          <div style={{ color: '#64748b', fontSize: 12 }}>{t('Serial')}: {renderHighlightedCode(unit.serialNumber || '—', query)}</div>
                         </div>
                       </div>
                       <div style={{ display: 'grid', gap: 6, justifyItems: 'end' }}>
                         <div style={{ fontWeight: 800, fontSize: 18 }}>{formatCurrency(product.price, settings)}</div>
                         {isSerializedAlreadyInCart(unit) ? (
-                          <span style={{ color: '#b45309', fontSize: 12, fontWeight: 700 }}>Already in cart</span>
+                          <span style={{ color: '#b45309', fontSize: 12, fontWeight: 700 }}>{t('Already in cart')}</span>
                         ) : null}
                         <button
                           className="btn btn-primary"
                           onClick={() => addSerializedUnitToCart(product, unit)}
                           disabled={isSerializedAlreadyInCart(unit) || isSerializedPending(unit)}
                         >
-                          {isSerializedAlreadyInCart(unit) ? 'Selected' : isSerializedPending(unit) ? 'Adding...' : 'Add Unit'}
+                          {isSerializedAlreadyInCart(unit) ? t('Selected') : isSerializedPending(unit) ? t('Adding...') : t('Add Unit')}
                         </button>
                       </div>
                     </div>
@@ -1244,7 +1246,7 @@ function PosPage({ mode = 'retail' }) {
               </div>
             ) : !liveSerializedLoading ? (
               <div style={{ color: '#64748b', fontSize: 13 }}>
-                No serialized matches found in the current branch yet. Keep typing more digits if needed.
+                {t('No serialized matches found in the current branch yet. Keep typing more digits if needed.')}
               </div>
             ) : null}
           </div>
@@ -1259,7 +1261,7 @@ function PosPage({ mode = 'retail' }) {
                 <div className="product-sku">{p.sku}</div>
                 <div className="product-price">{formatCurrency(p.price, settings)}</div>
                 <div className="product-stock" style={{ color: (p.lowStock ?? 0) > 0 && visibleStockForProduct(p) <= (p.lowStock ?? 0) ? '#ef4444' : undefined }}>
-                  Stock: {visibleStockForProduct(p)}{(p.lowStock ?? 0) > 0 && visibleStockForProduct(p) <= (p.lowStock ?? 0) ? ' • Low' : ''}
+                  {t('Stock')}: {visibleStockForProduct(p)}{(p.lowStock ?? 0) > 0 && visibleStockForProduct(p) <= (p.lowStock ?? 0) ? ` • ${t('Low')}` : ''}
                 </div>
               </button>
             ))}
@@ -1276,7 +1278,7 @@ function PosPage({ mode = 'retail' }) {
                     <div className="sku">{p.sku}</div>
                   </div>
                   <div className="stock" style={{ color: (p.lowStock ?? 0) > 0 && visibleStockForProduct(p) <= (p.lowStock ?? 0) ? '#ef4444' : undefined }}>
-                    Stock: {visibleStockForProduct(p)}{(p.lowStock ?? 0) > 0 && visibleStockForProduct(p) <= (p.lowStock ?? 0) ? ' • Low' : ''}
+                    {t('Stock')}: {visibleStockForProduct(p)}{(p.lowStock ?? 0) > 0 && visibleStockForProduct(p) <= (p.lowStock ?? 0) ? ` • ${t('Low')}` : ''}
                   </div>
                 </div>
                 <div style={{ fontWeight: 700 }}>{formatCurrency(p.price, settings)}</div>
@@ -1289,37 +1291,37 @@ function PosPage({ mode = 'retail' }) {
       <div className="pos-cart-pane">
         <div className="pos-cart-sticky">
         <div className="pos-cart-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0 }}>Cart</h2>
+          <h2 style={{ margin: 0 }}>{t('Cart')}</h2>
           <div style={{ position: 'relative' }}>
             <div style={{ display: 'flex', gap: 6 }}>
               {heldUiEnabled && (
                 <>
                   <button className="btn" onClick={holdCurrentSale} disabled={cart.items.length === 0 || saving}>
                     <svg viewBox="0 0 24 24" fill="none"><path d="M6 6h12v12H6z" stroke="currentColor" strokeWidth="2"/><path d="M9 6v12M15 6v12" stroke="currentColor" strokeWidth="2"/></svg>
-                    Hold
+                    {t('Hold')}
                   </button>
                   <button className="btn" onClick={() => setHeldOpen(o => !o)}>
                     <svg viewBox="0 0 24 24" fill="none"><path d="M7 7h10M7 12h10M7 17h10" stroke="currentColor" strokeWidth="2"/></svg>
-                    Held ({heldSales.length})
+                    {t('Held')} ({heldSales.length})
                   </button>
                 </>
               )}
               <button className="btn" onClick={startNewSale}>
                 <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2"/></svg>
-                New Sale
+                {t('New Sale')}
               </button>
             </div>
             {heldUiEnabled && heldOpen && (
               <div style={{ position: 'absolute', right: 0, marginTop: 6, width: 360, maxWidth: '90vw', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 10px 20px rgba(2,6,23,0.15)', zIndex: 30 }}>
-                <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', fontWeight: 700 }}>Held Sales</div>
+                <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', fontWeight: 700 }}>{t('Held Sales')}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, padding: 10, borderBottom: '1px solid #e2e8f0', alignItems: 'center' }}>
-                  <input className="input" placeholder="Search label or customer" value={heldQuery} onChange={e => onChangeHeldQuery(e.target.value)} />
-                  <label style={{ color: '#64748b', fontSize: 12 }}>Sort</label>
+                  <input className="input" placeholder={t('Search label or customer')} value={heldQuery} onChange={e => onChangeHeldQuery(e.target.value)} />
+                  <label style={{ color: '#64748b', fontSize: 12 }}>{t('Sort')}</label>
                   <select className="select" value={heldSort} onChange={e => onChangeHeldSort(e.target.value)} style={{ flex: '1 1 auto' }}>
-                    <option value="newest">Newest first</option>
-                    <option value="oldest">Oldest first</option>
-                    <option value="labelAZ">Label A–Z</option>
-                    <option value="labelZA">Label Z–A</option>
+                    <option value="newest">{t('Newest first')}</option>
+                    <option value="oldest">{t('Oldest first')}</option>
+                    <option value="labelAZ">{t('Label A-Z')}</option>
+                    <option value="labelZA">{t('Label Z-A')}</option>
                   </select>
                 </div>
                 <div style={{ maxHeight: 320, overflow: 'auto' }}>
@@ -1327,19 +1329,19 @@ function PosPage({ mode = 'retail' }) {
                     <div key={h.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', alignItems: 'center', gap: 8, padding: 10, borderTop: '1px solid #f1f5f9', opacity: deletingHeldId === String(h.id || '') ? 0.55 : 1 }}>
                       <div>
                         <div style={{ fontWeight: 700 }}>{h.label || 'Held sale'}</div>
-                        <div style={{ color: '#64748b', fontSize: 12 }}>{new Date(h.createdAt).toLocaleString()} • Items: {Array.isArray(h.items) ? h.items.length : 0}</div>
+                        <div style={{ color: '#64748b', fontSize: 12 }}>{new Date(h.createdAt).toLocaleString()} • {t('Items')}: {Array.isArray(h.items) ? h.items.length : 0}</div>
                       </div>
-                      <button className="btn" onClick={() => renameHeld(h)} disabled={deletingHeldId === String(h.id || '')}>Rename</button>
-                      <button className="btn" onClick={() => resumeHeld(h)} disabled={deletingHeldId === String(h.id || '')}>Resume</button>
+                      <button className="btn" onClick={() => renameHeld(h)} disabled={deletingHeldId === String(h.id || '')}>{t('Rename')}</button>
+                      <button className="btn" onClick={() => resumeHeld(h)} disabled={deletingHeldId === String(h.id || '')}>{t('Resume')}</button>
                       <button className="btn" onClick={() => deleteHeld(h)} disabled={deletingHeldId === String(h.id || '')}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                           {deletingHeldId === String(h.id || '') && <InlineSpinner />}
-                          {deletingHeldId === String(h.id || '') ? 'Deleting…' : 'Delete'}
+                          {deletingHeldId === String(h.id || '') ? t('Deleting...') : t('Delete')}
                         </span>
                       </button>
                     </div>
                   ))}
-                  {heldList.length === 0 && <div style={{ padding: 12, color: '#64748b' }}>No held sales</div>}
+                  {heldList.length === 0 && <div style={{ padding: 12, color: '#64748b' }}>{t('No held sales')}</div>}
                 </div>
               </div>
             )}
@@ -1347,7 +1349,7 @@ function PosPage({ mode = 'retail' }) {
         </div>
         <div className="card pos-customer-card" style={{ marginBottom: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <div style={{ fontWeight: 700 }}>Customer (optional)</div>
+            <div style={{ fontWeight: 700 }}>{t('Customer (optional)')}</div>
           </div>
           {selectedCustomer ? (
             <div style={{ display: 'grid', gap: 8 }}>
@@ -1365,8 +1367,8 @@ function PosPage({ mode = 'retail' }) {
                 </div>
                 <button
                   className="btn"
-                  aria-label="Remove selected customer"
-                  title="Remove selected customer"
+                  aria-label={t('Remove selected customer')}
+                  title={t('Remove selected customer')}
                   onClick={() => { setSelectedCustomerId(''); setCustomerQuery(''); }}
                   style={{ width: 32, height: 32, padding: 0, borderRadius: 999, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
                 >
@@ -1374,9 +1376,9 @@ function PosPage({ mode = 'retail' }) {
                 </button>
               </div>
               <div style={{ display: 'grid', gap: 4, color: '#475569', fontSize: 13 }}>
-                <div>Credit Rank: <strong>{selectedCustomer.creditRank || 'Bronze'}</strong> • Score: <strong>{customerCreditScore}</strong></div>
-                <div>Outstanding: <strong>{formatCurrency(customerOutstanding, settings)}</strong></div>
-                <div>On-time: <strong>{Number(selectedCustomer.onTimePayments || 0)}</strong> • Late: <strong>{Number(selectedCustomer.latePayments || 0)}</strong></div>
+                <div>{t('Credit Rank')}: <strong>{selectedCustomer.creditRank || 'Bronze'}</strong> • {t('Score')}: <strong>{customerCreditScore}</strong></div>
+                <div>{t('Outstanding')}: <strong>{formatCurrency(customerOutstanding, settings)}</strong></div>
+                <div>{t('On-time')}: <strong>{Number(selectedCustomer.onTimePayments || 0)}</strong> • {t('Late')}: <strong>{Number(selectedCustomer.latePayments || 0)}</strong></div>
               </div>
             </div>
           ) : (
@@ -1384,7 +1386,7 @@ function PosPage({ mode = 'retail' }) {
               <div>
                 <input
                   className="input"
-                  placeholder="Search by phone, customer ID, name, ID card"
+                  placeholder={t('Search by phone, customer ID, name, ID card')}
                   value={customerQuery}
                   onChange={e => setCustomerQuery(e.target.value)}
                 />
@@ -1401,7 +1403,7 @@ function PosPage({ mode = 'retail' }) {
                           <div style={{ fontWeight: 700 }}>{c.name}</div>
                           <div style={{ color: '#64748b', fontSize: 12 }}>{c.customerCode || '—'} {c.phone ? `• ${c.phone}` : ''}</div>
                         </span>
-                        <span>Select</span>
+                        <span>{t('Select')}</span>
                       </button>
                     ))}
                   </div>
@@ -1410,13 +1412,13 @@ function PosPage({ mode = 'retail' }) {
               {canQuickAddCustomer ? (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
                   <div>
-                    <input className="input" value={quickCustomerForm.name} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Customer name" />
+                    <input className="input" value={quickCustomerForm.name} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, name: e.target.value }))} placeholder={t('Customer name')} />
                   </div>
                   <div>
-                    <input className="input" value={quickCustomerForm.phone} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder="Phone number" />
+                    <input className="input" value={quickCustomerForm.phone} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder={t('Phone number')} />
                   </div>
                   <div style={{ gridColumn: '1 / -1' }}>
-                    <input className="input" value={quickCustomerForm.address} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, address: e.target.value }))} placeholder="Address" />
+                    <input className="input" value={quickCustomerForm.address} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, address: e.target.value }))} placeholder={t('Address')} />
                   </div>
                 </div>
               ) : null}
@@ -1481,11 +1483,11 @@ function PosPage({ mode = 'retail' }) {
                 <span style={{ fontWeight: 700 }}>{formatCurrency(item.price, settings)}</span>
                 )}
                 <span style={{ fontSize: 12, color: '#64748b' }}>
-                  Unit: {formatCurrency(item.price, settings)}
+                  {t('Unit')}: {formatCurrency(item.price, settings)}
                 </span>
               </div>
               <div style={{ minWidth: 120, textAlign: 'right' }}>
-                <div style={{ fontSize: 12, color: '#64748b' }}>Line Total</div>
+                <div style={{ fontSize: 12, color: '#64748b' }}>{t('Line Total')}</div>
                 <strong>{formatCurrency((Number(item.price) || 0) * (Number(item.quantity) || 0), settings)}</strong>
               </div>
               <button className="btn" onClick={() => {
@@ -1493,35 +1495,35 @@ function PosPage({ mode = 'retail' }) {
                 void releaseSerializedCartItems([item]);
               }}>
                 <svg viewBox="0 0 24 24" fill="none"><path d="M6 7h12M10 11v6M14 11v6M9 7l1-2h4l1 2M7 7l1 12h8l1-12" stroke="currentColor" strokeWidth="2"/></svg>
-                Remove
+                {t('Remove')}
               </button>
             </li>
           ))}
         </ul>
         <div className="totals-box">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <label style={{ color: '#64748b' }}>Manual discount</label>
+            <label style={{ color: '#64748b' }}>{t('Manual discount')}</label>
             <input className="input" type="number" min="0" value={manualDiscount} onChange={e => dispatch(setDiscount(Number(e.target.value)))} style={{ width: 140 }} />
           </div>
           {settings.loyaltyEnabled && selectedCustomer && (
             <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <label style={{ color: '#64748b' }}>Redeem points</label>
+                <label style={{ color: '#64748b' }}>{t('Redeem points')}</label>
                 <input className="input" type="number" min="0" step="1" value={redeemPoints} onChange={e => setRedeemPoints(e.target.value)} style={{ width: 140 }} />
-                <span style={{ color: '#64748b' }}>Available: {availablePoints}</span>
+                <span style={{ color: '#64748b' }}>{t('Available')}: {availablePoints}</span>
               </div>
-              <div style={{ color: '#64748b' }}>Loyalty discount: {formatCurrency(loyaltyDiscount, settings)}</div>
+              <div style={{ color: '#64748b' }}>{t('Loyalty discount')}: {formatCurrency(loyaltyDiscount, settings)}</div>
             </div>
           )}
           <div style={{ marginTop: 8 }}>
-            <div>Subtotal: {formatCurrency(subtotal, settings)}</div>
-            <div>Discount: {formatCurrency(discount, settings)}</div>
-            <div>Tax ({Math.round((taxRate || 0) * 100)}%): {formatCurrency(tax, settings)}</div>
-            <div><strong>Total: {formatCurrency(total, settings)}</strong></div>
+            <div>{t('Subtotal')}: {formatCurrency(subtotal, settings)}</div>
+            <div>{t('Discount')}: {formatCurrency(discount, settings)}</div>
+            <div>{t('Tax')} ({Math.round((taxRate || 0) * 100)}%): {formatCurrency(tax, settings)}</div>
+            <div><strong>{t('Total')}: {formatCurrency(total, settings)}</strong></div>
           </div>
           <div style={{ marginTop: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-              <h3 style={{ margin: 0 }}>Payments</h3>
+              <h3 style={{ margin: 0 }}>{t('Payments')}</h3>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
                 <input
                   type="checkbox"
@@ -1542,48 +1544,49 @@ function PosPage({ mode = 'retail' }) {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <label>
                     <div style={{ marginBottom: 6, color: '#64748b' }}>Amount paid now</div>
+                    <div style={{ marginBottom: 6, color: '#64748b' }}>{t('Amount paid now')}</div>
                     <input className="input" type="number" min="0" value={easyBuyAmountPaidNow} onChange={e => setEasyBuyAmountPaidNow(e.target.value)} />
                   </label>
                   <label>
-                    <div style={{ marginBottom: 6, color: '#64748b' }}>Due date</div>
+                    <div style={{ marginBottom: 6, color: '#64748b' }}>{t('Due date')}</div>
                     <input className="input" type="date" value={easyBuyDueDate} onChange={e => setEasyBuyDueDate(e.target.value)} />
                   </label>
                 </div>
-                <div style={{ color: '#64748b' }}>Paid now: {formatCurrency(paid, settings)} | Remaining balance: {formatCurrency(due, settings)}</div>
+                <div style={{ color: '#64748b' }}>{t('Paid now')}: {formatCurrency(paid, settings)} | {t('Remaining balance')}: {formatCurrency(due, settings)}</div>
               </div>
             ) : (
               <>
                 {payments.map((p, i) => (
                   <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
                     <select className="select" value={p.type} onChange={e => updatePayment(i, 'type', e.target.value)}>
-                      <option value="cash">Cash</option>
-                      <option value="card">Card</option>
-                      <option value="mobile">Mobile</option>
-                      <option value="wallet">Wallet</option>
+                      <option value="cash">{t('Cash')}</option>
+                      <option value="card">{t('Card')}</option>
+                      <option value="mobile">{t('Mobile')}</option>
+                      <option value="wallet">{t('Wallet')}</option>
                     </select>
-                    <input className="input" type="number" placeholder="amount" value={p.amount} onChange={e => updatePayment(i, 'amount', e.target.value)} style={{ width: 140 }} />
+                    <input className="input" type="number" placeholder={t('amount')} value={p.amount} onChange={e => updatePayment(i, 'amount', e.target.value)} style={{ width: 140 }} />
                     {payments.length > 1 && <button className="btn" onClick={() => removePaymentRow(i)}>
                       <svg viewBox="0 0 24 24" fill="none"><path d="M6 7h12M10 11v6M14 11v6M9 7l1-2h4l1 2M7 7l1 12h8l1-12" stroke="currentColor" strokeWidth="2"/></svg>
-                      Remove
+                      {t('Remove')}
                     </button>}
                   </div>
                 ))}
                 <button className="btn" onClick={addPaymentRow}>
                   <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2"/></svg>
-                  Add Payment
+                  {t('Add Payment')}
                 </button>
-                <div style={{ marginTop: 6, color: '#64748b' }}>Paid: {formatCurrency(paid, settings)} | Due: {formatCurrency(due, settings)} | Change: {formatCurrency(change, settings)}</div>
+                <div style={{ marginTop: 6, color: '#64748b' }}>{t('Paid')}: {formatCurrency(paid, settings)} | {t('Due')}: {formatCurrency(due, settings)} | {t('Change')}: {formatCurrency(change, settings)}</div>
               </>
             )}
           </div>
           {canOverrideTax && (
             <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <label style={{ color: '#64748b' }}>Tax override (%)</label>
+                <label style={{ color: '#64748b' }}>{t('Tax override (%)')}</label>
                 <input className="input" type="number" min="0" max="100" step="0.01" value={taxOverridePct} onChange={e => setTaxOverridePct(e.target.value)} style={{ width: 140 }} />
               </div>
               {taxOverridePct !== '' && (
-                <input className="input" placeholder="Remark for override (required)" value={taxOverrideRemark} onChange={e => setTaxOverrideRemark(e.target.value)} />
+                <input className="input" placeholder={t('Remark for override (required)')} value={taxOverrideRemark} onChange={e => setTaxOverrideRemark(e.target.value)} />
               )}
             </div>
           )}
@@ -1591,30 +1594,30 @@ function PosPage({ mode = 'retail' }) {
         <div style={{ marginTop: 12 }}>
           <button className="btn btn-primary" onClick={() => completeSale(false)} disabled={cart.items.length === 0 || saving}>
             <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>
-            {saving ? 'Processing…' : 'Complete & Print'}
+            {saving ? t('Processing...') : t('Complete & Print')}
           </button>
           <button className="btn" onClick={() => completeSale(true)} style={{ marginLeft: 8 }} disabled={cart.items.length === 0 || saving}>
             <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>
-            {saving ? 'Processing…' : 'Complete (ESC/POS)'}
+            {saving ? t('Processing...') : t('Complete (ESC/POS)')}
           </button>
           <button className="btn" onClick={() => { void releaseSerializedCartItems(cart.items); dispatch(clearCart()); rotateReservationToken(); }} style={{ marginLeft: 8 }} disabled={cart.items.length === 0}>
             <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M6 7l1 12h10l1-12M9 7l1-2h4l1 2" stroke="currentColor" strokeWidth="2"/></svg>
-            Clear
+            {t('Clear')}
           </button>
         </div>
         </div>
         {serializedPickerProduct && (
           <Modal
-            title={`Select Serialized Unit • ${serializedPickerProduct.name}`}
+            title={`${t('Select Serialized Unit')} • ${serializedPickerProduct.name}`}
             onClose={() => setSerializedPickerProduct(null)}
-            footer={<button className="btn" onClick={() => setSerializedPickerProduct(null)}>Close</button>}
+            footer={<button className="btn" onClick={() => setSerializedPickerProduct(null)}>{t('Close')}</button>}
           >
             <div style={{ display: 'grid', gap: 12 }}>
               <input
                 ref={serializedScanInputRef}
                 className="input"
                 autoFocus
-                placeholder="Scan IMEI barcode or type and press Enter"
+                placeholder={t('Scan IMEI barcode or type and press Enter')}
                 value={serializedScanInput}
                 onChange={e => setSerializedScanInput(e.target.value)}
                 onKeyDown={async e => {
@@ -1630,11 +1633,11 @@ function PosPage({ mode = 'retail' }) {
                 style={{ color: '#111827', background: '#ffffff' }}
               />
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button className="btn" onClick={() => setSerializedCameraOpen(true)}>Camera Scan</button>
+                <button className="btn" onClick={() => setSerializedCameraOpen(true)}>{t('Camera Scan')}</button>
               </div>
               <input
                 className="input"
-                placeholder="Search existing units"
+                placeholder={t('Search existing units')}
                 value={serializedUnitsQuery}
                 onChange={async e => {
                   const value = e.target.value;
@@ -1648,8 +1651,8 @@ function PosPage({ mode = 'retail' }) {
                 <table className="table">
                   <thead>
                     <tr>
-                      <th align="left">IMEI</th>
-                      <th align="left">Serial</th>
+                      <th align="left">{t('IMEI')}</th>
+                      <th align="left">{t('Serial')}</th>
                       <th align="left"></th>
                     </tr>
                   </thead>
@@ -1659,26 +1662,26 @@ function PosPage({ mode = 'retail' }) {
                         <td style={{ color: '#111827' }}>{unit.imei || '—'}</td>
                         <td style={{ color: '#111827' }}>{unit.serialNumber || '—'}</td>
                         <td style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
-                          {isSerializedAlreadyInCart(unit) && <span style={{ color: '#b45309', fontSize: 12 }}>In Cart</span>}
-                          {!isSerializedAlreadyInCart(unit) && isSerializedPending(unit) && <span style={{ color: '#2563eb', fontSize: 12 }}>Adding…</span>}
+                          {isSerializedAlreadyInCart(unit) && <span style={{ color: '#b45309', fontSize: 12 }}>{t('In Cart')}</span>}
+                          {!isSerializedAlreadyInCart(unit) && isSerializedPending(unit) && <span style={{ color: '#2563eb', fontSize: 12 }}>{t('Adding...')}</span>}
                           <button className="btn btn-primary" onClick={() => addSerializedUnitToCart(serializedPickerProduct, unit)} disabled={isSerializedAlreadyInCart(unit) || isSerializedPending(unit)}>
-                            {isSerializedAlreadyInCart(unit) ? 'Selected' : isSerializedPending(unit) ? 'Adding…' : 'Select'}
+                            {isSerializedAlreadyInCart(unit) ? t('Selected') : isSerializedPending(unit) ? t('Adding...') : t('Select')}
                           </button>
                         </td>
                       </tr>
                     ))}
-                    {!serializedLoading && serializedUnits.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>No serialized units available</td></tr>}
+                    {!serializedLoading && serializedUnits.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>{t('No serialized units available')}</td></tr>}
                   </tbody>
                 </table>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  <button className="btn" onClick={() => { const next = Math.max(1, serializedUnitsPage - 1); setSerializedUnitsPage(next); loadSerializedUnits(serializedPickerProduct, serializedUnitsQuery, next, serializedUnitsPageSize); }} disabled={serializedUnitsPage <= 1 || serializedLoading}>Prev</button>
-                  <span style={{ color: '#111827' }}>Page {serializedUnitsPage} of {Math.max(1, Math.ceil(serializedUnitsTotal / serializedUnitsPageSize))}</span>
-                  <button className="btn" onClick={() => { const next = Math.min(Math.max(1, Math.ceil(serializedUnitsTotal / serializedUnitsPageSize)), serializedUnitsPage + 1); setSerializedUnitsPage(next); loadSerializedUnits(serializedPickerProduct, serializedUnitsQuery, next, serializedUnitsPageSize); }} disabled={serializedUnitsPage >= Math.max(1, Math.ceil(serializedUnitsTotal / serializedUnitsPageSize)) || serializedLoading}>Next</button>
+                  <button className="btn" onClick={() => { const next = Math.max(1, serializedUnitsPage - 1); setSerializedUnitsPage(next); loadSerializedUnits(serializedPickerProduct, serializedUnitsQuery, next, serializedUnitsPageSize); }} disabled={serializedUnitsPage <= 1 || serializedLoading}>{t('Prev')}</button>
+                  <span style={{ color: '#111827' }}>{t('Page')} {serializedUnitsPage} {t('of')} {Math.max(1, Math.ceil(serializedUnitsTotal / serializedUnitsPageSize))}</span>
+                  <button className="btn" onClick={() => { const next = Math.min(Math.max(1, Math.ceil(serializedUnitsTotal / serializedUnitsPageSize)), serializedUnitsPage + 1); setSerializedUnitsPage(next); loadSerializedUnits(serializedPickerProduct, serializedUnitsQuery, next, serializedUnitsPageSize); }} disabled={serializedUnitsPage >= Math.max(1, Math.ceil(serializedUnitsTotal / serializedUnitsPageSize)) || serializedLoading}>{t('Next')}</button>
                 </div>
                 <label style={{ color: '#111827' }}>
-                  <span style={{ marginRight: 6 }}>Rows</span>
+                  <span style={{ marginRight: 6 }}>{t('Rows')}</span>
                   <select className="select" value={serializedUnitsPageSize} onChange={e => { const nextSize = Number(e.target.value); setSerializedUnitsPageSize(nextSize); setSerializedUnitsPage(1); loadSerializedUnits(serializedPickerProduct, serializedUnitsQuery, 1, nextSize); }} style={{ color: '#111827', background: '#ffffff' }}>
                     <option value={10}>10</option>
                     <option value={25}>25</option>
@@ -1691,7 +1694,7 @@ function PosPage({ mode = 'retail' }) {
           </Modal>
         )}
         <BarcodeScannerModal
-          title="Scan IMEI Barcode"
+          title={t('Scan IMEI Barcode')}
           open={serializedCameraOpen}
           onClose={() => setSerializedCameraOpen(false)}
           onDetected={async (value) => {

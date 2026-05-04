@@ -17,6 +17,7 @@ import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import { getAllowedPriceTiers, getDisplayPrice, getPreferredPriceTier } from '../utils/priceVisibility';
 import { setAllSettings } from '../store/settingsSlice';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
+import { useAppLanguage } from '../utils/localization';
 
 function ProductsPage() {
   const dispatch = useDispatch();
@@ -118,6 +119,7 @@ function ProductsPage() {
   
   const [openStockFor, setOpenStockFor] = useState(null);
   const toast = useToast();
+  const { t } = useAppLanguage();
   const [saving, setSaving] = useState(false);
 
   const filteredCatalogProducts = useMemo(() => {
@@ -717,38 +719,38 @@ function ProductsPage() {
     <div className="page-shell">
       <div className="page-header">
         <div>
-          <h1 style={{ margin: 0 }}>Products</h1>
-          <div className="page-subtitle-compact">Manage catalog structure, pricing, stock signals, expiry, and profitability from one polished workspace.</div>
+          <h1 style={{ margin: 0 }}>{t('Products')}</h1>
+          <div className="page-subtitle-compact">{t('Manage catalog structure, pricing, stock signals, expiry, and profitability from one polished workspace.')}</div>
         </div>
         <div className="page-header-actions">
-          <OfflineQueueIndicator collection="products" label="Products queued" />
-          <OfflineQueueIndicator collection="audits" label="Stock queued" />
+          <OfflineQueueIndicator collection="products" label={t('Products queued')} />
+          <OfflineQueueIndicator collection="audits" label={t('Stock queued')} />
           {canAddProducts && (
             <button className="btn btn-primary" onClick={openAdd}>
               <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2"/></svg>
-              Add Product
+              {t('Add Product')}
             </button>
           )}
         </div>
       </div>
 
       <div className="page-tabs">
-        <button className={tab === 'catalog' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('catalog')}>Catalog</button>
-        <button className={tab === 'reorder' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('reorder')}>Auto Reorder</button>
-        <button className={tab === 'expiry' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('expiry')}>Expiry Alerts</button>
-        <button className={tab === 'profitability' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('profitability')}>Profitability</button>
+        <button className={tab === 'catalog' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('catalog')}>{t('Catalog')}</button>
+        <button className={tab === 'reorder' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('reorder')}>{t('Auto Reorder')}</button>
+        <button className={tab === 'expiry' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('expiry')}>{t('Expiry Alerts')}</button>
+        <button className={tab === 'profitability' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('profitability')}>{t('Profitability')}</button>
       </div>
 
       {tab === 'reorder' && (
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 className="section-title">Auto Reorder Suggestions</h2>
+          <h2 className="section-title">{t('Auto Reorder Suggestions')}</h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span className="section-note">Lead days</span>
+              <span className="section-note">{t('Lead days')}</span>
               <input className="input" type="number" min="0" max="60" value={leadDays} onChange={e => setLeadDays(Number(e.target.value))} style={{ width: 90 }} />
             </div>
           </div>
-          <div className="section-note" style={{ marginBottom: 8 }}>Based on last 14 days sales + low stock ({currentBranchLabel})</div>
+          <div className="section-note" style={{ marginBottom: 8 }}>{t('Based on last 14 days sales + low stock')} ({currentBranchLabel})</div>
           <table className="table">
             <thead>
               <tr>
@@ -781,7 +783,7 @@ function ProductsPage() {
 
       {tab === 'expiry' && (
         <div className="card">
-          <h2 className="section-title">Expiry Alerts (30 days)</h2>
+          <h2 className="section-title">{t('Expiry Alerts (30 days)')}</h2>
           <table className="table">
             <thead>
               <tr>
@@ -806,8 +808,8 @@ function ProductsPage() {
 
       {tab === 'profitability' && (
         <div className="card">
-          <h2 className="section-title">Product-level Profitability (Top 20)</h2>
-          <div className="section-note" style={{ marginBottom: 8 }}>Last 30 days ({currentBranchLabel}). Profit requires cost price.</div>
+          <h2 className="section-title">{t('Product-level Profitability (Top 20)')}</h2>
+          <div className="section-note" style={{ marginBottom: 8 }}>{t('Last 30 days. Profit requires cost price.')} ({currentBranchLabel})</div>
           <table className="table">
             <thead>
               <tr>
@@ -834,16 +836,16 @@ function ProductsPage() {
 
       {tab === 'catalog' && (
       <div className="card">
-        <h2 className="section-title">Catalog</h2>
+        <h2 className="section-title">{t('Catalog')}</h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 12, marginBottom: 12 }}>
           <label>
-            <div className="field-label">Search</div>
-            <input className="input" value={catalogQuery} onChange={(e) => setCatalogQuery(e.target.value)} placeholder="Name, SKU, barcode, spec" />
+            <div className="field-label">{t('Search')}</div>
+            <input className="input" value={catalogQuery} onChange={(e) => setCatalogQuery(e.target.value)} placeholder={t('Name, SKU, barcode, spec')} />
           </label>
           <label>
-            <div className="field-label">Category</div>
+            <div className="field-label">{t('Category')}</div>
             <select className="select" value={catalogCategory} onChange={(e) => setCatalogCategory(e.target.value)}>
-              <option value="all">All Categories</option>
+              <option value="all">{t('All Categories')}</option>
               {categoryOptions.map((item) => <option key={item} value={item}>{item}</option>)}
             </select>
           </label>
@@ -1067,13 +1069,13 @@ function ProductsPage() {
 
       {modalMode !== 'none' && (
         <Modal
-          title={modalMode === 'add' ? 'Add Product' : 'Edit Product'}
+          title={modalMode === 'add' ? t('Add Product') : t('Edit Product')}
           onClose={() => { if (!saving) closeModal(); }}
           footer={
             <>
-              <button className="btn" onClick={closeModal} disabled={saving}>Cancel</button>
+              <button className="btn" onClick={closeModal} disabled={saving}>{t('Cancel')}</button>
               <button className="btn btn-primary" onClick={save} disabled={saving}>
-                {saving ? 'Saving…' : (modalMode === 'add' ? 'Add Product' : 'Save Changes')}
+                {saving ? t('Saving…') : (modalMode === 'add' ? t('Add Product') : t('Save Changes'))}
               </button>
             </>
           }
@@ -1427,13 +1429,13 @@ function ProductsPage() {
       )}
       {serializedModalProduct && (
         <Modal
-          title={`Serialized Units • ${serializedModalProduct.name}`}
+          title={`${t('Serialized Units')} • ${serializedModalProduct.name}`}
           onClose={() => { if (!loadingSerialized) setSerializedModalProduct(null); }}
           footer={(
             <>
-              <button className="btn" onClick={() => setSerializedModalProduct(null)} disabled={loadingSerialized}>Close</button>
+              <button className="btn" onClick={() => setSerializedModalProduct(null)} disabled={loadingSerialized}>{t('Close')}</button>
               <button className="btn btn-primary" onClick={saveSerializedEntries} disabled={loadingSerialized}>
-                {loadingSerialized ? 'Saving…' : 'Add Units'}
+                {loadingSerialized ? t('Saving…') : t('Add Units')}
               </button>
             </>
           )}
@@ -1514,7 +1516,7 @@ function ProductsPage() {
         </Modal>
       )}
       <BarcodeScannerModal
-        title="Scan IMEI Barcode"
+        title={t('Scan IMEI Barcode')}
         open={serializedCameraOpen}
         onClose={() => setSerializedCameraOpen(false)}
         onDetected={(value) => {

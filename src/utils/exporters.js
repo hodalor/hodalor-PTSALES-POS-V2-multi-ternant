@@ -1,3 +1,5 @@
+import { translateDocumentLanguage } from './localization';
+
 export function exportCsv(filename, headers, rows) {
   const escape = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const head = headers.map(h => escape(h.label)).join(',');
@@ -27,13 +29,14 @@ export function downloadTextFile(filename, content, type = 'text/plain;charset=u
 }
 
 export function downloadHtmlDocument(filename, title, bodyHtml) {
+  const t = translateDocumentLanguage;
   const html = `
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>${escapeHtml(title || 'Document')}</title>
+      <title>${escapeHtml(title || t('Document'))}</title>
       <style>
         body { font-family: Arial, sans-serif; padding: 24px; color: #0f172a; line-height: 1.5; }
         h1, h2, h3 { color: #0f172a; }
@@ -51,6 +54,7 @@ export function downloadHtmlDocument(filename, title, bodyHtml) {
 }
 
 export function exportTablePdf(title, headers, rows, options = {}) {
+  const t = translateDocumentLanguage;
   const letterhead = options?.letterhead || null;
   const meta = Array.isArray(options?.meta) ? options.meta.filter((item) => item && (item.label || item.value)) : [];
   const styles = `
@@ -71,12 +75,12 @@ export function exportTablePdf(title, headers, rows, options = {}) {
     </style>`;
   const letterheadHtml = letterhead ? `
       <div class="letterhead">
-        ${letterhead.logoUrl ? `<img class="letterhead-logo" src="${escapeHtml(letterhead.logoUrl)}" alt="logo" onerror="if(this.src.endsWith('/clientlogo512.png')) this.src='/logo512.png'; else this.src='/clientlogo512.png';" />` : ''}
+        ${letterhead.logoUrl ? `<img class="letterhead-logo" src="${escapeHtml(letterhead.logoUrl)}" alt="${escapeHtml(t('Logo'))}" onerror="if(this.src.endsWith('/clientlogo512.png')) this.src='/logo512.png'; else this.src='/clientlogo512.png';" />` : ''}
         <div>
           <div class="letterhead-title">${escapeHtml(letterhead.companyName || '')}</div>
-          ${letterhead.branch ? `<div class="letterhead-line"><strong>Branch:</strong> ${escapeHtml(letterhead.branch)}</div>` : ''}
-          ${letterhead.phone ? `<div class="letterhead-line"><strong>Phone:</strong> ${escapeHtml(letterhead.phone)}</div>` : ''}
-          ${letterhead.address ? `<div class="letterhead-line"><strong>Address:</strong> ${escapeHtml(letterhead.address)}</div>` : ''}
+          ${letterhead.branch ? `<div class="letterhead-line"><strong>${escapeHtml(t('Branch'))}:</strong> ${escapeHtml(letterhead.branch)}</div>` : ''}
+          ${letterhead.phone ? `<div class="letterhead-line"><strong>${escapeHtml(t('Phone'))}:</strong> ${escapeHtml(letterhead.phone)}</div>` : ''}
+          ${letterhead.address ? `<div class="letterhead-line"><strong>${escapeHtml(t('Address'))}:</strong> ${escapeHtml(letterhead.address)}</div>` : ''}
         </div>
       </div>` : '';
   const metaHtml = meta.length > 0 ? `

@@ -1,14 +1,16 @@
 import { formatCurrency } from './currency';
 import { generateQrSvg } from './qr';
+import { translateDocumentLanguage } from './localization';
 
 export function printReceiptHtml(html) {
   const w = window.open('', 'PRINT', 'width=400,height=600');
   if (!w) return;
+  const t = translateDocumentLanguage;
   w.document.open();
   w.document.write(`
     <html>
     <head>
-      <title>Receipt</title>
+      <title>${t('Receipt')}</title>
       <style>
         body { font-family: monospace; padding: 12px; color:#111; }
         .root { position: relative; }
@@ -59,6 +61,7 @@ export function printReceiptHtml(html) {
 }
 
 export function buildBrandedReceiptHtml({ settings, sale }) {
+  const t = translateDocumentLanguage;
   const formatSerializedLine = (item) => {
     const units = Array.isArray(item?.soldUnits) ? item.soldUnits : [];
     if (units.length === 0) return '';
@@ -68,23 +71,23 @@ export function buildBrandedReceiptHtml({ settings, sale }) {
   const branch = sale.branchName || sale.branchId || '-';
   const phone = settings?.businessPhone || '';
   const website = settings?.businessWebsite || '';
-  const cashier = sale.sellerName || '—';
+  const cashier = sale.sellerName || '-';
   const brandName = settings?.receiptBrandName || settings?.clientAppName || settings?.appName || '';
   const stampEnabled = !!settings?.invoicePaidStampEnabled;
   const stampColor = settings?.invoicePaidStampColor || '#cc0000';
-  const stampLabel = settings?.invoicePaidStampLabel || 'PAID';
-  const stampThanks = settings?.invoicePaidStampThankYou || 'THANK YOU!';
+  const stampLabel = settings?.invoicePaidStampLabel || t('PAID');
+  const stampThanks = settings?.invoicePaidStampThankYou || t('THANK YOU!');
   const stampShowDate = settings?.invoicePaidStampShowDate !== false;
   const customerLine = (() => {
     const name = String(sale.customerName || '').trim();
     const code = String(sale.customerCode || '').trim();
     if (!name && !code) return '';
-    return `<div class="small">CUSTOMER: ${[name, code ? `(${code})` : ''].filter(Boolean).join(' ')}</div>`;
+    return `<div class="small">${t('Customer').toUpperCase()}: ${[name, code ? `(${code})` : ''].filter(Boolean).join(' ')}</div>`;
   })();
   const customerBusinessLines = [
-    { label: 'BUSINESS', value: sale.customerBusinessName || '' },
-    { label: 'TIN/TPIN', value: sale.customerTaxId || '' },
-    { label: 'ADDRESS', value: sale.customerBusinessAddress || sale.customerAddress || '' }
+    { label: t('Business Name').toUpperCase(), value: sale.customerBusinessName || '' },
+    { label: t('TIN/TPIN').toUpperCase(), value: sale.customerTaxId || '' },
+    { label: t('Address').toUpperCase(), value: sale.customerBusinessAddress || sale.customerAddress || '' }
   ]
     .filter((field) => String(field.value || '').trim())
     .map((field) => `<div class="small">${field.label}: ${field.value}</div>`)
@@ -141,21 +144,21 @@ export function buildBrandedReceiptHtml({ settings, sale }) {
           <div class="top">${brandName}</div>
           <div class="middle">${stampLabel}</div>
           <div class="bottom">${stampThanks}</div>
-          ${stampShowDate ? `<div class="date">Date: ${today}</div>` : ''}
+          ${stampShowDate ? `<div class="date">${t('Date')}: ${today}</div>` : ''}
         </div>
       </div>
     ` : ''}
-    <div class="center"><img src="${logoSrc}" alt="logo" style="max-height:60px" onerror="if(this.src.endsWith('/clientlogo512.png')) this.src='/logo512.png'; else this.src='/clientlogo512.png';"/></div>
+    <div class="center"><img src="${logoSrc}" alt="${t('Logo')}" style="max-height:60px" onerror="if(this.src.endsWith('/clientlogo512.png')) this.src='/logo512.png'; else this.src='/clientlogo512.png';"/></div>
     <div class="center title">${brandName}</div>
-    <div class="center small">BRANCH: ${branch}</div>
+    <div class="center small">${t('Branch').toUpperCase()}: ${branch}</div>
     ${phone ? `<div class="center small">${phone}</div>` : ''}
     <div class="hr"></div>
-    <div class="title">SALE INFO</div>
-    <div class="small">CASHIER: ${cashier}</div>
+    <div class="title">${t('Sale Info').toUpperCase()}</div>
+    <div class="small">${t('Cashier').toUpperCase()}: ${cashier}</div>
     ${customerLine}
     ${customerBusinessLines}
     <div class="hr"></div>
-    <div class="title">ITEMS</div>
+    <div class="title">${t('Items').toUpperCase()}</div>
     <table>
       <tbody>
         ${sale.items.map(it => `
@@ -163,31 +166,31 @@ export function buildBrandedReceiptHtml({ settings, sale }) {
             <td>${it.name}${it.spec ? ` [${it.spec}]` : ''} ${it.qty ? `x${it.qty}` : ''}${formatSerializedLine(it)}</td>
             <td class="right">${formatCurrency((Number(it.price)||0) * (Number(it.qty)||1), settings)}</td>
           </tr>`).join('')}
-        <tr><td class="muted">Subtotal</td><td class="right">${formatCurrency(sale.subtotal || 0, settings)}</td></tr>
-        <tr><td class="muted">Discount</td><td class="right">-${formatCurrency(sale.discount || 0, settings)}</td></tr>
-        <tr><td class="muted">Tax</td><td class="right">${formatCurrency(sale.tax || 0, settings)}</td></tr>
-        <tr><td class="title">DUE (VAT INCL)</td><td class="right title">${formatCurrency(sale.total || 0, settings)}</td></tr>
+        <tr><td class="muted">${t('Subtotal')}</td><td class="right">${formatCurrency(sale.subtotal || 0, settings)}</td></tr>
+        <tr><td class="muted">${t('Discount')}</td><td class="right">-${formatCurrency(sale.discount || 0, settings)}</td></tr>
+        <tr><td class="muted">${t('Tax')}</td><td class="right">${formatCurrency(sale.tax || 0, settings)}</td></tr>
+        <tr><td class="title">${t('Amount Due (VAT Incl)').toUpperCase()}</td><td class="right title">${formatCurrency(sale.total || 0, settings)}</td></tr>
       </tbody>
     </table>
     <div class="hr"></div>
-    <div class="title">TENDER</div>
+    <div class="title">${t('Payments').toUpperCase()}</div>
     ${payments}
-    ${hasEasyBuy ? `<div class="sp"><span>EASYBUY PAID</span><span>${formatCurrency(easyBuyPaidNow, settings)}</span></div>` : ''}
-    ${hasEasyBuy ? `<div class="sp"><span>EASYBUY BALANCE</span><span>${formatCurrency(easyBuyBalance, settings)}</span></div>` : ''}
-    ${hasEasyBuy && easyBuyDueDate ? `<div class="sp"><span>EASYBUY DUE DATE</span><span>${new Date(easyBuyDueDate).toLocaleDateString()}</span></div>` : ''}
-    <div class="sp"><span>ROUNDING</span><span>${formatCurrency(0, settings)}</span></div>
-    <div class="sp"><span>CHANGE</span><span>${formatCurrency(change, settings)}</span></div>
-    <div class="sp"><span class="muted">TOTAL ITEMS:</span><span class="muted">${qtySum}</span></div>
+    ${hasEasyBuy ? `<div class="sp"><span>${t('EasyBuy Paid').toUpperCase()}</span><span>${formatCurrency(easyBuyPaidNow, settings)}</span></div>` : ''}
+    ${hasEasyBuy ? `<div class="sp"><span>${t('EasyBuy Balance').toUpperCase()}</span><span>${formatCurrency(easyBuyBalance, settings)}</span></div>` : ''}
+    ${hasEasyBuy && easyBuyDueDate ? `<div class="sp"><span>${t('EasyBuy Due Date').toUpperCase()}</span><span>${new Date(easyBuyDueDate).toLocaleDateString()}</span></div>` : ''}
+    <div class="sp"><span>${t('Rounding').toUpperCase()}</span><span>${formatCurrency(0, settings)}</span></div>
+    <div class="sp"><span>${t('Change').toUpperCase()}</span><span>${formatCurrency(change, settings)}</span></div>
+    <div class="sp"><span class="muted">${t('Total Items').toUpperCase()}:</span><span class="muted">${qtySum}</span></div>
     <div class="hr"></div>
-    <div class="title">TAX INVOICE</div>
-    <div class="sp"><span>VAT INCL @${rate}%</span><span></span></div>
-    <div class="sp"><span class="muted">TAXABLE VAL</span><span>${formatCurrency(taxableVal, settings)}</span></div>
-    <div class="sp"><span class="muted">VAT VAL</span><span>${formatCurrency(vatVal, settings)}</span></div>
-    ${settings?.businessTpin ? `<div class="sp"><span class="muted">TPIN</span><span>${settings.businessTpin}</span></div>` : ''}
-    ${sale?.receiptNumber ? `<div class="sp"><span class="muted">RECEIPT</span><span>${sale.receiptNumber}</span></div>` : ''}
-    ${sale?.invoiceSerial ? `<div class="sp"><span class="muted">INVOICE</span><span>${sale.invoiceSerial}</span></div>` : ''}
+    <div class="title">${t('Tax Invoice').toUpperCase()}</div>
+    <div class="sp"><span>${t('VAT Incl @ {rate}%', { rate })}</span><span></span></div>
+    <div class="sp"><span class="muted">${t('Taxable Value').toUpperCase()}</span><span>${formatCurrency(taxableVal, settings)}</span></div>
+    <div class="sp"><span class="muted">${t('VAT Value').toUpperCase()}</span><span>${formatCurrency(vatVal, settings)}</span></div>
+    ${settings?.businessTpin ? `<div class="sp"><span class="muted">${t('TIN/TPIN').toUpperCase()}</span><span>${settings.businessTpin}</span></div>` : ''}
+    ${sale?.receiptNumber ? `<div class="sp"><span class="muted">${t('Receipt').toUpperCase()}</span><span>${sale.receiptNumber}</span></div>` : ''}
+    ${sale?.invoiceSerial ? `<div class="sp"><span class="muted">${t('Invoice').toUpperCase()}</span><span>${sale.invoiceSerial}</span></div>` : ''}
     <div class="hr"></div>
-    ${shareUrl ? `<div class="center small">Scan to view online</div>` : ''}
+    ${shareUrl ? `<div class="center small">${t('Scan to view online')}</div>` : ''}
     ${shareUrl ? `<div class="center qr" style="margin:6px 0">${qrSvgStr}</div>` : ''}
     ${shareUrl ? `<div class="center small" style="word-break: break-all">${shareUrl}</div>` : ''}
     ${head}

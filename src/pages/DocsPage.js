@@ -1,11 +1,13 @@
 import { useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { downloadHtmlDocument } from '../utils/exporters';
+import { useAppLanguage } from '../utils/localization';
 
 function Section({ title, children }) {
+  const { t } = useAppLanguage();
   return (
     <section className="card" style={{ padding: 16 }}>
-      <h2 style={{ marginTop: 0 }}>{title}</h2>
+      <h2 style={{ marginTop: 0 }}>{t(title)}</h2>
       {children}
     </section>
   );
@@ -20,16 +22,17 @@ function Code({ children }) {
 }
 
 function DocsPage() {
+  const { t } = useAppLanguage();
   const contentRef = useRef(null);
 
   function downloadDocs() {
     downloadHtmlDocument(
       'ptsales-technical-docs.html',
-      'ptSales Technical Documentation',
+      t('ptSales Technical Documentation'),
       `
         <div class="doc-header">
-          <h1>ptSales Technical Documentation</h1>
-          <div class="doc-muted">Architecture, runtime behavior, tenant controls, and implementation notes.</div>
+          <h1>${t('ptSales Technical Documentation')}</h1>
+          <div class="doc-muted">${t('Architecture, runtime behavior, tenant controls, and implementation notes.')}</div>
         </div>
         ${contentRef.current?.innerHTML || ''}
       `
@@ -41,14 +44,14 @@ function DocsPage() {
       <div className="card" style={{ padding: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
           <div>
-            <h1 style={{ marginTop: 0, marginBottom: 8 }}>Technical Documentation</h1>
+            <h1 style={{ marginTop: 0, marginBottom: 8 }}>{t('Technical Documentation')}</h1>
             <div style={{ color: '#64748b' }}>
-              Architecture, modules, runtime safety, tenant controls, and implementation references across the app. SuperAdmin-only.
+              {t('Architecture, modules, runtime safety, tenant controls, and implementation references across the app. SuperAdmin-only.')}
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button className="btn" type="button" onClick={() => window.print()}>Print / Save PDF</button>
-            <button className="btn btn-primary" type="button" onClick={downloadDocs}>Download Docs</button>
+            <button className="btn" type="button" onClick={() => window.print()}>{t('Print / Save PDF')}</button>
+            <button className="btn btn-primary" type="button" onClick={downloadDocs}>{t('Download Docs')}</button>
           </div>
         </div>
       </div>

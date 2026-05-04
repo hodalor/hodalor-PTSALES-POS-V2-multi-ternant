@@ -9,6 +9,7 @@ import { listOperations } from '../api/wholesale';
 import { isFeatureEnabled } from '../utils/featureFlags';
 import BranchSelect from '../components/BranchSelect';
 import LoadingDots from '../components/LoadingDots';
+import { useAppLanguage } from '../utils/localization';
 
 Chart.register(BarElement, LineElement, PointElement, CategoryScale, LinearScale, ArcElement, Tooltip, Legend, Filler);
 
@@ -18,6 +19,7 @@ function DashboardPage() {
   const branches = useSelector(s => s.branches.branches);
   const settings = useSelector(s => s.settings);
   const auth = useSelector(s => s.auth);
+  const { t } = useAppLanguage();
   const roleLower = String(auth.role || '').toLowerCase();
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
   const isPrivilegedDashboardViewer = roleLower === 'superadmin' || roleLower === 'admin';
@@ -634,15 +636,15 @@ function DashboardPage() {
     boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.5)'
   });
   const summaryCards = [
-    { key: 'sales', label: 'Sales (Filtered Range)', value: maskRevenue(metrics.todayTotal), subtitle: periodMode === 'all_time' ? 'All recorded time' : 'Current selected range', accent: '#2563eb', tint: '#dbeafe', badge: 'SL' },
-    { key: 'profit', label: 'Profit (Filtered Range)', value: maskProfit(metrics.todayProfit), subtitle: canViewProfit ? 'Live profit summary' : 'Profit access masked', accent: '#7c3aed', tint: '#ede9fe', badge: 'PF' },
-    { key: 'items', label: 'Items Sold', value: metrics.itemsSold, subtitle: 'Units moved in scope', accent: '#0f766e', tint: '#ccfbf1', badge: 'IT' },
-    { key: 'transactions', label: 'Transactions', value: metrics.transactionCount, subtitle: 'Completed sales count', accent: '#f59e0b', tint: '#fef3c7', badge: 'TX' },
-    { key: 'margin', label: 'Margin', value: maskProfitText(`${metrics.marginPct}%`), subtitle: 'Gross margin percentage', accent: '#ec4899', tint: '#fce7f3', badge: 'MG' },
-    { key: 'cashflow', label: 'Net Cashflow', value: maskProfit(finance.net), subtitle: 'Revenue minus expenses', accent: '#16a34a', tint: '#dcfce7', badge: 'CF' },
+    { key: 'sales', label: t('Sales (Filtered Range)'), value: maskRevenue(metrics.todayTotal), subtitle: periodMode === 'all_time' ? t('All recorded time') : t('Current selected range'), accent: '#2563eb', tint: '#dbeafe', badge: 'SL' },
+    { key: 'profit', label: t('Profit (Filtered Range)'), value: maskProfit(metrics.todayProfit), subtitle: canViewProfit ? t('Live profit summary') : t('Profit access masked'), accent: '#7c3aed', tint: '#ede9fe', badge: 'PF' },
+    { key: 'items', label: t('Items Sold'), value: metrics.itemsSold, subtitle: t('Units moved in scope'), accent: '#0f766e', tint: '#ccfbf1', badge: 'IT' },
+    { key: 'transactions', label: t('Transactions'), value: metrics.transactionCount, subtitle: t('Completed sales count'), accent: '#f59e0b', tint: '#fef3c7', badge: 'TX' },
+    { key: 'margin', label: t('Margin'), value: maskProfitText(`${metrics.marginPct}%`), subtitle: t('Gross margin percentage'), accent: '#ec4899', tint: '#fce7f3', badge: 'MG' },
+    { key: 'cashflow', label: t('Net Cashflow'), value: maskProfit(finance.net), subtitle: t('Revenue minus expenses'), accent: '#16a34a', tint: '#dcfce7', badge: 'CF' },
     ...(canUseFinanceReconciliation ? [
-      { key: 'deposited', label: 'Deposited to Company Account', value: maskRevenue(financeSummary.depositedAmount), subtitle: financeSummaryLoading ? 'Refreshing finance summary' : 'Approved reconciliations', accent: '#14b8a6', tint: '#ccfbf1', badge: 'DP', loading: financeSummaryLoading },
-      { key: 'awaiting', label: 'Waiting for Deposit', value: maskRevenue(financeSummary.awaitingAmount), subtitle: financeSummaryLoading ? 'Refreshing finance summary' : `Backlog days: ${financeSummary.backlogDays}`, accent: '#ef4444', tint: '#fee2e2', badge: 'WD', loading: financeSummaryLoading }
+      { key: 'deposited', label: t('Deposited to Company Account'), value: maskRevenue(financeSummary.depositedAmount), subtitle: financeSummaryLoading ? t('Refreshing finance summary') : t('Approved reconciliations'), accent: '#14b8a6', tint: '#ccfbf1', badge: 'DP', loading: financeSummaryLoading },
+      { key: 'awaiting', label: t('Waiting for Deposit'), value: maskRevenue(financeSummary.awaitingAmount), subtitle: financeSummaryLoading ? t('Refreshing finance summary') : t('Backlog days: {count}', { count: financeSummary.backlogDays }), accent: '#ef4444', tint: '#fee2e2', badge: 'WD', loading: financeSummaryLoading }
     ] : [])
   ];
   const sectionCardStyle = {
@@ -705,31 +707,31 @@ function DashboardPage() {
   };
   return (
     <div style={{ padding: 12 }}>
-      <h1 style={pageTitleStyle}>Dashboard</h1>
+      <h1 style={pageTitleStyle}>{t('Dashboard')}</h1>
       <div className="card" style={{ padding: 12, marginBottom: 12 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, alignItems: 'end' }}>
           <label>
-            <div style={fieldLabelStyle}>Period</div>
+            <div style={fieldLabelStyle}>{t('Period')}</div>
             <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
-              <option value="range">Custom Range</option>
-              <option value="all_time">All Time</option>
+              <option value="range">{t('Custom Range')}</option>
+              <option value="all_time">{t('All Time')}</option>
             </select>
           </label>
           <label>
-            <div style={fieldLabelStyle}>From</div>
+            <div style={fieldLabelStyle}>{t('From')}</div>
             <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
-            <div style={fieldLabelStyle}>To</div>
+            <div style={fieldLabelStyle}>{t('To')}</div>
             <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
-            <div style={fieldLabelStyle}>Branch</div>
+            <div style={fieldLabelStyle}>{t('Branch')}</div>
             <BranchSelect
               value={branchId}
               onChange={setBranchId}
               includeAll={isPrivilegedDashboardViewer || canUseScopedDashboardBranches}
-              allLabel={canViewCashierCompetitionAll || canViewBranchCompetitionAll ? 'All Branches' : 'Assigned Branches'}
+              allLabel={canViewCashierCompetitionAll || canViewBranchCompetitionAll ? t('All Branches') : t('Assigned Branches')}
               overrideBranches={dashboardBranchOptions}
             />
           </label>
@@ -744,7 +746,7 @@ function DashboardPage() {
                 <div style={{ color: '#64748b', fontSize: 12, fontWeight: 700 }}>{card.label}</div>
                 <div style={{ fontSize: 27, lineHeight: 1.15, fontWeight: 800, color: '#0f172a', marginTop: 8 }}>
                   {card.loading ? (
-                    <LoadingDots label="Loading finance summary" />
+                    <LoadingDots label={t('Loading finance summary')} />
                   ) : card.value}
                 </div>
                 <div style={{ marginTop: 8, color: '#64748b', fontSize: 12 }}>{card.subtitle}</div>
@@ -757,7 +759,7 @@ function DashboardPage() {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, alignItems: 'start' }}>
         <div style={sectionCardStyle}>
-          <h2 style={sectionTitleStyle}>Revenue (Selected Range)</h2>
+          <h2 style={sectionTitleStyle}>{t('Revenue (Selected Range)')}</h2>
           <div style={{ height: 220 }}>
             <Line data={metrics.lineData} options={{
               ...metrics.lineOptions,
@@ -777,40 +779,40 @@ function DashboardPage() {
           </div>
         </div>
         <div style={sectionCardStyle}>
-          <h2 style={sectionTitleStyle}>Units by Category</h2>
+          <h2 style={sectionTitleStyle}>{t('Units by Category')}</h2>
           <Doughnut data={metrics.doughData} />
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginTop: 12, alignItems: 'start' }}>
         <div style={sectionCardStyle}>
-          <div style={miniStatLabelStyle}>Revenue</div>
+          <div style={miniStatLabelStyle}>{t('Revenue')}</div>
           <div style={miniStatValueStyle}>{maskRevenue(metrics.last30Revenue)}</div>
-          <div style={{ ...bodyMutedStyle, marginTop: 6 }}>COGS: {maskProfit(metrics.last30Cost)}</div>
-          <div style={{ ...bodyMutedStyle, marginTop: 2 }}>Profit: {maskProfit(metrics.last30Profit)}</div>
+          <div style={{ ...bodyMutedStyle, marginTop: 6 }}>{t('COGS')}: {maskProfit(metrics.last30Cost)}</div>
+          <div style={{ ...bodyMutedStyle, marginTop: 2 }}>{t('Profit')}: {maskProfit(metrics.last30Profit)}</div>
         </div>
         <div style={sectionCardStyle}>
-          <div style={miniStatLabelStyle}>Expenses</div>
+          <div style={miniStatLabelStyle}>{t('Expenses')}</div>
           <div style={miniStatValueStyle}>{maskProfit(finance.expenseTotal)}</div>
-          <div style={{ ...bodyMutedStyle, marginTop: 6 }}>Projection: {maskProfit(finance.projected30)}</div>
+          <div style={{ ...bodyMutedStyle, marginTop: 6 }}>{t('Projection')}: {maskProfit(finance.projected30)}</div>
         </div>
         <div style={sectionCardStyle}>
-          <div style={miniStatLabelStyle}>Cashflow</div>
+          <div style={miniStatLabelStyle}>{t('Cashflow')}</div>
           <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', ...bodyMutedStyle }}><span>Inflow</span><strong style={{ color: '#0f172a', fontWeight: 800 }}>{maskRevenue(metrics.last30Revenue)}</strong></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', ...bodyMutedStyle }}><span>Outflow</span><strong style={{ color: '#0f172a', fontWeight: 800 }}>{maskProfit(finance.expenseTotal)}</strong></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', ...bodyMutedStyle }}><span>Net</span><strong style={{ color: '#0f172a', fontWeight: 800 }}>{maskProfit(finance.net)}</strong></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', ...bodyMutedStyle }}><span>{t('Inflow')}</span><strong style={{ color: '#0f172a', fontWeight: 800 }}>{maskRevenue(metrics.last30Revenue)}</strong></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', ...bodyMutedStyle }}><span>{t('Outflow')}</span><strong style={{ color: '#0f172a', fontWeight: 800 }}>{maskProfit(finance.expenseTotal)}</strong></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', ...bodyMutedStyle }}><span>{t('Net')}</span><strong style={{ color: '#0f172a', fontWeight: 800 }}>{maskProfit(finance.net)}</strong></div>
           </div>
         </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12, alignItems: 'start' }}>
         <div style={sectionCardStyle}>
-          <h2 style={sectionTitleStyle}>Top Products (Units)</h2>
+          <h2 style={sectionTitleStyle}>{t('Top Products (Units)')}</h2>
           <div style={{ height: 190 }}>
             <Bar data={metrics.topBar} options={metrics.barOptions} />
           </div>
         </div>
         <div style={sectionCardStyle}>
-          <h2 style={sectionTitleStyle}>Payments by Day (Selected Range)</h2>
+          <h2 style={sectionTitleStyle}>{t('Payments by Day (Selected Range)')}</h2>
           <div style={{ height: 190 }}>
             <Bar data={metrics.paymentBar} options={metrics.stackedOptions} />
           </div>
@@ -819,16 +821,16 @@ function DashboardPage() {
       <div style={{ ...sectionCardStyle, marginTop: 12 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
           <div>
-            <h2 style={sectionTitleStyle}>Customer Leaderboard (Top 10)</h2>
+            <h2 style={sectionTitleStyle}>{t('Customer Leaderboard (Top 10)')}</h2>
             <div style={{ ...bodyMutedStyle, marginTop: 4 }}>
-              Ranked by the current dashboard filters.
+              {t('Ranked by the current dashboard filters.')}
             </div>
           </div>
           <label style={{ minWidth: 220 }}>
-            <div style={fieldLabelStyle}>Rank By</div>
+            <div style={fieldLabelStyle}>{t('Rank By')}</div>
             <select className="select" value={customerLeaderboardMode} onChange={e => setCustomerLeaderboardMode(e.target.value)}>
-              <option value="amount">Amount Spent</option>
-              <option value="products">Products Bought</option>
+              <option value="amount">{t('Amount Spent')}</option>
+              <option value="products">{t('Products Bought')}</option>
             </select>
           </label>
         </div>
@@ -845,8 +847,8 @@ function DashboardPage() {
                     callbacks: {
                       label: (ctx) => {
                         const raw = ctx.parsed?.y ?? ctx.parsed?.x ?? 0;
-                        if (customerLeaderboardMode === 'products') return `${ctx.label || 'Customer'}: ${raw} products`;
-                        return canViewRevenue ? `${ctx.label || 'Customer'}: ${formatCurrency(raw, settings)}` : `${ctx.label || 'Customer'}: ***`;
+                        if (customerLeaderboardMode === 'products') return `${ctx.label || t('Customer')}: ${raw} ${t('Products Bought').toLowerCase()}`;
+                        return canViewRevenue ? `${ctx.label || t('Customer')}: ${formatCurrency(raw, settings)}` : `${ctx.label || t('Customer')}: ***`;
                       }
                     }
                   }
@@ -880,10 +882,10 @@ function DashboardPage() {
               <thead>
                 <tr>
                   <th align="left" style={tableHeaderStyle}>#</th>
-                  <th align="left" style={tableHeaderStyle}>Customer</th>
-                  <th align="left" style={tableHeaderStyle}>Sales</th>
-                  <th align="left" style={tableHeaderStyle}>Products</th>
-                  <th align="left" style={tableHeaderStyle}>Amount</th>
+                  <th align="left" style={tableHeaderStyle}>{t('Customer')}</th>
+                  <th align="left" style={tableHeaderStyle}>{t('Sales')}</th>
+                  <th align="left" style={tableHeaderStyle}>{t('Products')}</th>
+                  <th align="left" style={tableHeaderStyle}>{t('Amount')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -896,7 +898,7 @@ function DashboardPage() {
                     <td style={tableCellStyle}>{maskRevenue(row.amount)}</td>
                   </tr>
                 ))}
-                {customerLeaderboard.length === 0 && <tr><td colSpan="5" style={{ padding: 12, ...bodyMutedStyle }}>No customer data</td></tr>}
+                {customerLeaderboard.length === 0 && <tr><td colSpan="5" style={{ padding: 12, ...bodyMutedStyle }}>{t('No customer data')}</td></tr>}
               </tbody>
             </table>
           </div>
@@ -904,7 +906,7 @@ function DashboardPage() {
       </div>
       {(canViewCashierCompetitionAssigned || canViewCashierCompetitionAll) && (
       <div style={{ ...sectionCardStyle, marginTop: 12 }}>
-        <h2 style={sectionTitleStyle}>Cashier Performance (Filtered Revenue)</h2>
+        <h2 style={sectionTitleStyle}>{t('Cashier Performance (Filtered Revenue)')}</h2>
         <div style={{ height: 210 }}>
           <Bar
             data={metrics.cashierBar}

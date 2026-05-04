@@ -1,14 +1,16 @@
 import { useSelector } from 'react-redux';
 import { Navigate, useLocation } from 'react-router-dom';
 import { isFeatureEnabled } from '../utils/featureFlags';
+import { useAppLanguage } from '../utils/localization';
 
 function ProtectedRoute({ roles, grant, feature, children }) {
   const auth = useSelector(state => state.auth);
   const settings = useSelector(state => state.settings);
+  const { t } = useAppLanguage();
   const location = useLocation();
   const brandedName = settings?.clientAppName || settings?.receiptBrandName || settings?.appName || 'ptSales POS';
   const brandedLogo = settings?.clientLogoUrl || '/clientlogo512.png';
-  const loadingLabel = !auth.initialized ? 'Preparing secure sign-in...' : 'Loading tenant access...';
+  const loadingLabel = !auth.initialized ? t('Preparing secure sign-in...') : t('Loading tenant access...');
   if (!auth.initialized) {
     return (
       <div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center', padding: 24 }}>
@@ -46,9 +48,9 @@ function ProtectedRoute({ roles, grant, feature, children }) {
   if (!isSuper && !isPermanent && expiryTs && expiryTs < Date.now()) {
     return (
       <div style={{ padding: 24, display: 'grid', gap: 12 }}>
-        <div style={{ fontSize: 24, fontWeight: 800, color: '#991b1b' }}>Subscription Expired</div>
+        <div style={{ fontSize: 24, fontWeight: 800, color: '#991b1b' }}>{t('Subscription Expired')}</div>
         <div style={{ color: '#475569' }}>
-          This tenant subscription has expired. Please contact the super admin to renew access.
+          {t('This tenant subscription has expired. Please contact the super admin to renew access.')}
         </div>
       </div>
     );

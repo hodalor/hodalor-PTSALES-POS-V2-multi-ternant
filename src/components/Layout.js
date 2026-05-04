@@ -13,12 +13,14 @@ import { attemptSync } from '../offline/queue';
 import { syncQueuedItem } from '../offline/syncHandlers';
 import { ensureOnlineJwt } from '../offline/reAuth';
 import { refreshAllData } from '../offline/refreshAll';
+import { useAppLanguage } from '../utils/localization';
 
 function Layout({ bootstrapLoading = false }) {
   const dispatch = useDispatch();
   const store = useStore();
   const footer = useSelector(s => s.settings.footerText);
   const settings = useSelector(s => s.settings);
+  const { t } = useAppLanguage();
   const [installEvt, setInstallEvt] = useState(null);
   const [showInstall, setShowInstall] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -114,8 +116,8 @@ function Layout({ bootstrapLoading = false }) {
           {showInstall && (
             <div className="card" style={{ margin: '8px 16px', padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
               <div>
-                <div style={{ fontWeight: 700 }}>Install App</div>
-                <div style={{ color: '#64748b', fontSize: 12 }}>Install for offline support and faster startup.</div>
+                <div style={{ fontWeight: 700 }}>{t('Install App')}</div>
+                <div style={{ color: '#64748b', fontSize: 12 }}>{t('Install for offline support and faster startup.')}</div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
@@ -130,7 +132,7 @@ function Layout({ bootstrapLoading = false }) {
                     setInstallEvt(null);
                   }}
                 >
-                  Install App
+                  {t('Install App')}
                 </button>
                 <button
                   className="btn"
@@ -139,7 +141,7 @@ function Layout({ bootstrapLoading = false }) {
                     try { localStorage.setItem('ptSales:pwaInstallDismissed', '1'); } catch {}
                   }}
                 >
-                  Not now
+                  {t('Not now')}
                 </button>
               </div>
             </div>
@@ -155,12 +157,12 @@ function Layout({ bootstrapLoading = false }) {
                     <img className="brand-loader-logo" src={brandedLogo} alt="logo" onError={(e) => { e.currentTarget.src = '/logo512.png'; }} />
                   </div>
                   <div className="brand-loader-copy brand-loader-copy-delay-1" style={{ fontSize: 22, fontWeight: 800 }}>{brandedName}</div>
-                  <div className="brand-loader-copy brand-loader-copy-delay-2" style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Loading your business data...</div>
+                  <div className="brand-loader-copy brand-loader-copy-delay-2" style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{t('Loading your business data...')}</div>
                   <div className="brand-loader-copy brand-loader-copy-delay-3" style={{ color: '#64748b', fontSize: 14 }}>
-                    Your tenant access is ready. We are now loading products and stock first, then customers, suppliers, sales, and other business records from the database.
+                    {t('Your tenant access is ready. We are now loading products and stock first, then customers, suppliers, sales, and other business records from the database.')}
                   </div>
                   <div className="brand-loader-copy brand-loader-copy-delay-3" style={{ color: '#64748b', fontSize: 13 }}>
-                    This does not mean your data is erased.
+                    {t('This does not mean your data is erased.')}
                   </div>
                 </div>
               </div>

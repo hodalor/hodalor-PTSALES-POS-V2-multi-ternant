@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from './ToastProvider';
+import { useAppLanguage } from '../utils/localization';
 
 function NotificationBell() {
+  const { t } = useAppLanguage();
   const products = useSelector(s => s.products.products);
   const currentBranchId = useSelector(s => s.settings.currentBranchId);
   const branches = useSelector(s => s.branches.branches);
@@ -43,30 +45,30 @@ function NotificationBell() {
       localStorage.setItem('ptsales:lowstock-notify:v1', key);
     } catch {}
     const parts = [
-      summary.retail > 0 ? `${summary.retail} retail` : '',
-      summary.wholesale > 0 ? `${summary.wholesale} wholesale` : '',
-      summary.warehouse > 0 ? `${summary.warehouse} warehouse` : ''
+      summary.retail > 0 ? `${summary.retail} ${t('Retail').toLowerCase()}` : '',
+      summary.wholesale > 0 ? `${summary.wholesale} ${t('Distribution').toLowerCase()}` : '',
+      summary.warehouse > 0 ? `${summary.warehouse} ${t('Warehouse').toLowerCase()}` : ''
     ].filter(Boolean);
-    const message = `Low stock alerts: ${parts.join(', ')}`;
+    const message = t('Low stock alerts: {items}', { items: parts.join(', ') });
     toast.show(message, { type: 'warning' });
     try {
       if (typeof Notification !== 'undefined') {
         if (Notification.permission === 'granted') {
-          new Notification('ptSales Low Stock Alert', { body: message });
+          new Notification(t('ptSales Low Stock Alert'), { body: message });
         } else if (Notification.permission !== 'denied') {
           Notification.requestPermission().then(permission => {
-            if (permission === 'granted') new Notification('ptSales Low Stock Alert', { body: message });
+            if (permission === 'granted') new Notification(t('ptSales Low Stock Alert'), { body: message });
           }).catch(() => {});
         }
       }
     } catch {}
-  }, [retailLowStock.length, toast, warehouseLowStock.length, wholesaleLowStock.length]);
+  }, [retailLowStock.length, t, toast, warehouseLowStock.length, wholesaleLowStock.length]);
   return (
     <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginRight: 8, verticalAlign: 'middle' }}>
       <button
         className="btn"
         onClick={() => setOpen(v => !v)}
-        aria-label="Notifications"
+        aria-label={t('Notifications')}
         style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, padding: 0 }}
       >
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
@@ -81,10 +83,10 @@ function NotificationBell() {
       </button>
       {open && (
         <div style={{ position: 'absolute', right: 0, top: 40, width: 320, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 30px rgba(0,0,0,0.08)', zIndex: 20 }}>
-          <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', fontWeight: 600 }}>Notifications</div>
+          <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', fontWeight: 600 }}>{t('Notifications')}</div>
           <div style={{ maxHeight: 360, overflowY: 'auto' }}>
             {count === 0 && (
-              <div style={{ padding: 12, color: '#64748b' }}>No notifications</div>
+              <div style={{ padding: 12, color: '#64748b' }}>{t('No notifications')}</div>
             )}
             {retailLowStock.map(p => {
               const s = p.stockByBranch?.[currentBranchId] || 0;
@@ -94,10 +96,10 @@ function NotificationBell() {
                     <div style={{ width: 32, height: 32, background: '#f1f5f9', borderRadius: 6 }} />
                   )}
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>Low stock: {p.name}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{t('Low stock')}: {p.name}</div>
                     <div style={{ fontSize: 12, color: '#64748b' }}>{branchName} • {s} ≤ {p.lowStock}</div>
                   </div>
-                  <button className="btn" onClick={() => { setOpen(false); navigate('/products'); }}>View</button>
+                  <button className="btn" onClick={() => { setOpen(false); navigate('/products'); }}>{t('View')}</button>
                 </div>
               );
             })}
@@ -108,10 +110,10 @@ function NotificationBell() {
                 <div key={`wh-${p.id}`} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 10, borderBottom: '1px solid #f1f5f9' }}>
                   <div style={{ width: 32, height: 32, background: '#dbeafe', borderRadius: 6 }} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>Wholesale low stock: {p.name}</div>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>All wholesale branches • {s} ≤ {threshold}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{t('Distribution low stock')}: {p.name}</div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>{t('All distribution branches')} • {s} ≤ {threshold}</div>
                   </div>
-                  <button className="btn" onClick={() => { setOpen(false); navigate('/wholesale-goods'); }}>View</button>
+                  <button className="btn" onClick={() => { setOpen(false); navigate('/wholesale-goods'); }}>{t('View')}</button>
                 </div>
               );
             })}
@@ -122,10 +124,10 @@ function NotificationBell() {
                 <div key={`wa-${p.id}`} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: 10, borderBottom: '1px solid #f1f5f9' }}>
                   <div style={{ width: 32, height: 32, background: '#ede9fe', borderRadius: 6 }} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>Warehouse low stock: {p.name}</div>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>All warehouse branches • {s} ≤ {threshold}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{t('Warehouse low stock')}: {p.name}</div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>{t('All warehouse branches')} • {s} ≤ {threshold}</div>
                   </div>
-                  <button className="btn" onClick={() => { setOpen(false); navigate('/warehouse-goods'); }}>View</button>
+                  <button className="btn" onClick={() => { setOpen(false); navigate('/warehouse-goods'); }}>{t('View')}</button>
                 </div>
               );
             })}

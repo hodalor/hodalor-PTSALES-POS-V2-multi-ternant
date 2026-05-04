@@ -9,6 +9,7 @@ import * as usersApi from '../api/users';
 import { getApiBase } from '../api/client';
 import { clearTenantState } from '../store/persist';
 import { resetTenantAppState } from '../store';
+import { useAppLanguage } from '../utils/localization';
 
 const COUNTRY_LABELS = {
   GH: 'Ghana',
@@ -151,6 +152,7 @@ function LoginPage() {
   const from = location.state?.from?.pathname;
   const toast = useToast();
   const users = useSelector(s => s.users.users);
+  const { t } = useAppLanguage({ tenantId, userName: name });
   
 
   useEffect(() => {
@@ -612,98 +614,98 @@ function LoginPage() {
                 <img className="brand-loader-logo" src="/logo512.png" alt="logo" />
               </div>
               <div className="brand-loader-copy brand-loader-copy-delay-1" style={{ fontSize: 22, fontWeight: 800 }}>{appName}</div>
-              <div className="brand-loader-copy brand-loader-copy-delay-2" style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>Signing you in...</div>
+              <div className="brand-loader-copy brand-loader-copy-delay-2" style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{t('Signing you in...')}</div>
               <div className="brand-loader-copy brand-loader-copy-delay-3" style={{ color: '#64748b', fontSize: 14 }}>
-                Verifying tenant, credentials, and secure access.
+                {t('Verifying tenant, credentials, and secure access.')}
               </div>
             </div>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="login-form">
-            <input placeholder="tenant id" value={tenantId} onChange={e => setTenantId(e.target.value)} />
-            <input placeholder="username" value={name} onChange={e => setName(e.target.value)} />
-            <input placeholder="PIN (4-6 digits)" type="password" value={pin} onChange={e => setPin(e.target.value)} />
+            <input placeholder={t('tenant id')} value={tenantId} onChange={e => setTenantId(e.target.value)} />
+            <input placeholder={t('username')} value={name} onChange={e => setName(e.target.value)} />
+            <input placeholder={t('PIN (4-6 digits)')} type="password" value={pin} onChange={e => setPin(e.target.value)} />
             <div className="captcha-row">
-              <input placeholder="captcha" value={captchaInput} onChange={e => setCaptchaInput(e.target.value)} />
+              <input placeholder={t('captcha')} value={captchaInput} onChange={e => setCaptchaInput(e.target.value)} />
               <div className="captcha-box">{captcha}</div>
             </div>
             <div style={{ fontSize: 12, color: '#64748b' }}>
-              Captcha refreshes in {Math.max(0, Math.ceil((expiresAt - Date.now())/1000))}s
+              {t('Captcha refreshes in {count}s', { count: Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)) })}
             </div>
             <label className="remember-row">
               <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />
-              <span>remember PIN</span>
+              <span>{t('remember PIN')}</span>
             </label>
             <button type="submit" className="primary" disabled={loading}>
-              {loading ? 'Logging in...' : 'Log In'}
+              {loading ? t('Logging in...') : t('Log In')}
             </button>
           </form>
         )}
         {expiredTenantNotice ? (
           <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: 13 }}>
-            <div style={{ fontWeight: 800, marginBottom: 4 }}>Subscription Expired</div>
+            <div style={{ fontWeight: 800, marginBottom: 4 }}>{t('Subscription Expired')}</div>
             <div>{expiredTenantNotice}</div>
           </div>
         ) : null}
         {paymentSuccess ? (
           <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: '#ecfdf5', border: '1px solid #86efac', color: '#166534', fontSize: 13 }}>
-            <div style={{ fontWeight: 800, marginBottom: 4 }}>Payment Confirmed</div>
-            <div>Activation Code: <strong>{paymentSuccess.activationCode}</strong></div>
-            <div>Code Expires At: {paymentSuccess.activationCodeExpiresAt ? new Date(paymentSuccess.activationCodeExpiresAt).toLocaleString() : 'Not set'}</div>
-            <div>Renewal Amount: {paymentInfo ? formatCurrency(paymentSuccess.amount) : paymentSuccess.amount}</div>
+            <div style={{ fontWeight: 800, marginBottom: 4 }}>{t('Payment Confirmed')}</div>
+            <div>{t('Activation Code')}: <strong>{paymentSuccess.activationCode}</strong></div>
+            <div>{t('Code Expires At')}: {paymentSuccess.activationCodeExpiresAt ? new Date(paymentSuccess.activationCodeExpiresAt).toLocaleString() : t('Not set')}</div>
+            <div>{t('Renewal Amount')}: {paymentInfo ? formatCurrency(paymentSuccess.amount) : paymentSuccess.amount}</div>
           </div>
         ) : null}
         
-        {!loading ? <button className="outline" type="button" onClick={() => setResetOpen(true)}>Reset PIN (Admin)</button> : null}
+        {!loading ? <button className="outline" type="button" onClick={() => setResetOpen(true)}>{t('Reset PIN (Admin)')}</button> : null}
         {expiredTenantNotice ? (
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
-            <button className="outline" type="button" onClick={() => { setActivationTenantId(String(tenantId || '')); setActivationAdminName(String(name || '')); setActivationOpen(true); }}>Activate Subscription</button>
+            <button className="outline" type="button" onClick={() => { setActivationTenantId(String(tenantId || '')); setActivationAdminName(String(name || '')); setActivationOpen(true); }}>{t('Activate Subscription')}</button>
             {canShowPaymentActions ? (
-              <button className="outline" type="button" onClick={openPaymentModal} disabled={paymentLoading}>Make Payment</button>
+              <button className="outline" type="button" onClick={openPaymentModal} disabled={paymentLoading}>{t('Make Payment')}</button>
             ) : null}
           </div>
         ) : null}
       </div>
       {activationOpen && (
         <Modal
-          title="Activate Subscription"
+          title={t('Activate Subscription')}
           onClose={() => { if (!activationLoading) setActivationOpen(false); }}
           footer={
             <>
-              <button className="btn" onClick={() => setActivationOpen(false)} disabled={activationLoading || paymentLoading}>Cancel</button>
+              <button className="btn" onClick={() => setActivationOpen(false)} disabled={activationLoading || paymentLoading}>{t('Cancel')}</button>
               {canShowPaymentActions ? (
                 <button className="btn" onClick={() => openPaymentModal({ closeActivation: true })} disabled={activationLoading || paymentLoading}>
-                  {paymentLoading ? 'Opening Payment…' : 'Make Payment Instead'}
+                  {paymentLoading ? t('Opening Payment...') : t('Make Payment Instead')}
                 </button>
               ) : null}
               <button className="btn btn-primary" onClick={onActivateSubscription} disabled={activationLoading || paymentLoading}>
-                {activationLoading ? 'Activating…' : 'Activate For 30 Days'}
+                {activationLoading ? t('Activating...') : t('Activate For 30 Days')}
               </button>
             </>
           }
         >
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12 }}>
             <div style={{ padding: 12, borderRadius: 12, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
-              <div style={{ fontWeight: 800, color: '#1d4ed8', marginBottom: 4 }}>30-Day Renewal</div>
+              <div style={{ fontWeight: 800, color: '#1d4ed8', marginBottom: 4 }}>{t('30-Day Renewal')}</div>
               <div style={{ color: '#475569', fontSize: 13 }}>
-                Enter the tenant admin credentials and the current activation code sent by superadmin. If everything matches, this tenant will be extended for 30 days.
+                {t('Enter the tenant admin credentials and the current activation code sent by superadmin. If everything matches, this tenant will be extended for 30 days.')}
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
               <label>
-                Tenant ID
+                {t('Tenant ID')}
                 <input className="input" value={activationTenantId} onChange={e => setActivationTenantId(e.target.value)} disabled={activationLoading || paymentLoading} />
               </label>
               <label>
-                Admin Username
+                {t('Admin Username')}
                 <input className="input" value={activationAdminName} onChange={e => setActivationAdminName(e.target.value)} disabled={activationLoading || paymentLoading} />
               </label>
               <label>
-                Admin PIN
+                {t('Admin PIN')}
                 <input className="input" type="password" value={activationAdminPin} onChange={e => setActivationAdminPin(e.target.value)} disabled={activationLoading || paymentLoading} />
               </label>
               <label>
-                Activation Code
+                {t('Activation Code')}
                 <input className="input" value={activationCode} onChange={e => setActivationCode(e.target.value.toUpperCase())} disabled={activationLoading || paymentLoading} />
               </label>
             </div>
@@ -717,29 +719,29 @@ function LoginPage() {
       )}
       {paymentOpen && (
         <Modal
-          title="Subscription Payment"
+          title={t('Subscription Payment')}
           onClose={() => { if (!paymentLoading) setPaymentOpen(false); }}
           footer={
             <>
-              <button className="btn" onClick={() => setPaymentOpen(false)} disabled={paymentLoading}>Cancel</button>
+              <button className="btn" onClick={() => setPaymentOpen(false)} disabled={paymentLoading}>{t('Cancel')}</button>
               <button className="btn btn-primary" onClick={onStartPayment} disabled={paymentLoading || !selectedPeriod || paymentTotal == null || enabledProviders.length === 0 || !enabledProviders.includes(paymentProvider)}>
-                {paymentLoading ? 'Preparing…' : providerCheckoutLabel}
+                {paymentLoading ? t('Preparing...') : t(providerCheckoutLabel)}
               </button>
             </>
           }
         >
           <div style={{ display: 'grid', gap: 12 }}>
             <div style={{ padding: 12, borderRadius: 12, background: '#eff6ff', border: '1px solid #bfdbfe' }}>
-              <div style={{ fontWeight: 800, color: '#1d4ed8', marginBottom: 4 }}>Self-Service Renewal</div>
+              <div style={{ fontWeight: 800, color: '#1d4ed8', marginBottom: 4 }}>{t('Self-Service Renewal')}</div>
               <div style={{ color: '#475569', fontSize: 13 }}>
-                Renewal amount follows the tenant currency and plan amount configured by superadmin. Secure payment continues on the payment provider page.
+                {t('Renewal amount follows the tenant currency and plan amount configured by superadmin. Secure payment continues on the payment provider page.')}
               </div>
             </div>
             {paymentInfo ? (
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                   <div style={{ padding: 12, border: '1px solid #e2e8f0', borderRadius: 12 }}>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>Tenant</div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>{t('Tenant')}</div>
                     <div style={{ fontWeight: 800 }}>{paymentInfo.tenantName || paymentInfo.tenantId}</div>
                     <div style={{ color: '#64748b', fontSize: 12 }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '2px 8px', borderRadius: 999, background: '#eff6ff', color: '#1d4ed8', fontWeight: 700 }}>
@@ -749,22 +751,22 @@ function LoginPage() {
                     </div>
                   </div>
                   <div style={{ padding: 12, border: '1px solid #e2e8f0', borderRadius: 12 }}>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>Monthly Amount</div>
-                    <div style={{ fontWeight: 800 }}>{paymentInfo.subscriptionAmount != null ? formatCurrency(paymentInfo.subscriptionAmount, paymentInfo) : 'Not configured'}</div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>{t('Monthly Amount')}</div>
+                    <div style={{ fontWeight: 800 }}>{paymentInfo.subscriptionAmount != null ? formatCurrency(paymentInfo.subscriptionAmount, paymentInfo) : t('Not configured')}</div>
                   </div>
                   <div style={{ padding: 12, border: '1px solid #e2e8f0', borderRadius: 12 }}>
-                    <div style={{ fontSize: 12, color: '#64748b' }}>Billing Contact</div>
-                    <div style={{ fontWeight: 700 }}>{maskedEmail || 'No email set'}</div>
-                    <div style={{ color: '#64748b', fontSize: 12 }}>{maskedPhone || 'No phone set'}</div>
+                    <div style={{ fontSize: 12, color: '#64748b' }}>{t('Billing Contact')}</div>
+                    <div style={{ fontWeight: 700 }}>{maskedEmail || t('No email set')}</div>
+                    <div style={{ color: '#64748b', fontSize: 12 }}>{maskedPhone || t('No phone set')}</div>
                   </div>
                 </div>
                 <div style={{ padding: 12, borderRadius: 12, background: '#f8fafc', border: '1px solid #e2e8f0' }}>
-                  <div style={{ fontWeight: 700, marginBottom: 4 }}>Billing Address</div>
-                  <div style={{ color: '#64748b', fontSize: 13 }}>{paymentAddress || paymentInfo.billingAddress || 'No billing address set'}</div>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>{t('Billing Address')}</div>
+                  <div style={{ color: '#64748b', fontSize: 13 }}>{paymentAddress || paymentInfo.billingAddress || t('No billing address set')}</div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <label>
-                    Renewal Period
+                    {t('Renewal Period')}
                     <select className="input" value={paymentMonths} onChange={(e) => setPaymentMonths(e.target.value)} disabled={paymentLoading}>
                       {(paymentInfo.periods || []).map((period) => (
                         <option key={period.months} value={period.months}>
@@ -774,8 +776,8 @@ function LoginPage() {
                     </select>
                   </label>
                   <label>
-                    Total To Pay
-                    <input className="input" readOnly value={paymentTotal != null ? formatCurrency(paymentTotal, paymentInfo) : 'Not configured'} />
+                    {t('Total To Pay')}
+                    <input className="input" readOnly value={paymentTotal != null ? formatCurrency(paymentTotal, paymentInfo) : t('Not configured')} />
                   </label>
                 </div>
                 {enabledProviders.length > 0 && showProviderChooser ? (
@@ -787,7 +789,7 @@ function LoginPage() {
                         style={{ borderColor: paymentProvider === 'paypal' ? '#1d4ed8' : undefined, color: paymentProvider === 'paypal' ? '#1d4ed8' : undefined, background: paymentProvider === 'paypal' ? '#eff6ff' : undefined }}
                         onClick={() => setPaymentProvider('paypal')}
                       >
-                        PayPal / Card
+                        {t('PayPal / Card')}
                       </button>
                     ) : null}
                     {enabledProviders.includes('paystack') ? (
@@ -797,7 +799,7 @@ function LoginPage() {
                         style={{ borderColor: paymentProvider === 'paystack' ? '#1d4ed8' : undefined, color: paymentProvider === 'paystack' ? '#1d4ed8' : undefined, background: paymentProvider === 'paystack' ? '#eff6ff' : undefined }}
                         onClick={() => setPaymentProvider('paystack')}
                       >
-                        Paystack
+                        {t('Paystack')}
                       </button>
                     ) : null}
                     {enabledProviders.includes('dpo_pay') ? (
@@ -807,7 +809,7 @@ function LoginPage() {
                         style={{ borderColor: paymentProvider === 'dpo_pay' ? '#1d4ed8' : undefined, color: paymentProvider === 'dpo_pay' ? '#1d4ed8' : undefined, background: paymentProvider === 'dpo_pay' ? '#eff6ff' : undefined }}
                         onClick={() => setPaymentProvider('dpo_pay')}
                       >
-                        DPO Pay
+                        {t('DPO Pay')}
                       </button>
                     ) : null}
                   </div>
@@ -821,14 +823,14 @@ function LoginPage() {
                 {isPayPalProvider ? null : (
                   <>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <button type="button" className="btn" style={{ borderColor: paymentMethod === 'mobile_money' ? '#2563eb' : undefined, color: paymentMethod === 'mobile_money' ? '#2563eb' : undefined, background: paymentMethod === 'mobile_money' ? '#eff6ff' : undefined }} onClick={() => setPaymentMethod('mobile_money')}>Mobile Money</button>
-                  <button type="button" className="btn" style={{ borderColor: paymentMethod === 'card' ? '#2563eb' : undefined, color: paymentMethod === 'card' ? '#2563eb' : undefined, background: paymentMethod === 'card' ? '#eff6ff' : undefined }} onClick={() => setPaymentMethod('card')}>Card</button>
+                  <button type="button" className="btn" style={{ borderColor: paymentMethod === 'mobile_money' ? '#2563eb' : undefined, color: paymentMethod === 'mobile_money' ? '#2563eb' : undefined, background: paymentMethod === 'mobile_money' ? '#eff6ff' : undefined }} onClick={() => setPaymentMethod('mobile_money')}>{t('Mobile Money')}</button>
+                  <button type="button" className="btn" style={{ borderColor: paymentMethod === 'card' ? '#2563eb' : undefined, color: paymentMethod === 'card' ? '#2563eb' : undefined, background: paymentMethod === 'card' ? '#eff6ff' : undefined }} onClick={() => setPaymentMethod('card')}>{t('Card')}</button>
                 </div>
                 {paymentMethod === 'mobile_money' ? (
                   <div style={{ display: 'grid', gap: 12 }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1.7fr 1fr', gap: 12, alignItems: 'end' }}>
                       <label>
-                        Network
+                        {t('Network')}
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
                           {(paymentInfo.mobileMoneyNetworks || []).map((network) => (
                             <button
@@ -844,7 +846,7 @@ function LoginPage() {
                         </div>
                       </label>
                       <label>
-                        MoMo Number
+                        {t('MoMo Number')}
                         <input className="input" value={paymentPhone} onChange={(e) => setPaymentPhone(e.target.value)} disabled={paymentLoading} />
                       </label>
                     </div>
@@ -856,37 +858,37 @@ function LoginPage() {
                       <div style={{ position: 'absolute', top: -40, left: -120, width: 180, height: 320, transform: 'rotate(24deg)', background: 'linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.10) 48%, rgba(255,255,255,0.24) 50%, rgba(255,255,255,0.08) 54%, rgba(255,255,255,0) 100%)', animation: 'payment-card-shine 3.8s linear infinite' }} />
                       <style>{`@keyframes payment-card-shine { 0% { transform: translateX(-140px) rotate(24deg); opacity: 0; } 18% { opacity: 0.7; } 50% { opacity: 1; } 100% { transform: translateX(420px) rotate(24deg); opacity: 0; } }`}</style>
                       <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 26 }}>
-                        <span style={{ fontWeight: 800, letterSpacing: 1.4, color: '#f3f4f6', textTransform: 'uppercase' }}>Premium Card</span>
+                        <span style={{ fontWeight: 800, letterSpacing: 1.4, color: '#f3f4f6', textTransform: 'uppercase' }}>{t('Premium Card')}</span>
                         {renderCardBrandLogo(cardBrand)}
                       </div>
                       <div style={{ position: 'relative', width: 54, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, #f5f5f4 0%, #a8a29e 45%, #fafaf9 100%)', boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 6px 12px rgba(0,0,0,0.28)', marginBottom: 28 }} />
                       <div style={{ position: 'relative', fontSize: 28, letterSpacing: 4, marginBottom: 28, color: '#f5f5f4', textShadow: '0 1px 1px rgba(255,255,255,0.15)' }}>{formatCardNumber(paymentCardNumber || '#### #### #### ####') || '#### #### #### ####'}</div>
                       <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                         <div>
-                          <div style={{ fontSize: 11, color: '#a3a3a3', letterSpacing: 1.2, textTransform: 'uppercase' }}>Card Holder</div>
+                          <div style={{ fontSize: 11, color: '#a3a3a3', letterSpacing: 1.2, textTransform: 'uppercase' }}>{t('Card Holder')}</div>
                           <div style={{ fontWeight: 800, color: '#f3f4f6', letterSpacing: 0.8, textTransform: 'uppercase' }}>{paymentCardName || 'YOUR NAME'}</div>
                         </div>
                         <div>
-                          <div style={{ fontSize: 11, color: '#a3a3a3', letterSpacing: 1.2, textTransform: 'uppercase' }}>Expiry</div>
+                          <div style={{ fontSize: 11, color: '#a3a3a3', letterSpacing: 1.2, textTransform: 'uppercase' }}>{t('Expiry')}</div>
                           <div style={{ fontWeight: 800, color: '#f3f4f6', letterSpacing: 0.8 }}>{paymentCardExpiry || 'MM/YY'}</div>
                         </div>
                       </div>
                     </div>
                     <div style={{ display: 'flex', gridTemplateColumns: 'minmax(0, 1.05fr) minmax(0, 1.25fr) 78px 78px', gap: 10, alignItems: 'end' }}>
                       <label style={{ minWidth: 0 }}>
-                        Name On Card
+                        {t('Name On Card')}
                         <input className="input" value={paymentCardName} onChange={(e) => setPaymentCardName(e.target.value)} disabled={paymentLoading} />
                       </label>
                       <label style={{ minWidth: 0 }}>
-                        Card Number
+                        {t('Card Number')}
                         <input className="input" value={formatCardNumber(paymentCardNumber)} onChange={(e) => setPaymentCardNumber(formatCardNumber(e.target.value))} placeholder="4111 1111 1111 1111" disabled={paymentLoading} />
                       </label>
                       <label style={{ minWidth: 0 }}>
-                        Expiry
+                        {t('Expiry')}
                         <input className="input" value={paymentCardExpiry} onChange={(e) => setPaymentCardExpiry(formatCardExpiry(e.target.value))} placeholder="MM/YY" disabled={paymentLoading} style={{width:"70px"}}/>
                       </label>
                       <label style={{ minWidth: 0 }}>
-                        Security Code
+                        {t('Security Code')}
                         <input className="input" type="password" value={paymentCardCvv} onChange={(e) => setPaymentCardCvv(e.target.value)} placeholder="CVV" disabled={paymentLoading} style={{width:"70px"}}/>
                       </label>
                     </div>
@@ -896,56 +898,56 @@ function LoginPage() {
                 )}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
                   <label>
-                    Receipt Email
+                    {t('Receipt Email')}
                     <input className="input" type="email" value={paymentEmail} onChange={(e) => setPaymentEmail(e.target.value)} disabled={paymentLoading} />
                   </label>
                   <label>
-                    Billing Phone
+                    {t('Billing Phone')}
                     <input className="input" value={paymentPhone} onChange={(e) => setPaymentPhone(e.target.value)} disabled={paymentLoading} />
                   </label>
                   <label>
-                    Billing Address
+                    {t('Billing Address')}
                     <input className="input" value={paymentAddress} onChange={(e) => setPaymentAddress(e.target.value)} disabled={paymentLoading} />
                   </label>
                 </div>
               </>
             ) : (
-              <div style={{ color: '#64748b' }}>Loading renewal details…</div>
+              <div style={{ color: '#64748b' }}>{t('Loading renewal details...')}</div>
             )}
           </div>
         </Modal>
       )}
       {resetOpen && (
         <Modal
-          title="Reset PIN (Admin)"
+          title={t('Reset PIN (Admin)')}
           onClose={() => { if (!resetLoading) setResetOpen(false); }}
           footer={
             <>
-              <button className="btn" onClick={() => setResetOpen(false)} disabled={resetLoading}>Cancel</button>
+              <button className="btn" onClick={() => setResetOpen(false)} disabled={resetLoading}>{t('Cancel')}</button>
               <button className="btn btn-primary" onClick={onResetPin} disabled={resetLoading}>
-                {resetLoading ? 'Resetting…' : 'Reset PIN'}
+                {resetLoading ? t('Resetting...') : t('Reset PIN')}
               </button>
             </>
           }
         >
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10 }}>
             <div style={{ color: '#94a3b8', fontSize: 13 }}>
-              Enter Admin credentials, then set a new PIN for the user.
+              {t('Enter Admin credentials, then set a new PIN for the user.')}
             </div>
             <label>
-              Admin username
+              {t('Admin username')}
               <input className="input" value={resetAdminName} onChange={e => setResetAdminName(e.target.value)} disabled={resetLoading} />
             </label>
             <label>
-              Admin PIN
+              {t('Admin PIN')}
               <input className="input" type="password" value={resetAdminPin} onChange={e => setResetAdminPin(e.target.value)} disabled={resetLoading} />
             </label>
             <label>
-              Username to reset
+              {t('Username to reset')}
               <input className="input" value={resetUserName} onChange={e => setResetUserName(e.target.value)} disabled={resetLoading} />
             </label>
             <label>
-              New PIN (4-6 digits)
+              {t('New PIN (4-6 digits)')}
               <input className="input" type="password" value={resetNewPin} onChange={e => setResetNewPin(e.target.value)} disabled={resetLoading} />
             </label>
           </div>

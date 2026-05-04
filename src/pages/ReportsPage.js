@@ -9,10 +9,12 @@ import * as expensesApi from '../api/expenses';
 import { formatCurrency } from '../utils/currency';
 import { listOperations } from '../api/wholesale';
 import { isFeatureEnabled } from '../utils/featureFlags';
+import { useAppLanguage } from '../utils/localization';
 
 Chart.register(BarElement, ArcElement, CategoryScale, LinearScale, Tooltip, Legend);
 
 function ReportsPage() {
+  const { t } = useAppLanguage();
   const sales = useSelector(s => s.sales.sales);
   const audit = useSelector(s => s.audit.entries);
   const refunds = useSelector(s => s.refunds.requests);
@@ -58,11 +60,11 @@ function ReportsPage() {
       } catch (e) {
         if (!alive) return;
         setExpenses([]);
-        toast.show(String(e?.message || 'Failed to load expenses'), { type: 'error' });
+        toast.show(String(e?.message || t('Failed to load expenses')), { type: 'error' });
       }
     })();
     return () => { alive = false; };
-  }, [branchId, dateFrom, dateTo, toast, canUseExpenses, periodMode]);
+  }, [branchId, dateFrom, dateTo, toast, canUseExpenses, periodMode, t]);
 
   const byId = useMemo(() => {
     const map = new Map();
@@ -103,27 +105,27 @@ function ReportsPage() {
     const productUnits = {};
     const categoryUnits = {};
     const cashierRevenue = {};
-    const skuTo = new Map(products.map(p => [p.sku, { name: p.name, category: p.category || 'Uncategorized' }]));
+    const skuTo = new Map(products.map(p => [p.sku, { name: p.name, category: p.category || t('Uncategorized') }]));
     for (const s of filteredSales) {
-      const seller = s.sellerName || 'Unknown';
+      const seller = s.sellerName || t('Unknown');
       cashierRevenue[seller] = (cashierRevenue[seller] || 0) + (Number(s.total) || 0);
       for (const it of s.items || []) {
         const sku = it.sku || it.name || 'unknown';
         productUnits[sku] = (productUnits[sku] || 0) + (Number(it.qty) || 0);
         const meta = skuTo.get(sku);
-        const cat = meta?.category || 'Uncategorized';
+        const cat = meta?.category || t('Uncategorized');
         categoryUnits[cat] = (categoryUnits[cat] || 0) + (Number(it.qty) || 0);
       }
     }
     const topEntries = Object.entries(productUnits).sort((a,b) => b[1]-a[1]).slice(0,10);
     const topLabels = topEntries.map(([sku]) => skuTo.get(sku)?.name || sku);
-    const topBar = { labels: topLabels, datasets: [{ label: 'Units', data: topEntries.map(x=>x[1]), backgroundColor: '#0ea5e9' }] };
+    const topBar = { labels: topLabels, datasets: [{ label: t('Units'), data: topEntries.map(x=>x[1]), backgroundColor: '#0ea5e9' }] };
     const catLabels = Object.keys(categoryUnits);
     const catDoughnut = { labels: catLabels, datasets: [{ data: catLabels.map(c=>categoryUnits[c]), backgroundColor: ['#0ea5e9','#16a34a','#f59e0b','#ef4444','#8b5cf6','#14b8a6'] }] };
     const cashEntries = Object.entries(cashierRevenue).sort((a,b)=>b[1]-a[1]).slice(0,10);
-    const cashierBar = { labels: cashEntries.map(x=>x[0]), datasets: [{ label: 'Revenue', data: cashEntries.map(x=>+(x[1]||0).toFixed(2)), backgroundColor: '#16a34a' }] };
+    const cashierBar = { labels: cashEntries.map(x=>x[0]), datasets: [{ label: t('Revenue'), data: cashEntries.map(x=>+(x[1]||0).toFixed(2)), backgroundColor: '#16a34a' }] };
     return { topEntries, topBar, categoryUnits, catDoughnut, cashierRevenue, cashierBar };
-  }, [filteredSales, products]);
+  }, [filteredSales, products, t]);
 
   const money = useMemo(() => {
     const revenue = filteredSales.reduce((s, x) => s + (Number(x.total) || 0), 0);
@@ -177,12 +179,12 @@ function ReportsPage() {
 
   function ensureRevenueExport() {
     if (canViewRevenue) return true;
-    toast.show('You are not allowed to export revenue figures', { type: 'error' });
+    toast.show(t('You are not allowed to export revenue figures'), { type: 'error' });
     return false;
   }
   function ensureProfitExport() {
     if (canViewProfit) return true;
-    toast.show('You are not allowed to export profit figures', { type: 'error' });
+    toast.show(t('You are not allowed to export profit figures'), { type: 'error' });
     return false;
   }
 
@@ -192,167 +194,167 @@ function ReportsPage() {
       return { name: p?.name || sku, sku, units };
     });
     const headers = [
-      { key: 'name', label: 'Product' },
-      { key: 'sku', label: 'SKU' },
-      { key: 'units', label: 'Units' }
+      { key: 'name', label: t('Product') },
+      { key: 'sku', label: t('SKU') },
+      { key: 'units', label: t('Units') }
     ];
     if (type === 'csv') exportCsv('top-products.csv', headers, rows);
-    else exportTablePdf('Top Products', headers, rows);
+    else exportTablePdf(t('Top Products'), headers, rows);
   }
   function exportCategories(type) {
     const rows = Object.keys(analytics.categoryUnits).map(cat => ({ category: cat, units: analytics.categoryUnits[cat] }));
     const headers = [
-      { key: 'category', label: 'Category' },
-      { key: 'units', label: 'Units' }
+      { key: 'category', label: t('Category') },
+      { key: 'units', label: t('Units') }
     ];
     if (type === 'csv') exportCsv('category-performance.csv', headers, rows);
-    else exportTablePdf('Category Performance', headers, rows);
+    else exportTablePdf(t('Category Performance'), headers, rows);
   }
   function exportCashiers(type) {
     if (!ensureRevenueExport()) return;
     const rows = Object.keys(analytics.cashierRevenue).map(name => ({ cashier: name, revenue: +(analytics.cashierRevenue[name]||0).toFixed(2) }))
       .sort((a,b)=>b.revenue-a.revenue);
     const headers = [
-      { key: 'cashier', label: 'Cashier' },
-      { key: 'revenue', label: 'Revenue' }
+      { key: 'cashier', label: t('Cashier') },
+      { key: 'revenue', label: t('Revenue') }
     ];
     if (type === 'csv') exportCsv('cashier-performance.csv', headers, rows);
-    else exportTablePdf('Cashier Performance', headers, rows);
+    else exportTablePdf(t('Cashier Performance'), headers, rows);
   }
 
   function exportSales(type) {
     if (!ensureRevenueExport()) return;
     const rows = sales.filter(s => inRange(s.created_at) && matchBranch(s.branchId));
     const headers = [
-      { key: 'id', label: 'Sale ID' },
-      { key: 'created_at', label: 'Date', value: r => new Date(r.created_at).toLocaleString() },
-      { key: 'branch', label: 'Branch', value: r => byId.get(r.branchId) || r.branchId || '' },
-      { key: 'seller', label: 'Seller', value: r => r.sellerName || '' },
-      { key: 'items', label: 'Items', value: r => (r.items || []).map(i => `${i.name}x${i.qty}`).join('; ') },
-      { key: 'subtotal', label: 'Subtotal' },
-      { key: 'discount', label: 'Discount' },
-      { key: 'tax', label: 'Tax' },
-      { key: 'total', label: 'Total' }
+      { key: 'id', label: t('Sale ID') },
+      { key: 'created_at', label: t('Date'), value: r => new Date(r.created_at).toLocaleString() },
+      { key: 'branch', label: t('Branch'), value: r => byId.get(r.branchId) || r.branchId || '' },
+      { key: 'seller', label: t('Seller'), value: r => r.sellerName || '' },
+      { key: 'items', label: t('Items'), value: r => (r.items || []).map(i => `${i.name}x${i.qty}`).join('; ') },
+      { key: 'subtotal', label: t('Subtotal') },
+      { key: 'discount', label: t('Discount') },
+      { key: 'tax', label: t('Tax') },
+      { key: 'total', label: t('Total') }
     ];
     if (type === 'csv') exportCsv('sales.csv', headers, rows);
-    else exportTablePdf('Sales', headers, rows);
+    else exportTablePdf(t('Sales'), headers, rows);
   }
 
   function exportTransfers(type) {
     const list = audit.filter(e => e.actionType === 'stock_transfer' && inRange(e.ts) && matchBranch((e.details || {}).from || e.branchId));
     const headers = [
-      { key: 'ts', label: 'Timestamp', value: e => new Date(e.ts).toLocaleString() },
-      { key: 'actor', label: 'Actor' },
-      { key: 'product', label: 'Product', value: e => (e.details || {}).product || '' },
-      { key: 'from', label: 'From', value: e => byId.get((e.details || {}).from) || (e.details || {}).from || '' },
-      { key: 'to', label: 'To', value: e => byId.get((e.details || {}).to) || (e.details || {}).to || '' },
-      { key: 'qty', label: 'Qty', value: e => (e.details || {}).qty ?? '' },
-      { key: 'remark', label: 'Remark', value: e => e.remark || '' }
+      { key: 'ts', label: t('Timestamp'), value: e => new Date(e.ts).toLocaleString() },
+      { key: 'actor', label: t('Actor') },
+      { key: 'product', label: t('Product'), value: e => (e.details || {}).product || '' },
+      { key: 'from', label: t('From'), value: e => byId.get((e.details || {}).from) || (e.details || {}).from || '' },
+      { key: 'to', label: t('To'), value: e => byId.get((e.details || {}).to) || (e.details || {}).to || '' },
+      { key: 'qty', label: t('Qty'), value: e => (e.details || {}).qty ?? '' },
+      { key: 'remark', label: t('Remark'), value: e => e.remark || '' }
     ];
     if (type === 'csv') exportCsv('transfers.csv', headers, list);
-    else exportTablePdf('Transfers', headers, list);
+    else exportTablePdf(t('Transfers'), headers, list);
   }
 
   function exportPurchases(type) {
     if (!ensureProfitExport()) return;
     const list = audit.filter(e => e.actionType === 'stock_receive' && inRange(e.ts) && matchBranch(e.branchId));
     const headers = [
-      { key: 'ts', label: 'Timestamp', value: e => new Date(e.ts).toLocaleString() },
-      { key: 'actor', label: 'Actor' },
-      { key: 'product', label: 'Product', value: e => (e.details || {}).product || '' },
-      { key: 'branch', label: 'Branch', value: e => byId.get(e.branchId) || e.branchId || '' },
-      { key: 'qty', label: 'Qty', value: e => (e.details || {}).qty ?? '' },
-      { key: 'pack', label: 'Pack', value: e => (e.details || {}).pack || 'Base Unit' },
-      { key: 'baseUnits', label: 'Base Units', value: e => (e.details || {}).baseUnits ?? '' },
-      { key: 'supplier', label: 'Supplier', value: e => (e.details || {}).supplier || '' },
-      { key: 'cost', label: 'Cost', value: e => (e.details || {}).cost ?? '' },
-      { key: 'remark', label: 'Remark', value: e => e.remark || '' }
+      { key: 'ts', label: t('Timestamp'), value: e => new Date(e.ts).toLocaleString() },
+      { key: 'actor', label: t('Actor') },
+      { key: 'product', label: t('Product'), value: e => (e.details || {}).product || '' },
+      { key: 'branch', label: t('Branch'), value: e => byId.get(e.branchId) || e.branchId || '' },
+      { key: 'qty', label: t('Qty'), value: e => (e.details || {}).qty ?? '' },
+      { key: 'pack', label: t('Pack'), value: e => (e.details || {}).pack || t('Base Unit') },
+      { key: 'baseUnits', label: t('Base Units'), value: e => (e.details || {}).baseUnits ?? '' },
+      { key: 'supplier', label: t('Supplier'), value: e => (e.details || {}).supplier || '' },
+      { key: 'cost', label: t('Cost'), value: e => (e.details || {}).cost ?? '' },
+      { key: 'remark', label: t('Remark'), value: e => e.remark || '' }
     ];
     if (type === 'csv') exportCsv('purchases.csv', headers, list);
-    else exportTablePdf('Purchases', headers, list);
+    else exportTablePdf(t('Purchases'), headers, list);
   }
 
   function exportAdjustments(type) {
     const source = audit.filter(e => (e.actionType === 'stock_adjust' || e.actionType === 'stock_damage_remove') && inRange(e.ts));
     const list = source.filter(e => matchBranch(e.branchId || (e.details || {}).branchId));
     const headers = [
-      { key: 'ts', label: 'Timestamp', value: e => new Date(e.ts).toLocaleString() },
-      { key: 'actor', label: 'Actor' },
-      { key: 'product', label: 'Product', value: e => (e.details || {}).product || '' },
-      { key: 'variant', label: 'Variant', value: e => (e.details || {}).variant || '' },
-      { key: 'branch', label: 'Branch', value: e => byId.get(e.branchId || (e.details || {}).branchId) || e.branchId || (e.details || {}).branchId || '' },
-      { key: 'delta', label: 'Delta', value: e => e.actionType === 'stock_adjust' ? (e.details || {}).delta : -Math.abs((e.details || {}).qty || 0) },
-      { key: 'type', label: 'Type', value: e => e.actionType === 'stock_adjust' ? 'Adjust' : 'Damage/Expired' },
-      { key: 'remark', label: 'Remark', value: e => e.remark || '' }
+      { key: 'ts', label: t('Timestamp'), value: e => new Date(e.ts).toLocaleString() },
+      { key: 'actor', label: t('Actor') },
+      { key: 'product', label: t('Product'), value: e => (e.details || {}).product || '' },
+      { key: 'variant', label: t('Variant'), value: e => (e.details || {}).variant || '' },
+      { key: 'branch', label: t('Branch'), value: e => byId.get(e.branchId || (e.details || {}).branchId) || e.branchId || (e.details || {}).branchId || '' },
+      { key: 'delta', label: t('Delta'), value: e => e.actionType === 'stock_adjust' ? (e.details || {}).delta : -Math.abs((e.details || {}).qty || 0) },
+      { key: 'type', label: t('Type'), value: e => e.actionType === 'stock_adjust' ? t('Adjust') : t('Damage/Expired') },
+      { key: 'remark', label: t('Remark'), value: e => e.remark || '' }
     ];
     if (type === 'csv') exportCsv('adjustments.csv', headers, list);
-    else exportTablePdf('Adjustments', headers, list);
+    else exportTablePdf(t('Adjustments'), headers, list);
   }
 
   function exportStockRecords(type) {
     function normalize(e) {
-      const t = e.actionType;
+      const actionType = e.actionType;
       const d = e.details || {};
       const b = e.branchId || d.branchId || null;
-      if (t === 'stock_adjust') {
-        return { ts: e.ts, actor: e.actor, branchId: b, source: 'Adjustments', action: d.delta > 0 ? 'Add' : 'Remove', product: d.product || '', variant: d.variant || '', qty: d.delta, remark: e.remark || '' };
+      if (actionType === 'stock_adjust') {
+        return { ts: e.ts, actor: e.actor, branchId: b, source: t('Adjustments'), action: d.delta > 0 ? t('Add') : t('Remove'), product: d.product || '', variant: d.variant || '', qty: d.delta, remark: e.remark || '' };
       }
-      if (t === 'stock_damage_remove') {
-        return { ts: e.ts, actor: e.actor, branchId: b, source: 'Adjustments', action: 'Remove', product: d.product || '', variant: d.variant || '', qty: -Math.abs(d.qty || 0), remark: e.remark || '' };
+      if (actionType === 'stock_damage_remove') {
+        return { ts: e.ts, actor: e.actor, branchId: b, source: t('Adjustments'), action: t('Remove'), product: d.product || '', variant: d.variant || '', qty: -Math.abs(d.qty || 0), remark: e.remark || '' };
       }
-      if (t === 'stock_transfer') {
-        return { ts: e.ts, actor: e.actor, branchId: d.from || b, source: 'Transfers', action: `Transfer ${d.from} → ${d.to}`, product: d.product || '', variant: d.variant || '', qty: d.qty || 0, remark: e.remark || '' };
+      if (actionType === 'stock_transfer') {
+        return { ts: e.ts, actor: e.actor, branchId: d.from || b, source: t('Transfers'), action: t('Transfer {from} -> {to}', { from: d.from, to: d.to }), product: d.product || '', variant: d.variant || '', qty: d.qty || 0, remark: e.remark || '' };
       }
-      if (t === 'stock_receive') {
-        return { ts: e.ts, actor: e.actor, branchId: b, source: 'Purchases', action: 'Add', product: d.product || '', variant: d.variant || '', qty: d.baseUnits ?? d.qty ?? 0, remark: e.remark || '' };
+      if (actionType === 'stock_receive') {
+        return { ts: e.ts, actor: e.actor, branchId: b, source: t('Purchases'), action: t('Add'), product: d.product || '', variant: d.variant || '', qty: d.baseUnits ?? d.qty ?? 0, remark: e.remark || '' };
       }
-      if (t === 'stock_set_initial') {
-        return { ts: e.ts, actor: e.actor, branchId: b, source: 'Products', action: 'Set', product: d.product || '', variant: d.variant || '', qty: d.quantity ?? 0, remark: e.remark || '' };
+      if (actionType === 'stock_set_initial') {
+        return { ts: e.ts, actor: e.actor, branchId: b, source: t('Products'), action: t('Set'), product: d.product || '', variant: d.variant || '', qty: d.quantity ?? 0, remark: e.remark || '' };
       }
-      if (t === 'stock_set_manual') {
-        return { ts: e.ts, actor: e.actor, branchId: b, source: 'Inventory', action: 'Set', product: d.product || '', variant: d.variant || '', qty: d.delta ?? 0, remark: e.remark || '' };
+      if (actionType === 'stock_set_manual') {
+        return { ts: e.ts, actor: e.actor, branchId: b, source: t('Inventory'), action: t('Set'), product: d.product || '', variant: d.variant || '', qty: d.delta ?? 0, remark: e.remark || '' };
       }
-      if (t === 'stock_sale_deduct') {
+      if (actionType === 'stock_sale_deduct') {
         const totalUnits = Array.isArray(d.items) ? d.items.reduce((s, it) => s + (Number(it.qty) || 0), 0) : 0;
-        return { ts: e.ts, actor: e.actor, branchId: b, source: 'POS', action: 'Remove (Sale)', product: `${totalUnits} unit(s) across ${d.items?.length || 0} item(s)`, variant: '', qty: -Math.abs(totalUnits), remark: e.remark || '' };
+        return { ts: e.ts, actor: e.actor, branchId: b, source: t('POS'), action: t('Remove (Sale)'), product: t('{units} unit(s) across {count} item(s)', { units: totalUnits, count: d.items?.length || 0 }), variant: '', qty: -Math.abs(totalUnits), remark: e.remark || '' };
       }
-      if (t === 'stock_restock_refund') {
+      if (actionType === 'stock_restock_refund') {
         const totalUnits = Array.isArray(d.items) ? d.items.reduce((s, it) => s + (Number(it.qty) || 0), 0) : 0;
-        return { ts: e.ts, actor: e.actor, branchId: b, source: 'Refund Approvals', action: 'Add (Restock)', product: `${totalUnits} unit(s) across ${d.items?.length || 0} item(s)`, variant: '', qty: totalUnits, remark: e.remark || '' };
+        return { ts: e.ts, actor: e.actor, branchId: b, source: t('Refund Approvals'), action: t('Add (Restock)'), product: t('{units} unit(s) across {count} item(s)', { units: totalUnits, count: d.items?.length || 0 }), variant: '', qty: totalUnits, remark: e.remark || '' };
       }
       return null;
     }
     const base = audit.map(normalize).filter(Boolean).filter(r => inRange(r.ts) && matchBranch(r.branchId));
     const headers = [
-      { key: 'ts', label: 'Timestamp', value: r => new Date(r.ts).toLocaleString() },
-      { key: 'actor', label: 'Actor' },
-      { key: 'branch', label: 'Branch', value: r => byId.get(r.branchId) || r.branchId || '' },
-      { key: 'source', label: 'Source' },
-      { key: 'action', label: 'Action' },
-      { key: 'product', label: 'Product' },
-      { key: 'variant', label: 'Variant' },
-      { key: 'qty', label: 'Delta' },
-      { key: 'remark', label: 'Remark' }
+      { key: 'ts', label: t('Timestamp'), value: r => new Date(r.ts).toLocaleString() },
+      { key: 'actor', label: t('Actor') },
+      { key: 'branch', label: t('Branch'), value: r => byId.get(r.branchId) || r.branchId || '' },
+      { key: 'source', label: t('Source') },
+      { key: 'action', label: t('Action') },
+      { key: 'product', label: t('Product') },
+      { key: 'variant', label: t('Variant') },
+      { key: 'qty', label: t('Delta') },
+      { key: 'remark', label: t('Remark') }
     ];
     if (type === 'csv') exportCsv('stock-records.csv', headers, base);
-    else exportTablePdf('Stock Records', headers, base);
+    else exportTablePdf(t('Stock Records'), headers, base);
   }
 
   function exportRefunds(type) {
     if (!ensureRevenueExport()) return;
     const list = refunds.filter(r => inRange(r.created_at) && matchBranch(r.branchId));
     const headers = [
-      { key: 'ref', label: 'Ref', value: r => r.invoiceSerial || r.receiptNumber || r.saleId },
-      { key: 'initiator', label: 'Initiator', value: r => r.initiatorName || '' },
-      { key: 'branch', label: 'Branch', value: r => byId.get(r.branchId) || r.branchId || '' },
-      { key: 'type', label: 'Type', value: r => String(r.type || '').toUpperCase() },
-      { key: 'amount', label: 'Amount', value: r => String(r.requestedAmount || 0) },
-      { key: 'created', label: 'Created', value: r => new Date(r.created_at).toLocaleString() },
-      { key: 'status', label: 'Status', value: r => (r.status || '').replace('_',' ') },
-      { key: 'approver', label: 'Approver', value: r => r.approverName || '' }
+      { key: 'ref', label: t('Ref'), value: r => r.invoiceSerial || r.receiptNumber || r.saleId },
+      { key: 'initiator', label: t('Initiator'), value: r => r.initiatorName || '' },
+      { key: 'branch', label: t('Branch'), value: r => byId.get(r.branchId) || r.branchId || '' },
+      { key: 'type', label: t('Type'), value: r => String(r.type || '').toUpperCase() },
+      { key: 'amount', label: t('Amount'), value: r => String(r.requestedAmount || 0) },
+      { key: 'created', label: t('Created'), value: r => new Date(r.created_at).toLocaleString() },
+      { key: 'status', label: t('Status'), value: r => (r.status || '').replace('_',' ') },
+      { key: 'approver', label: t('Approver'), value: r => r.approverName || '' }
     ];
     if (type === 'csv') exportCsv('refunds.csv', headers, list);
-    else exportTablePdf('Refunds', headers, list);
+    else exportTablePdf(t('Refunds'), headers, list);
   }
 
   function exportWarehouseOperations(type) {
@@ -369,18 +371,18 @@ function ReportsPage() {
       created: row.createdAt ? new Date(row.createdAt).toLocaleString() : ''
     }));
     const headers = [
-      { key: 'type', label: 'Type' },
-      { key: 'status', label: 'Status' },
-      { key: 'source', label: 'Source' },
-      { key: 'sourceInventory', label: 'Source Inventory' },
-      { key: 'destination', label: 'Destination' },
-      { key: 'destinationInventory', label: 'Destination Inventory' },
-      { key: 'qty', label: 'Qty' },
-      { key: 'value', label: 'Value' },
-      { key: 'created', label: 'Created' }
+      { key: 'type', label: t('Type') },
+      { key: 'status', label: t('Status') },
+      { key: 'source', label: t('Source') },
+      { key: 'sourceInventory', label: t('Source Inventory') },
+      { key: 'destination', label: t('Destination') },
+      { key: 'destinationInventory', label: t('Destination Inventory') },
+      { key: 'qty', label: t('Qty') },
+      { key: 'value', label: t('Value') },
+      { key: 'created', label: t('Created') }
     ];
     if (type === 'csv') exportCsv('warehouse-operations.csv', headers, rows);
-    else exportTablePdf('Warehouse Operations', headers, rows);
+    else exportTablePdf(t('Warehouse Operations'), headers, rows);
   }
 
   function exportWarehouseStock(type) {
@@ -393,13 +395,19 @@ function ReportsPage() {
       lowStock: Number(product.lowStock || 0)
     }));
     const headers = [
-      { key: 'product', label: 'Product' },
-      { key: 'sku', label: 'SKU' },
-      { key: 'warehouseUnits', label: 'Warehouse Units' },
-      { key: 'lowStock', label: 'Low Stock Threshold' }
+      { key: 'product', label: t('Product') },
+      { key: 'sku', label: t('SKU') },
+      { key: 'warehouseUnits', label: t('Warehouse Units') },
+      { key: 'lowStock', label: t('Low Stock Threshold') }
     ];
     if (type === 'csv') exportCsv('warehouse-stock.csv', headers, rows);
-    else exportTablePdf(`Warehouse Stock Snapshot${selectedBranch ? ` - ${selectedBranch.name || selectedBranch.code || selectedBranch.id}` : ' - All Branches'}`, headers, rows);
+    else exportTablePdf(
+      selectedBranch
+        ? t('Warehouse Stock Snapshot - {branch}', { branch: selectedBranch.name || selectedBranch.code || selectedBranch.id })
+        : t('Warehouse Stock Snapshot - All Branches'),
+      headers,
+      rows
+    );
   }
 
   function exportRetailStock(type) {
@@ -412,13 +420,19 @@ function ReportsPage() {
       lowStock: Number(product.lowStock || 0)
     }));
     const headers = [
-      { key: 'product', label: 'Product' },
-      { key: 'sku', label: 'SKU' },
-      { key: 'retailUnits', label: 'Retail Units' },
-      { key: 'lowStock', label: 'Low Stock Threshold' }
+      { key: 'product', label: t('Product') },
+      { key: 'sku', label: t('SKU') },
+      { key: 'retailUnits', label: t('Retail Units') },
+      { key: 'lowStock', label: t('Low Stock Threshold') }
     ];
     if (type === 'csv') exportCsv('retail-stock.csv', headers, rows);
-    else exportTablePdf(`Retail Stock Snapshot${selectedBranch ? ` - ${selectedBranch.name || selectedBranch.code || selectedBranch.id}` : ' - All Branches'}`, headers, rows);
+    else exportTablePdf(
+      selectedBranch
+        ? t('Retail Stock Snapshot - {branch}', { branch: selectedBranch.name || selectedBranch.code || selectedBranch.id })
+        : t('Retail Stock Snapshot - All Branches'),
+      headers,
+      rows
+    );
   }
 
   function exportDistributionStock(type) {
@@ -431,13 +445,19 @@ function ReportsPage() {
       lowStock: Number(product.wholesaleLowStock != null ? product.wholesaleLowStock : (product.lowStock || 0))
     }));
     const headers = [
-      { key: 'product', label: 'Product' },
-      { key: 'sku', label: 'SKU' },
-      { key: 'distributionUnits', label: 'Distribution Units' },
-      { key: 'lowStock', label: 'Low Stock Threshold' }
+      { key: 'product', label: t('Product') },
+      { key: 'sku', label: t('SKU') },
+      { key: 'distributionUnits', label: t('Distribution Units') },
+      { key: 'lowStock', label: t('Low Stock Threshold') }
     ];
     if (type === 'csv') exportCsv('distribution-stock.csv', headers, rows);
-    else exportTablePdf(`Distribution Stock Snapshot${selectedBranch ? ` - ${selectedBranch.name || selectedBranch.code || selectedBranch.id}` : ' - All Branches'}`, headers, rows);
+    else exportTablePdf(
+      selectedBranch
+        ? t('Distribution Stock Snapshot - {branch}', { branch: selectedBranch.name || selectedBranch.code || selectedBranch.id })
+        : t('Distribution Stock Snapshot - All Branches'),
+      headers,
+      rows
+    );
   }
 
   function exportPriceList(type) {
@@ -451,200 +471,200 @@ function ReportsPage() {
       agentPrice: Number(product.agentPrice != null ? product.agentPrice : product.price || 0)
     }));
     const headers = [
-      { key: 'product', label: 'Product' },
-      { key: 'sku', label: 'SKU' },
-      { key: 'category', label: 'Category' },
-      { key: 'retailPrice', label: 'Retail Price' },
-      { key: 'distributionPrice', label: 'Distribution Price' },
-      { key: 'warehousePrice', label: 'Warehouse Price' },
-      { key: 'agentPrice', label: 'Agent Price' }
+      { key: 'product', label: t('Product') },
+      { key: 'sku', label: t('SKU') },
+      { key: 'category', label: t('Category') },
+      { key: 'retailPrice', label: t('Retail Price') },
+      { key: 'distributionPrice', label: t('Distribution Price') },
+      { key: 'warehousePrice', label: t('Warehouse Price') },
+      { key: 'agentPrice', label: t('Agent Price') }
     ];
     if (type === 'csv') exportCsv('price-list.csv', headers, rows);
-    else exportTablePdf('Price List', headers, rows);
+    else exportTablePdf(t('Price List'), headers, rows);
   }
 
   return (
     <div className="page-shell">
       <div className="card">
-        <h1 style={{ margin: 0 }}>Reports</h1>
-        <div className="page-subtitle-compact">Export sales, stock, operations, analytics, and finance views with cleaner controls and summaries.</div>
+        <h1 style={{ margin: 0 }}>{t('Reports')}</h1>
+        <div className="page-subtitle-compact">{t('Export sales, stock, operations, analytics, and finance views with cleaner controls and summaries.')}</div>
       </div>
       <div className="card record-filters">
         <label>
-          <div className="field-label">Period</div>
+          <div className="field-label">{t('Period')}</div>
           <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
-            <option value="range">Custom Range</option>
-            <option value="all_time">All Time</option>
+            <option value="range">{t('Custom Range')}</option>
+            <option value="all_time">{t('All Time')}</option>
           </select>
         </label>
         <label>
-          <div className="field-label">From</div>
+          <div className="field-label">{t('From')}</div>
           <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
         </label>
         <label>
-          <div className="field-label">To</div>
+          <div className="field-label">{t('To')}</div>
           <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
         </label>
         <label>
-          <div className="field-label">Branch</div>
-          <BranchSelect value={branchId} onChange={setBranchId} includeAll allLabel="All Branches" />
+          <div className="field-label">{t('Branch')}</div>
+          <BranchSelect value={branchId} onChange={setBranchId} includeAll allLabel={t('All Branches')} />
         </label>
       </div>
       <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
         <div className="record-filters" style={{ gridColumn: '1 / span 2' }}>
           <label>
-            <div className="field-label">Report</div>
+            <div className="field-label">{t('Report')}</div>
             <select className="select" value={reportType} onChange={e => setReportType(e.target.value)}>
-              <option value="all">All Sections</option>
-              <option value="sales">Sales</option>
-              <option value="purchases">Purchases</option>
-              <option value="transfers">Transfers</option>
-              <option value="adjustments">Adjustments</option>
-              <option value="stock">Stock Records</option>
-              <option value="refunds">Refunds</option>
-              <option value="analytics-top">Top Products</option>
-              <option value="analytics-cat">Category Performance</option>
-              <option value="analytics-cashier">Cashier Performance</option>
-              <option value="warehouse-ops">Warehouse Operations</option>
-              <option value="retail-stock">Retail Stock</option>
-              <option value="distribution-stock">Distribution Stock</option>
-              <option value="warehouse-stock">Warehouse Stock</option>
-              <option value="price-list">Price List</option>
-              <option value="finance">Finance</option>
+              <option value="all">{t('All Sections')}</option>
+              <option value="sales">{t('Sales')}</option>
+              <option value="purchases">{t('Purchases')}</option>
+              <option value="transfers">{t('Transfers')}</option>
+              <option value="adjustments">{t('Adjustments')}</option>
+              <option value="stock">{t('Stock Records')}</option>
+              <option value="refunds">{t('Refunds')}</option>
+              <option value="analytics-top">{t('Top Products')}</option>
+              <option value="analytics-cat">{t('Category Performance')}</option>
+              <option value="analytics-cashier">{t('Cashier Performance')}</option>
+              <option value="warehouse-ops">{t('Warehouse Operations')}</option>
+              <option value="retail-stock">{t('Retail Stock')}</option>
+              <option value="distribution-stock">{t('Distribution Stock')}</option>
+              <option value="warehouse-stock">{t('Warehouse Stock')}</option>
+              <option value="price-list">{t('Price List')}</option>
+              <option value="finance">{t('Finance')}</option>
             </select>
           </label>
           <label>
-            <div className="field-label">Heatmap</div>
+            <div className="field-label">{t('Heatmap')}</div>
             <select className="select" value={heatMode} onChange={e => setHeatMode(e.target.value)}>
-              <option value="day">Daily</option>
-              <option value="week">Weekly</option>
-              <option value="month">Monthly</option>
+              <option value="day">{t('Daily')}</option>
+              <option value="week">{t('Weekly')}</option>
+              <option value="month">{t('Monthly')}</option>
             </select>
           </label>
         </div>
         {show('sales') && (
         <div className="surface-panel">
-          <h2 className="section-title">Sales</h2>
+          <h2 className="section-title">{t('Sales')}</h2>
           <div className="inline-actions">
-            <button className="btn" onClick={() => exportSales('csv')} disabled={!canViewRevenue}>Export CSV</button>
-            <button className="btn" onClick={() => exportSales('pdf')} disabled={!canViewRevenue}>Export PDF</button>
+            <button className="btn" onClick={() => exportSales('csv')} disabled={!canViewRevenue}>{t('Export CSV')}</button>
+            <button className="btn" onClick={() => exportSales('pdf')} disabled={!canViewRevenue}>{t('Export PDF')}</button>
           </div>
         </div>
         )}
         {show('purchases') && (
         <div className="surface-panel">
-          <h2 className="section-title">Purchases</h2>
+          <h2 className="section-title">{t('Purchases')}</h2>
           <div className="inline-actions">
-            <button className="btn" onClick={() => exportPurchases('csv')} disabled={!canViewProfit}>Export CSV</button>
-            <button className="btn" onClick={() => exportPurchases('pdf')} disabled={!canViewProfit}>Export PDF</button>
+            <button className="btn" onClick={() => exportPurchases('csv')} disabled={!canViewProfit}>{t('Export CSV')}</button>
+            <button className="btn" onClick={() => exportPurchases('pdf')} disabled={!canViewProfit}>{t('Export PDF')}</button>
           </div>
         </div>
         )}
         {show('transfers') && (
         <div className="surface-panel">
-          <h2 className="section-title">Transfers</h2>
+          <h2 className="section-title">{t('Transfers')}</h2>
           <div className="inline-actions">
-            <button className="btn" onClick={() => exportTransfers('csv')}>Export CSV</button>
-            <button className="btn" onClick={() => exportTransfers('pdf')}>Export PDF</button>
+            <button className="btn" onClick={() => exportTransfers('csv')}>{t('Export CSV')}</button>
+            <button className="btn" onClick={() => exportTransfers('pdf')}>{t('Export PDF')}</button>
           </div>
         </div>
         )}
         {show('adjustments') && (
         <div className="surface-panel">
-          <h2 className="section-title">Adjustments</h2>
+          <h2 className="section-title">{t('Adjustments')}</h2>
           <div className="inline-actions">
-            <button className="btn" onClick={() => exportAdjustments('csv')}>Export CSV</button>
-            <button className="btn" onClick={() => exportAdjustments('pdf')}>Export PDF</button>
+            <button className="btn" onClick={() => exportAdjustments('csv')}>{t('Export CSV')}</button>
+            <button className="btn" onClick={() => exportAdjustments('pdf')}>{t('Export PDF')}</button>
           </div>
         </div>
         )}
         {show('stock') && (
         <div className="surface-panel">
-          <h2 className="section-title">Stock Records</h2>
+          <h2 className="section-title">{t('Stock Records')}</h2>
           <div className="inline-actions">
-            <button className="btn" onClick={() => exportStockRecords('csv')}>Export CSV</button>
-            <button className="btn" onClick={() => exportStockRecords('pdf')}>Export PDF</button>
+            <button className="btn" onClick={() => exportStockRecords('csv')}>{t('Export CSV')}</button>
+            <button className="btn" onClick={() => exportStockRecords('pdf')}>{t('Export PDF')}</button>
           </div>
         </div>
         )}
         {show('refunds') && (
         <div className="surface-panel">
-          <h2 className="section-title">Refunds</h2>
+          <h2 className="section-title">{t('Refunds')}</h2>
           <div className="inline-actions">
-            <button className="btn" onClick={() => exportRefunds('csv')} disabled={!canViewRevenue}>Export CSV</button>
-            <button className="btn" onClick={() => exportRefunds('pdf')} disabled={!canViewRevenue}>Export PDF</button>
+            <button className="btn" onClick={() => exportRefunds('csv')} disabled={!canViewRevenue}>{t('Export CSV')}</button>
+            <button className="btn" onClick={() => exportRefunds('pdf')} disabled={!canViewRevenue}>{t('Export PDF')}</button>
           </div>
         </div>
         )}
         {show('warehouse-ops') && (
         <div className="surface-panel">
-          <h2 className="section-title">Warehouse Operations</h2>
+          <h2 className="section-title">{t('Warehouse Operations')}</h2>
           <div className="inline-actions">
-            <button className="btn" onClick={() => exportWarehouseOperations('csv')} disabled={!canViewProfit}>Export CSV</button>
-            <button className="btn" onClick={() => exportWarehouseOperations('pdf')} disabled={!canViewProfit}>Export PDF</button>
+            <button className="btn" onClick={() => exportWarehouseOperations('csv')} disabled={!canViewProfit}>{t('Export CSV')}</button>
+            <button className="btn" onClick={() => exportWarehouseOperations('pdf')} disabled={!canViewProfit}>{t('Export PDF')}</button>
           </div>
         </div>
         )}
         {show('retail-stock') && (
         <div className="surface-panel">
-          <h2 className="section-title">Retail Stock</h2>
+          <h2 className="section-title">{t('Retail Stock')}</h2>
           <div className="section-note" style={{ marginBottom: 8 }}>
-            Scope: {selectedBranch ? `Selected branch (${selectedBranch.name || selectedBranch.code || selectedBranch.id})` : 'All branches'}
+            {t('Scope')}: {selectedBranch ? t('Selected branch ({branch})', { branch: selectedBranch.name || selectedBranch.code || selectedBranch.id }) : t('All branches')}
           </div>
           <div className="inline-actions">
-            <button className="btn" onClick={() => exportRetailStock('csv')}>Export CSV</button>
-            <button className="btn" onClick={() => exportRetailStock('pdf')}>Export PDF</button>
+            <button className="btn" onClick={() => exportRetailStock('csv')}>{t('Export CSV')}</button>
+            <button className="btn" onClick={() => exportRetailStock('pdf')}>{t('Export PDF')}</button>
           </div>
         </div>
         )}
         {show('distribution-stock') && (
         <div className="surface-panel">
-          <h2 className="section-title">Distribution Stock</h2>
+          <h2 className="section-title">{t('Distribution Stock')}</h2>
           <div className="section-note" style={{ marginBottom: 8 }}>
-            Scope: {selectedBranch ? `Selected branch (${selectedBranch.name || selectedBranch.code || selectedBranch.id})` : 'All branches'}
+            {t('Scope')}: {selectedBranch ? t('Selected branch ({branch})', { branch: selectedBranch.name || selectedBranch.code || selectedBranch.id }) : t('All branches')}
           </div>
           <div className="inline-actions">
-            <button className="btn" onClick={() => exportDistributionStock('csv')}>Export CSV</button>
-            <button className="btn" onClick={() => exportDistributionStock('pdf')}>Export PDF</button>
+            <button className="btn" onClick={() => exportDistributionStock('csv')}>{t('Export CSV')}</button>
+            <button className="btn" onClick={() => exportDistributionStock('pdf')}>{t('Export PDF')}</button>
           </div>
         </div>
         )}
         {show('warehouse-stock') && (
         <div className="surface-panel">
-          <h2 className="section-title">Warehouse Stock</h2>
+          <h2 className="section-title">{t('Warehouse Stock')}</h2>
           <div className="section-note" style={{ marginBottom: 8 }}>
-            Scope: {selectedBranch ? `Selected branch (${selectedBranch.name || selectedBranch.code || selectedBranch.id})` : 'All branches'}
+            {t('Scope')}: {selectedBranch ? t('Selected branch ({branch})', { branch: selectedBranch.name || selectedBranch.code || selectedBranch.id }) : t('All branches')}
           </div>
           <div className="inline-actions">
-            <button className="btn" onClick={() => exportWarehouseStock('csv')}>Export CSV</button>
-            <button className="btn" onClick={() => exportWarehouseStock('pdf')}>Export PDF</button>
+            <button className="btn" onClick={() => exportWarehouseStock('csv')}>{t('Export CSV')}</button>
+            <button className="btn" onClick={() => exportWarehouseStock('pdf')}>{t('Export PDF')}</button>
           </div>
         </div>
         )}
         {show('price-list') && (
         <div className="surface-panel">
-          <h2 className="section-title">Price List</h2>
+          <h2 className="section-title">{t('Price List')}</h2>
           <div className="section-note" style={{ marginBottom: 8 }}>
-            Scope: All products with retail, distribution, and agent prices
+            {t('Scope')}: {t('All products with retail, distribution, and agent prices')}
           </div>
           <div className="inline-actions">
-            <button className="btn" onClick={() => exportPriceList('csv')}>Export CSV</button>
-            <button className="btn" onClick={() => exportPriceList('pdf')}>Export PDF</button>
+            <button className="btn" onClick={() => exportPriceList('csv')}>{t('Export CSV')}</button>
+            <button className="btn" onClick={() => exportPriceList('pdf')}>{t('Export PDF')}</button>
           </div>
         </div>
         )}
       </div>
       {(show('analytics-top') || show('analytics-cat') || show('analytics-cashier')) && (
       <div className="card" style={{ marginTop: 12 }}>
-        <h2 className="section-title">Analytics</h2>
+        <h2 className="section-title">{t('Analytics')}</h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
           {show('analytics-top') && (
           <div className="surface-panel">
             <div className="section-header">
-              <div style={{ fontWeight: 600 }}>Top Products</div>
+              <div style={{ fontWeight: 600 }}>{t('Top Products')}</div>
               <div className="inline-actions">
-                <button className="btn" onClick={() => exportTopProducts('csv')}>CSV</button>
-                <button className="btn" onClick={() => exportTopProducts('pdf')}>PDF</button>
+                <button className="btn" onClick={() => exportTopProducts('csv')}>{t('CSV')}</button>
+                <button className="btn" onClick={() => exportTopProducts('pdf')}>{t('PDF')}</button>
               </div>
             </div>
             <div style={{ height: 220, marginTop: 8 }}>
@@ -655,10 +675,10 @@ function ReportsPage() {
           {show('analytics-cat') && (
           <div className="surface-panel">
             <div className="section-header">
-              <div style={{ fontWeight: 600 }}>Category Performance</div>
+              <div style={{ fontWeight: 600 }}>{t('Category Performance')}</div>
               <div className="inline-actions">
-                <button className="btn" onClick={() => exportCategories('csv')}>CSV</button>
-                <button className="btn" onClick={() => exportCategories('pdf')}>PDF</button>
+                <button className="btn" onClick={() => exportCategories('csv')}>{t('CSV')}</button>
+                <button className="btn" onClick={() => exportCategories('pdf')}>{t('PDF')}</button>
               </div>
             </div>
             <div style={{ height: 220, marginTop: 8 }}>
@@ -669,10 +689,10 @@ function ReportsPage() {
           {show('analytics-cashier') && (
           <div className="surface-panel">
             <div className="section-header">
-              <div style={{ fontWeight: 600 }}>Cashier Performance</div>
+              <div style={{ fontWeight: 600 }}>{t('Cashier Performance')}</div>
               <div className="inline-actions">
-                <button className="btn" onClick={() => exportCashiers('csv')} disabled={!canViewRevenue}>CSV</button>
-                <button className="btn" onClick={() => exportCashiers('pdf')} disabled={!canViewRevenue}>PDF</button>
+                <button className="btn" onClick={() => exportCashiers('csv')} disabled={!canViewRevenue}>{t('CSV')}</button>
+                <button className="btn" onClick={() => exportCashiers('pdf')} disabled={!canViewRevenue}>{t('PDF')}</button>
               </div>
             </div>
             <div style={{ height: 220, marginTop: 8 }}>
@@ -685,27 +705,27 @@ function ReportsPage() {
       )}
       {show('finance') && (
       <div className="card" style={{ marginTop: 12 }}>
-        <h2 className="section-title">Finance</h2>
+        <h2 className="section-title">{t('Finance')}</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
           <div className="card">
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Summary</div>
-            <div className="sp"><span className="muted">Revenue</span><span>{maskRevenue(money.revenue)}</span></div>
-            <div className="sp"><span className="muted">COGS</span><span>{maskProfit(money.cost)}</span></div>
-            <div className="sp"><span className="muted">Profit</span><span>{maskProfit(money.profit)}</span></div>
-            <div className="sp"><span className="muted">Margin</span><span>{maskProfitText(`${money.marginPct}%`)}</span></div>
-            <div className="sp"><span className="muted">Expenses</span><span>{maskProfit(money.expenseTotal)}</span></div>
-            <div className="sp"><strong>Net</strong><strong>{maskProfit(money.net)}</strong></div>
-            <div className="sp"><span className="muted">Projected (30d)</span><span>{maskProfit(money.projected30)}</span></div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>{t('Summary')}</div>
+            <div className="sp"><span className="muted">{t('Revenue')}</span><span>{maskRevenue(money.revenue)}</span></div>
+            <div className="sp"><span className="muted">{t('COGS')}</span><span>{maskProfit(money.cost)}</span></div>
+            <div className="sp"><span className="muted">{t('Profit')}</span><span>{maskProfit(money.profit)}</span></div>
+            <div className="sp"><span className="muted">{t('Margin')}</span><span>{maskProfitText(`${money.marginPct}%`)}</span></div>
+            <div className="sp"><span className="muted">{t('Expenses')}</span><span>{maskProfit(money.expenseTotal)}</span></div>
+            <div className="sp"><strong>{t('Net')}</strong><strong>{maskProfit(money.net)}</strong></div>
+            <div className="sp"><span className="muted">{t('Projected (30d)')}</span><span>{maskProfit(money.projected30)}</span></div>
           </div>
 
           <div className="card">
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Expenses</div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>{t('Expenses')}</div>
             <table className="table">
               <thead>
                 <tr>
-                  <th align="left">Date</th>
-                  <th align="left">Category</th>
-                  <th align="left">Amount</th>
+                  <th align="left">{t('Date')}</th>
+                  <th align="left">{t('Category')}</th>
+                  <th align="left">{t('Amount')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -716,18 +736,18 @@ function ReportsPage() {
                     <td>{maskProfit(Number(r.amount) || 0)}</td>
                   </tr>
                 ))}
-                {expenses.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>No expenses in range</td></tr>}
+                {expenses.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>{t('No expenses in range')}</td></tr>}
               </tbody>
             </table>
           </div>
 
           <div className="card" style={{ gridColumn: '1 / span 2' }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Performance Heatmap</div>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>{t('Performance Heatmap')}</div>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ borderCollapse: 'collapse', width: '100%' }}>
                 <thead>
                   <tr>
-                    <th align="left" style={{ position: 'sticky', left: 0, background: '#fff' }}>Day</th>
+                    <th align="left" style={{ position: 'sticky', left: 0, background: '#fff' }}>{t('Day')}</th>
                     {new Array(24).fill(0).map((_, h) => <th key={h} style={{ fontSize: 11, padding: 4 }}>{h}</th>)}
                   </tr>
                 </thead>

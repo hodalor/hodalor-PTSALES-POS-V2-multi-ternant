@@ -17,6 +17,7 @@ import { removeEntries as removeAuditEntries } from '../store/auditSlice';
 import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import LoadingDots from '../components/LoadingDots';
+import { useAppLanguage } from '../utils/localization';
 
 function inventoryTypeForBranch(branches, targetBranchId) {
   const branch = Array.isArray(branches)
@@ -79,6 +80,7 @@ function AdjustmentsPage() {
   const [approvalRows, setApprovalRows] = useState([]);
   const dispatch = useDispatch();
   const toast = useToast();
+  const { t } = useAppLanguage();
   const serializedScanInputRef = useRef(null);
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);
   useEffect(() => { setBranchId(currentBranchId); }, [currentBranchId]);
@@ -358,7 +360,7 @@ function AdjustmentsPage() {
       { key: 'type', label: 'Type' },
       { key: 'remark', label: 'Remark' }
     ];
-    exportTablePdf('Adjustments', headers, rows);
+    exportTablePdf(t('Adjustments'), headers, rows);
   }
 
   async function adjust() {
@@ -543,17 +545,17 @@ function AdjustmentsPage() {
     <div className="page-shell">
       <div className="page-header">
         <div>
-          <h1 style={{ margin: 0 }}>Adjustments</h1>
-          <div className="page-subtitle-compact">Record inventory corrections with a clearer approval flow for retail, distribution, and serialized stock.</div>
+          <h1 style={{ margin: 0 }}>{t('Adjustments')}</h1>
+          <div className="page-subtitle-compact">{t('Record inventory corrections with a clearer approval flow for retail, distribution, and serialized stock.')}</div>
         </div>
         <div className="page-header-actions">
           {tab === 'initiate' && (
             <button className="btn btn-primary" onClick={() => setOpenModal(true)}>
               <svg viewBox="0 0 24 24" fill="none"><path d="M12 6v12M6 12h12" stroke="currentColor" strokeWidth="2"/></svg>
-              Add Adjustment
+              {t('Add Adjustment')}
             </button>
           )}
-          <OfflineQueueIndicator collection="adjustmentrequests" label="Adjustments queued" />
+          <OfflineQueueIndicator collection="adjustmentrequests" label={t('Adjustments queued')} />
         </div>
       </div>
       <div className="page-tabs">
@@ -568,7 +570,7 @@ function AdjustmentsPage() {
         <div className="card stat-card"><div className="stat-label">Products</div><div className="stat-value">{summary.products}</div></div>
       </div>
       {openModal && (
-        <Modal title="Add Adjustment" onClose={() => setOpenModal(false)} footer={
+        <Modal title={t('Add Adjustment')} onClose={() => setOpenModal(false)} footer={
           <>
             <button className="btn" onClick={() => setOpenModal(false)}>Cancel</button>
             <button className="btn" onClick={addCurrentItem}>Add To List</button>
@@ -816,8 +818,8 @@ function AdjustmentsPage() {
           <label>
             <div className="field-label">Period</div>
             <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
-              <option value="range">Custom Range</option>
-              <option value="all_time">All Time</option>
+              <option value="range">{t('Custom Range')}</option>
+              <option value="all_time">{t('All Time')}</option>
             </select>
           </label>
           <label>
@@ -840,8 +842,8 @@ function AdjustmentsPage() {
             <BranchSelect value={fBranch} onChange={setFBranch} />
           </label>
           <div className="record-filters-actions">
-            <button className="btn" onClick={onExportCsv}>Export CSV</button>
-            <button className="btn" onClick={onExportPdf}>Export PDF</button>
+            <button className="btn" onClick={onExportCsv}>{t('Export CSV')}</button>
+            <button className="btn" onClick={onExportPdf}>{t('Export PDF')}</button>
             {canDeleteRecords && (
               <>
                 <select className="select" value={bulkAction} onChange={e => setBulkAction(e.target.value)} style={{ width: 180 }} disabled={bulkDeleting}>
@@ -859,7 +861,7 @@ function AdjustmentsPage() {
           </div>
         </div>
         </div>
-        <h2 className="section-title">Recent Adjustments</h2>
+        <h2 className="section-title">{t('Recent Adjustments')}</h2>
         <div className="table-wrap">
         <table className="table">
           <thead>

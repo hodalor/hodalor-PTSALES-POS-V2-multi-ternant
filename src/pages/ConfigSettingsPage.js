@@ -1,5 +1,5 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { setAppName, setFooterText, setCurrentBranch, setReceiptHeader, setReceiptFooter, setBusinessPhone, setBusinessWebsite, setBusinessTpin, setReceiptQrBaseUrl, setInvoicePrefix, setNextInvoiceNumber, setWholesaleInvoicePrefix, setNextWholesaleInvoiceNumber, setWarehouseInvoicePrefix, setNextWarehouseInvoiceNumber, setReceiptPrefix, setNextReceiptNumber, setDrawerOpenOnCash, setTaxRate, setCurrencyCode, setCurrencySymbol, setCurrencyPosition, setRefreshIntervalSec, addCurrency, removeCurrency, setActiveCurrency, setLoyaltyEnabled, setLoyaltyEarnAmount, setLoyaltyEarnPoints, setLoyaltyRedeemValue, setLoyaltyMinRedeemPoints, setLoyaltyMaxRedeemPercent, setClientAppName, setClientLogoUrl, setInvoiceCompanyAddress, setInvoiceFooter, setInvoiceDeclaration, setInvoiceSignatoryLabel, setInvoiceTitle, setInvoiceWordsLabel, setInvoiceGeneratedNote, setInvoiceNumberDigits, setInvoicePaidStampEnabled, setInvoicePaidStampLabel, setInvoicePaidStampThankYou, setInvoicePaidStampShowDate, setInvoicePaidStampColor, setReceiptBrandName, setAllSettings, addSettingsCategory, removeSettingsCategory } from '../store/settingsSlice';
+import { setAppName, setFooterText, setCurrentBranch, setReceiptHeader, setReceiptFooter, setBusinessPhone, setBusinessWebsite, setBusinessTpin, setReceiptQrBaseUrl, setInvoicePrefix, setNextInvoiceNumber, setWholesaleInvoicePrefix, setNextWholesaleInvoiceNumber, setWarehouseInvoicePrefix, setNextWarehouseInvoiceNumber, setReceiptPrefix, setNextReceiptNumber, setDrawerOpenOnCash, setTaxRate, setCurrencyCode, setCurrencySymbol, setCurrencyPosition, setRefreshIntervalSec, addCurrency, removeCurrency, setActiveCurrency, setLoyaltyEnabled, setLoyaltyEarnAmount, setLoyaltyEarnPoints, setLoyaltyRedeemValue, setLoyaltyMinRedeemPoints, setLoyaltyMaxRedeemPercent, setClientAppName, setClientLogoUrl, setPreferredLanguage, setInvoiceCompanyAddress, setInvoiceFooter, setInvoiceDeclaration, setInvoiceSignatoryLabel, setInvoiceTitle, setInvoiceWordsLabel, setInvoiceGeneratedNote, setInvoiceNumberDigits, setInvoicePaidStampEnabled, setInvoicePaidStampLabel, setInvoicePaidStampThankYou, setInvoicePaidStampShowDate, setInvoicePaidStampColor, setReceiptBrandName, setAllSettings, addSettingsCategory, removeSettingsCategory } from '../store/settingsSlice';
 import { addBranch, removeBranch, updateBranch } from '../store/branchesSlice';
 import * as branchesApi from '../api/branches';
 import { useEffect, useRef, useState } from 'react';
@@ -14,6 +14,7 @@ import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import { getBeforeInstallPromptEvent, isInstalled, isRelatedInstalled, checkUpdateAndOpen } from '../pwa/installPrompt';
 import { clearTenantState } from '../store/persist';
 import { CHAT_SOUND_OPTIONS, playChatSound, startOutgoingCallTone, stopIncomingRingtone, unlockChatSound } from '../utils/chatSound';
+import { LANGUAGE_OPTIONS, useAppLanguage } from '../utils/localization';
 
 function ConfigSettingsPage() {
   const dispatch = useDispatch();
@@ -46,6 +47,7 @@ function ConfigSettingsPage() {
     branchIds: []
   });
   const toast = useToast();
+  const { t } = useAppLanguage();
   const initialTaxRef = useRef(settings.taxRate);
   const initialSettingsRef = useRef(settings || {});
   const initialSettingsCapturedRef = useRef(false);
@@ -59,6 +61,7 @@ function ConfigSettingsPage() {
   const tenantAllowedSettingKeys = useRef(new Set([
     'clientAppName',
     'clientLogoUrl',
+    'preferredLanguage',
     'chatNotificationSound',
     'callNotificationSound',
     'webRtcIceServers',
@@ -635,6 +638,22 @@ function ConfigSettingsPage() {
                 Theme Color
                 <input className="input" type="color" value={settings.themeColor || '#16a34a'} onChange={e => setSetting('themeColor', e.target.value)} style={{ display: 'block', width: '100%', marginTop: 6, height: 44 }} />
               </label>
+              <label style={{ display: 'block', marginTop: 8 }}>
+                {t('Default Language')}
+                <select
+                  className="select"
+                  value={settings.preferredLanguage || 'en'}
+                  onChange={e => dispatch(setPreferredLanguage(e.target.value))}
+                  style={{ display: 'block', width: '100%', marginTop: 6 }}
+                >
+                  {LANGUAGE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{t(option.label)}</option>
+                  ))}
+                </select>
+              </label>
+              <div style={{ marginTop: 6, color: '#64748b', fontSize: 12 }}>
+                {t('Sets the tenant default language. Each signed-in user can still choose a personal language from the top bar.')}
+              </div>
               <div style={{ marginTop: 12, padding: 12, borderRadius: 14, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
                 <h3 className="section-title" style={{ margin: '0 0 8px 0' }}>Communication Sounds</h3>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

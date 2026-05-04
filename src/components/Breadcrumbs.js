@@ -1,4 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom';
+import { useAppLanguage } from '../utils/localization';
 
 const titles = {
   'dashboard': 'Dashboard',
@@ -24,13 +25,14 @@ function cap(s) {
 }
 
 function Breadcrumbs() {
+  const { t } = useAppLanguage();
   const location = useLocation();
   const parts = location.pathname.split('/').filter(Boolean);
-  const crumbs = [{ path: '/dashboard', label: 'Dashboard' }].concat(
+  const crumbs = [{ path: '/dashboard', label: t('Dashboard') }].concat(
     parts.map((p, i) => {
       const path = '/' + parts.slice(0, i + 1).join('/');
       const key = p.toLowerCase();
-      const label = titles[key] || cap(p);
+      const label = t(titles[key] || cap(p));
       return { path, label };
     })
   );

@@ -1,4 +1,5 @@
 import { formatCurrency } from './currency';
+import { translateDocumentLanguage } from './localization';
 
 function numToWords(n) {
   const small = ['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
@@ -42,17 +43,18 @@ function amountInWords(amount, currencyLabel = '') {
 }
 
 export function buildInvoiceA4Html({ settings, invoice }) {
+  const t = translateDocumentLanguage;
   const logoSrc = settings?.clientLogoUrl || '/clientlogo512.png';
   const addr = String(settings?.invoiceCompanyAddress || '').split('\n').map(s => s.trim()).filter(Boolean).join('<br/>');
   const footer = settings?.invoiceFooter || settings?.footerText || '';
-  const decl = settings?.invoiceDeclaration || 'We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.';
-  const signLbl = settings?.invoiceSignatoryLabel || 'Authorised Signatory';
+  const decl = settings?.invoiceDeclaration || t('We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.');
+  const signLbl = settings?.invoiceSignatoryLabel || t('Authorised Signatory');
   const buyer = invoice.customer || {};
   const items = invoice.items || [];
   const buyerBusinessFields = [
-    { label: 'Business Name', value: buyer.businessName || '' },
-    { label: 'TIN/TPIN', value: buyer.taxId || '' },
-    { label: 'Business Address', value: buyer.businessAddress || '' }
+    { label: t('Business Name'), value: buyer.businessName || '' },
+    { label: t('TIN/TPIN'), value: buyer.taxId || '' },
+    { label: t('Business Address'), value: buyer.businessAddress || '' }
   ].filter((field) => String(field.value || '').trim());
   const buyerBusinessRows = buyerBusinessFields.map((field) => `
         <tr>
@@ -75,13 +77,13 @@ export function buildInvoiceA4Html({ settings, invoice }) {
   const total = Number(invoice.total || 0);
   const words = amountInWords(total, '');
   const today = new Date(invoice.date || Date.now()).toLocaleDateString();
-  const title = settings?.invoiceTitle || 'Invoice';
-  const wordsLabel = settings?.invoiceWordsLabel || 'Amount Chargeable (in words)';
-  const generatedNote = settings?.invoiceGeneratedNote || 'This is a Computer Generated Invoice';
+  const title = settings?.invoiceTitle || t('Invoice');
+  const wordsLabel = settings?.invoiceWordsLabel || t('Amount Chargeable (in words)');
+  const generatedNote = settings?.invoiceGeneratedNote || t('This is a Computer Generated Invoice');
   const paidStampEnabled = !!settings?.invoicePaidStampEnabled;
   const paidStampColor = settings?.invoicePaidStampColor || '#cc0000';
-  const paidStampLabel = settings?.invoicePaidStampLabel || 'PAID';
-  const paidStampThanks = settings?.invoicePaidStampThankYou || 'THANK YOU!';
+  const paidStampLabel = settings?.invoicePaidStampLabel || t('PAID');
+  const paidStampThanks = settings?.invoicePaidStampThankYou || t('THANK YOU!');
   const paidStampShowDate = settings?.invoicePaidStampShowDate !== false;
   const showPaidStamp = paidStampEnabled && String(invoice?.source || '').toLowerCase() === 'pos' && String(invoice?.paymentStatus || '').toLowerCase() === 'paid';
   const brandName = settings?.clientAppName || settings?.appName || '';
@@ -104,7 +106,7 @@ export function buildInvoiceA4Html({ settings, invoice }) {
     <div class="doc-title">${title}</div>
     <div class="head">
       <div class="brand">
-        <img src="${logoSrc}" alt="logo" onerror="if(this.src.endsWith('/clientlogo512.png')) this.src='/logo512.png'; else this.src='/clientlogo512.png';"/>
+        <img src="${logoSrc}" alt="${t('Logo')}" onerror="if(this.src.endsWith('/clientlogo512.png')) this.src='/logo512.png'; else this.src='/clientlogo512.png';"/>
         <div class="brand-text">
           <div class="title">${settings.clientAppName || settings.appName}</div>
           <div class="addr">${addr}</div>
@@ -114,16 +116,16 @@ export function buildInvoiceA4Html({ settings, invoice }) {
       <table class="kv meta-table">
         <tbody>
           <tr>
-            <td class="label">Invoice No.</td><td class="value">${invoice.number}</td>
-            <td class="label">Dated</td><td class="value">${today}</td>
+            <td class="label">${t('Invoice No.')}</td><td class="value">${invoice.number}</td>
+            <td class="label">${t('Dated')}</td><td class="value">${today}</td>
           </tr>
           <tr>
-            <td class="label">Delivery Note</td><td class="value">${invoice.deliveryNote || ''}</td>
-            <td class="label">Mode/Terms of Payment</td><td class="value">${invoice.paymentTerms || ''}</td>
+            <td class="label">${t('Delivery Note')}</td><td class="value">${invoice.deliveryNote || ''}</td>
+            <td class="label">${t('Mode/Terms of Payment')}</td><td class="value">${invoice.paymentTerms || ''}</td>
           </tr>
           <tr>
-            <td class="label">Supplier's Ref.</td><td class="value">${invoice.supplierRef || ''}</td>
-            <td class="label">Other Reference(s)</td><td class="value">${invoice.otherRef || ''}</td>
+            <td class="label">${t("Supplier's Ref.")}</td><td class="value">${invoice.supplierRef || ''}</td>
+            <td class="label">${t('Other Reference(s)')}</td><td class="value">${invoice.otherRef || ''}</td>
           </tr>
         </tbody>
       </table>
@@ -131,61 +133,61 @@ export function buildInvoiceA4Html({ settings, invoice }) {
     <table class="kv buyer-table">
       <tbody>
         <tr>
-          <td class="label">Buyer</td><td class="value">${buyer.name || '-'}</td>
-          <td class="label">Buyer’s Order No.</td><td class="value">${invoice.buyerOrderNo || ''}</td>
+          <td class="label">${t('Buyer')}</td><td class="value">${buyer.name || '-'}</td>
+          <td class="label">${t("Buyer's Order No.")}</td><td class="value">${invoice.buyerOrderNo || ''}</td>
         </tr>
         <tr>
-          <td class="label">Phone</td><td class="value">${buyer.phone || buyer.contact || ''}</td>
-          <td class="label">Despatch Document No.</td><td class="value">${invoice.despatchDocNo || ''}</td>
+          <td class="label">${t('Phone')}</td><td class="value">${buyer.phone || buyer.contact || ''}</td>
+          <td class="label">${t('Despatch Document No.')}</td><td class="value">${invoice.despatchDocNo || ''}</td>
         </tr>
         ${String(buyer.address || '').trim() ? `
         <tr>
-          <td class="label">Address</td><td class="value">${buyer.address || ''}</td>
-          <td class="label">Delivery Note Date</td><td class="value">${invoice.deliveryDate || ''}</td>
+          <td class="label">${t('Address')}</td><td class="value">${buyer.address || ''}</td>
+          <td class="label">${t('Delivery Note Date')}</td><td class="value">${invoice.deliveryDate || ''}</td>
         </tr>
         ` : `
         <tr>
           <td class="label"></td><td class="value"></td>
-          <td class="label">Delivery Note Date</td><td class="value">${invoice.deliveryDate || ''}</td>
+          <td class="label">${t('Delivery Note Date')}</td><td class="value">${invoice.deliveryDate || ''}</td>
         </tr>
         `}
         ${buyerBusinessRows}
         <tr>
-          <td class="label">Despatched through</td><td class="value">${invoice.despatchedThrough || ''}</td>
-          <td class="label">Destination</td><td class="value">${invoice.destination || ''}</td>
+          <td class="label">${t('Despatched through')}</td><td class="value">${invoice.despatchedThrough || ''}</td>
+          <td class="label">${t('Destination')}</td><td class="value">${invoice.destination || ''}</td>
         </tr>
         <tr>
-          <td class="label">Customer ID</td><td class="value">${buyer.customerCode || buyer.customerId || ''}</td>
-          <td class="label">Email</td><td class="value">${buyer.email || ''}</td>
+          <td class="label">${t('Customer ID')}</td><td class="value">${buyer.customerCode || buyer.customerId || ''}</td>
+          <td class="label">${t('Email')}</td><td class="value">${buyer.email || ''}</td>
         </tr>
         <tr>
-          <td class="label">Terms of Delivery</td><td class="value" colspan="3">${invoice.termsOfDelivery || ''}</td>
+          <td class="label">${t('Terms of Delivery')}</td><td class="value" colspan="3">${invoice.termsOfDelivery || ''}</td>
         </tr>
       </tbody>
     </table>
     <table class="items">
       <thead>
         <tr>
-          <th>Sl No.</th>
-          <th>Description of Goods</th>
-          <th>Quantity</th>
-          <th>Rate</th>
-          <th>per</th>
-          <th>Amount</th>
+          <th>${t('Sl No.')}</th>
+          <th>${t('Description of Goods')}</th>
+          <th>${t('Quantity')}</th>
+          <th>${t('Rate')}</th>
+          <th>${t('per')}</th>
+          <th>${t('Amount')}</th>
         </tr>
       </thead>
       <tbody>
         ${rows}
         <tr>
-          <td colspan="5" class="right strong">Total</td>
+          <td colspan="5" class="right strong">${t('Total')}</td>
           <td class="right strong">${formatCurrency(subtotal, settings)}</td>
         </tr>
         <tr>
-          <td colspan="5" class="right">Tax</td>
+          <td colspan="5" class="right">${t('Tax')}</td>
           <td class="right">${formatCurrency(tax, settings)}</td>
         </tr>
         <tr>
-          <td colspan="5" class="right strong">Grand Total</td>
+          <td colspan="5" class="right strong">${t('Grand Total')}</td>
           <td class="right strong">${formatCurrency(total, settings)}</td>
         </tr>
       </tbody>
@@ -195,13 +197,13 @@ export function buildInvoiceA4Html({ settings, invoice }) {
       <div class="strong">${words}</div>
     </div>
     <div class="declaration">
-      <div>Declaration</div>
+      <div>${t('Declaration')}</div>
       <div>${decl}</div>
       <table class="signatures">
         <tr>
           <td>
             <div class="sign-line"></div>
-            <div>Customer Signature</div>
+            <div>${t('Customer Signature')}</div>
           </td>
           <td style="text-align:right">
             <div class="brand-sig">${settings.clientAppName || settings.appName}</div>
@@ -218,13 +220,14 @@ export function buildInvoiceA4Html({ settings, invoice }) {
 }
 
 export function printInvoiceA4(html) {
+  const t = translateDocumentLanguage;
   const w = window.open('', 'PRINT', 'width=1000,height=800');
   if (!w) return;
   w.document.open();
   w.document.write(`
   <html>
   <head>
-    <title>Invoice</title>
+    <title>${t('Invoice')}</title>
     <style>
       @page { size: A4; margin: 18mm; }
       body { font-family: Arial, sans-serif; color:#000; }

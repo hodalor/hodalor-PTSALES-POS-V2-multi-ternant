@@ -1,3 +1,5 @@
+import { translateDocumentLanguage } from './localization';
+
 function createOverlay() {
   const overlay = document.createElement('div');
   Object.assign(overlay.style, {
@@ -80,8 +82,8 @@ export function confirmDialog(message) {
     const box = createDialogBox('380px');
     const msg = createMessageNode(message);
     const btnRow = createButtonRow();
-    const cancel = createButton('Cancel');
-    const ok = createButton('OK', 'primary');
+    const cancel = createButton(translateDocumentLanguage('Cancel'));
+    const ok = createButton(translateDocumentLanguage('OK'), 'primary');
     let finished = false;
 
     function cleanup(value) {
@@ -136,10 +138,10 @@ export function promptDialog(message, defaultValue = '') {
       outline: 'none',
       boxShadow: 'inset 0 1px 2px rgba(15, 23, 42, 0.12)'
     });
-    input.setAttribute('placeholder', useTextarea ? 'Type here...' : 'Enter value');
+    input.setAttribute('placeholder', useTextarea ? translateDocumentLanguage('Type here...') : translateDocumentLanguage('Enter value'));
     const btnRow = createButtonRow();
-    const cancel = createButton('Cancel');
-    const ok = createButton('OK', 'primary');
+    const cancel = createButton(translateDocumentLanguage('Cancel'));
+    const ok = createButton(translateDocumentLanguage('OK'), 'primary');
     let finished = false;
 
     function cleanup(value) {

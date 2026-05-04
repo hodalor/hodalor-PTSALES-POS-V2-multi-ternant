@@ -1,7 +1,7 @@
 import { useDispatch, useSelector, useStore } from 'react-redux';
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { logout } from '../store/authSlice';
+import { logout, setUserPreferredLanguage } from '../store/authSlice';
 import { setCurrentBranch } from '../store/settingsSlice';
 import BranchSelect from './BranchSelect';
 import NotificationBell from './NotificationBell';
@@ -11,6 +11,7 @@ import { ensureOnlineJwt } from '../offline/reAuth';
 import { refreshAllData } from '../offline/refreshAll';
 import * as authApi from '../api/auth';
 import { resetTenantAppState } from '../store';
+import { useAppLanguage } from '../utils/localization';
 
 function Header({ onToggleSidebar }) {
   const auth = useSelector(state => state.auth);
@@ -22,6 +23,7 @@ function Header({ onToggleSidebar }) {
   const navigate = useNavigate();
   const toast = useToast();
   const { unreadCount, liveStatus, enabled: communicationEnabled } = useChatNotifications();
+  const { language, setLanguage, options: languageOptions, t } = useAppLanguage();
   const [syncing, setSyncing] = useState(false);
   const roleLower = String(auth.role || '').toLowerCase();
   const canChangeBranch = ['admin', 'manager', 'branch manager', 'superadmin'].includes(roleLower);
@@ -31,10 +33,10 @@ function Header({ onToggleSidebar }) {
   const daysLeft = expiryTs ? Math.ceil((expiryTs - Date.now()) / (24 * 3600 * 1000)) : null;
   const subscriptionLabel = !isMaster && (isPermanent || daysLeft != null)
     ? (isPermanent
-        ? `${String(settings.subscriptionPlan || 'basic')} • Permanent`
+        ? t('{plan} • Permanent', { plan: String(settings.subscriptionPlan || 'basic') })
         : daysLeft < 0
-          ? `Subscription expired`
-          : `${String(settings.subscriptionPlan || 'basic')} • ${daysLeft} day(s) left`)
+          ? t('Subscription expired')
+          : t('{plan} • {count} day(s) left', { plan: String(settings.subscriptionPlan || 'basic'), count: daysLeft }))
     : '';
   const assigned = auth.user?.assignedBranches || 'all';
   const visibleBranchName = useMemo(() => {
@@ -47,17 +49,17 @@ function Header({ onToggleSidebar }) {
       if (match?.name) return match.name;
     }
     if (assignedIds[0]) return assignedIds[0];
-    return 'Assigned Branch';
-  }, [assigned, auth.user?.branchId, branches, currentBranchId]);
+    return t('Assigned Branch');
+  }, [assigned, auth.user?.branchId, branches, currentBranchId, t]);
 
   return (
     <div className="topbar">
       <div className="brand">
         <button
           className="hamburger"
-          aria-label="Toggle menu"
+          aria-label={t('Menu')}
           onClick={() => { if (onToggleSidebar) onToggleSidebar(); }}
-          title="Menu"
+          title={t('Menu')}
         >
           <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2"/></svg>
         </button>
@@ -122,14 +124,14 @@ function Header({ onToggleSidebar }) {
                 <button
                   className="btn"
                   onClick={() => navigate('/communication/chat')}
-                  title={liveStatus === 'live' ? 'Open Communication' : `Communication (${liveStatus})`}
+                  title={t('Open Communication')}
                   style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, minWidth: 42, height: 36 }}
                 >
                   <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
                     <path d="M4 6h16v10H7l-3 3V6z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
                     <path d="M8 10h8M8 13h5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                   </svg>
-                  <span style={{ fontWeight: 700 }}>Chat</span>
+                  <span style={{ fontWeight: 700 }}>{t('Chat')}</span>
                   <span style={{ width: 8, height: 8, borderRadius: 999, background: liveStatus === 'live' ? '#22c55e' : '#f97316', boxShadow: '0 0 0 2px rgba(255,255,255,0.85)' }} />
                 </button>
                 {unreadCount > 0 && (
@@ -140,27 +142,46 @@ function Header({ onToggleSidebar }) {
               </span>
             ) : null}
             <NotificationBell />
+            <select
+              className="select"
+              value={language}
+              onChange={async (e) => {
+                const nextLanguage = e.target.value;
+                setLanguage(nextLanguage);
+                dispatch(setUserPreferredLanguage(nextLanguage));
+                try {
+                  await authApi.updateMe({ preferredLanguage: nextLanguage });
+                } catch {}
+                toast.show(t('Language changed to {label}', { label: languageOptions.find((item) => item.value === nextLanguage)?.label || 'English' }), { type: 'success' });
+              }}
+              title={t('Preferred language')}
+              style={{ width: 132, marginRight: 8 }}
+            >
+              {languageOptions.map((option) => (
+                <option key={option.value} value={option.value}>{t(option.label)}</option>
+              ))}
+            </select>
             <button
               className="btn"
               onClick={async () => {
                 if (syncing) return;
-                if (!navigator.onLine) { toast.show('Offline: connect internet to sync', { type: 'error' }); return; }
+                if (!navigator.onLine) { toast.show(t('Offline: connect internet to sync'), { type: 'error' }); return; }
                 setSyncing(true);
                 try {
                   await ensureOnlineJwt();
                   await refreshAllData(dispatch, store.getState);
-                  toast.show('Sync completed', { type: 'success' });
+                  toast.show(t('Sync completed'), { type: 'success' });
                 } catch (e) {
-                  toast.show(String(e?.message || 'Sync failed'), { type: 'error' });
+                  toast.show(String(e?.message || t('Sync failed')), { type: 'error' });
                 } finally {
                   setSyncing(false);
                 }
               }}
               disabled={syncing}
-              title="Refresh data from server"
+              title={t('Refresh data from server')}
               style={{ marginRight: 8 }}
             >
-              {syncing ? 'Syncing…' : 'Sync'}
+              {syncing ? t('Syncing...') : t('Sync')}
             </button>
             <span style={{ marginRight: 12 }}>
               {auth.user?.name} — {auth.role}
@@ -176,10 +197,10 @@ function Header({ onToggleSidebar }) {
               dispatch(resetTenantAppState(tenantId));
               dispatch(logout());
               navigate('/login', { replace: true });
-            }}>Logout</button>
+            }}>{t('Logout')}</button>
           </>
         ) : (
-          <span>Not signed in</span>
+          <span>{t('Not signed in')}</span>
         )}
       </div>
     </div>

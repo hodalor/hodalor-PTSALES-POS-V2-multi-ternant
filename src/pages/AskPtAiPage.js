@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 import { useToast } from '../components/ToastProvider';
 import { askPtAi as askPtAiApi, transcribePtAi } from '../api/ptAi';
 import { findBestPtAiAnswer, PT_AI_TOPICS } from '../utils/ptAiKnowledge';
+import { useAppLanguage } from '../utils/localization';
 
 function normalizeChatText(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -16,12 +17,12 @@ function friendlyUserName(value) {
   return first.charAt(0).toUpperCase() + first.slice(1);
 }
 
-function addUserAddress(text, userName, { hello = false } = {}) {
+function addUserAddress(text, userName, { hello = false, helloWord = 'Hello' } = {}) {
   const name = friendlyUserName(userName);
   const clean = String(text || '').trim();
   if (!clean) return '';
   if (!name) return clean;
-  return hello ? `Hello ${name}, ${clean}` : `${name}, ${clean}`;
+  return hello ? `${helloWord} ${name}, ${clean}` : `${name}, ${clean}`;
 }
 
 function politeLead(userName, variant = 0) {
@@ -52,12 +53,13 @@ function introWithAssurance(userName, message, seed = '') {
   return `${lead} ${cleanMessage}`.trim();
 }
 
-function buildInitialGreeting(userName) {
+function buildInitialGreeting(userName, translateText = (value) => value) {
+  const helloWord = translateText('Hello');
   return {
-    title: 'Hello',
+    title: helloWord,
     answer: [
-      addUserAddress('I am PT AI.', userName, { hello: true }),
-      'How can I help you today with the system?'
+      addUserAddress(translateText('I am PT AI.'), userName, { hello: true, helloWord }),
+      translateText('How can I help you today with the system?')
     ],
     related: []
   };
@@ -65,14 +67,16 @@ function buildInitialGreeting(userName) {
 
 function buildSmallTalkAnswer(query, options = {}) {
   const userName = options.userName;
+  const translateText = options.translateText || ((value) => value);
   const q = normalizeChatText(query);
   if (!q) return null;
   if (/^(hi|hello|hey|good morning|good afternoon|good evening)\b/.test(q)) {
+    const helloWord = translateText('Hello');
     return {
-      title: 'Hello',
+      title: helloWord,
       answer: [
-        addUserAddress('I am PT AI.', userName, { hello: true }),
-        'How can I help you today with the system?'
+        addUserAddress(translateText('I am PT AI.'), userName, { hello: true, helloWord }),
+        translateText('How can I help you today with the system?')
       ],
       related: PT_AI_TOPICS.slice(0, 3)
     };
@@ -87,20 +91,20 @@ function buildSmallTalkAnswer(query, options = {}) {
     || q.includes('how are things')
   ) {
     return {
-      title: 'My day is going well',
+      title: translateText('My day is going well'),
       answer: [
-        addUserAddress('my day is going well, thank you.', userName, { hello: true }),
-        'I am here to help with the POS system. How can I help you today?'
+        addUserAddress(translateText('my day is going well, thank you.'), userName, { hello: true, helloWord: translateText('Hello') }),
+        translateText('I am here to help with the POS system. How can I help you today?')
       ],
       related: []
     };
   }
   if (q.includes('what is up') || q.includes('whats up') || q === 'sup') {
     return {
-      title: 'I am here to help',
+      title: translateText('I am here to help'),
       answer: [
-        addUserAddress('I am here and ready to help.', userName, { hello: true }),
-        'I was built to assist with the POS system. How can I help you today?'
+        addUserAddress(translateText('I am here and ready to help.'), userName, { hello: true, helloWord: translateText('Hello') }),
+        translateText('I was built to assist with the POS system. How can I help you today?')
       ],
       related: []
     };
@@ -146,25 +150,25 @@ function ensureFollowUp(lines, followUp = 'Is there anything else you want me to
   return [...next, followUp];
 }
 
-function buildOffTopicAnswer(userName) {
+function buildOffTopicAnswer(userName, translateText = (value) => value) {
   return {
-    title: 'I focus on this POS system',
+    title: translateText('I focus on this POS system'),
     answer: [
-      addUserAddress('I can give a brief general idea, but I was built mainly to help employees use this POS, inventory, approvals, finance, and communication system.', userName),
-      'Please ask me about a workflow in this system, such as POS sales, purchases, transfers, adjustments, expenses, cash reconciliation, invoices, customers, users, or reports.',
-      'Is there anything else you want me to help you with inside the system?'
+      addUserAddress(translateText('I can give a brief general idea, but I was built mainly to help employees use this POS, inventory, approvals, finance, and communication system.'), userName),
+      translateText('Please ask me about a workflow in this system, such as POS sales, purchases, transfers, adjustments, expenses, cash reconciliation, invoices, customers, users, or reports.'),
+      translateText('Is there anything else you want me to help you with inside the system?')
     ],
     related: PT_AI_TOPICS.slice(0, 4)
   };
 }
 
-function buildProhibitedAnswer(userName) {
+function buildProhibitedAnswer(userName, translateText = (value) => value) {
   return {
-    title: 'I cannot help with that',
+    title: translateText('I cannot help with that'),
     answer: [
-      addUserAddress('I was not built to help with hacking, privacy abuse, sexual content, breaches of security, or other harmful activity.', userName),
-      'If you need help, I can assist with safe and lawful use of this POS system, such as sales, stock, approvals, reports, finance, customers, users, or communication workflows.',
-      'Is there anything else you want me to help you with inside the system?'
+      addUserAddress(translateText('I was not built to help with hacking, privacy abuse, sexual content, breaches of security, or other harmful activity.'), userName),
+      translateText('If you need help, I can assist with safe and lawful use of this POS system, such as sales, stock, approvals, reports, finance, customers, users, or communication workflows.'),
+      translateText('Is there anything else you want me to help you with inside the system?')
     ],
     related: PT_AI_TOPICS.slice(0, 4)
   };
@@ -266,46 +270,47 @@ function isFollowUpQuestion(query, previousQuestion = '') {
   return sharedTokens.length >= 2;
 }
 
-function buildUnknownAnswer(query, previousQuestion = '', userName = '') {
+function buildUnknownAnswer(query, previousQuestion = '', userName = '', translateText = (value) => value) {
   const connected = previousQuestion
-    ? `I see this is connected to your earlier question about "${previousQuestion}".`
+    ? translateText('That is a good follow-up question.')
     : '';
   return {
-    title: 'I do not have a reliable answer yet',
+    title: translateText('I do not have a reliable answer yet'),
     answer: ensureFollowUp([
       connected,
-      addUserAddress('I do not have a reliable answer for that question right now, so I do not want to guess or mislead you.', userName),
-      'If you want, ask the same question with the exact page, button, menu, or workflow name and I will help with what I know.'
-    ].filter(Boolean), 'Is there another way I can help you inside the system?'),
+      addUserAddress(translateText('I do not have a reliable answer for that question right now, so I do not want to guess or mislead you.'), userName),
+      translateText('If you want, ask the same question with the exact page, button, menu, or workflow name and I will help with what I know.')
+    ].filter(Boolean), translateText('Is there another way I can help you inside the system?')),
     related: []
   };
 }
 
 function buildConversationalAnswer(query, result, fallbackTitle = 'PT AI Answer', options = {}) {
   const userName = options.userName;
-  const smallTalk = buildSmallTalkAnswer(query, { userName });
+  const translateText = options.translateText || ((value) => value);
+  const smallTalk = buildSmallTalkAnswer(query, { userName, translateText });
   if (smallTalk) return smallTalk;
 
   const previousQuestion = String(options.previousQuestion || '').trim();
-  if (isUnknownResult(result)) return buildUnknownAnswer(query, previousQuestion, userName);
+  if (isUnknownResult(result)) return buildUnknownAnswer(query, previousQuestion, userName, translateText);
 
-  const title = String(result?.title || fallbackTitle).trim() || fallbackTitle;
+  const title = translateText(String(result?.title || fallbackTitle).trim() || fallbackTitle);
   const rawAnswerLines = Array.isArray(result?.answer)
-    ? result.answer.map((line) => String(line || '').trim()).filter(Boolean)
-    : String(result?.answer || result?.text || '').split(/\n{2,}|\r\n\r\n/).map((line) => line.trim()).filter(Boolean);
+    ? result.answer.map((line) => translateText(String(line || '').trim())).filter(Boolean)
+    : String(result?.answer || result?.text || '').split(/\n{2,}|\r\n\r\n/).map((line) => translateText(line.trim())).filter(Boolean);
   const tutorialMode = looksLikeHowToQuestion(query);
   const answerLines = tutorialMode ? formatTutorialLines(rawAnswerLines) : rawAnswerLines;
   const followUpMode = isFollowUpQuestion(query, previousQuestion);
   const intro = followUpMode
     ? tutorialMode
-      ? introWithAssurance(userName, `that is a good follow-up question about "${previousQuestion}". Follow these steps.`, `${query}|followup|tutorial`)
-      : introWithAssurance(userName, `that is a good follow-up question about "${previousQuestion}". Here is what I can confirm.`, `${query}|followup|general`)
+      ? introWithAssurance(userName, `${translateText('That is a good follow-up question.')} ${translateText('Follow these steps.')}`, `${query}|followup|tutorial`)
+      : introWithAssurance(userName, `${translateText('That is a good follow-up question.')} ${translateText('Here is what I can confirm.')}`, `${query}|followup|general`)
     : tutorialMode
-      ? introWithAssurance(userName, `follow these steps for "${String(query || '').trim()}".`, `${query}|tutorial`)
-      : introWithAssurance(userName, `here is the best help I found for "${String(query || '').trim()}".`, `${query}|general`);
+      ? introWithAssurance(userName, translateText('Follow these steps.'), `${query}|tutorial`)
+      : introWithAssurance(userName, translateText('Here is the best help I found.'), `${query}|general`);
   const followUp = tutorialMode
-    ? 'If you want, I can also show the exact menu path or button names for another task. Is there anything else you want me to help you with?'
-    : 'Is there anything else you want me to help you with?';
+    ? translateText('If you want, I can also show the exact menu path or button names for another task. Is there anything else you want me to help you with?')
+    : translateText('Is there anything else you want me to help you with?');
 
   return {
     ...result,
@@ -380,6 +385,7 @@ function AnimatedAnswerLines({ entryId, lines, animate, onProgress }) {
 
 function AskPtAiPage() {
   const auth = useSelector((s) => s.auth);
+  const { t, speechLocale, recognitionLocale } = useAppLanguage();
   const currentUserName = useMemo(() => friendlyUserName(auth?.user?.name || ''), [auth?.user?.name]);
   const [query, setQuery] = useState('');
   const [answer, setAnswer] = useState(null);
@@ -389,7 +395,7 @@ function AskPtAiPage() {
   const [recording, setRecording] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [asking, setAsking] = useState(false);
-  const [answerMeta, setAnswerMeta] = useState('Built-in workflow guidance');
+  const [answerMeta, setAnswerMeta] = useState(() => t('Built-in workflow guidance'));
   const [transcript, setTranscript] = useState('');
   const recognitionRef = useRef(null);
   const transcriptRef = useRef('');
@@ -429,10 +435,10 @@ function AskPtAiPage() {
 
   useEffect(() => {
     if (welcomedRef.current) return;
-    const greeting = buildInitialGreeting(currentUserName);
+    const greeting = buildInitialGreeting(currentUserName, t);
     welcomedRef.current = true;
     setAnswer(greeting);
-    setAnswerMeta('Built-in workflow guidance');
+    setAnswerMeta(t('Built-in workflow guidance'));
     setConversation([
       {
         id: 'welcome-ai',
@@ -440,12 +446,12 @@ function AskPtAiPage() {
         title: greeting.title,
         answer: greeting.answer,
         related: greeting.related,
-        meta: 'Built-in workflow guidance',
+        meta: t('Built-in workflow guidance'),
         pending: false
       }
     ]);
     setAnimatedEntryId('welcome-ai');
-  }, [currentUserName]);
+  }, [currentUserName, t]);
 
   function scrollThreadToBottom(behavior = 'auto') {
     try {
@@ -473,6 +479,7 @@ function AskPtAiPage() {
     try {
       window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance([nextAnswer.title, ...(nextAnswer.answer || [])].join('. '));
+      utterance.lang = speechLocale;
       utterance.rate = 1;
       utterance.pitch = 1;
       utterance.onstart = () => setSpeaking(true);
@@ -496,14 +503,14 @@ function AskPtAiPage() {
     if (!clean) return;
     const previousQuestion = findPreviousUserQuestion(history, clean);
     const localMatch = findBestPtAiAnswer(clean);
-    const prohibitedResult = isProhibitedQuestion(clean) ? buildProhibitedAnswer(currentUserName) : null;
-    const offTopicResult = !prohibitedResult && !isLikelySystemQuestion(clean, localMatch) ? buildOffTopicAnswer(currentUserName) : null;
+    const prohibitedResult = isProhibitedQuestion(clean) ? buildProhibitedAnswer(currentUserName, t) : null;
+    const offTopicResult = !prohibitedResult && !isLikelySystemQuestion(clean, localMatch) ? buildOffTopicAnswer(currentUserName, t) : null;
     const requestId = Date.now();
     requestIdRef.current = requestId;
     const answerEntryId = `ai-${requestId}`;
-    const quickFallback = prohibitedResult || offTopicResult || buildConversationalAnswer(clean, localMatch, 'PT AI Local Help', { previousQuestion, userName: currentUserName });
+    const quickFallback = prohibitedResult || offTopicResult || buildConversationalAnswer(clean, localMatch, t('PT AI Local Help'), { previousQuestion, userName: currentUserName, translateText: t });
     setAnswer(quickFallback);
-    setAnswerMeta('Built-in workflow guidance');
+    setAnswerMeta(t('Built-in workflow guidance'));
     saveHistoryEntry(clean, quickFallback);
     setConversation((prev) => ([
       ...prev,
@@ -514,7 +521,7 @@ function AskPtAiPage() {
         title: quickFallback.title,
         answer: quickFallback.answer,
         related: quickFallback.related,
-        meta: 'Built-in workflow guidance',
+        meta: t('Built-in workflow guidance'),
         pending: true
       }
     ]));
@@ -529,12 +536,13 @@ function AskPtAiPage() {
     try {
       const aiResult = await askPtAiApi({
         query: clean,
-        history: history.slice(0, 4).map((item) => ({ question: item.query, answer: item.answerText || item.answer }))
+        history: history.slice(0, 4).map((item) => ({ question: item.query, answer: item.answerText || item.answer })),
+        language: speechLocale
       });
       if (requestIdRef.current !== requestId) return;
-      const normalized = buildConversationalAnswer(clean, aiResult, 'PT AI Answer', { previousQuestion, userName: currentUserName });
+      const normalized = buildConversationalAnswer(clean, aiResult, t('PT AI Answer'), { previousQuestion, userName: currentUserName, translateText: t });
       setAnswer(normalized);
-      setAnswerMeta(`${aiResult?.provider || 'AI backend'}${aiResult?.model ? ` • ${aiResult.model}` : ''}`);
+      setAnswerMeta(`${t(aiResult?.provider || 'AI backend')}${aiResult?.model ? ` • ${aiResult.model}` : ''}`);
       saveHistoryEntry(clean, normalized);
       setConversation((prev) => prev.map((entry) => (
         entry.id === answerEntryId
@@ -543,7 +551,7 @@ function AskPtAiPage() {
             title: normalized.title,
             answer: normalized.answer,
             related: normalized.related,
-            meta: `${aiResult?.provider || 'AI backend'}${aiResult?.model ? ` • ${aiResult.model}` : ''}`,
+            meta: `${t(aiResult?.provider || 'AI backend')}${aiResult?.model ? ` • ${aiResult.model}` : ''}`,
             pending: false
           }
           : entry
@@ -552,7 +560,7 @@ function AskPtAiPage() {
     } catch (error) {
       if (requestIdRef.current !== requestId) return;
       setAnswer(quickFallback);
-      setAnswerMeta('Built-in workflow guidance');
+      setAnswerMeta(t('Built-in workflow guidance'));
       saveHistoryEntry(clean, quickFallback);
       setConversation((prev) => prev.map((entry) => (
         entry.id === answerEntryId
@@ -561,7 +569,7 @@ function AskPtAiPage() {
             title: quickFallback.title,
             answer: quickFallback.answer,
             related: quickFallback.related,
-            meta: 'Built-in workflow guidance',
+            meta: t('Built-in workflow guidance'),
             pending: false
           }
           : entry
@@ -576,24 +584,24 @@ function AskPtAiPage() {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ''));
-      reader.onerror = () => reject(new Error('Failed to read voice recording'));
+      reader.onerror = () => reject(new Error(t('Failed to read voice recording')));
       reader.readAsDataURL(blob);
     });
   }
 
   function startVoiceInput() {
     if (!speechRecognition) {
-      toast.show('Browser speech recognition is not available here. Try Record Voice instead.', { type: 'warning' });
+      toast.show(t('Browser speech recognition is not available here. Try Record Voice instead.'), { type: 'warning' });
       return;
     }
     try {
       const recognition = new speechRecognition();
-      recognition.lang = 'en-US';
+      recognition.lang = recognitionLocale;
       recognition.interimResults = true;
       recognition.continuous = false;
       recognition.onstart = () => {
         setListening(true);
-        setTranscript('Listening for your question...');
+        setTranscript(t('Listening for your question...'));
         transcriptRef.current = '';
       };
       recognition.onresult = (event) => {
@@ -604,7 +612,7 @@ function AskPtAiPage() {
       };
       recognition.onerror = () => {
         setListening(false);
-        toast.show('Voice recognition could not start. You can use Record Voice instead.', { type: 'error' });
+        toast.show(t('Voice recognition could not start. You can use Record Voice instead.'), { type: 'error' });
       };
       recognition.onend = () => {
         setListening(false);
@@ -615,14 +623,14 @@ function AskPtAiPage() {
           ask(finalText, { autoSpeak: true, autoSpeakQuick: true });
         } else {
           setTranscript('');
-          toast.show('No speech was captured. Please try again and speak clearly.', { type: 'warning' });
+          toast.show(t('No speech was captured. Please try again and speak clearly.'), { type: 'warning' });
         }
       };
       recognitionRef.current = recognition;
       recognition.start();
     } catch {
       setListening(false);
-      toast.show('Voice recognition is unavailable. Try Record Voice instead.', { type: 'error' });
+      toast.show(t('Voice recognition is unavailable. Try Record Voice instead.'), { type: 'error' });
     }
   }
 
@@ -633,7 +641,7 @@ function AskPtAiPage() {
 
   async function startAudioRecording() {
     if (!recorderSupported) {
-      toast.show('Audio recording is not supported in this browser.', { type: 'error' });
+      toast.show(t('Audio recording is not supported in this browser.'), { type: 'error' });
       return;
     }
     try {
@@ -646,7 +654,7 @@ function AskPtAiPage() {
       };
       recorder.onerror = () => {
         setRecording(false);
-        toast.show('Recording failed. Please allow microphone access and try again.', { type: 'error' });
+        toast.show(t('Recording failed. Please allow microphone access and try again.'), { type: 'error' });
       };
       recorder.onstop = async () => {
         const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
@@ -660,26 +668,26 @@ function AskPtAiPage() {
         if (!blob.size) return;
         try {
           setAsking(true);
-          setTranscript('Transcribing voice...');
+          setTranscript(t('Transcribing voice...'));
           const audioBase64 = await readBlobAsDataUrl(blob);
           const result = await transcribePtAi({ audioBase64, mimeType: blob.type || recorder.mimeType || 'audio/webm' });
           const text = String(result?.text || '').trim();
-          if (!text) throw new Error('No voice text returned');
+          if (!text) throw new Error(t('No voice text returned'));
           setTranscript(text);
           setQuery(text);
           await ask(text, { autoSpeak: true, autoSpeakQuick: true });
         } catch (error) {
           setAsking(false);
-          toast.show(String(error?.message || 'Voice transcription failed'), { type: 'error' });
+          toast.show(String(error?.message || t('Voice transcription failed')), { type: 'error' });
         }
       };
       mediaRecorderRef.current = recorder;
-      setTranscript('Recording voice...');
+      setTranscript(t('Recording voice...'));
       setRecording(true);
       recorder.start();
     } catch (error) {
       setRecording(false);
-      toast.show('Microphone access was denied or unavailable.', { type: 'error' });
+      toast.show(t('Microphone access was denied or unavailable.'), { type: 'error' });
     }
   }
 
@@ -709,42 +717,42 @@ function AskPtAiPage() {
     <div className="page-shell chat-page-shell ask-ai-page-shell">
       <div className="page-header">
         <div>
-          <h1 style={{ margin: 0 }}>Ask PT AI</h1>
-          <div className="page-subtitle-compact">Ask how any part of the system works in a chat-style workspace. PT AI understands spelling mistakes, workflow questions, and voice requests.</div>
+          <h1 style={{ margin: 0 }}>{t('Ask PT AI')}</h1>
+          <div className="page-subtitle-compact">{t('Ask how any part of the system works in a chat-style workspace. PT AI understands spelling mistakes, workflow questions, and voice requests.')}</div>
         </div>
         <div className="page-header-actions">
-          <span className="status-pill status-pill-neutral">Topics {PT_AI_TOPICS.length}</span>
-          <span className={`status-pill ${(recorderSupported || voiceSupported) ? 'status-pill-approved' : 'status-pill-rejected'}`}>Voice {(recorderSupported || voiceSupported) ? 'Ready' : 'Off'}</span>
-          <span className={`status-pill ${speechSupported ? 'status-pill-approved' : 'status-pill-rejected'}`}>Reply {speechSupported ? 'Ready' : 'Off'}</span>
+          <span className="status-pill status-pill-neutral">{t('Topics {count}', { count: PT_AI_TOPICS.length })}</span>
+          <span className={`status-pill ${(recorderSupported || voiceSupported) ? 'status-pill-approved' : 'status-pill-rejected'}`}>{t('Voice')} {(recorderSupported || voiceSupported) ? t('Ready') : t('Off')}</span>
+          <span className={`status-pill ${speechSupported ? 'status-pill-approved' : 'status-pill-rejected'}`}>{t('Reply')} {speechSupported ? t('Ready') : t('Off')}</span>
         </div>
       </div>
 
-      <div className="chat-layout ask-ai-layout">
+      <div className="chat-layout ask-ai-layout" data-no-localize="true">
         <div className="card chat-people-card ask-ai-sidebar-card">
           <div className="chat-people-top">
             <div className="section-header">
               <div>
                 <h2 className="section-title" style={{ margin: 0 }}>AI Workspace</h2>
-                <span className="table-meta">{history.length ? `${history.length} recent question${history.length > 1 ? 's' : ''}` : 'Ready for your first question'}</span>
+                <span className="table-meta">{history.length ? t(history.length > 1 ? '{count} recent questions' : '{count} recent question', { count: history.length }) : t('Ready for your first question')}</span>
               </div>
-              {speaking ? <span className="status-pill status-pill-approved">Speaking</span> : null}
+              {speaking ? <span className="status-pill status-pill-approved">{t('Speaking')}</span> : null}
             </div>
             <div className="surface-panel-muted ask-ai-status-panel">
               <div className="mini-record-title">
-                <span>{recording ? 'Recording voice...' : listening ? 'Listening...' : asking ? 'Thinking...' : speaking ? 'Reading answer aloud...' : 'PT AI is ready'}</span>
+                <span>{recording ? t('Recording voice...') : listening ? t('Listening...') : asking ? t('Thinking...') : speaking ? t('Reading answer aloud...') : t('PT AI is ready')}</span>
               </div>
               <div className="mini-record-subtle">
                 {transcript
                   ? transcript
                   : recording
-                    ? 'Speak clearly and stop when done.'
+                    ? t('Speak clearly and stop when done.')
                     : listening
-                      ? 'Browser voice capture is active.'
-                      : 'Type or use voice to ask about any workflow in the system.'}
+                      ? t('Browser voice capture is active.')
+                      : t('Type or use voice to ask about any workflow in the system.')}
               </div>
             </div>
             <div>
-              <div className="field-label" style={{ marginBottom: 8 }}>Quick Topics</div>
+              <div className="field-label" style={{ marginBottom: 8 }}>{t('Quick Topics')}</div>
               <div className="inline-actions ask-ai-topic-list">
                 {quickTopics.map((topic) => (
                   <button key={topic.id} className="btn" onClick={() => { setQuery(topic.title); ask(topic.title); }}>
@@ -766,19 +774,19 @@ function AskPtAiPage() {
                 <div className="mini-record-title"><span>{item.query}</span></div>
                 <div className="mini-record-subtle">{item.answer}</div>
               </button>
-            )) : <div className="surface-panel-muted">Your recent PT AI questions will appear here.</div>}
+            )) : <div className="surface-panel-muted">{t('Your recent PT AI questions will appear here.')}</div>}
           </div>
         </div>
 
         <div className="card chat-room-card ask-ai-room-card">
           <div className="section-header chat-room-header">
             <div>
-              <h2 className="section-title" style={{ margin: 0 }}>PT AI Conversation</h2>
-              <div className="section-note">{answerMeta || 'Built-in workflow guidance'}</div>
+              <h2 className="section-title" style={{ margin: 0 }}>{t('PT AI Conversation')}</h2>
+              <div className="section-note">{answerMeta || t('Built-in workflow guidance')}</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span className={`status-pill ${asking ? 'status-pill-pending' : 'status-pill-neutral'}`}>{asking ? 'Refining' : 'Ready'}</span>
-              <span className={`status-pill ${recording || listening ? 'status-pill-approved' : 'status-pill-neutral'}`}>{recording ? 'Recording' : listening ? 'Listening' : 'Idle'}</span>
+              <span className={`status-pill ${asking ? 'status-pill-pending' : 'status-pill-neutral'}`}>{asking ? t('Refining') : t('Ready')}</span>
+              <span className={`status-pill ${recording || listening ? 'status-pill-approved' : 'status-pill-neutral'}`}>{recording ? t('Recording') : listening ? t('Listening') : t('Idle')}</span>
             </div>
           </div>
 
@@ -791,7 +799,7 @@ function AskPtAiPage() {
                     {mine ? (
                       <>
                         <div className="chat-message-meta-top">
-                          <span className="chat-message-author">You</span>
+                          <span className="chat-message-author">{t('You')}</span>
                         </div>
                         <div className="chat-message-text">{entry.text}</div>
                       </>
@@ -799,10 +807,10 @@ function AskPtAiPage() {
                       <>
                         <div className="chat-message-meta-top">
                           <div>
-                            <div className="chat-message-author">PT AI</div>
+                            <div className="chat-message-author">{t('PT AI')}</div>
                             <div className="section-note ask-ai-bubble-meta">{entry.meta}</div>
                           </div>
-                          {entry.pending ? <span className="status-pill status-pill-pending">Updating</span> : null}
+                          {entry.pending ? <span className="status-pill status-pill-pending">{t('Updating')}</span> : null}
                         </div>
                         <div className="ask-ai-answer-title">{entry.title}</div>
                         <AnimatedAnswerLines
@@ -834,12 +842,12 @@ function AskPtAiPage() {
                 {recorderSupported ? (
                   recording
                     ? <button className="btn chat-compose-emoji-btn ask-ai-record-btn" onClick={stopAudioRecording} title="Stop recording" aria-label="Stop recording">■</button>
-                    : <button className="btn chat-compose-emoji-btn ask-ai-record-btn" onClick={startAudioRecording} disabled={listening} title="Record voice" aria-label="Record voice">●</button>
+                    : <button className="btn chat-compose-emoji-btn ask-ai-record-btn" onClick={startAudioRecording} disabled={listening} title={t('Record voice')} aria-label={t('Record voice')}>●</button>
                 ) : null}
                 {voiceSupported ? (
                   listening
-                    ? <button className="btn chat-compose-emoji-btn ask-ai-record-btn" onClick={stopVoiceInput} disabled={recording} title="Stop browser voice" aria-label="Stop browser voice">◼</button>
-                    : <button className="btn chat-compose-emoji-btn ask-ai-record-btn" onClick={startVoiceInput} disabled={recording} title="Use browser voice" aria-label="Use browser voice">🎤</button>
+                    ? <button className="btn chat-compose-emoji-btn ask-ai-record-btn" onClick={stopVoiceInput} disabled={recording} title={t('Stop browser voice')} aria-label={t('Stop browser voice')}>◼</button>
+                    : <button className="btn chat-compose-emoji-btn ask-ai-record-btn" onClick={startVoiceInput} disabled={recording} title={t('Use browser voice')} aria-label={t('Use browser voice')}>🎤</button>
                 ) : null}
               </div>
               <textarea
@@ -848,20 +856,20 @@ function AskPtAiPage() {
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={onComposerKeyDown}
-                placeholder="Ask PT AI anything about the system"
+                placeholder={t('Ask PT AI anything about the system')}
               />
-              <button className="btn btn-primary chat-compose-send-btn" onClick={() => ask(query)} disabled={recording} title="Ask now">
+              <button className="btn btn-primary chat-compose-send-btn" onClick={() => ask(query)} disabled={recording} title={t('Ask now')}>
                 {asking ? '...' : '>'}
               </button>
             </div>
             <div className="inline-actions ask-ai-toolbar">
               {speechSupported ? (
                 speaking
-                  ? <button className="btn" onClick={stopSpeaking}>Stop Reading</button>
-                  : <button className="btn" onClick={speakAnswer} disabled={!answer}>Read Answer</button>
+                  ? <button className="btn" onClick={stopSpeaking}>{t('Stop Reading')}</button>
+                  : <button className="btn" onClick={speakAnswer} disabled={!answer}>{t('Read Answer')}</button>
               ) : null}
               <span className="table-meta">
-                {recording ? 'Recording voice...' : listening ? 'Listening for your question...' : asking ? 'Showing a fast answer while PT AI refines it...' : 'Press Enter to ask. Use Shift+Enter for a new line.'}
+                {recording ? t('Recording voice...') : listening ? t('Listening for your question...') : asking ? t('Showing a fast answer while PT AI refines it...') : t('Press Enter to ask. Use Shift+Enter for a new line.')}
               </span>
             </div>
           </div>

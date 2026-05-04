@@ -20,6 +20,7 @@ import ProductLiveSearchField from '../components/ProductLiveSearchField';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { ensureSupplierByName } from '../utils/suppliers';
 import LoadingDots from '../components/LoadingDots';
+import { useAppLanguage } from '../utils/localization';
 
 function PurchasesPage() {
   const products = useSelector(s => s.products.products);
@@ -62,6 +63,7 @@ function PurchasesPage() {
   const [reloadAt, setReloadAt] = useState(0);
   const dispatch = useDispatch();
   const toast = useToast();
+  const { t } = useAppLanguage();
   const serializedScanInputRef = useRef(null);
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);
   const [auditDetail, setAuditDetail] = useState(null);
@@ -217,7 +219,7 @@ function PurchasesPage() {
       { key: 'cost', label: 'Cost', value: e => (e.details || {}).cost ?? '' },
       { key: 'remark', label: 'Remark', value: e => e.remark || '' }
     ];
-    exportTablePdf('Purchases', headers, purchases);
+    exportTablePdf(t('Purchases'), headers, purchases);
   }
 
   async function receive() {
@@ -548,46 +550,46 @@ function PurchasesPage() {
     <div className="page-shell">
       <div className="page-header">
         <div>
-          <h1 style={{ margin: 0 }}>Purchases</h1>
-          <div className="page-subtitle-compact">Create, review, and approve retail purchase requests with a cleaner workflow.</div>
+          <h1 style={{ margin: 0 }}>{t('Purchases')}</h1>
+          <div className="page-subtitle-compact">{t('Create, review, and approve retail purchase requests with a cleaner workflow.')}</div>
         </div>
         <div className="page-header-actions">
           {tab === 'initiate' && (
           <button className="btn btn-primary" onClick={() => { setOpenModal(true); }}>
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2"/></svg>
-            Add Purchase
+            {t('Add Purchase')}
           </button>
           )}
-          <OfflineQueueIndicator collection="purchaserequests" label="Purchases queued" />
-          <OfflineQueueIndicator collection="audits" label="Stock queued" />
+          <OfflineQueueIndicator collection="purchaserequests" label={t('Purchases queued')} />
+          <OfflineQueueIndicator collection="audits" label={t('Stock queued')} />
         </div>
       </div>
       <div className="page-tabs">
-        <button className={tab === 'initiate' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('initiate')}>Initiate</button>
-        <button className={tab === 'approvals' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('approvals')} disabled={!canApprove}>Approvals</button>
+        <button className={tab === 'initiate' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('initiate')}>{t('Initiate')}</button>
+        <button className={tab === 'approvals' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('approvals')} disabled={!canApprove}>{t('Approvals')}</button>
       </div>
       <div className="stats-grid">
-        <div className="card stat-card"><div className="stat-label">Purchase Records</div><div className="stat-value">{summary.records}</div></div>
-        <div className="card stat-card"><div className="stat-label">Units Purchased</div><div className="stat-value">{summary.totalQty}</div></div>
-        <div className="card stat-card"><div className="stat-label">Purchase Value</div><div className="stat-value-compact">{formatCurrency(summary.totalCost, settings)}</div></div>
-        <div className="card stat-card"><div className="stat-label">Products</div><div className="stat-value">{summary.uniqueProducts}</div></div>
-        <div className="card stat-card"><div className="stat-label">Pending Approvals</div><div className="stat-value">{summary.pendingApprovals}</div></div>
+        <div className="card stat-card"><div className="stat-label">{t('Purchase Records')}</div><div className="stat-value">{summary.records}</div></div>
+        <div className="card stat-card"><div className="stat-label">{t('Units Purchased')}</div><div className="stat-value">{summary.totalQty}</div></div>
+        <div className="card stat-card"><div className="stat-label">{t('Purchase Value')}</div><div className="stat-value-compact">{formatCurrency(summary.totalCost, settings)}</div></div>
+        <div className="card stat-card"><div className="stat-label">{t('Products')}</div><div className="stat-value">{summary.uniqueProducts}</div></div>
+        <div className="card stat-card"><div className="stat-label">{t('Pending Approvals')}</div><div className="stat-value">{summary.pendingApprovals}</div></div>
       </div>
       {openModal && (
-        <Modal title="Add Purchase" onClose={() => setOpenModal(false)} footer={
+        <Modal title={t('Add Purchase')} onClose={() => setOpenModal(false)} footer={
           <>
-            <button className="btn" onClick={() => setOpenModal(false)}>Cancel</button>
-            <button className="btn" onClick={addCurrentItem} disabled={!canReceive || saving}>Add To List</button>
+            <button className="btn" onClick={() => setOpenModal(false)}>{t('Cancel')}</button>
+            <button className="btn" onClick={addCurrentItem} disabled={!canReceive || saving}>{t('Add To List')}</button>
             <button className="btn btn-primary" onClick={async () => { await receive(); setOpenModal(false); }} disabled={!canReceive || saving}>
               <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12M7 10l5 5 5-5" stroke="currentColor" strokeWidth="2"/><path d="M5 19h14" stroke="currentColor" strokeWidth="2"/></svg>
-              {saving ? 'Saving…' : 'Submit For Approval'}
+              {saving ? t('Saving…') : t('Submit For Approval')}
             </button>
           </>
         }>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
             <div style={{ gridColumn: '1 / -1' }}>
               <ProductLiveSearchField
-                label="Product"
+                label={t('Product')}
                 query={productQuery}
                 onQueryChange={(value) => {
                   setProductQuery(value);
@@ -609,14 +611,14 @@ function PurchasesPage() {
               />
             </div>
             <label>
-              <div className="field-label">Branch</div>
+              <div className="field-label">{t('Branch')}</div>
               <BranchSelect value={branchId} onChange={setBranchId} overrideBranches={retailBranchOptions} />
             </label>
             {(selectedProduct?.variants || []).length > 0 && (
               <label>
-                <div className="field-label">Variant</div>
+                <div className="field-label">{t('Variant')}</div>
                 <select className="select" value={variantId} onChange={e => setVariantId(e.target.value)}>
-                  <option value="">None (base)</option>
+                  <option value="">{t('None (base)')}</option>
                   {(selectedProduct?.variants || []).map(v => (
                     <option key={v.id} value={v.id}>{v.label}</option>
                   ))}
@@ -625,9 +627,9 @@ function PurchasesPage() {
             )}
             {selectedProduct && (
               <label>
-                <div className="field-label">Pack</div>
+                <div className="field-label">{t('Pack')}</div>
                 <select className="select" value={packName} onChange={e => setPackName(e.target.value)} disabled={selectedTrackType === 'serialized'}>
-                  <option value="">Base Unit</option>
+                  <option value="">{t('Base Unit')}</option>
                   {(selectedProduct?.packs || []).map(pk => (
                     <option key={pk.name} value={pk.name}>{pk.name} = {pk.quantity} units</option>
                   ))}
@@ -635,25 +637,25 @@ function PurchasesPage() {
               </label>
             )}
             <label>
-              <div className="field-label">Quantity</div>
+              <div className="field-label">{t('Quantity')}</div>
               <input className="input" type="number" min="1" value={qty} onChange={e => setQty(Number(e.target.value))} disabled={selectedTrackType === 'serialized'} />
             </label>
             {selectedTrackType === 'serialized' && (
               <label style={{ gridColumn: '1 / -1' }}>
-                <div className="field-label">IMEI / Serial Numbers</div>
+                <div className="field-label">{t('IMEI / Serial Numbers')}</div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
                   <button type="button" className={serializedBatchMode ? 'btn btn-primary' : 'btn'} onClick={() => { setSerializedBatchMode(v => !v); setTimeout(() => { try { serializedScanInputRef.current?.focus(); } catch {} }, 0); }}>
-                    {serializedBatchMode ? 'Batch Mode On' : 'Batch Mode Off'}
+                    {serializedBatchMode ? t('Batch Mode On') : t('Batch Mode Off')}
                   </button>
                   <button type="button" className="btn" onClick={() => setSerializedCameraOpen(true)}>
-                    Camera Scan
+                    {t('Camera Scan')}
                   </button>
                 </div>
                 <input
                   ref={serializedScanInputRef}
                   className="input"
                   autoFocus
-                  placeholder="Scan IMEI barcode or type and press Enter"
+                  placeholder={t('Scan IMEI barcode or type and press Enter')}
                   value={serializedScanInput}
                   onChange={e => setSerializedScanInput(e.target.value)}
                   onKeyDown={e => {
@@ -665,35 +667,33 @@ function PurchasesPage() {
                   style={{ marginBottom: 8, color: '#111827', background: '#ffffff' }}
                 />
                 <textarea className="input" rows={6} value={serializedEntriesText} onChange={e => setSerializedEntriesText(e.target.value)} placeholder={'One per line\nIMEI123456789\nIMEI987654321,SN-0002'} style={{ color: '#111827', background: '#ffffff' }} />
-                <div style={{ marginTop: 4, color: '#94a3b8', fontSize: 12 }}>
-                  Enter one unit per line. Quantity updates automatically from scanned/entered IMEI values. Current entries: {serializedEntries.length}.
-                </div>
+                <div style={{ marginTop: 4, color: '#94a3b8', fontSize: 12 }}>{t('Enter one unit per line. Quantity updates automatically from scanned/entered IMEI values. Current entries: {count}.', { count: serializedEntries.length })}</div>
               </label>
             )}
             <label>
-              <div className="field-label">Supplier</div>
+              <div className="field-label">{t('Supplier')}</div>
               <input className="input" placeholder="e.g., FreshCo" value={supplier} onChange={e => setSupplier(e.target.value)} list="suppliers-list" />
               <SuppliersDatalist />
             </label>
             <label>
-              <div className="field-label">Transaction Title</div>
-              <input className="input" placeholder="Optional bulk purchase title" value={transactionTitle} onChange={e => setTransactionTitle(e.target.value)} />
+              <div className="field-label">{t('Transaction Title')}</div>
+              <input className="input" placeholder={t('Optional bulk purchase title')} value={transactionTitle} onChange={e => setTransactionTitle(e.target.value)} />
             </label>
             <label>
-              <div className="field-label">Cost Price</div>
+              <div className="field-label">{t('Cost Price')}</div>
               <input className="input" type="number" min="0" step="0.01" placeholder="0.00" value={cost} onChange={e => setCost(e.target.value)} />
             </label>
             <label>
-              <div className="field-label">Expiry Date</div>
+              <div className="field-label">{t('Expiry Date')}</div>
               <input className="input" type="date" value={expiryDate} onChange={e => setExpiryDate(e.target.value)} />
             </label>
             <label style={{ gridColumn: '1 / -1' }}>
-              <div className="field-label">Remark</div>
-              <input className="input" placeholder="Optional note" value={note} onChange={e => setNote(e.target.value)} />
+              <div className="field-label">{t('Remark')}</div>
+              <input className="input" placeholder={t('Optional note')} value={note} onChange={e => setNote(e.target.value)} />
             </label>
           </div>
           <div style={{ marginTop: 12 }}>
-            <div className="field-label">Items In This Request</div>
+            <div className="field-label">{t('Request Items')}</div>
             <div className="table-wrap">
             <table className="table">
               <thead>
@@ -737,13 +737,13 @@ function PurchasesPage() {
       {tab === 'approvals' && (
         <div className="card" style={{ marginBottom: 12 }}>
           <div className="approval-toolbar">
-            <h2 className="section-title" style={{ marginBottom: 8 }}>Approvals</h2>
+            <h2 className="section-title" style={{ marginBottom: 8 }}>{t('Approvals')}</h2>
             <div className="card-scroll-x">
             <div className="page-tabs">
-              <button className={statusFilter === 'pending_director' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_director')}>Pending Director</button>
-              <button className={statusFilter === 'pending_manager' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_manager')}>Pending Manager</button>
-              <button className={statusFilter === 'approved' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('approved')}>Approved</button>
-              <button className={statusFilter === 'rejected' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('rejected')}>Rejected</button>
+              <button className={statusFilter === 'pending_director' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_director')}>{t('Pending Director')}</button>
+              <button className={statusFilter === 'pending_manager' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_manager')}>{t('Pending Manager')}</button>
+              <button className={statusFilter === 'approved' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('approved')}>{t('Approved')}</button>
+              <button className={statusFilter === 'rejected' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('rejected')}>{t('Rejected')}</button>
             </div>
             </div>
           </div>
@@ -760,7 +760,7 @@ function PurchasesPage() {
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading purchases" /></td></tr>}
+              {loading && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}><LoadingDots label={t('Loading purchases')} /></td></tr>}
               {!loading && pendingRequests.map(r => {
                 const p = products.find(x => x.id === r.productId);
                 const branchName = byId.get(r.branchId) || r.branchId;
@@ -775,8 +775,8 @@ function PurchasesPage() {
                     <td>
                       {['pending_approval', 'pending_director', 'pending_manager'].includes(String(r.status || '')) ? (
                         <div className="approval-row-actions">
-                          <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={((String(r.status || '') === 'pending_director' && !canDirectorApprove) || (String(r.status || '') === 'pending_manager' && !canManagerApprove) || busyId === (r._id || r.clientId))}>{busyId === (r._id || r.clientId) ? 'Working…' : String(r.status || '') === 'pending_manager' ? 'Manager Approve' : 'Director Approve'}</button>
-                          <button className="btn" onClick={(e) => { e.stopPropagation(); reject(r); }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? 'Working…' : 'Reject'}</button>
+                          <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={((String(r.status || '') === 'pending_director' && !canDirectorApprove) || (String(r.status || '') === 'pending_manager' && !canManagerApprove) || busyId === (r._id || r.clientId))}>{busyId === (r._id || r.clientId) ? t('Working…') : String(r.status || '') === 'pending_manager' ? t('Manager Approve') : t('Director Approve')}</button>
+                          <button className="btn" onClick={(e) => { e.stopPropagation(); reject(r); }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? t('Working…') : t('Rejected')}</button>
                         </div>
                       ) : (
                         <span className={`status-pill ${r.status === 'approved' ? 'status-pill-approved' : 'status-pill-rejected'}`}>{r.status}</span>
@@ -785,14 +785,14 @@ function PurchasesPage() {
                   </tr>
                 );
               })}
-              {!loading && pendingRequests.length === 0 && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}>No items</td></tr>}
+              {!loading && pendingRequests.length === 0 && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}>{t('No items')}</td></tr>}
             </tbody>
           </table>
           </div>
         </div>
       )}
       {detail && (
-        <Modal title="Purchase Details" onClose={() => setDetail(null)}>
+        <Modal title={t('Purchase Details')} onClose={() => setDetail(null)}>
           <div className="detail-grid">
             <div className="detail-field"><div className="detail-label">Status</div><div className="detail-value"><span className={`status-pill ${detail.status === 'approved' ? 'status-pill-approved' : detail.status === 'rejected' ? 'status-pill-rejected' : 'status-pill-pending'}`}>{detail.status}</span></div></div>
             <div className="detail-field"><div className="detail-label">Branch</div><div className="detail-value">{byId.get(detail.branchId) || detail.branchId}</div></div>
@@ -854,47 +854,47 @@ function PurchasesPage() {
         <div className="card-scroll-x">
         <div className="record-filters">
           <label>
-            <div className="field-label">Period</div>
+            <div className="field-label">{t('Period')}</div>
             <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
-              <option value="range">Custom Range</option>
-              <option value="all_time">All Time</option>
+              <option value="range">{t('Custom Range')}</option>
+              <option value="all_time">{t('All Time')}</option>
             </select>
           </label>
           <label>
-            <div className="field-label">From</div>
+            <div className="field-label">{t('From')}</div>
             <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
-            <div className="field-label">To</div>
+            <div className="field-label">{t('To')}</div>
             <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
-            <div className="field-label">Actor</div>
+            <div className="field-label">{t('Actor')}</div>
             <select className="select" value={fActor} onChange={e => setFActor(e.target.value)}>
-              <option value="">All</option>
+              <option value="">{t('All')}</option>
               {actors.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </label>
           <label>
-            <div className="field-label">Branch</div>
+            <div className="field-label">{t('Branch')}</div>
             <select className="select" value={fBranch} onChange={e => setFBranch(e.target.value)}>
-              {(roleLower === 'superadmin' || roleLower === 'admin') && <option value="">All</option>}
+              {(roleLower === 'superadmin' || roleLower === 'admin') && <option value="">{t('All')}</option>}
               {branchOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </label>
           <div className="record-filters-actions">
-            <button className="btn" onClick={onExportCsv}>Export CSV</button>
-            <button className="btn" onClick={onExportPdf}>Export PDF</button>
+            <button className="btn" onClick={onExportCsv}>{t('Export CSV')}</button>
+            <button className="btn" onClick={onExportPdf}>{t('Export PDF')}</button>
             {canDeleteRecords && (
               <>
                 <select className="select" value={bulkAction} onChange={e => setBulkAction(e.target.value)} style={{ width: 180 }} disabled={bulkDeleting}>
-                  <option value="">Actions</option>
-                  <option value="delete">Delete Selected</option>
+                  <option value="">{t('Actions')}</option>
+                  <option value="delete">{t('Delete Selected')}</option>
                 </select>
                 <button className="btn" disabled={bulkDeleting || bulkAction !== 'delete' || selectedRecordIds.length === 0} onClick={() => void deleteSelectedRecords()}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     {bulkDeleting && <InlineSpinner />}
-                    {bulkDeleting ? 'Deleting…' : 'Apply'}
+                    {bulkDeleting ? t('Working…') : t('Apply')}
                   </span>
                 </button>
               </>
@@ -902,7 +902,7 @@ function PurchasesPage() {
           </div>
         </div>
         </div>
-        <h2 className="section-title">Recent Purchases</h2>
+        <h2 className="section-title">{t('Recent Purchases')}</h2>
         <div className="table-wrap">
         <table className="table">
           <thead>

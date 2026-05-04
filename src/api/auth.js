@@ -11,6 +11,13 @@ export function me() {
   return fetchJson('/api/auth/me');
 }
 
+export function updateMe(payload) {
+  return fetchJson('/api/auth/me', {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+}
+
 export function logout() {
   return fetchJson('/api/auth/logout', { method: 'POST' });
 }
