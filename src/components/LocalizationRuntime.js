@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import { translate, useAppLanguage } from '../utils/localization';
+import { LANGUAGE_CHANGED_EVENT, translate } from '../utils/localization';
+import { useLanguage } from './LanguageProvider';
 
 const ORIGINAL_TEXT = Symbol('ptOriginalText');
 const ORIGINAL_ATTRS = Symbol('ptOriginalAttrs');
@@ -66,24 +67,50 @@ function translateInputValue(element, language) {
 
 function walkAndTranslate(root, language) {
   if (!root) return;
+  
+  // Translate all text nodes
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let node = walker.nextNode();
   while (node) {
     translateTextNode(node, language);
     node = walker.nextNode();
   }
+  
+  // Translate all elements and their attributes
   const elements = root.querySelectorAll('*');
   elements.forEach((element) => {
+    // Common translatable attributes
     translateAttribute(element, 'placeholder', language);
     translateAttribute(element, 'title', language);
     translateAttribute(element, 'aria-label', language);
     translateAttribute(element, 'alt', language);
+    translateAttribute(element, 'aria-placeholder', language);
+    translateAttribute(element, 'aria-description', language);
+    translateAttribute(element, 'data-tooltip', language);
+    
+    // Button and input values
     translateInputValue(element, language);
+    
+    // Translate button text content if it's not already handled
+    if (element.tagName === 'BUTTON' || element.tagName === 'A') {
+      const textContent = element.textContent?.trim();
+      if (textContent && !element.querySelector('*')) {
+        const translated = translate(language, textContent);
+        if (translated !== textContent) {
+          element.textContent = translated;
+        }
+      }
+    }
+    
+    // Translate common data attributes
+    ['data-label', 'data-text', 'data-title', 'data-placeholder'].forEach(attr => {
+      translateAttribute(element, attr, language);
+    });
   });
 }
 
 function LocalizationRuntime() {
-  const { language } = useAppLanguage();
+  const { language } = useLanguage();
 
   useEffect(() => {
     const root = document.getElementById('root');
@@ -92,6 +119,7 @@ function LocalizationRuntime() {
       document.documentElement.setAttribute('lang', language || 'en');
     } catch {}
     let frameId = 0;
+    let timeoutIds = [];
     const run = () => {
       frameId = 0;
       walkAndTranslate(root, language);
@@ -100,7 +128,28 @@ function LocalizationRuntime() {
       if (frameId) return;
       frameId = window.requestAnimationFrame(run);
     };
+    
+    // Immediate translation on language change
+    const immediateTranslate = () => {
+      run();
+      // Double-check after a short delay to catch any late-rendered content
+      timeoutIds.forEach((id) => window.clearTimeout(id));
+      timeoutIds = [
+        window.setTimeout(run, 100),
+        window.setTimeout(run, 300)
+      ];
+    };
+    
+    // Listen for custom language change events
+    const handleLanguageChange = () => {
+      immediateTranslate();
+    };
+    
     schedule();
+    immediateTranslate(); // Initial translation
+    
+    window.addEventListener(LANGUAGE_CHANGED_EVENT, handleLanguageChange);
+    
     const observer = new MutationObserver(() => {
       schedule();
     });
@@ -112,8 +161,10 @@ function LocalizationRuntime() {
       attributeFilter: ['placeholder', 'title', 'aria-label', 'value']
     });
     return () => {
+      window.removeEventListener(LANGUAGE_CHANGED_EVENT, handleLanguageChange);
       observer.disconnect();
       if (frameId) window.cancelAnimationFrame(frameId);
+      timeoutIds.forEach((id) => window.clearTimeout(id));
     };
   }, [language]);
 

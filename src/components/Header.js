@@ -11,7 +11,7 @@ import { ensureOnlineJwt } from '../offline/reAuth';
 import { refreshAllData } from '../offline/refreshAll';
 import * as authApi from '../api/auth';
 import { resetTenantAppState } from '../store';
-import { useAppLanguage } from '../utils/localization';
+import { useLanguage } from './LanguageProvider';
 
 function Header({ onToggleSidebar }) {
   const auth = useSelector(state => state.auth);
@@ -23,7 +23,7 @@ function Header({ onToggleSidebar }) {
   const navigate = useNavigate();
   const toast = useToast();
   const { unreadCount, liveStatus, enabled: communicationEnabled } = useChatNotifications();
-  const { language, setLanguage, options: languageOptions, t } = useAppLanguage();
+  const { language, setLanguage, options: languageOptions, t } = useLanguage();
   const [syncing, setSyncing] = useState(false);
   const roleLower = String(auth.role || '').toLowerCase();
   const canChangeBranch = ['admin', 'manager', 'branch manager', 'superadmin'].includes(roleLower);

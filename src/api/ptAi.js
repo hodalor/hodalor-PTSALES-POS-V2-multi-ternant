@@ -15,3 +15,11 @@ export function transcribePtAi(payload) {
     timeoutMs: 25000
   });
 }
+
+export function translatePtAi(payload) {
+  return fetchJson('/api/pt-ai/translate', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+    timeoutMs: 45000
+  });
+}

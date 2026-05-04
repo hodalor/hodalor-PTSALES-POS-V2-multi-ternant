@@ -111,31 +111,31 @@ function buildSmallTalkAnswer(query, options = {}) {
   }
   if (q.includes('who are you') || q.includes('what can you do')) {
     return {
-      title: 'About PT AI',
+      title: translateText('About PT AI'),
       answer: [
-        addUserAddress('I am PT AI, your in-system assistant for this POS, inventory, approvals, finance, and communication platform.', userName, { hello: true }),
-        'You can ask me how to use features, where to find pages, or how a workflow should work.',
-        'What would you like help with today?'
+        addUserAddress(translateText('I am PT AI, your in-system assistant for this POS, inventory, approvals, finance, and communication platform.'), userName, { hello: true, helloWord: translateText('Hello') }),
+        translateText('You can ask me how to use features, where to find pages, or how a workflow should work.'),
+        translateText('What would you like help with today?')
       ],
       related: PT_AI_TOPICS.slice(0, 4)
     };
   }
   if (q.includes('thank you') || q === 'thanks' || q.includes('thanks pt ai')) {
     return {
-      title: 'You are welcome',
+      title: translateText('You are welcome'),
       answer: [
-        addUserAddress('you are welcome.', userName),
-        'Is there anything else you want me to help you with?'
+        addUserAddress(translateText('you are welcome.'), userName),
+        translateText('Is there anything else you want me to help you with?')
       ],
       related: []
     };
   }
   if (q === 'bye' || q === 'goodbye' || q.includes('see you')) {
     return {
-      title: 'Goodbye',
+      title: translateText('Goodbye'),
       answer: [
-        addUserAddress('goodbye for now.', userName),
-        'Come back anytime if you want help with the system.'
+        addUserAddress(translateText('goodbye for now.'), userName),
+        translateText('Come back anytime if you want help with the system.')
       ],
       related: []
     };
@@ -385,7 +385,7 @@ function AnimatedAnswerLines({ entryId, lines, animate, onProgress }) {
 
 function AskPtAiPage() {
   const auth = useSelector((s) => s.auth);
-  const { t, speechLocale, recognitionLocale } = useAppLanguage();
+  const { t, language, speechLocale, recognitionLocale } = useAppLanguage();
   const currentUserName = useMemo(() => friendlyUserName(auth?.user?.name || ''), [auth?.user?.name]);
   const [query, setQuery] = useState('');
   const [answer, setAnswer] = useState(null);
@@ -537,7 +537,7 @@ function AskPtAiPage() {
       const aiResult = await askPtAiApi({
         query: clean,
         history: history.slice(0, 4).map((item) => ({ question: item.query, answer: item.answerText || item.answer })),
-        language: speechLocale
+        language
       });
       if (requestIdRef.current !== requestId) return;
       const normalized = buildConversationalAnswer(clean, aiResult, t('PT AI Answer'), { previousQuestion, userName: currentUserName, translateText: t });
@@ -732,7 +732,7 @@ function AskPtAiPage() {
           <div className="chat-people-top">
             <div className="section-header">
               <div>
-                <h2 className="section-title" style={{ margin: 0 }}>AI Workspace</h2>
+                <h2 className="section-title" style={{ margin: 0 }}>{t('AI Workspace')}</h2>
                 <span className="table-meta">{history.length ? t(history.length > 1 ? '{count} recent questions' : '{count} recent question', { count: history.length }) : t('Ready for your first question')}</span>
               </div>
               {speaking ? <span className="status-pill status-pill-approved">{t('Speaking')}</span> : null}
@@ -832,7 +832,7 @@ function AskPtAiPage() {
             {transcript ? (
               <div className="chat-reply-banner">
                 <div>
-                  <div className="chat-reply-banner-title">Voice Transcript</div>
+                  <div className="chat-reply-banner-title">{t('Voice Transcript')}</div>
                   <div className="chat-reply-banner-text">{transcript}</div>
                 </div>
               </div>
@@ -841,7 +841,7 @@ function AskPtAiPage() {
               <div className="ask-ai-compose-controls">
                 {recorderSupported ? (
                   recording
-                    ? <button className="btn chat-compose-emoji-btn ask-ai-record-btn" onClick={stopAudioRecording} title="Stop recording" aria-label="Stop recording">■</button>
+                    ? <button className="btn chat-compose-emoji-btn ask-ai-record-btn" onClick={stopAudioRecording} title={t('Stop recording')} aria-label={t('Stop recording')}>■</button>
                     : <button className="btn chat-compose-emoji-btn ask-ai-record-btn" onClick={startAudioRecording} disabled={listening} title={t('Record voice')} aria-label={t('Record voice')}>●</button>
                 ) : null}
                 {voiceSupported ? (

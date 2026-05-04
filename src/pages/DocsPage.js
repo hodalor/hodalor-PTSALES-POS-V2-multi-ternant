@@ -1,5 +1,6 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { translatePtAi } from '../api/ptAi';
 import { downloadHtmlDocument } from '../utils/exporters';
 import { useAppLanguage } from '../utils/localization';
 
@@ -22,8 +23,51 @@ function Code({ children }) {
 }
 
 function DocsPage() {
-  const { t } = useAppLanguage();
-  const contentRef = useRef(null);
+  const { t, language } = useAppLanguage();
+  const sourceRef = useRef(null);
+  const [translatedHtml, setTranslatedHtml] = useState('');
+  const [translating, setTranslating] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (language === 'en') {
+      setTranslatedHtml('');
+      setTranslating(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    const html = String(sourceRef.current?.innerHTML || '').trim();
+    if (!html) {
+      return () => {
+        active = false;
+      };
+    }
+
+    setTranslating(true);
+    translatePtAi({
+      content: html,
+      language,
+      format: 'html',
+      context: 'ptSales technical documentation'
+    })
+      .then((result) => {
+        if (!active) return;
+        setTranslatedHtml(String(result?.content || '').trim());
+      })
+      .catch(() => {
+        if (!active) return;
+        setTranslatedHtml('');
+      })
+      .finally(() => {
+        if (active) setTranslating(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [language]);
 
   function downloadDocs() {
     downloadHtmlDocument(
@@ -34,7 +78,7 @@ function DocsPage() {
           <h1>${t('ptSales Technical Documentation')}</h1>
           <div class="doc-muted">${t('Architecture, runtime behavior, tenant controls, and implementation notes.')}</div>
         </div>
-        ${contentRef.current?.innerHTML || ''}
+        ${translatedHtml || sourceRef.current?.innerHTML || ''}
       `
     );
   }
@@ -48,6 +92,9 @@ function DocsPage() {
             <div style={{ color: '#64748b' }}>
               {t('Architecture, modules, runtime safety, tenant controls, and implementation references across the app. SuperAdmin-only.')}
             </div>
+            {language !== 'en' && translating ? (
+              <div style={{ color: '#64748b', marginTop: 8 }}>{t('Thinking...')}</div>
+            ) : null}
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button className="btn" type="button" onClick={() => window.print()}>{t('Print / Save PDF')}</button>
@@ -55,7 +102,10 @@ function DocsPage() {
           </div>
         </div>
       </div>
-      <div ref={contentRef} style={{ display: 'grid', gap: 12 }}>
+      {language !== 'en' && translatedHtml ? (
+        <div style={{ display: 'grid', gap: 12 }} dangerouslySetInnerHTML={{ __html: translatedHtml }} />
+      ) : null}
+      <div ref={sourceRef} style={{ display: language !== 'en' && translatedHtml ? 'none' : 'grid', gap: 12 }}>
       <Section title="PWA, Installation, and Offline">
         <ul>
           <li>Manifest branding is generated at runtime based on Settings clientAppName/appName. Icons derive from clientLogoUrl and are resized to 192/512.</li>

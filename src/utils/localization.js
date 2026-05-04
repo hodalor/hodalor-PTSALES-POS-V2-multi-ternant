@@ -45,6 +45,8 @@ const TRANSLATIONS = {
   zh
 };
 
+export const LANGUAGE_CHANGED_EVENT = 'ptsales:language-changed';
+
 function normalizeLanguage(value) {
   const next = String(value || '').trim().toLowerCase();
   if (LANGUAGE_OPTIONS.some((item) => item.value === next)) return next;
@@ -60,12 +62,20 @@ export function translate(language, key, params = {}) {
   const table = TRANSLATIONS[normalized] || {};
   const fallbackLanguage = LANGUAGE_FALLBACKS[normalized];
   const fallbackTable = fallbackLanguage ? (TRANSLATIONS[fallbackLanguage] || {}) : {};
-  const value = Object.prototype.hasOwnProperty.call(table, key)
-    ? table[key]
-    : Object.prototype.hasOwnProperty.call(fallbackTable, key)
-      ? fallbackTable[key]
-      : key;
-  return template(value, params);
+  
+  // Try primary language first
+  if (Object.prototype.hasOwnProperty.call(table, key) && table[key] !== key) {
+    return template(table[key], params);
+  }
+  
+  // Try fallback language
+  if (fallbackTable && Object.prototype.hasOwnProperty.call(fallbackTable, key) && fallbackTable[key] !== key) {
+    return template(fallbackTable[key], params);
+  }
+  
+  // If no translation found, return the key (which should be in English)
+  // This ensures we don't show empty strings or undefined
+  return template(key, params);
 }
 
 export function getDocumentLanguage() {
@@ -124,12 +134,40 @@ export function useAppLanguage(options = {}) {
     }
   }, [storageKey]);
 
+  useEffect(() => {
+    const syncLanguage = (nextLanguage = '') => {
+      setOverrideLanguage(normalizeLanguage(nextLanguage));
+    };
+    const handleLanguageChanged = (event) => {
+      syncLanguage(event?.detail?.language || '');
+    };
+    const handleStorage = (event) => {
+      if (event?.key && event.key !== storageKey) return;
+      syncLanguage(event?.newValue || '');
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener(LANGUAGE_CHANGED_EVENT, handleLanguageChanged);
+      window.addEventListener('storage', handleStorage);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener(LANGUAGE_CHANGED_EVENT, handleLanguageChanged);
+        window.removeEventListener('storage', handleStorage);
+      }
+    };
+  }, [storageKey]);
+
   const language = normalizeLanguage(overrideLanguage || authPreferred || settingsPreferred || 'en');
   const setLanguage = useCallback((nextLanguage) => {
     const normalized = normalizeLanguage(nextLanguage);
     writePreferredLanguage({ tenantId, userName, language: normalized });
     setOverrideLanguage(normalized);
-  }, [tenantId, userName]);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(LANGUAGE_CHANGED_EVENT, {
+        detail: { language: normalized, storageKey }
+      }));
+    }
+  }, [storageKey, tenantId, userName]);
 
   const t = useCallback((key, params = {}) => translate(language, key, params), [language]);
 

@@ -1,4 +1,5 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { translatePtAi } from '../api/ptAi';
 import { downloadHtmlDocument } from '../utils/exporters';
 import { useAppLanguage } from '../utils/localization';
 
@@ -13,8 +14,51 @@ function Section({ title, children }) {
 }
 
 function AdminManualPage() {
-  const { t } = useAppLanguage();
-  const contentRef = useRef(null);
+  const { t, language } = useAppLanguage();
+  const sourceRef = useRef(null);
+  const [translatedHtml, setTranslatedHtml] = useState('');
+  const [translating, setTranslating] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (language === 'en') {
+      setTranslatedHtml('');
+      setTranslating(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    const html = String(sourceRef.current?.innerHTML || '').trim();
+    if (!html) {
+      return () => {
+        active = false;
+      };
+    }
+
+    setTranslating(true);
+    translatePtAi({
+      content: html,
+      language,
+      format: 'html',
+      context: 'ptSales system manual'
+    })
+      .then((result) => {
+        if (!active) return;
+        setTranslatedHtml(String(result?.content || '').trim());
+      })
+      .catch(() => {
+        if (!active) return;
+        setTranslatedHtml('');
+      })
+      .finally(() => {
+        if (active) setTranslating(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [language]);
 
   function downloadManual() {
     downloadHtmlDocument(
@@ -25,7 +69,7 @@ function AdminManualPage() {
           <h1>${t('ptSales System Manual')}</h1>
           <div class="doc-muted">${t('Operational guide for tenant admins, managers, cashiers, and support teams.')}</div>
         </div>
-        ${contentRef.current?.innerHTML || ''}
+        ${translatedHtml || sourceRef.current?.innerHTML || ''}
       `
     );
   }
@@ -39,6 +83,9 @@ function AdminManualPage() {
             <div style={{ color: '#64748b' }}>
               {t('This guide explains how to use every major feature: what each page does, when to use it, and how newer tenant, POS, subscription, and permission controls work.')}
             </div>
+            {language !== 'en' && translating ? (
+              <div style={{ color: '#64748b', marginTop: 8 }}>{t('Thinking...')}</div>
+            ) : null}
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button className="btn" type="button" onClick={() => window.print()}>{t('Print / Save PDF')}</button>
@@ -46,7 +93,10 @@ function AdminManualPage() {
           </div>
         </div>
       </div>
-      <div ref={contentRef} style={{ display: 'grid', gap: 12 }}>
+      {language !== 'en' && translatedHtml ? (
+        <div style={{ display: 'grid', gap: 12 }} dangerouslySetInnerHTML={{ __html: translatedHtml }} />
+      ) : null}
+      <div ref={sourceRef} style={{ display: language !== 'en' && translatedHtml ? 'none' : 'grid', gap: 12 }}>
       <Section title="Navigation Overview">
         <ul>
           <li>Dashboard: High‑level metrics (Admin/Manager).</li>

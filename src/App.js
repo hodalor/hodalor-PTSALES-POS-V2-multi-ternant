@@ -57,6 +57,7 @@ import WarehouseApprovalsPage from './pages/WarehouseApprovalsPage';
 import WarehouseGoodsPage from './pages/WarehouseGoodsPage';
 import ToastProvider from './components/ToastProvider';
 import LocalizationRuntime from './components/LocalizationRuntime';
+import { LanguageProvider } from './components/LanguageProvider';
 import LabelsPage from './pages/LabelsPage';
 import AuditLogPage from './pages/AuditLogPage';
 import ReceiptPublicPage from './pages/ReceiptPublicPage';
@@ -632,8 +633,9 @@ function App() {
   }, [dispatch, refreshSec, authInitialized, isAuthed, isAuthedNow, settings, settingsReady, authTenantId, authRole, authGrants]);
   return (
     <ToastProvider>
-      <LocalizationRuntime />
-      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <LanguageProvider>
+        <LocalizationRuntime />
+        <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           <Route path="/r/:id" element={<ReceiptPublicPage />} />
           <Route path="/login" element={<LoginPage />} />
@@ -694,6 +696,7 @@ function App() {
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </BrowserRouter>
+      </LanguageProvider>
     </ToastProvider>
   );
 }
