@@ -12,10 +12,11 @@ import ProductLiveSearchField from '../components/ProductLiveSearchField';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { ensureSupplierByName } from '../utils/suppliers';
 import LoadingDots from '../components/LoadingDots';
+import { useAppLanguage } from '../utils/localization';
 
-function labelForArea(area, op) {
-  const prefix = String(area || 'wholesale').toLowerCase() === 'warehouse' ? 'Warehouse' : 'Distribution';
-  const suffix = op === 'purchase' ? 'Purchase' : op === 'transfer' ? 'Transfer' : op === 'adjustment' ? 'Adjustment' : 'Refund';
+function labelForArea(area, op, t) {
+  const prefix = String(area || 'wholesale').toLowerCase() === 'warehouse' ? t('Warehouse') : t('Distribution');
+  const suffix = op === 'purchase' ? t('Purchase') : op === 'transfer' ? t('Transfer') : op === 'adjustment' ? t('Adjustment') : t('Refund');
   return `${prefix} ${suffix}`;
 }
 
@@ -24,6 +25,7 @@ function normalizeReviewStatus(value) {
 }
 
 function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' }) {
+  const { t } = useAppLanguage();
   const toast = useToast();
   const dispatch = useDispatch();
   const products = useSelector(s => s.products.products);
@@ -224,14 +226,14 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
           return (Array.isArray(result?.rows) ? result.rows : []).map(unit => ({ ...unit, selected: selectedIds.has(unit._id) }));
         });
       } catch (e) {
-        toast.show(String(e?.message || 'Failed to load serialized units'), { type: 'error' });
+        toast.show(String(e?.message || t('Failed to load serialized units')), { type: 'error' });
         setSerializedUnits([]);
       } finally {
         setSerializedLoading(false);
       }
     }
     run();
-  }, [adjustmentType, branchId, fromBranchId, fromInventoryType, normalizedArea, operationType, productId, selectedTrackType, serializedUnitsQuery, toast, variantId]);
+  }, [adjustmentType, branchId, fromBranchId, fromInventoryType, normalizedArea, operationType, productId, selectedTrackType, serializedUnitsQuery, toast, variantId, t]);
 
   const loadOperations = useCallback(async (options = {}) => {
     setLoading(true);
@@ -242,14 +244,14 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     } catch (e) {
       const msg = String(e?.message || '');
       if (!/404|not found/i.test(msg)) {
-        toast.show(msg || 'Failed to load wholesale operations', { type: 'error' });
+        toast.show(msg || t('Failed to load wholesale operations'), { type: 'error' });
       }
       setOperations([]);
       setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, [normalizedArea, operationType, page, pageSize, statusFilter, toast]);
+  }, [normalizedArea, operationType, page, pageSize, statusFilter, toast, t]);
 
   useEffect(() => {
     loadOperations();
@@ -284,7 +286,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
       const first = line.split(/[,\t|]/).map(part => part.trim()).filter(Boolean)[0] || '';
       return first === text;
     })) {
-      toast.show('This IMEI is already in the entry list', { type: 'error' });
+      toast.show(t('This IMEI is already in the entry list'), { type: 'error' });
       return;
     }
     setSerializedEntriesText(prev => prev ? `${prev}\n${text}` : text);
@@ -340,7 +342,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     if (!selectedRow || reviewing) return;
     const remark = String(decisionRemark || '').trim();
     if (!remark) {
-      toast.show(type === 'approve' ? 'Approval remark is required' : 'Rejection remark is required', { type: 'error' });
+      toast.show(type === 'approve' ? t('Approval remark is required') : t('Rejection remark is required'), { type: 'error' });
       return;
     }
     setReviewing(true);
@@ -354,7 +356,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
       const affectedProductIds = Array.from(new Set(reviewItems.map(item => String(item.productId || '')).filter(Boolean)));
       if (type === 'approve') await wholesaleApi.approveOperation(selectedRow, { ...payload, items: reviewItems.map(item => ({ ...item, status: normalizeReviewStatus(item.status) })) });
       else await wholesaleApi.rejectOperation(selectedRow, payload);
-      toast.show(type === 'approve' ? 'Request updated' : 'Request rejected', { type: 'success' });
+      toast.show(type === 'approve' ? t('Request updated') : t('Request rejected'), { type: 'success' });
       setOperations(prev => prev.filter(item => String(item._id || item.clientId) !== String(selectedRow._id || selectedRow.clientId)));
       setSelectedRow(null);
       setDecisionRemark('');
@@ -368,9 +370,9 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
         void loadOperations({ force: true });
         setSelectedRow(null);
         setDecisionRemark('');
-        toast.show('Request was already processed. List refreshed.', { type: 'warning' });
+        toast.show(t('Request was already processed. List refreshed.'), { type: 'warning' });
       } else {
-        toast.show(msg || `Failed to ${type} request`, { type: 'error' });
+        toast.show(msg || t(`Failed to ${type} request`), { type: 'error' });
       }
     } finally {
       setReviewing(false);
@@ -379,19 +381,19 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
 
   function addCurrentItem() {
     if (!productId) {
-      toast.show('Select a product', { type: 'error' });
+      toast.show(t('Select a product'), { type: 'error' });
       return;
     }
     if (!Number.isFinite(Number(qty)) || Number(qty) <= 0) {
-      toast.show('Quantity must be greater than zero', { type: 'error' });
+      toast.show(t('Quantity must be greater than zero'), { type: 'error' });
       return;
     }
     if (usesSerializedSelection && serializedUnits.filter(unit => unit.selected).length !== Number(qty)) {
-      toast.show(operationType === 'transfer' ? 'Select the exact serialized units to transfer' : 'Select the exact serialized units to remove', { type: 'error' });
+      toast.show(operationType === 'transfer' ? t('Select the exact serialized units to transfer') : t('Select the exact serialized units to remove'), { type: 'error' });
       return;
     }
     if (selectedTrackType === 'serialized' && !usesSerializedSelection && serializedEntries.length !== Number(qty)) {
-      toast.show('Enter the exact serialized units to add', { type: 'error' });
+      toast.show(t('Enter the exact serialized units to add'), { type: 'error' });
       return;
     }
     setItems(prev => [...prev, {
@@ -430,36 +432,36 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     if (saving) return;
     const nextItems = items.length > 0 ? items : null;
     if (!nextItems && !productId) {
-      toast.show('Select a product', { type: 'error' });
+      toast.show(t('Select a product'), { type: 'error' });
       return;
     }
     if (!nextItems && (!Number.isFinite(Number(qty)) || Number(qty) <= 0)) {
-      toast.show('Quantity must be greater than zero', { type: 'error' });
+      toast.show(t('Quantity must be greater than zero'), { type: 'error' });
       return;
     }
     if (!nextItems && !reason.trim()) {
-      toast.show('Reason is required', { type: 'error' });
+      toast.show(t('Reason is required'), { type: 'error' });
       return;
     }
     if (operationType === 'transfer') {
       if (!fromBranchId || !toBranchId) {
-        toast.show('Select both source and destination branches', { type: 'error' });
+        toast.show(t('Select both source and destination branches'), { type: 'error' });
         return;
       }
       if (fromBranchId === toBranchId) {
-        toast.show('Source and destination branches must be different', { type: 'error' });
+        toast.show(t('Source and destination branches must be different'), { type: 'error' });
         return;
       }
       if (!nextItems && usesSerializedSelection && serializedUnits.filter(unit => unit.selected).length !== Number(qty)) {
-        toast.show(operationType === 'transfer' ? 'Select the exact serialized units to transfer' : 'Select the exact serialized units to remove', { type: 'error' });
+        toast.show(operationType === 'transfer' ? t('Select the exact serialized units to transfer') : t('Select the exact serialized units to remove'), { type: 'error' });
         return;
       }
     } else if (!branchId) {
-      toast.show('Select a branch', { type: 'error' });
+      toast.show(t('Select a branch'), { type: 'error' });
       return;
     }
     if (!nextItems && selectedTrackType === 'serialized' && !usesSerializedSelection && serializedEntries.length !== Number(qty)) {
-      toast.show('Enter the exact serialized units to add', { type: 'error' });
+      toast.show(t('Enter the exact serialized units to add'), { type: 'error' });
       return;
     }
 
@@ -469,7 +471,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
         const ensuredSupplier = await ensureSupplierByName({ name: supplierName, suppliers, dispatch, offlineBackupAllowed });
         supplierName = ensuredSupplier?.name || supplierName;
       } catch (e) {
-        toast.show(String(e?.message || 'Failed to save supplier'), { type: 'error' });
+        toast.show(String(e?.message || t('Failed to save supplier')), { type: 'error' });
         return;
       }
     }
@@ -525,18 +527,18 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     setSaving(true);
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) {
-        toast.show('Offline: connect internet and try again.', { type: 'error' });
+        toast.show(t('Offline: connect internet and try again.'), { type: 'error' });
         setSaving(false);
         return;
       }
       try {
-        await enqueueHttp({ collection: 'wholesaleoperations', label: `Wholesale ${operationType}`, path: '/api/wholesale/operations', method: 'POST', body: payload });
+        await enqueueHttp({ collection: 'wholesaleoperations', label: `${t('Wholesale')} ${t(operationType === 'purchase' ? 'Purchase' : operationType === 'transfer' ? 'Transfer' : operationType === 'adjustment' ? 'Adjustment' : 'Refund')}`, path: '/api/wholesale/operations', method: 'POST', body: payload });
         setOperations(prev => [optimistic, ...prev]);
         resetForm();
         setIsCreateOpen(false);
-        toast.show('Saved offline. Will sync when online.', { type: 'success' });
+        toast.show(t('Saved offline. Will sync when online.'), { type: 'success' });
       } catch (e) {
-        toast.show(String(e?.message || 'Failed to save offline'), { type: 'error' });
+        toast.show(String(e?.message || t('Failed to save offline')), { type: 'error' });
       } finally {
         setSaving(false);
       }
@@ -548,9 +550,9 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
       setOperations(prev => [response?.operation || optimistic, ...prev]);
       resetForm();
       setIsCreateOpen(false);
-      toast.show(`${normalizedArea === 'warehouse' ? 'Warehouse' : 'Distribution'} request submitted for director approval`, { type: 'success' });
+      toast.show(`${normalizedArea === 'warehouse' ? t('Warehouse') : t('Distribution')} ${t('request submitted for director approval')}`, { type: 'success' });
     } catch (e) {
-      toast.show(String(e?.message || 'Failed to submit wholesale request'), { type: 'error' });
+      toast.show(String(e?.message || t('Failed to submit wholesale request')), { type: 'error' });
     } finally {
       setSaving(false);
     }
@@ -560,40 +562,50 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     <div style={{ padding: 16, display: 'grid', gap: 12 }}>
       <div className="page-header">
         <div>
-          <h1 style={{ margin: 0 }}>{normalizedArea === 'warehouse' ? 'Warehouse Operations' : 'Distribution Operations'}</h1>
-          <div className="page-subtitle-compact">Initiate {normalizedArea} purchases, transfers, adjustments, and refund restocks through the 2-step approval workflow.</div>
+          <h1 style={{ margin: 0 }}>{normalizedArea === 'warehouse' ? t('Warehouse Operations') : t('Distribution Operations')}</h1>
+          <div className="page-subtitle-compact">
+            {normalizedArea === 'warehouse'
+              ? t('Initiate warehouse purchases, transfers, adjustments, and refund restocks through the 2-step approval workflow.')
+              : t('Initiate distribution purchases, transfers, adjustments, and refund restocks through the 2-step approval workflow.')}
+          </div>
         </div>
         <div className="page-header-actions">
-          <OfflineQueueIndicator collection="wholesaleoperations" label={`${normalizedArea === 'warehouse' ? 'Warehouse' : 'Distribution'} queued`} />
+          <OfflineQueueIndicator collection="wholesaleoperations" label={`${normalizedArea === 'warehouse' ? t('Warehouse') : t('Distribution')} ${t('queued')}`} />
           <button className="btn btn-primary" onClick={() => setIsCreateOpen(true)}>
-            New Request
+            {t('New Request')}
           </button>
         </div>
       </div>
 
       <div className="card" style={{ display: 'grid', gap: 12 }}>
-        <h2 className="section-title" style={{ margin: 0 }}>{labelForArea(normalizedArea, operationType)}</h2>
+        <h2 className="section-title" style={{ margin: 0 }}>{labelForArea(normalizedArea, operationType, t)}</h2>
         <div className="section-note">
-          Open the request modal to initiate a new {labelForArea(normalizedArea, operationType).toLowerCase()} and then track director and manager approvals below.
+          {operationType === 'purchase'
+            ? (normalizedArea === 'warehouse' ? t('Open the request modal to initiate a new warehouse purchase and then track director and manager approvals below.') : t('Open the request modal to initiate a new distribution purchase and then track director and manager approvals below.'))
+            : operationType === 'transfer'
+              ? (normalizedArea === 'warehouse' ? t('Open the request modal to initiate a new warehouse transfer and then track director and manager approvals below.') : t('Open the request modal to initiate a new distribution transfer and then track director and manager approvals below.'))
+              : operationType === 'adjustment'
+                ? (normalizedArea === 'warehouse' ? t('Open the request modal to initiate a new warehouse adjustment and then track director and manager approvals below.') : t('Open the request modal to initiate a new distribution adjustment and then track director and manager approvals below.'))
+                : t('Open the request modal to initiate a new request and then track director and manager approvals below.')}
         </div>
       </div>
 
       <div className="card" style={{ display: 'grid', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <h2 className="section-title" style={{ margin: 0 }}>Request Tracking</h2>
+          <h2 className="section-title" style={{ margin: 0 }}>{t('Request Tracking')}</h2>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            <button className={statusFilter === 'pending_director' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_director')}>Pending Director</button>
-            <button className={statusFilter === 'pending_manager' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_manager')}>Pending Manager</button>
-            <button className={statusFilter === 'approved' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('approved')}>Approved</button>
-            <button className={statusFilter === 'rejected' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('rejected')}>Rejected</button>
-            <button className="btn" onClick={loadOperations} disabled={loading}>{loading ? 'Refreshing…' : 'Refresh'}</button>
+            <button className={statusFilter === 'pending_director' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_director')}>{t('Pending Director')}</button>
+            <button className={statusFilter === 'pending_manager' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_manager')}>{t('Pending Manager')}</button>
+            <button className={statusFilter === 'approved' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('approved')}>{t('Approved')}</button>
+            <button className={statusFilter === 'rejected' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('rejected')}>{t('Rejected')}</button>
+            <button className="btn" onClick={loadOperations} disabled={loading}>{loading ? t('Refreshing…') : t('Refresh')}</button>
           </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          <div style={{ color: '#64748b', fontSize: 13 }}>Showing {operations.length} of {total} requests</div>
+          <div style={{ color: '#64748b', fontSize: 13 }}>{t('Showing {shown} of {total} requests', { shown: operations.length, total })}</div>
           <div style={{ display: 'flex', gap: 6 }}>
-            <button className="btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={loading || page <= 1}>Previous</button>
-            <button className="btn" onClick={() => setPage(p => p + 1)} disabled={loading || page * pageSize >= total}>Next</button>
+            <button className="btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={loading || page <= 1}>{t('Previous')}</button>
+            <button className="btn" onClick={() => setPage(p => p + 1)} disabled={loading || page * pageSize >= total}>{t('Next')}</button>
           </div>
         </div>
 
@@ -601,24 +613,24 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
           <table className="table">
             <thead>
               <tr>
-                <th align="left">Product</th>
-                <th align="left">Route</th>
-                <th align="left">Qty</th>
-                <th align="left">Value</th>
-                <th align="left">Status</th>
-                <th align="left">Initiator</th>
+                <th align="left">{t('Product')}</th>
+                <th align="left">{t('Route')}</th>
+                <th align="left">{t('Qty')}</th>
+                <th align="left">{t('Value')}</th>
+                <th align="left">{t('Status')}</th>
+                <th align="left">{t('Initiator')}</th>
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading wholesale operations" /></td></tr>}
+              {loading && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}><LoadingDots label={t('Loading wholesale operations')} /></td></tr>}
               {!loading && operations.map(row => {
                 const product = products.find(item => String(item.id) === String(row.productId));
                 const variantLabel = row.variantId ? ((product?.variants || []).find(variant => String(variant.id) === String(row.variantId))?.label || row.variantId) : '';
                 const route = row.operationType === 'transfer'
-                  ? `${branchNameById.get(row.fromBranchId || row.from) || row.fromBranchId || row.from || '—'} ${String(row.fromInventoryType || 'retail')} → ${branchNameById.get(row.toBranchId || row.to) || row.toBranchId || row.to || '—'} ${String(row.toInventoryType || 'retail')}`
-                  : `${branchNameById.get(row.branchId) || row.branchId || '—'} • ${row.toInventoryType || row.fromInventoryType || 'wholesale'}`;
+                  ? `${branchNameById.get(row.fromBranchId || row.from) || row.fromBranchId || row.from || '—'} ${t(String(row.fromInventoryType || 'retail'))} → ${branchNameById.get(row.toBranchId || row.to) || row.toBranchId || row.to || '—'} ${t(String(row.toInventoryType || 'retail'))}`
+                  : `${branchNameById.get(row.branchId) || row.branchId || '—'} • ${t(String(row.toInventoryType || row.fromInventoryType || 'wholesale'))}`;
                 const value = row.operationType === 'refund' ? Number(row.requestedAmount || 0) : Number(row.cost || 0);
-                const title = String(row.transactionTitle || '').trim() || (Array.isArray(row.items) && row.items.length > 1 ? `${product?.name || row.productId} +${row.items.length - 1} more` : `${product?.name || row.productId}${variantLabel ? ` • ${variantLabel}` : ''}`);
+                const title = String(row.transactionTitle || '').trim() || (Array.isArray(row.items) && row.items.length > 1 ? `${product?.name || row.productId} +${row.items.length - 1} ${t('more')}` : `${product?.name || row.productId}${variantLabel ? ` • ${variantLabel}` : ''}`);
                 return (
                   <tr key={row._id || row.clientId} onClick={() => openReview(row)} style={{ cursor: 'pointer' }}>
                     <td>{title}</td>
@@ -630,7 +642,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                   </tr>
                 );
               })}
-              {!loading && operations.length === 0 && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}>No {normalizedArea} requests yet</td></tr>}
+              {!loading && operations.length === 0 && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}>{normalizedArea === 'warehouse' ? t('No warehouse requests yet') : t('No distribution requests yet')}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -638,14 +650,14 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
 
       {isCreateOpen && (
         <Modal
-          title={labelForArea(normalizedArea, operationType) || 'Stock Request'}
+          title={labelForArea(normalizedArea, operationType, t) || t('Stock Request')}
           onClose={() => setIsCreateOpen(false)}
           footer={(
             <>
-              <button className="btn" onClick={() => setIsCreateOpen(false)} disabled={saving}>Close</button>
-              <button className="btn" onClick={addCurrentItem} disabled={saving}>Add To List</button>
+              <button className="btn" onClick={() => setIsCreateOpen(false)} disabled={saving}>{t('Close')}</button>
+              <button className="btn" onClick={addCurrentItem} disabled={saving}>{t('Add To List')}</button>
               <button className="btn btn-primary" onClick={submit} disabled={saving}>
-                {saving ? 'Saving…' : 'Submit For Approval'}
+                {saving ? t('Saving…') : t('Submit For Approval')}
               </button>
             </>
           )}
@@ -653,20 +665,20 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
           {selectedProduct && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12, color: '#94a3b8', marginBottom: 12 }}>
               <div>
-                Retail: <strong>{formatCurrency(Number((selectedVariant || selectedProduct).retailPrice || selectedProduct.retailPrice || selectedProduct.price || 0), settings)}</strong>
+                {t('Retail')}: <strong>{formatCurrency(Number((selectedVariant || selectedProduct).retailPrice || selectedProduct.retailPrice || selectedProduct.price || 0), settings)}</strong>
               </div>
               <div>
-                Distribution: <strong>{formatCurrency(Number((selectedVariant || selectedProduct).wholesalePrice || selectedProduct.wholesalePrice || selectedProduct.price || 0), settings)}</strong>
+                {t('Distribution')}: <strong>{formatCurrency(Number((selectedVariant || selectedProduct).wholesalePrice || selectedProduct.wholesalePrice || selectedProduct.price || 0), settings)}</strong>
               </div>
               <div>
-                Agent: <strong>{formatCurrency(Number((selectedVariant || selectedProduct).agentPrice || selectedProduct.agentPrice || selectedProduct.price || 0), settings)}</strong>
+                {t('Agent')}: <strong>{formatCurrency(Number((selectedVariant || selectedProduct).agentPrice || selectedProduct.agentPrice || selectedProduct.price || 0), settings)}</strong>
               </div>
             </div>
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
             <div style={{ gridColumn: '1 / -1' }}>
               <ProductLiveSearchField
-                label="Product"
+                label={t('Product')}
                 query={productQuery}
                 onQueryChange={(value) => {
                   setProductQuery(value);
@@ -688,9 +700,9 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
 
             {(selectedProduct?.variants || []).length > 0 ? (
               <label>
-                <div style={{ marginBottom: 6, color: '#94a3b8' }}>Variant</div>
+                <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('Variant')}</div>
                 <select className="select" value={variantId} onChange={e => setVariantId(e.target.value)} style={{ width: '100%' }}>
-                  <option value="">Base</option>
+                  <option value="">{t('Base')}</option>
                   {(selectedProduct?.variants || []).map(variant => <option key={variant.id} value={variant.id}>{variant.label}</option>)}
                 </select>
               </label>
@@ -699,37 +711,37 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
             {operationType === 'transfer' ? (
               <>
                 <label>
-                  <div style={{ marginBottom: 6, color: '#94a3b8' }}>From Branch</div>
+                  <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('From Branch')}</div>
                   <select className="select" value={fromBranchId} onChange={e => setFromBranchId(e.target.value)} style={{ width: '100%' }}>
                     {transferFromBranchOptions.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
                   </select>
                 </label>
                 <label>
-                  <div style={{ marginBottom: 6, color: '#94a3b8' }}>Source Inventory</div>
+                  <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('Source Inventory')}</div>
                   <select className="select" value={fromInventoryType} onChange={e => setFromInventoryType(e.target.value)} style={{ width: '100%' }}>
-                    <option value="retail">Retail Inventory</option>
-                    <option value="wholesale">Distribution Inventory</option>
-                    <option value="warehouse">Warehouse Inventory</option>
+                    <option value="retail">{t('Retail Inventory')}</option>
+                    <option value="wholesale">{t('Distribution Inventory')}</option>
+                    <option value="warehouse">{t('Warehouse Inventory')}</option>
                   </select>
                 </label>
                 <label>
-                  <div style={{ marginBottom: 6, color: '#94a3b8' }}>To Branch</div>
+                  <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('To Branch')}</div>
                   <select className="select" value={toBranchId} onChange={e => setToBranchId(e.target.value)} style={{ width: '100%' }}>
                     {transferToBranchOptions.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
                   </select>
                 </label>
                 <label>
-                  <div style={{ marginBottom: 6, color: '#94a3b8' }}>Destination Inventory</div>
+                  <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('Destination Inventory')}</div>
                   <select className="select" value={toInventoryType} onChange={e => setToInventoryType(e.target.value)} style={{ width: '100%' }}>
-                    <option value="wholesale">Distribution Inventory</option>
-                    <option value="retail">Retail Inventory</option>
-                    <option value="warehouse">Warehouse Inventory</option>
+                    <option value="wholesale">{t('Distribution Inventory')}</option>
+                    <option value="retail">{t('Retail Inventory')}</option>
+                    <option value="warehouse">{t('Warehouse Inventory')}</option>
                   </select>
                 </label>
               </>
             ) : (
               <label>
-                <div style={{ marginBottom: 6, color: '#94a3b8' }}>Branch</div>
+                <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('Branch')}</div>
                 <select className="select" value={branchId} onChange={e => setBranchId(e.target.value)} style={{ width: '100%' }}>
                   {scopedBranchOptions.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
                 </select>
@@ -737,24 +749,24 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
             )}
 
             <label>
-              <div style={{ marginBottom: 6, color: '#94a3b8' }}>Quantity</div>
+              <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('Quantity')}</div>
               <input className="input" type="number" min="1" value={qty} onChange={e => setQty(Number(e.target.value))} disabled={selectedTrackType === 'serialized'} />
             </label>
 
             {usesSerializedSelection && (
               <div style={{ gridColumn: '1 / -1', display: 'grid', gap: 8 }}>
-                <div style={{ color: '#94a3b8' }}>Serialized Units</div>
-                <input className="input" placeholder="Search IMEI or serial number" value={serializedUnitsQuery} onChange={e => setSerializedUnitsQuery(e.target.value)} />
+                <div style={{ color: '#94a3b8' }}>{t('Serialized Units')}</div>
+                <input className="input" placeholder={t('Search IMEI or serial number')} value={serializedUnitsQuery} onChange={e => setSerializedUnitsQuery(e.target.value)} />
                 <div style={{ color: '#64748b', fontSize: 12 }}>
-                  Selected: {serializedUnits.filter(unit => unit.selected).length}
+                  {t('Selected: {count}', { count: serializedUnits.filter(unit => unit.selected).length })}
                 </div>
                 <div className="table-wrap" style={{ maxHeight: 220 }}>
                   <table className="table">
                     <thead>
                       <tr>
                         <th align="left"></th>
-                        <th align="left">IMEI</th>
-                        <th align="left">Serial</th>
+                        <th align="left">{t('IMEI')}</th>
+                        <th align="left">{t('Serial')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -776,8 +788,8 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                           <td>{unit.serialNumber || '—'}</td>
                         </tr>
                       ))}
-                      {!serializedLoading && serializedUnits.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>No available serialized units</td></tr>}
-                      {serializedLoading && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>Loading serialized units…</td></tr>}
+                      {!serializedLoading && serializedUnits.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>{t('No available serialized units')}</td></tr>}
+                      {serializedLoading && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>{t('Loading serialized units…')}</td></tr>}
                     </tbody>
                   </table>
                 </div>
@@ -786,20 +798,20 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
 
             {selectedTrackType === 'serialized' && !usesSerializedSelection && (
               <div style={{ gridColumn: '1 / -1', display: 'grid', gap: 8 }}>
-                <div style={{ color: '#94a3b8' }}>IMEI / Serial Numbers</div>
+                <div style={{ color: '#94a3b8' }}>{t('IMEI / Serial Numbers')}</div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <button type="button" className={serializedBatchMode ? 'btn btn-primary' : 'btn'} onClick={() => { setSerializedBatchMode(v => !v); setTimeout(() => { try { serializedScanInputRef.current?.focus(); } catch {} }, 0); }}>
-                    {serializedBatchMode ? 'Batch Mode On' : 'Batch Mode Off'}
+                    {serializedBatchMode ? t('Batch Mode On') : t('Batch Mode Off')}
                   </button>
                   <button type="button" className="btn" onClick={() => setSerializedCameraOpen(true)}>
-                    Camera Scan
+                    {t('Camera Scan')}
                   </button>
                 </div>
                 <input
                   ref={serializedScanInputRef}
                   className="input"
                   autoFocus
-                  placeholder="Scan IMEI barcode or type and press Enter"
+                  placeholder={t('Scan IMEI barcode or type and press Enter')}
                   value={serializedScanInput}
                   onChange={e => setSerializedScanInput(e.target.value)}
                   onKeyDown={e => {
@@ -810,61 +822,61 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                   }}
                   style={{ color: '#111827', background: '#ffffff' }}
                 />
-                <textarea className="input" rows={6} value={serializedEntriesText} onChange={e => setSerializedEntriesText(e.target.value)} placeholder={'One per line\nIMEI123456789\nIMEI987654321,SN-0002'} style={{ color: '#111827', background: '#ffffff' }} />
+                <textarea className="input" rows={6} value={serializedEntriesText} onChange={e => setSerializedEntriesText(e.target.value)} placeholder={t('One per line\nIMEI123456789\nIMEI987654321,SN-0002')} style={{ color: '#111827', background: '#ffffff' }} />
                 <div style={{ color: '#64748b', fontSize: 12 }}>
-                  Quantity updates automatically from scanned/entered IMEI values. Current entries: {serializedEntries.length}
+                  {t('Quantity updates automatically from scanned/entered IMEI values. Current entries: {count}', { count: serializedEntries.length })}
                 </div>
               </div>
             )}
 
             {operationType === 'adjustment' ? (
               <label>
-                <div style={{ marginBottom: 6, color: '#94a3b8' }}>Adjustment Type</div>
+                <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('Adjustment Type')}</div>
                 <select className="select" value={adjustmentType} onChange={e => setAdjustmentType(e.target.value)} style={{ width: '100%' }}>
-                  <option value="increase">Increase</option>
-                  <option value="decrease">Decrease</option>
+                  <option value="increase">{t('Increase')}</option>
+                  <option value="decrease">{t('Decrease')}</option>
                 </select>
               </label>
             ) : (
               <label>
-                <div style={{ marginBottom: 6, color: '#94a3b8' }}>{operationType === 'refund' ? 'Refund Amount' : 'Cost'}</div>
+                <div style={{ marginBottom: 6, color: '#94a3b8' }}>{operationType === 'refund' ? t('Refund Amount') : t('Cost')}</div>
                 <input className="input" type="number" min="0" step="0.01" value={operationType === 'refund' ? requestedAmount : cost} onChange={e => operationType === 'refund' ? setRequestedAmount(e.target.value) : setCost(e.target.value)} />
               </label>
             )}
 
             {(operationType === 'purchase' || operationType === 'refund') && (
               <label>
-                <div style={{ marginBottom: 6, color: '#94a3b8' }}>Supplier</div>
-                <input className="input" value={supplier} onChange={e => setSupplier(e.target.value)} placeholder="Supplier or source" list="suppliers-list" />
+                <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('Supplier')}</div>
+                <input className="input" value={supplier} onChange={e => setSupplier(e.target.value)} placeholder={t('Supplier or source')} list="suppliers-list" />
                 <SuppliersDatalist />
               </label>
             )}
 
             <label style={{ gridColumn: '1 / -1' }}>
-              <div style={{ marginBottom: 6, color: '#94a3b8' }}>Transaction Title</div>
-              <input className="input" value={transactionTitle} onChange={e => setTransactionTitle(e.target.value)} placeholder={`Optional ${operationType} title for grouped items`} />
+              <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('Transaction Title')}</div>
+              <input className="input" value={transactionTitle} onChange={e => setTransactionTitle(e.target.value)} placeholder={operationType === 'purchase' ? t('Optional purchase title for grouped items') : operationType === 'transfer' ? t('Optional transfer title for grouped items') : operationType === 'adjustment' ? t('Optional adjustment title for grouped items') : t('Optional refund title for grouped items')} />
             </label>
 
             <label style={{ gridColumn: '1 / -1' }}>
-              <div style={{ marginBottom: 6, color: '#94a3b8' }}>Reason</div>
-              <input className="input" value={reason} onChange={e => setReason(e.target.value)} placeholder={`Why this ${normalizedArea} operation is needed`} />
+              <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('Reason')}</div>
+              <input className="input" value={reason} onChange={e => setReason(e.target.value)} placeholder={normalizedArea === 'warehouse' ? t('Why this warehouse operation is needed') : t('Why this distribution operation is needed')} />
             </label>
 
             <label style={{ gridColumn: '1 / -1' }}>
-              <div style={{ marginBottom: 6, color: '#94a3b8' }}>Remark</div>
-              <input className="input" value={remark} onChange={e => setRemark(e.target.value)} placeholder="Additional details for approvers" />
+              <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('Remark')}</div>
+              <input className="input" value={remark} onChange={e => setRemark(e.target.value)} placeholder={t('Additional details for approvers')} />
             </label>
           </div>
           <div style={{ marginTop: 12 }}>
-            <div style={{ marginBottom: 6, color: '#94a3b8' }}>Items In This Request</div>
+            <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('Items In This Request')}</div>
             <div className="table-wrap">
               <table className="table">
                 <thead>
                   <tr>
-                    <th align="left">Product</th>
-                    <th align="left">Qty</th>
-                    <th align="left">Units</th>
-                    <th align="left">Remark</th>
+                    <th align="left">{t('Product')}</th>
+                    <th align="left">{t('Qty')}</th>
+                    <th align="left">{t('Units')}</th>
+                    <th align="left">{t('Remark')}</th>
                     <th align="left"></th>
                   </tr>
                 </thead>
@@ -889,11 +901,11 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                         <td>{item.qty}</td>
                         <td>{Array.isArray(item.unitIds) && item.unitIds.length > 0 ? item.unitIds.length : (Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0 ? item.serializedEntries.length : '—')}</td>
                         <td>{item.reason || item.remark || '—'}</td>
-                        <td><button className="btn" onClick={() => removeItem(item.lineId)}>Remove</button></td>
+                        <td><button className="btn" onClick={() => removeItem(item.lineId)}>{t('Remove')}</button></td>
                       </tr>
                     );
                   })}
-                  {items.length === 0 && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>No items added yet. You can still submit a single item directly.</td></tr>}
+                  {items.length === 0 && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>{t('No items added yet. You can still submit a single item directly.')}</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -901,7 +913,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
         </Modal>
       )}
       <BarcodeScannerModal
-        title="Scan IMEI Barcode"
+        title={t('Scan IMEI Barcode')}
         open={serializedCameraOpen}
         onClose={() => setSerializedCameraOpen(false)}
         onDetected={(value) => {
@@ -912,15 +924,15 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
 
       {selectedRow && (
         <Modal
-          title="Request Review"
+          title={t('Request Review')}
           onClose={() => { if (!reviewing) { setSelectedRow(null); setDecisionRemark(''); } }}
           footer={(
             <>
-              <button className="btn" onClick={() => { setSelectedRow(null); setDecisionRemark(''); }} disabled={reviewing}>Close</button>
+              <button className="btn" onClick={() => { setSelectedRow(null); setDecisionRemark(''); }} disabled={reviewing}>{t('Close')}</button>
               {((selectedRow.status === 'pending_director' && canDirectorApprove) || (selectedRow.status === 'pending_manager' && canManagerApprove)) && (
                 <>
-                  <button className="btn" onClick={() => reviewAction('reject')} disabled={reviewing}>{reviewing ? 'Working…' : 'Reject'}</button>
-                  <button className="btn btn-primary" onClick={() => reviewAction('approve')} disabled={reviewing}>{reviewing ? 'Working…' : 'Approve'}</button>
+                  <button className="btn" onClick={() => reviewAction('reject')} disabled={reviewing}>{reviewing ? t('Working…') : t('Reject')}</button>
+                  <button className="btn btn-primary" onClick={() => reviewAction('approve')} disabled={reviewing}>{reviewing ? t('Working…') : t('Approve')}</button>
                 </>
               )}
             </>
@@ -928,26 +940,26 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
         >
           <div style={{ display: 'grid', gap: 12 }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Status</div><strong>{selectedRow.status}</strong></div>
-              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Title</div><strong>{selectedRow.transactionTitle || '—'}</strong></div>
-              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Initiator</div><strong>{selectedRow.initiatedByName || selectedRow.initiatorName || '—'}</strong></div>
-              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Quantity</div><strong>{Number(selectedRow.qty || selectedRow.baseUnits || 0)}</strong></div>
-              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Value</div><strong>{formatCurrency(Number(selectedRow.cost || selectedRow.requestedAmount || 0), settings)}</strong></div>
-              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Source</div><strong>{branchNameById.get(selectedRow.fromBranchId || selectedRow.from || selectedRow.branchId) || selectedRow.fromBranchId || selectedRow.from || selectedRow.branchId || '—'}</strong></div>
-              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Destination</div><strong>{branchNameById.get(selectedRow.toBranchId || selectedRow.to) || selectedRow.toBranchId || selectedRow.to || '—'}</strong></div>
-              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>From Inventory</div><strong>{selectedRow.fromInventoryType || 'retail'}</strong></div>
-              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>To Inventory</div><strong>{selectedRow.toInventoryType || selectedRow.fromInventoryType || 'wholesale'}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Status')}</div><strong>{selectedRow.status}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Title')}</div><strong>{selectedRow.transactionTitle || '—'}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Initiator')}</div><strong>{selectedRow.initiatedByName || selectedRow.initiatorName || '—'}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Quantity')}</div><strong>{Number(selectedRow.qty || selectedRow.baseUnits || 0)}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Value')}</div><strong>{formatCurrency(Number(selectedRow.cost || selectedRow.requestedAmount || 0), settings)}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Source')}</div><strong>{branchNameById.get(selectedRow.fromBranchId || selectedRow.from || selectedRow.branchId) || selectedRow.fromBranchId || selectedRow.from || selectedRow.branchId || '—'}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Destination')}</div><strong>{branchNameById.get(selectedRow.toBranchId || selectedRow.to) || selectedRow.toBranchId || selectedRow.to || '—'}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('From Inventory')}</div><strong>{t(selectedRow.fromInventoryType || 'retail')}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('To Inventory')}</div><strong>{t(selectedRow.toInventoryType || selectedRow.fromInventoryType || 'wholesale')}</strong></div>
             </div>
-            <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Remark</div><strong>{selectedRow.remark || selectedRow.approvalRemark || selectedRow.rejectionRemark || '—'}</strong></div>
+            <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Remark')}</div><strong>{selectedRow.remark || selectedRow.approvalRemark || selectedRow.rejectionRemark || '—'}</strong></div>
             <div className="table-wrap">
               <table className="table">
                 <thead>
                   <tr>
-                    <th align="left">Product</th>
-                    <th align="left">Qty</th>
-                    <th align="left">Units</th>
-                    <th align="left">Status</th>
-                    <th align="left">Reason</th>
+                    <th align="left">{t('Product')}</th>
+                    <th align="left">{t('Qty')}</th>
+                    <th align="left">{t('Units')}</th>
+                    <th align="left">{t('Status')}</th>
+                    <th align="left">{t('Reason')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -974,8 +986,8 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                         <td style={{ color: '#111827' }}>{Array.isArray(item.unitIds) && item.unitIds.length > 0 ? item.unitIds.length : (Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0 ? item.serializedEntries.length : '—')}</td>
                         <td>
                           <select className="select" value={normalizeReviewStatus(item.status)} onChange={e => setReviewItems(prev => prev.map((row, rowIndex) => rowIndex === index ? { ...row, status: e.target.value } : row))} style={{ color: '#111827' }} disabled={!((selectedRow.status === 'pending_director' && canDirectorApprove) || (selectedRow.status === 'pending_manager' && canManagerApprove)) || reviewing}>
-                            <option value="accepted">Accepted</option>
-                            <option value="cancelled">Cancelled</option>
+                            <option value="accepted">{t('Accepted')}</option>
+                            <option value="cancelled">{t('Cancelled')}</option>
                           </select>
                         </td>
                         <td style={{ color: '#111827' }}>{item.reason || item.remark || '—'}</td>
@@ -986,7 +998,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
               </table>
             </div>
             <label>
-              <div style={{ marginBottom: 6, color: '#94a3b8' }}>Approval / Rejection Remark</div>
+              <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('Approval / Rejection Remark')}</div>
               <textarea className="input" value={decisionRemark} onChange={e => setDecisionRemark(e.target.value)} rows={4} style={{ width: '100%', resize: 'vertical' }} />
             </label>
           </div>
