@@ -596,11 +596,14 @@ function CashReconciliationPage() {
                   ) : null}
                   {backlogRows.map((row) => (
                     <tr key={`${row.branchId}:${row.date}`}>
-                      <td><input type="checkbox" checked={selectedDates.includes(String(row.date))} onChange={() => toggleDate(String(row.date))} disabled={!canSelectBacklogRows} /></td>
+                      <td><input type="checkbox" checked={selectedDates.includes(String(row.date))} onChange={() => toggleDate(String(row.date))} disabled={!canSelectBacklogRows || String(row.status || '') === 'pending_approval'} /></td>
                       <td>{row.date}</td>
                       <td>{row.branchName}</td>
                       <td align="right">{formatCurrency(row.expectedAmount || 0, settings)}</td>
-                      <td>{(row.paymentBreakdown || []).map((item) => `${item.paymentMethod}: ${formatCurrency(item.amount || 0, settings)}`).join(' • ') || '—'}</td>
+                      <td>
+                        {(row.paymentBreakdown || []).map((item) => `${item.paymentMethod}: ${formatCurrency(item.amount || 0, settings)}`).join(' • ') || '—'}
+                        {String(row.status || '') === 'pending_approval' ? ' • Pending approval' : ''}
+                      </td>
                     </tr>
                   ))}
                   {!loadingBacklog && backlogRows.length === 0 && (
