@@ -278,8 +278,8 @@ function DashboardPage() {
       perDay[day] = (perDay[day] || 0) + sale.total;
       perDayPayments[day] = perDayPayments[day] || {};
       (sale.payment_methods || []).forEach(pm => {
-        const t = pm.type || 'other';
-        perDayPayments[day][t] = (perDayPayments[day][t] || 0) + (pm.amount || 0);
+        const paymentType = pm.type || 'other';
+        perDayPayments[day][paymentType] = (perDayPayments[day][paymentType] || 0) + (pm.amount || 0);
       });
       todayTotal += sale.total;
       todayProfit += Number(sale.profitTotal || 0);
@@ -308,7 +308,7 @@ function DashboardPage() {
       for (const it of sale.items) {
         itemsSold += it.qty;
         const prod = products.find(p => p.sku === it.sku);
-        const cat = prod?.category || 'Uncategorized';
+        const cat = prod?.category || t('Uncategorized');
         categoryTotals[cat] = (categoryTotals[cat] || 0) + it.qty;
         productUnits[it.sku] = (productUnits[it.sku] || 0) + it.qty;
 
@@ -336,7 +336,7 @@ function DashboardPage() {
       }
     }
     for (const sale of competitionSales) {
-      const seller = sale.sellerName || 'Unknown';
+      const seller = sale.sellerName || t('Unknown');
       const saleBranchId = String(sale.branchId || '').trim();
       const saleBranchName = branchNameById.get(saleBranchId) || sale.branchName || saleBranchId || '—';
       const cashierKey = `${saleBranchId}::${seller}`;
@@ -393,9 +393,9 @@ function DashboardPage() {
     const paymentTypes = ['cash','card','mobile','wallet','other'];
     const paymentBar = {
       labels: last7,
-      datasets: paymentTypes.map((t, idx) => ({
-        label: t.charAt(0).toUpperCase() + t.slice(1),
-        data: last7.map(d => +(perDayPayments[d]?.[t] || 0).toFixed(2)),
+      datasets: paymentTypes.map((paymentType, idx) => ({
+        label: t(paymentType.charAt(0).toUpperCase() + paymentType.slice(1)),
+        data: last7.map(d => +(perDayPayments[d]?.[paymentType] || 0).toFixed(2)),
         backgroundColor: ['#2563eb','#14b8a6','#8b5cf6','#f59e0b','#94a3b8'][idx],
         borderRadius: 8,
         maxBarThickness: 26

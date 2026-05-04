@@ -153,26 +153,26 @@ function TransfersPage() {
 
   function onExportCsv() {
     const headers = [
-      { key: 'ts', label: 'Timestamp', value: e => new Date(e.ts).toLocaleString() },
-      { key: 'actor', label: 'Actor' },
-      { key: 'product', label: 'Product', value: e => (e.details || {}).product || '' },
-      { key: 'from', label: 'From', value: e => byId.get((e.details || {}).from) || (e.details || {}).from || '' },
-      { key: 'to', label: 'To', value: e => byId.get((e.details || {}).to) || (e.details || {}).to || '' },
-      { key: 'qty', label: 'Qty', value: e => (e.details || {}).qty ?? '' },
-      { key: 'remark', label: 'Remark', value: e => e.remark || '' }
+      { key: 'ts', label: t('Timestamp'), value: e => new Date(e.ts).toLocaleString() },
+      { key: 'actor', label: t('Actor') },
+      { key: 'product', label: t('Product'), value: e => (e.details || {}).product || '' },
+      { key: 'from', label: t('From'), value: e => byId.get((e.details || {}).from) || (e.details || {}).from || '' },
+      { key: 'to', label: t('To'), value: e => byId.get((e.details || {}).to) || (e.details || {}).to || '' },
+      { key: 'qty', label: t('Qty'), value: e => (e.details || {}).qty ?? '' },
+      { key: 'remark', label: t('Remark'), value: e => e.remark || '' }
     ];
     exportCsv('transfers.csv', headers, transfers);
   }
   function onExportPdf() {
     const headers = [
-      { key: 'ts', label: 'Timestamp', value: e => new Date(e.ts).toLocaleString() },
-      { key: 'actor', label: 'Actor' },
-      { key: 'product', label: 'Product', value: e => (e.details || {}).product || '' },
-      { key: 'route', label: 'From → To', value: e => {
+      { key: 'ts', label: t('Timestamp'), value: e => new Date(e.ts).toLocaleString() },
+      { key: 'actor', label: t('Actor') },
+      { key: 'product', label: t('Product'), value: e => (e.details || {}).product || '' },
+      { key: 'route', label: t('From → To'), value: e => {
         const d = e.details || {}; return `${byId.get(d.from) || d.from || '—'} → ${byId.get(d.to) || d.to || '—'}`;
       }},
-      { key: 'qty', label: 'Qty', value: e => (e.details || {}).qty ?? '' },
-      { key: 'remark', label: 'Remark', value: e => e.remark || '' }
+      { key: 'qty', label: t('Qty'), value: e => (e.details || {}).qty ?? '' },
+      { key: 'remark', label: t('Remark'), value: e => e.remark || '' }
     ];
     exportTablePdf(t('Transfers'), headers, transfers);
   }
@@ -180,21 +180,21 @@ function TransfersPage() {
   async function transfer() {
     if (saving) return;
     if (!canTransfer) {
-      toast.show('Not authorized to initiate transfer', { type: 'error' });
+      toast.show(t('Not authorized to initiate transfer'), { type: 'error' });
       return;
     }
     const nextItems = items.length > 0 ? items : null;
     if (!nextItems && (!productId || !fromId || !toId || fromId === toId || qty <= 0)) {
-      toast.show('Check product, branches and quantity', { type: 'error' });
+      toast.show(t('Check product, branches and quantity'), { type: 'error' });
       return;
     }
     if (!nextItems && selectedTrackType === 'serialized' && serializedUnits.filter(unit => unit.selected).length !== Number(qty)) {
-      toast.show('Select the exact serialized units to transfer', { type: 'error' });
+      toast.show(t('Select the exact serialized units to transfer'), { type: 'error' });
       return;
     }
-    const remark = await promptDialog('Enter reason/remark for this transfer');
+    const remark = await promptDialog(t('Enter reason/remark for this transfer'));
     if (!remark || !remark.trim()) {
-      toast.show('Remark is required for transfers', { type: 'error' });
+      toast.show(t('Remark is required for transfers'), { type: 'error' });
       return;
     }
     setSaving(true);
@@ -225,14 +225,14 @@ function TransfersPage() {
     };
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) {
-        toast.show('Offline: cannot submit transfer request', { type: 'error' });
+        toast.show(t('Offline: cannot submit transfer request'), { type: 'error' });
         setSaving(false);
         return;
       }
       try {
-        await enqueueHttp({ collection: 'transferrequests', label: 'Transfer request', path: '/api/transfers/requests', method: 'POST', body: payload });
+        await enqueueHttp({ collection: 'transferrequests', label: t('Transfer request'), path: '/api/transfers/requests', method: 'POST', body: payload });
       } catch (e) {
-        toast.show(String(e?.message || 'Failed to save offline'), { type: 'error' });
+        toast.show(String(e?.message || t('Failed to save offline')), { type: 'error' });
         setSaving(false);
         return;
       }
@@ -240,7 +240,7 @@ function TransfersPage() {
       try {
         await transfersApi.createRequest(payload);
       } catch (e) {
-        toast.show(String(e?.message || 'Failed to submit request'), { type: 'error' });
+        toast.show(String(e?.message || t('Failed to submit request')), { type: 'error' });
         setSaving(false);
         return;
       }
@@ -277,7 +277,7 @@ function TransfersPage() {
     setItems([]);
     setSerializedUnits([]);
     setSerializedUnitsQuery('');
-    toast.show(navigator.onLine ? 'Transfer request submitted for approval' : 'Saved offline. Will sync when online.', { type: 'success' });
+    toast.show(navigator.onLine ? t('Transfer request submitted for approval') : t('Saved offline. Will sync when online.'), { type: 'success' });
     setSaving(false);
   }
 
@@ -285,7 +285,7 @@ function TransfersPage() {
     const ids = selectedRecordIds.filter(Boolean);
     if (ids.length === 0) return;
     const { confirmDialog } = await import('../utils/dialogs');
-    const ok = await confirmDialog(`Delete ${ids.length} selected transfer record(s)?`);
+    const ok = await confirmDialog(t('Delete {count} selected transfer record(s)?', { count: ids.length }));
     if (!ok) return;
     try {
       setBulkDeleting(true);
@@ -293,9 +293,9 @@ function TransfersPage() {
       dispatch(removeAuditEntries(ids));
       setSelectedRecordIds([]);
       setBulkAction('');
-      toast.show('Transfer records deleted', { type: 'success' });
+      toast.show(t('Transfer records deleted'), { type: 'success' });
     } catch (e) {
-      toast.show(String(e?.message || 'Failed to delete transfer records'), { type: 'error' });
+      toast.show(String(e?.message || t('Failed to delete transfer records')), { type: 'error' });
     } finally {
       setBulkDeleting(false);
     }
@@ -303,11 +303,11 @@ function TransfersPage() {
 
   function addCurrentItem() {
     if (!productId || !fromId || !toId || fromId === toId || qty <= 0) {
-      toast.show('Check product, branches and quantity', { type: 'error' });
+      toast.show(t('Check product, branches and quantity'), { type: 'error' });
       return;
     }
     if (selectedTrackType === 'serialized' && serializedUnits.filter(unit => unit.selected).length !== Number(qty)) {
-      toast.show('Select the exact serialized units to transfer', { type: 'error' });
+      toast.show(t('Select the exact serialized units to transfer'), { type: 'error' });
       return;
     }
     setItems(prev => [...prev, {
@@ -386,14 +386,14 @@ function TransfersPage() {
           return (Array.isArray(result?.rows) ? result.rows : []).map(unit => ({ ...unit, selected: selectedIds.has(unit._id) }));
         });
       } catch (e) {
-        toast.show(String(e?.message || 'Failed to load serialized units'), { type: 'error' });
+        toast.show(String(e?.message || t('Failed to load serialized units')), { type: 'error' });
         setSerializedUnits([]);
       } finally {
         setSerializedLoading(false);
       }
     }
     run();
-  }, [fromId, productId, selectedTrackType, serializedUnitsQuery, toast, variantId, branchTypeById]);
+  }, [fromId, productId, selectedTrackType, serializedUnitsQuery, toast, variantId, branchTypeById, t]);
 
   useEffect(() => {
     let alive = true;
@@ -430,14 +430,14 @@ function TransfersPage() {
     const allowed = isWorkflow
       ? ((String(r.status || '') === 'pending_director' && canWorkflowDirector) || (String(r.status || '') === 'pending_manager' && canWorkflowManager))
       : canApprove;
-    if (!allowed) { toast.show('Not authorized to approve transfers', { type: 'error' }); return; }
+    if (!allowed) { toast.show(t('Not authorized to approve transfers'), { type: 'error' }); return; }
     const id = r._id || r.clientId;
     try {
-      const remark = await promptDialog('Enter remark for approval (required)');
-      if (!remark || !String(remark).trim()) { toast.show('Remark is required', { type: 'error' }); return; }
+      const remark = await promptDialog(t('Enter remark for approval (required)'));
+      if (!remark || !String(remark).trim()) { toast.show(t('Remark is required'), { type: 'error' }); return; }
       setBusyId(id);
       if (!navigator.onLine && !isWorkflow) {
-        await enqueueHttp({ collection: 'transferrequests', label: 'Transfer approve', path: '/api/transfers/approve', method: 'POST', body: { id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark } });
+        await enqueueHttp({ collection: 'transferrequests', label: t('Transfer approve'), path: '/api/transfers/approve', method: 'POST', body: { id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark } });
       } else if (isWorkflow) {
         await wholesaleApi.approveOperation(r, { approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
       } else {
@@ -448,21 +448,21 @@ function TransfersPage() {
           dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.from, delta: -Number(r.qty || 0), inventoryType: inventoryTypeForBranch(r.from) }));
           dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.to, delta: Number(r.qty || 0), inventoryType: inventoryTypeForBranch(r.to) }));
           void refreshAffectedProducts(dispatch, [r.productId]);
-          toast.show('Transfer approved and stock updated', { type: 'success' });
+          toast.show(t('Transfer approved and stock updated'), { type: 'success' });
         } else {
-          toast.show('Director approval recorded. Waiting for manager approval.', { type: 'success' });
+          toast.show(t('Director approval recorded. Waiting for manager approval.'), { type: 'success' });
         }
         return;
       }
       if (!isWorkflow) {
         dispatch(approveTransfer({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark, nextStatus: 'pending_manager' }));
-        toast.show('Transfer approval queued offline', { type: 'success' });
+        toast.show(t('Transfer approval queued offline'), { type: 'success' });
       } else {
         await wholesaleApi.listOperations({ operationType: 'transfer', status: statusFilter }).then(rows => setWholesaleInbound((Array.isArray(rows) ? rows : []).filter(row => String(row.toInventoryType || '').toLowerCase() === 'retail')));
-        toast.show('Transfer approved and stock updated', { type: 'success' });
+        toast.show(t('Transfer approved and stock updated'), { type: 'success' });
       }
     } catch (e) {
-      toast.show(String(e?.message || 'Failed to approve'), { type: 'error' });
+      toast.show(String(e?.message || t('Failed to approve')), { type: 'error' });
     } finally { setBusyId(null); }
   }
   async function reject(r) {
@@ -470,14 +470,14 @@ function TransfersPage() {
     const allowed = isWorkflow
       ? ((String(r.status || '') === 'pending_director' && canWorkflowDirector) || (String(r.status || '') === 'pending_manager' && canWorkflowManager))
       : canApprove;
-    if (!allowed) { toast.show('Not authorized to reject transfers', { type: 'error' }); return; }
+    if (!allowed) { toast.show(t('Not authorized to reject transfers'), { type: 'error' }); return; }
     const id = r._id || r.clientId;
     try {
-      const remark = await promptDialog('Enter reason for rejection (required)');
-      if (!remark || !String(remark).trim()) { toast.show('Remark is required', { type: 'error' }); return; }
+      const remark = await promptDialog(t('Enter reason for rejection (required)'));
+      if (!remark || !String(remark).trim()) { toast.show(t('Remark is required'), { type: 'error' }); return; }
       setBusyId(id);
       if (!navigator.onLine && !isWorkflow) {
-        await enqueueHttp({ collection: 'transferrequests', label: 'Transfer reject', path: '/api/transfers/reject', method: 'POST', body: { id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark } });
+        await enqueueHttp({ collection: 'transferrequests', label: t('Transfer reject'), path: '/api/transfers/reject', method: 'POST', body: { id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark } });
       } else if (isWorkflow) {
         await wholesaleApi.rejectOperation(r, { approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark, reason: remark });
       } else {
@@ -485,9 +485,9 @@ function TransfersPage() {
       }
       if (!isWorkflow) dispatch(rejectTransfer({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark }));
       else await wholesaleApi.listOperations({ operationType: 'transfer', status: statusFilter }).then(rows => setWholesaleInbound((Array.isArray(rows) ? rows : []).filter(row => String(row.toInventoryType || '').toLowerCase() === 'retail')));
-      toast.show('Transfer rejected', { type: 'success' });
+      toast.show(t('Transfer rejected'), { type: 'success' });
     } catch (e) {
-      toast.show(String(e?.message || 'Failed to reject'), { type: 'error' });
+      toast.show(String(e?.message || t('Failed to reject')), { type: 'error' });
     } finally { setBusyId(null); }
   }
 
@@ -509,31 +509,31 @@ function TransfersPage() {
         </div>
       </div>
       <div className="page-tabs">
-        <button className={tab === 'initiate' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('initiate')}>Initiate</button>
-        <button className={tab === 'approvals' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('approvals')} disabled={!canApprove}>Approvals</button>
+        <button className={tab === 'initiate' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('initiate')}>{t('Initiate')}</button>
+        <button className={tab === 'approvals' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('approvals')} disabled={!canApprove}>{t('Approvals')}</button>
       </div>
       <div className="stats-grid">
-        <div className="card stat-card"><div className="stat-label">Transfer Records</div><div className="stat-value">{summary.historyCount}</div></div>
-        <div className="card stat-card"><div className="stat-label">Units Moved</div><div className="stat-value">{summary.transferQty}</div></div>
-        <div className="card stat-card"><div className="stat-label">Products</div><div className="stat-value">{summary.uniqueProducts}</div></div>
-        <div className="card stat-card"><div className="stat-label">Routes</div><div className="stat-value">{summary.uniqueRoutes}</div></div>
+        <div className="card stat-card"><div className="stat-label">{t('Transfer Records')}</div><div className="stat-value">{summary.historyCount}</div></div>
+        <div className="card stat-card"><div className="stat-label">{t('Units Moved')}</div><div className="stat-value">{summary.transferQty}</div></div>
+        <div className="card stat-card"><div className="stat-label">{t('Products')}</div><div className="stat-value">{summary.uniqueProducts}</div></div>
+        <div className="card stat-card"><div className="stat-label">{t('Routes')}</div><div className="stat-value">{summary.uniqueRoutes}</div></div>
         <div className="card stat-card"><div className="stat-label">{t('Pending Approvals')}</div><div className="stat-value">{summary.pendingApprovals}</div></div>
       </div>
       {openModal && (
         <Modal title={t('Add Transfer')} onClose={() => setOpenModal(false)} footer={
           <>
-            <button className="btn" onClick={() => setOpenModal(false)}>Cancel</button>
-            <button className="btn" onClick={addCurrentItem} disabled={!canTransfer || saving}>Add To List</button>
+            <button className="btn" onClick={() => setOpenModal(false)}>{t('Cancel')}</button>
+            <button className="btn" onClick={addCurrentItem} disabled={!canTransfer || saving}>{t('Add To List')}</button>
             <button className="btn btn-primary" onClick={async () => { await transfer(); setOpenModal(false); }} disabled={!canTransfer || saving}>
               <svg viewBox="0 0 24 24" fill="none"><path d="M7 7h10M7 17h10M7 7l-3 3m3-3l-3-3M17 17l3 3m-3-3l3-3" stroke="currentColor" strokeWidth="2"/></svg>
-              {saving ? 'Saving…' : 'Submit For Approval'}
+              {saving ? t('Saving…') : t('Submit For Approval')}
             </button>
           </>
         }>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
             <div style={{ gridColumn: '1 / -1' }}>
               <ProductLiveSearchField
-                label="Product"
+                label={t('Product')}
                 query={productQuery}
                 onQueryChange={(value) => {
                   setProductQuery(value);
@@ -554,9 +554,9 @@ function TransfersPage() {
             </div>
             {(products.find(p => p.id === productId)?.variants || []).length > 0 && (
               <label>
-                <div className="field-label">Variant</div>
+                <div className="field-label">{t('Variant')}</div>
                 <select className="select" value={variantId} onChange={e => setVariantId(e.target.value)} style={{ minWidth: 180 }}>
-                  <option value="">Base</option>
+                  <option value="">{t('Base')}</option>
                   {(products.find(p => p.id === productId)?.variants || []).map(v => (
                     <option key={v.id} value={v.id}>{v.label}</option>
                   ))}
@@ -564,34 +564,34 @@ function TransfersPage() {
               </label>
             )}
             <label>
-              <div className="field-label">From</div>
+              <div className="field-label">{t('From')}</div>
               <BranchSelect value={fromId} onChange={setFromId} overrideBranches={retailBranchOptions} />
             </label>
             <label>
-              <div className="field-label">To</div>
+              <div className="field-label">{t('To')}</div>
               <BranchSelect value={toId} onChange={setToId} overrideBranches={branchOptions} />
             </label>
             <label>
-              <div className="field-label">Quantity</div>
+              <div className="field-label">{t('Quantity')}</div>
               <input className="input" type="number" min="1" value={qty} onChange={e => setQty(Number(e.target.value))} disabled={selectedTrackType === 'serialized'} />
             </label>
             <label style={{ gridColumn: '1 / -1' }}>
-              <div className="field-label">Transaction Title</div>
-              <input className="input" value={transactionTitle} onChange={e => setTransactionTitle(e.target.value)} placeholder="Optional bulk transfer title" />
+              <div className="field-label">{t('Transaction Title')}</div>
+              <input className="input" value={transactionTitle} onChange={e => setTransactionTitle(e.target.value)} placeholder={t('Optional bulk transfer title')} />
             </label>
           </div>
           {selectedTrackType === 'serialized' && (
             <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
-              <div className="field-label" style={{ marginBottom: 0 }}>Serialized Units</div>
-              <input className="input" placeholder="Search IMEI or serial number" value={serializedUnitsQuery} onChange={e => setSerializedUnitsQuery(e.target.value)} />
-              <div style={{ color: '#64748b', fontSize: 12 }}>Selected: {serializedUnits.filter(unit => unit.selected).length}</div>
+              <div className="field-label" style={{ marginBottom: 0 }}>{t('Serialized Units')}</div>
+              <input className="input" placeholder={t('Search IMEI or serial number')} value={serializedUnitsQuery} onChange={e => setSerializedUnitsQuery(e.target.value)} />
+              <div style={{ color: '#64748b', fontSize: 12 }}>{t('Selected: {count}', { count: serializedUnits.filter(unit => unit.selected).length })}</div>
               <div className="table-wrap" style={{ maxHeight: 220 }}>
                 <table className="table">
                   <thead>
                     <tr>
                       <th align="left"></th>
-                      <th align="left">IMEI</th>
-                      <th align="left">Serial</th>
+                      <th align="left">{t('IMEI')}</th>
+                      <th align="left">{t('Serial')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -613,22 +613,22 @@ function TransfersPage() {
                         <td>{unit.serialNumber || '—'}</td>
                       </tr>
                     ))}
-                    {!serializedLoading && serializedUnits.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>No available serialized units</td></tr>}
-                    {serializedLoading && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>Loading serialized units…</td></tr>}
+                    {!serializedLoading && serializedUnits.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>{t('No available serialized units')}</td></tr>}
+                    {serializedLoading && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>{t('Loading serialized units…')}</td></tr>}
                   </tbody>
                 </table>
               </div>
             </div>
           )}
           <div style={{ marginTop: 12 }}>
-            <div className="field-label">Items In This Request</div>
+            <div className="field-label">{t('Items In This Request')}</div>
             <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
-                  <th align="left">Product</th>
-                  <th align="left">Qty</th>
-                  <th align="left">Units</th>
+                  <th align="left">{t('Product')}</th>
+                  <th align="left">{t('Qty')}</th>
+                  <th align="left">{t('Units')}</th>
                   <th align="left"></th>
                 </tr>
               </thead>
@@ -640,11 +640,11 @@ function TransfersPage() {
                       <td>{product?.name || item.productId}</td>
                       <td>{item.qty}</td>
                       <td>{Array.isArray(item.unitIds) && item.unitIds.length > 0 ? item.unitIds.length : '—'}</td>
-                      <td><button className="btn" onClick={() => removeItem(item.lineId)}>Remove</button></td>
+                      <td><button className="btn" onClick={() => removeItem(item.lineId)}>{t('Remove')}</button></td>
                     </tr>
                   );
                 })}
-                {items.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No items added yet. You can still submit a single item.</td></tr>}
+                {items.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>{t('No items added yet. You can still submit a single item.')}</td></tr>}
               </tbody>
             </table>
             </div>
@@ -654,13 +654,13 @@ function TransfersPage() {
       {tab === 'approvals' && (
         <div className="card" style={{ marginTop: 8 }}>
           <div className="approval-toolbar">
-            <h2 className="section-title" style={{ marginBottom: 8 }}>Approvals</h2>
+            <h2 className="section-title" style={{ marginBottom: 8 }}>{t('Approvals')}</h2>
             <div className="card-scroll-x">
             <div className="page-tabs">
-              <button className={statusFilter === 'pending_director' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_director')}>Pending Director</button>
-              <button className={statusFilter === 'pending_manager' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_manager')}>Pending Manager</button>
-              <button className={statusFilter === 'approved' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('approved')}>Approved</button>
-              <button className={statusFilter === 'rejected' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('rejected')}>Rejected</button>
+              <button className={statusFilter === 'pending_director' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_director')}>{t('Pending Director')}</button>
+              <button className={statusFilter === 'pending_manager' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_manager')}>{t('Pending Manager')}</button>
+              <button className={statusFilter === 'approved' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('approved')}>{t('Approved')}</button>
+              <button className={statusFilter === 'rejected' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('rejected')}>{t('Rejected')}</button>
             </div>
             </div>
           </div>
@@ -668,15 +668,15 @@ function TransfersPage() {
           <table className="table">
             <thead>
               <tr>
-                <th align="left">Product</th>
-                <th align="left">From</th>
-                <th align="left">To</th>
-                <th align="left">Qty</th>
+                <th align="left">{t('Product')}</th>
+                <th align="left">{t('From')}</th>
+                <th align="left">{t('To')}</th>
+                <th align="left">{t('Qty')}</th>
                 <th align="left"></th>
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading transfers" /></td></tr>}
+              {loading && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}><LoadingDots label={t('Loading transfers')} /></td></tr>}
               {!loading && pendingRequests.map(r => {
                 const p = products.find(x => x.id === r.productId);
                 const fromLabel = byId.get(r.fromBranchId || r.from) || r.fromBranchId || r.from;
@@ -684,10 +684,10 @@ function TransfersPage() {
                 const qtyValue = Number(r.qty || r.baseUnits || 0);
                 const transferKind = String(r.approvalMode || '') === 'workflow'
                   ? (String(r.fromInventoryType || '').toLowerCase() === 'wholesale' || String(r.toInventoryType || '').toLowerCase() === 'wholesale'
-                    ? 'Wholesale Incoming'
-                    : 'Retail Transfer')
-                  : 'Retail Transfer';
-                const title = String(r.transactionTitle || '').trim() || (Array.isArray(r.items) && r.items.length > 1 ? `${p?.name || r.productId} +${r.items.length - 1} more` : (p?.name || r.productId));
+                    ? t('Wholesale Incoming')
+                    : t('Retail Transfer'))
+                  : t('Retail Transfer');
+                const title = String(r.transactionTitle || '').trim() || (Array.isArray(r.items) && r.items.length > 1 ? `${p?.name || r.productId} +${r.items.length - 1} ${t('more')}` : (p?.name || r.productId));
                 const canAct = String(r.approvalMode || '') === 'workflow'
                   ? ((String(r.status || '') === 'pending_director' && canWorkflowDirector) || (String(r.status || '') === 'pending_manager' && canWorkflowManager))
                   : canApprove;
@@ -696,19 +696,19 @@ function TransfersPage() {
                     <td>{title}</td>
                     <td>
                       <div style={{ display: 'grid', gap: 4 }}>
-                        <span>{fromLabel}{r.fromInventoryType ? ` (${r.fromInventoryType})` : ''}</span>
-                        <span style={{ display: 'inline-flex', width: 'fit-content', padding: '2px 8px', borderRadius: 999, background: transferKind === 'Wholesale Incoming' ? '#dbeafe' : '#dcfce7', color: transferKind === 'Wholesale Incoming' ? '#1d4ed8' : '#166534', fontSize: 11, fontWeight: 700 }}>
+                        <span>{fromLabel}{r.fromInventoryType ? ` (${t(r.fromInventoryType)})` : ''}</span>
+                        <span style={{ display: 'inline-flex', width: 'fit-content', padding: '2px 8px', borderRadius: 999, background: transferKind === t('Wholesale Incoming') ? '#dbeafe' : '#dcfce7', color: transferKind === t('Wholesale Incoming') ? '#1d4ed8' : '#166534', fontSize: 11, fontWeight: 700 }}>
                           {transferKind}
                         </span>
                       </div>
                     </td>
-                    <td>{toLabel}{r.toInventoryType ? ` (${r.toInventoryType})` : ''}</td>
+                    <td>{toLabel}{r.toInventoryType ? ` (${t(r.toInventoryType)})` : ''}</td>
                     <td>{qtyValue}</td>
                     <td>
                       {(r.status === 'pending_approval' || r.status === 'pending_manager' || r.status === 'pending_director') ? (
                         <div className="approval-row-actions">
-                          <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={!canAct || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? 'Working…' : 'Approve'}</button>
-                          <button className="btn" onClick={(e) => { e.stopPropagation(); reject(r); }} disabled={!canAct || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? 'Working…' : 'Reject'}</button>
+                          <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={!canAct || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? t('Working…') : t('Approve')}</button>
+                          <button className="btn" onClick={(e) => { e.stopPropagation(); reject(r); }} disabled={!canAct || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? t('Working…') : t('Reject')}</button>
                         </div>
                       ) : (
                         <span className={`status-pill ${r.status === 'approved' ? 'status-pill-approved' : 'status-pill-rejected'}`}>{r.status}</span>
@@ -717,7 +717,7 @@ function TransfersPage() {
                   </tr>
                 );
               })}
-              {!loading && pendingRequests.length === 0 && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>No items</td></tr>}
+              {!loading && pendingRequests.length === 0 && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>{t('No items')}</td></tr>}
             </tbody>
           </table>
           </div>
@@ -727,38 +727,38 @@ function TransfersPage() {
         <div className="card-scroll-x">
         <div className="record-filters">
           <label>
-            <div className="field-label">Period</div>
+            <div className="field-label">{t('Period')}</div>
             <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
               <option value="range">{t('Custom Range')}</option>
               <option value="all_time">{t('All Time')}</option>
             </select>
           </label>
           <label>
-            <div className="field-label">From</div>
+            <div className="field-label">{t('From')}</div>
             <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
-            <div className="field-label">To</div>
+            <div className="field-label">{t('To')}</div>
             <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
           <label>
-            <div className="field-label">Actor</div>
+            <div className="field-label">{t('Actor')}</div>
             <select className="select" value={fActor} onChange={e => setFActor(e.target.value)}>
-              <option value="">All</option>
+              <option value="">{t('All')}</option>
               {actors.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </label>
           <label>
-            <div className="field-label">From Branch</div>
+            <div className="field-label">{t('From Branch')}</div>
             <select className="select" value={fFrom} onChange={e => setFFrom(e.target.value)}>
-              <option value="">All</option>
+              <option value="">{t('All')}</option>
               {branchOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </label>
           <label>
-            <div className="field-label">To Branch</div>
+            <div className="field-label">{t('To Branch')}</div>
             <select className="select" value={fTo} onChange={e => setFTo(e.target.value)}>
-              <option value="">All</option>
+              <option value="">{t('All')}</option>
               {branchOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </label>
@@ -768,13 +768,13 @@ function TransfersPage() {
             {canDeleteRecords && (
               <>
                 <select className="select" value={bulkAction} onChange={e => setBulkAction(e.target.value)} style={{ width: 180 }} disabled={bulkDeleting}>
-                  <option value="">Actions</option>
-                  <option value="delete">Delete Selected</option>
+                  <option value="">{t('Actions')}</option>
+                  <option value="delete">{t('Delete Selected')}</option>
                 </select>
                 <button className="btn" disabled={bulkDeleting || bulkAction !== 'delete' || selectedRecordIds.length === 0} onClick={() => void deleteSelectedRecords()}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                     {bulkDeleting && <InlineSpinner />}
-                    {bulkDeleting ? 'Deleting…' : 'Apply'}
+                    {bulkDeleting ? t('Deleting…') : t('Apply')}
                   </span>
                 </button>
               </>
@@ -787,12 +787,12 @@ function TransfersPage() {
         <table className="table">
           <thead>
             <tr>
-              <th align="left">Timestamp</th>
-              <th align="left">Actor</th>
-              <th align="left">Product</th>
-              <th align="left">From → To</th>
-              <th align="left">Qty</th>
-              <th align="left">Remark</th>
+              <th align="left">{t('Timestamp')}</th>
+              <th align="left">{t('Actor')}</th>
+              <th align="left">{t('Product')}</th>
+              <th align="left">{t('From → To')}</th>
+              <th align="left">{t('Qty')}</th>
+              <th align="left">{t('Remark')}</th>
               {canDeleteRecords && (
                 <th align="left">
                   <input
@@ -833,19 +833,19 @@ function TransfersPage() {
               );
             })}
             {transfers.length === 0 && (
-              <tr><td colSpan={canDeleteRecords ? 7 : 6} style={{ padding: 12, color: '#64748b' }}>No transfers yet</td></tr>
+              <tr><td colSpan={canDeleteRecords ? 7 : 6} style={{ padding: 12, color: '#64748b' }}>{t('No transfers yet')}</td></tr>
             )}
           </tbody>
         </table>
         </div>
         <div className="pagination-row">
           <div className="pagination-controls">
-            <button className="btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>Prev</button>
-            <span className="table-meta">Page {page} of {Math.max(1, Math.ceil(transfers.length / pageSize))}</span>
-            <button className="btn" onClick={() => setPage(p => Math.min(Math.max(1, Math.ceil(transfers.length / pageSize)), p + 1))} disabled={page >= Math.max(1, Math.ceil(transfers.length / pageSize))}>Next</button>
+            <button className="btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>{t('Prev')}</button>
+            <span className="table-meta">{t('Page')} {page} {t('of')} {Math.max(1, Math.ceil(transfers.length / pageSize))}</span>
+            <button className="btn" onClick={() => setPage(p => Math.min(Math.max(1, Math.ceil(transfers.length / pageSize)), p + 1))} disabled={page >= Math.max(1, Math.ceil(transfers.length / pageSize))}>{t('Next')}</button>
           </div>
           <label>
-            <span className="field-label" style={{ marginBottom: 0, marginRight: 6 }}>Rows</span>
+            <span className="field-label" style={{ marginBottom: 0, marginRight: 6 }}>{t('Rows')}</span>
             <select className="select" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}>
               <option value={10}>10</option>
               <option value={25}>25</option>
@@ -858,7 +858,7 @@ function TransfersPage() {
       {detail && (
         <Modal title={t('Transfer Details')} onClose={() => setDetail(null)} footer={
           <>
-            <button className="btn" onClick={() => setDetail(null)}>Close</button>
+            <button className="btn" onClick={() => setDetail(null)}>{t('Close')}</button>
             {(() => {
               const canAct = String(detail.approvalMode || '') === 'workflow'
                 ? ((String(detail.status || '') === 'pending_director' && canWorkflowDirector) || (String(detail.status || '') === 'pending_manager' && canWorkflowManager))
@@ -866,41 +866,41 @@ function TransfersPage() {
               if (!canAct) return null;
               return (
                 <>
-                  <button className="btn" onClick={async () => { await reject(detail); setDetail(null); }} disabled={busyId === (detail._id || detail.clientId)}>Reject</button>
-                  <button className="btn btn-primary" onClick={async () => { await approve(detail); setDetail(null); }} disabled={busyId === (detail._id || detail.clientId)}>{busyId === (detail._id || detail.clientId) ? 'Working…' : 'Approve'}</button>
+                  <button className="btn" onClick={async () => { await reject(detail); setDetail(null); }} disabled={busyId === (detail._id || detail.clientId)}>{t('Reject')}</button>
+                  <button className="btn btn-primary" onClick={async () => { await approve(detail); setDetail(null); }} disabled={busyId === (detail._id || detail.clientId)}>{busyId === (detail._id || detail.clientId) ? t('Working…') : t('Approve')}</button>
                 </>
               );
             })()}
           </>
         }>
           <div className="detail-grid">
-            <div className="detail-field"><div className="detail-label">Status</div><div className="detail-value"><span className={`status-pill ${detail.status === 'approved' ? 'status-pill-approved' : detail.status === 'rejected' ? 'status-pill-rejected' : 'status-pill-pending'}`}>{detail.status}</span></div></div>
-            <div className="detail-field"><div className="detail-label">Title</div><div className="detail-value">{detail.transactionTitle || '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">Product</div><div className="detail-value">{products.find(p => p.id === detail.productId)?.name || detail.productId}</div></div>
-            {detail.variantId ? <div className="detail-field"><div className="detail-label">Variant</div><div className="detail-value">{(products.find(p => p.id === detail.productId)?.variants || []).find(v => v.id === detail.variantId)?.label || detail.variantId}</div></div> : null}
-            <div className="detail-field"><div className="detail-label">From</div><div className="detail-value">{byId.get(detail.fromBranchId || detail.from) || detail.fromBranchId || detail.from}</div></div>
-            <div className="detail-field"><div className="detail-label">To</div><div className="detail-value">{byId.get(detail.toBranchId || detail.to) || detail.toBranchId || detail.to}</div></div>
-            <div className="detail-field"><div className="detail-label">From Inventory</div><div className="detail-value">{detail.fromInventoryType || 'retail'}</div></div>
-            <div className="detail-field"><div className="detail-label">To Inventory</div><div className="detail-value">{detail.toInventoryType || detail.fromInventoryType || 'retail'}</div></div>
-            <div className="detail-field"><div className="detail-label">Qty</div><div className="detail-value">{detail.qty || detail.baseUnits}</div></div>
-            <div className="detail-field"><div className="detail-label">Initiator</div><div className="detail-value">{detail.initiatedByName || detail.initiatorName} {(detail.initiatedByRole || detail.initiatorRole) ? `(${detail.initiatedByRole || detail.initiatorRole})` : ''}</div></div>
-            <div className="detail-field"><div className="detail-label">Initiation Remark</div><div className="detail-value">{detail.remark || '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">Approver</div><div className="detail-value">{detail.approverName ? `${detail.approverName}${detail.approverRole ? ` (${detail.approverRole})` : ''}` : '—'}</div></div>
-            {detail.status === 'approved' && <div className="detail-field"><div className="detail-label">Approval Remark</div><div className="detail-value">{detail.approvalRemark || '—'}</div></div>}
-            {detail.status === 'rejected' && <div className="detail-field"><div className="detail-label">Rejection Remark</div><div className="detail-value">{detail.rejectionRemark || '—'}</div></div>}
-            <div className="detail-field"><div className="detail-label">Created</div><div className="detail-value">{detail.createdAt ? new Date(detail.createdAt).toLocaleString() : '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">Updated</div><div className="detail-value">{detail.updatedAt ? new Date(detail.updatedAt).toLocaleString() : '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('Status')}</div><div className="detail-value"><span className={`status-pill ${detail.status === 'approved' ? 'status-pill-approved' : detail.status === 'rejected' ? 'status-pill-rejected' : 'status-pill-pending'}`}>{detail.status}</span></div></div>
+            <div className="detail-field"><div className="detail-label">{t('Title')}</div><div className="detail-value">{detail.transactionTitle || '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('Product')}</div><div className="detail-value">{products.find(p => p.id === detail.productId)?.name || detail.productId}</div></div>
+            {detail.variantId ? <div className="detail-field"><div className="detail-label">{t('Variant')}</div><div className="detail-value">{(products.find(p => p.id === detail.productId)?.variants || []).find(v => v.id === detail.variantId)?.label || detail.variantId}</div></div> : null}
+            <div className="detail-field"><div className="detail-label">{t('From')}</div><div className="detail-value">{byId.get(detail.fromBranchId || detail.from) || detail.fromBranchId || detail.from}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('To')}</div><div className="detail-value">{byId.get(detail.toBranchId || detail.to) || detail.toBranchId || detail.to}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('From Inventory')}</div><div className="detail-value">{t(detail.fromInventoryType || 'retail')}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('To Inventory')}</div><div className="detail-value">{t(detail.toInventoryType || detail.fromInventoryType || 'retail')}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('Qty')}</div><div className="detail-value">{detail.qty || detail.baseUnits}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('Initiator')}</div><div className="detail-value">{detail.initiatedByName || detail.initiatorName} {(detail.initiatedByRole || detail.initiatorRole) ? `(${detail.initiatedByRole || detail.initiatorRole})` : ''}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('Initiation Remark')}</div><div className="detail-value">{detail.remark || '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('Approver')}</div><div className="detail-value">{detail.approverName ? `${detail.approverName}${detail.approverRole ? ` (${detail.approverRole})` : ''}` : '—'}</div></div>
+            {detail.status === 'approved' && <div className="detail-field"><div className="detail-label">{t('Approval Remark')}</div><div className="detail-value">{detail.approvalRemark || '—'}</div></div>}
+            {detail.status === 'rejected' && <div className="detail-field"><div className="detail-label">{t('Rejection Remark')}</div><div className="detail-value">{detail.rejectionRemark || '—'}</div></div>}
+            <div className="detail-field"><div className="detail-label">{t('Created')}</div><div className="detail-value">{detail.createdAt ? new Date(detail.createdAt).toLocaleString() : '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('Updated')}</div><div className="detail-value">{detail.updatedAt ? new Date(detail.updatedAt).toLocaleString() : '—'}</div></div>
           </div>
           {Array.isArray(detail.items) && detail.items.length > 0 && (
             <div style={{ marginTop: 12 }}>
-              <div className="field-label">Request Items</div>
+              <div className="field-label">{t('Request Items')}</div>
               <div className="table-wrap">
               <table className="table">
                 <thead>
                   <tr>
-                    <th align="left">Product</th>
-                    <th align="left">Qty</th>
-                    <th align="left">Status</th>
+                    <th align="left">{t('Product')}</th>
+                    <th align="left">{t('Qty')}</th>
+                    <th align="left">{t('Status')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -917,7 +917,7 @@ function TransfersPage() {
                           )}
                         </td>
                         <td>{item.qty}</td>
-                        <td>{item.status || 'accepted'}</td>
+                        <td>{item.status || t('accepted')}</td>
                       </tr>
                     );
                   })}
@@ -929,16 +929,16 @@ function TransfersPage() {
         </Modal>
       )}
       {auditDetail && (
-        <Modal title="Transfer Record" onClose={() => setAuditDetail(null)}>
+        <Modal title={t('Transfer Record')} onClose={() => setAuditDetail(null)}>
           <div className="detail-grid">
-            <div className="detail-field"><div className="detail-label">Timestamp</div><div className="detail-value">{auditDetail.ts ? new Date(auditDetail.ts).toLocaleString() : '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">Actor</div><div className="detail-value">{auditDetail.actor || '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">Product</div><div className="detail-value">{(auditDetail.details || {}).product || '—'}</div></div>
-            {(auditDetail.details || {}).variant ? <div className="detail-field"><div className="detail-label">Variant</div><div className="detail-value">{(auditDetail.details || {}).variant}</div></div> : null}
-            <div className="detail-field"><div className="detail-label">From</div><div className="detail-value">{byId.get((auditDetail.details || {}).from) || (auditDetail.details || {}).from || '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">To</div><div className="detail-value">{byId.get((auditDetail.details || {}).to) || (auditDetail.details || {}).to || '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">Qty</div><div className="detail-value">{(auditDetail.details || {}).qty ?? '—'}</div></div>
-            <div className="detail-field detail-field-full"><div className="detail-label">Remark</div><div className="detail-value">{auditDetail.remark || '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('Timestamp')}</div><div className="detail-value">{auditDetail.ts ? new Date(auditDetail.ts).toLocaleString() : '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('Actor')}</div><div className="detail-value">{auditDetail.actor || '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('Product')}</div><div className="detail-value">{(auditDetail.details || {}).product || '—'}</div></div>
+            {(auditDetail.details || {}).variant ? <div className="detail-field"><div className="detail-label">{t('Variant')}</div><div className="detail-value">{(auditDetail.details || {}).variant}</div></div> : null}
+            <div className="detail-field"><div className="detail-label">{t('From')}</div><div className="detail-value">{byId.get((auditDetail.details || {}).from) || (auditDetail.details || {}).from || '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('To')}</div><div className="detail-value">{byId.get((auditDetail.details || {}).to) || (auditDetail.details || {}).to || '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('Qty')}</div><div className="detail-value">{(auditDetail.details || {}).qty ?? '—'}</div></div>
+            <div className="detail-field detail-field-full"><div className="detail-label">{t('Remark')}</div><div className="detail-value">{auditDetail.remark || '—'}</div></div>
           </div>
         </Modal>
       )}
