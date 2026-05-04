@@ -286,7 +286,7 @@ function AdjustmentsPage() {
         });
       } catch (e) {
         if (!alive) return;
-        toast.show(String(e?.message || 'Failed to load serialized units'), { type: 'error' });
+      toast.show(String(e?.message || t('Failed to load serialized units')), { type: 'error' });
         setSerializedUnits([]);
       } finally {
         if (alive) setSerializedLoading(false);
@@ -294,7 +294,7 @@ function AdjustmentsPage() {
     }
     run();
     return () => { alive = false; };
-  }, [branchId, productId, selectedTrackType, serializedAdjustmentMode, serializedEntries.length, serializedUnitsQuery, toast, variantId]);
+  }, [branchId, productId, selectedTrackType, serializedAdjustmentMode, serializedEntries.length, serializedUnitsQuery, toast, variantId, t]);
 
   function appendSerializedEntry(value) {
     const text = String(value || '').trim();
@@ -304,7 +304,7 @@ function AdjustmentsPage() {
       const first = line.split(/[,\t|]/).map(part => part.trim()).filter(Boolean)[0] || '';
       return first === text;
     })) {
-      toast.show('This IMEI is already in the entry list', { type: 'error' });
+      toast.show(t('This IMEI is already in the entry list'), { type: 'error' });
       return;
     }
     setSerializedEntriesText(prev => prev ? `${prev}\n${text}` : text);
@@ -338,27 +338,27 @@ function AdjustmentsPage() {
 
   function onExportCsv() {
     const headers = [
-      { key: 'ts', label: 'Timestamp', value: r => new Date(r.ts).toLocaleString() },
-      { key: 'actor', label: 'Actor' },
-      { key: 'product', label: 'Product' },
-      { key: 'variant', label: 'Variant' },
-      { key: 'branch', label: 'Branch', value: r => byId.get(r.branchId) || r.branchId || '' },
-      { key: 'delta', label: 'Delta' },
-      { key: 'type', label: 'Type' },
-      { key: 'remark', label: 'Remark' }
+      { key: 'ts', label: t('Timestamp'), value: r => new Date(r.ts).toLocaleString() },
+      { key: 'actor', label: t('Actor') },
+      { key: 'product', label: t('Product') },
+      { key: 'variant', label: t('Variant') },
+      { key: 'branch', label: t('Branch'), value: r => byId.get(r.branchId) || r.branchId || '' },
+      { key: 'delta', label: t('Delta') },
+      { key: 'type', label: t('Type') },
+      { key: 'remark', label: t('Remark') }
     ];
     exportCsv('adjustments.csv', headers, rows);
   }
   function onExportPdf() {
     const headers = [
-      { key: 'ts', label: 'Timestamp', value: r => new Date(r.ts).toLocaleString() },
-      { key: 'actor', label: 'Actor' },
-      { key: 'product', label: 'Product' },
-      { key: 'variant', label: 'Variant' },
-      { key: 'branch', label: 'Branch', value: r => byId.get(r.branchId) || r.branchId || '' },
-      { key: 'delta', label: 'Delta' },
-      { key: 'type', label: 'Type' },
-      { key: 'remark', label: 'Remark' }
+      { key: 'ts', label: t('Timestamp'), value: r => new Date(r.ts).toLocaleString() },
+      { key: 'actor', label: t('Actor') },
+      { key: 'product', label: t('Product') },
+      { key: 'variant', label: t('Variant') },
+      { key: 'branch', label: t('Branch'), value: r => byId.get(r.branchId) || r.branchId || '' },
+      { key: 'delta', label: t('Delta') },
+      { key: 'type', label: t('Type') },
+      { key: 'remark', label: t('Remark') }
     ];
     exportTablePdf(t('Adjustments'), headers, rows);
   }
@@ -366,7 +366,7 @@ function AdjustmentsPage() {
   async function adjust() {
     if (savingAdjust) return;
     if (!canAdjust) {
-      toast.show('Not authorized to adjust stock', { type: 'error' });
+      toast.show(t('Not authorized to adjust stock'), { type: 'error' });
       return false;
     }
     const current = (() => {
@@ -413,51 +413,51 @@ function AdjustmentsPage() {
       }] : undefined)
     };
     if (!nextItems && !productId) {
-      toast.show('Select a product', { type: 'error' });
+      toast.show(t('Select a product'), { type: 'error' });
       return false;
     }
     if (!nextItems && (!Number.isFinite(Number(quantity)) || Number(quantity) <= 0) && selectedTrackType !== 'serialized') {
-      toast.show('Quantity must be greater than zero', { type: 'error' });
+      toast.show(t('Quantity must be greater than zero'), { type: 'error' });
       return false;
     }
     if (!nextItems && !createBranchId) {
-      toast.show('Select a branch', { type: 'error' });
+      toast.show(t('Select a branch'), { type: 'error' });
       return false;
     }
     if (!nextItems && !reason.trim()) {
-      toast.show('Reason is required', { type: 'error' });
+      toast.show(t('Reason is required'), { type: 'error' });
       return false;
     }
     if (!nextItems && selectedTrackType === 'serialized' && serializedAdjustmentMode === 'increase' && serializedEntries.length <= 0) {
-      toast.show('Scan or enter IMEI numbers to add serialized stock', { type: 'error' });
+      toast.show(t('Scan or enter IMEI numbers to add serialized stock'), { type: 'error' });
       return false;
     }
     if (!nextItems && selectedTrackType === 'serialized' && serializedAdjustmentMode === 'decrease' && serializedUnits.filter(unit => unit.selected).length <= 0) {
-      toast.show('Select serialized units to remove', { type: 'error' });
+      toast.show(t('Select serialized units to remove'), { type: 'error' });
       return false;
     }
     if (!nextItems && Number(effectiveDelta) < 0) {
       const toRemove = Math.abs(Number(effectiveDelta));
       if (toRemove > current) {
-        toast.show(`Cannot remove more than available stock (${current})`, { type: 'error' });
+        toast.show(t('Cannot remove more than available stock ({count})', { count: current }), { type: 'error' });
         return false;
       }
     }
     if (!remark || !remark.trim()) {
-      toast.show('Remark is required for adjustments', { type: 'error' });
+      toast.show(t('Remark is required for adjustments'), { type: 'error' });
       return false;
     }
     setSavingAdjust(true);
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) {
-        toast.show('Offline: cannot submit request', { type: 'error' });
+        toast.show(t('Offline: cannot submit request'), { type: 'error' });
         setSavingAdjust(false);
         return false;
       }
       try {
         await enqueueHttp({ collection: 'adjustmentrequests', label: 'Adjustment request', path: '/api/adjustments/requests', method: 'POST', body: payload });
       } catch (e) {
-        toast.show(String(e?.message || 'Failed to save offline'), { type: 'error' });
+        toast.show(String(e?.message || t('Failed to save offline')), { type: 'error' });
         setSavingAdjust(false);
         return false;
       }
@@ -465,7 +465,7 @@ function AdjustmentsPage() {
       try {
         await adjustmentsApi.createRequest(payload);
       } catch (e) {
-        toast.show(String(e?.message || 'Failed to submit request'), { type: 'error' });
+        toast.show(String(e?.message || t('Failed to submit request')), { type: 'error' });
         setSavingAdjust(false);
         return false;
       }
@@ -482,34 +482,34 @@ function AdjustmentsPage() {
     setSerializedEntriesText('');
     setSerializedScanInput('');
     setSerializedUnits([]);
-    toast.show(navigator.onLine ? 'Adjustment request submitted for approval' : 'Saved offline. Will sync when online.', { type: 'success' });
+    toast.show(navigator.onLine ? t('Adjustment request submitted for approval') : t('Saved offline. Will sync when online.'), { type: 'success' });
     setSavingAdjust(false);
     return true;
   }
 
   function addCurrentItem() {
     if (!productId) {
-      toast.show('Select a product', { type: 'error' });
+      toast.show(t('Select a product'), { type: 'error' });
       return;
     }
     if ((!Number.isFinite(Number(quantity)) || Number(quantity) <= 0) && selectedTrackType !== 'serialized') {
-      toast.show('Quantity must be greater than zero', { type: 'error' });
+      toast.show(t('Quantity must be greater than zero'), { type: 'error' });
       return;
     }
     if (!createBranchId) {
-      toast.show('Select a branch', { type: 'error' });
+      toast.show(t('Select a branch'), { type: 'error' });
       return;
     }
     if (!reason.trim()) {
-      toast.show('Reason is required', { type: 'error' });
+      toast.show(t('Reason is required'), { type: 'error' });
       return;
     }
     if (selectedTrackType === 'serialized' && serializedAdjustmentMode === 'increase' && serializedEntries.length <= 0) {
-      toast.show('Scan or enter IMEI numbers to add serialized stock', { type: 'error' });
+      toast.show(t('Scan or enter IMEI numbers to add serialized stock'), { type: 'error' });
       return;
     }
     if (selectedTrackType === 'serialized' && serializedAdjustmentMode === 'decrease' && serializedUnits.filter(unit => unit.selected).length <= 0) {
-      toast.show('Select serialized units to remove', { type: 'error' });
+      toast.show(t('Select serialized units to remove'), { type: 'error' });
       return;
     }
     setItems(prev => [...prev, {
@@ -559,31 +559,31 @@ function AdjustmentsPage() {
         </div>
       </div>
       <div className="page-tabs">
-        <button className={tab === 'initiate' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('initiate')}>Initiate</button>
-        <button className={tab === 'approvals' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('approvals')} disabled={!canApprove}>Approvals</button>
+        <button className={tab === 'initiate' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('initiate')}>{t('Initiate')}</button>
+        <button className={tab === 'approvals' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('approvals')} disabled={!canApprove}>{t('Approvals')}</button>
       </div>
       <div className="stats-grid">
-        <div className="card stat-card"><div className="stat-label">Adjustment Records</div><div className="stat-value">{summary.records}</div></div>
-        <div className="card stat-card"><div className="stat-label">Total Units Adjusted</div><div className="stat-value">{summary.totalDelta}</div></div>
-        <div className="card stat-card"><div className="stat-label">Increases</div><div className="stat-value">{summary.increaseCount}</div></div>
-        <div className="card stat-card"><div className="stat-label">Decreases</div><div className="stat-value">{summary.decreaseCount}</div></div>
-        <div className="card stat-card"><div className="stat-label">Products</div><div className="stat-value">{summary.products}</div></div>
+        <div className="card stat-card"><div className="stat-label">{t('Adjustment Records')}</div><div className="stat-value">{summary.records}</div></div>
+        <div className="card stat-card"><div className="stat-label">{t('Total Units Adjusted')}</div><div className="stat-value">{summary.totalDelta}</div></div>
+        <div className="card stat-card"><div className="stat-label">{t('Increases')}</div><div className="stat-value">{summary.increaseCount}</div></div>
+        <div className="card stat-card"><div className="stat-label">{t('Decreases')}</div><div className="stat-value">{summary.decreaseCount}</div></div>
+        <div className="card stat-card"><div className="stat-label">{t('Products')}</div><div className="stat-value">{summary.products}</div></div>
       </div>
       {openModal && (
         <Modal title={t('Add Adjustment')} onClose={() => setOpenModal(false)} footer={
           <>
-            <button className="btn" onClick={() => setOpenModal(false)}>Cancel</button>
-            <button className="btn" onClick={addCurrentItem}>Add To List</button>
+            <button className="btn" onClick={() => setOpenModal(false)}>{t('Cancel')}</button>
+            <button className="btn" onClick={addCurrentItem}>{t('Add To List')}</button>
             <button className="btn btn-primary" onClick={async () => { const ok = await adjust(); if (ok) setOpenModal(false); }} disabled={!canAdjust || savingAdjust}>
               <svg viewBox="0 0 24 24" fill="none"><path d="M12 6v12M6 12h12" stroke="currentColor" strokeWidth="2"/></svg>
-              {savingAdjust ? 'Saving…' : 'Submit For Approval'}
+              {savingAdjust ? t('Saving…') : t('Submit For Approval')}
             </button>
           </>
         }>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
             <div style={{ gridColumn: '1 / -1' }}>
               <ProductLiveSearchField
-                label="Product"
+                label={t('Product')}
                 query={productQuery}
                 onQueryChange={(value) => {
                   setProductQuery(value);
@@ -604,9 +604,9 @@ function AdjustmentsPage() {
             </div>
             {(selectedProduct?.variants || []).length > 0 && (
               <label>
-                <div className="field-label">Variant</div>
+                <div className="field-label">{t('Variant')}</div>
                 <select className="select" value={variantId} onChange={e => setVariantId(e.target.value)} style={{ minWidth: 180 }}>
-                  <option value="">Base</option>
+                  <option value="">{t('Base')}</option>
                   {(selectedProduct?.variants || []).map(v => (
                     <option key={v.id} value={v.id}>{v.label}</option>
                   ))}
@@ -614,7 +614,7 @@ function AdjustmentsPage() {
               </label>
             )}
             <label>
-              <div className="field-label">Branch</div>
+              <div className="field-label">{t('Branch')}</div>
               <select className="select" value={createBranchId} onChange={e => setBranchId(e.target.value)} style={{ width: '100%' }}>
                 {retailBranches.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
               </select>
@@ -622,7 +622,7 @@ function AdjustmentsPage() {
             {selectedTrackType !== 'serialized' ? (
               <>
                 <label>
-                  <div className="field-label">Quantity</div>
+                  <div className="field-label">{t('Quantity')}</div>
                   <input
                     className="input"
                     type="number"
@@ -630,20 +630,20 @@ function AdjustmentsPage() {
                     step="1"
                     value={quantity}
                     onChange={e => setQuantity(Number(e.target.value))}
-                    placeholder="Quantity"
+                    placeholder={t('Quantity')}
                   />
                 </label>
                 <label>
-                  <div className="field-label">Adjustment Type</div>
+                  <div className="field-label">{t('Adjustment Type')}</div>
                   <select className="select" value={adjustmentType} onChange={e => setAdjustmentType(e.target.value)}>
-                    <option value="increase">Increase</option>
-                    <option value="decrease">Decrease</option>
+                    <option value="increase">{t('Increase')}</option>
+                    <option value="decrease">{t('Decrease')}</option>
                   </select>
                 </label>
               </>
             ) : (
               <label>
-                <div className="field-label">Delta</div>
+                <div className="field-label">{t('Delta')}</div>
                 <input className="input" type="number" value={delta} readOnly disabled />
               </label>
             )}
@@ -661,17 +661,17 @@ function AdjustmentsPage() {
                   <>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <button type="button" className={serializedBatchMode ? 'btn btn-primary' : 'btn'} onClick={() => { setSerializedBatchMode(v => !v); setTimeout(() => { try { serializedScanInputRef.current?.focus(); } catch {} }, 0); }}>
-                        {serializedBatchMode ? 'Batch Mode On' : 'Batch Mode Off'}
+                        {serializedBatchMode ? t('Batch Mode On') : t('Batch Mode Off')}
                       </button>
                       <button type="button" className="btn" onClick={() => setSerializedCameraOpen(true)}>
-                        Camera Scan
+                        {t('Camera Scan')}
                       </button>
                     </div>
                     <input
                       ref={serializedScanInputRef}
                       className="input"
                       autoFocus
-                      placeholder="Scan IMEI barcode or type and press Enter"
+                      placeholder={t('Scan IMEI barcode or type and press Enter')}
                       value={serializedScanInput}
                       onChange={e => setSerializedScanInput(e.target.value)}
                       onKeyDown={e => {
@@ -682,20 +682,20 @@ function AdjustmentsPage() {
                       }}
                       style={{ color: '#111827', background: '#ffffff' }}
                     />
-                    <textarea className="input" rows={6} value={serializedEntriesText} onChange={e => setSerializedEntriesText(e.target.value)} placeholder={'One per line\nIMEI123456789\nIMEI987654321,SN-0002'} style={{ color: '#111827', background: '#ffffff' }} />
-                    <div style={{ color: '#64748b', fontSize: 12 }}>Delta updates automatically from scanned/entered IMEI values. Current entries: {serializedEntries.length}</div>
+                    <textarea className="input" rows={6} value={serializedEntriesText} onChange={e => setSerializedEntriesText(e.target.value)} placeholder={t('One per line\nIMEI123456789\nIMEI987654321,SN-0002')} style={{ color: '#111827', background: '#ffffff' }} />
+                    <div style={{ color: '#64748b', fontSize: 12 }}>{t('Delta updates automatically from scanned/entered IMEI values. Current entries: {count}', { count: serializedEntries.length })}</div>
                   </>
                 ) : (
                   <>
-                    <input className="input" placeholder="Search IMEI or serial number" value={serializedUnitsQuery} onChange={e => setSerializedUnitsQuery(e.target.value)} style={{ color: '#111827', background: '#ffffff' }} />
-                    <div style={{ color: '#64748b', fontSize: 12 }}>Selected: {serializedUnits.filter(unit => unit.selected).length}</div>
+                    <input className="input" placeholder={t('Search IMEI or serial number')} value={serializedUnitsQuery} onChange={e => setSerializedUnitsQuery(e.target.value)} style={{ color: '#111827', background: '#ffffff' }} />
+                    <div style={{ color: '#64748b', fontSize: 12 }}>{t('Selected: {count}', { count: serializedUnits.filter(unit => unit.selected).length })}</div>
                     <div className="table-wrap" style={{ maxHeight: 260 }}>
                       <table className="table">
                         <thead>
                           <tr>
                             <th align="left"></th>
-                            <th align="left">IMEI</th>
-                            <th align="left">Serial</th>
+                            <th align="left">{t('IMEI')}</th>
+                            <th align="left">{t('Serial')}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -716,8 +716,8 @@ function AdjustmentsPage() {
                               <td style={{ color: '#111827' }}>{unit.serialNumber || '—'}</td>
                             </tr>
                           ))}
-                          {!serializedLoading && serializedUnits.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>No available serialized units</td></tr>}
-                          {serializedLoading && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>Loading serialized units…</td></tr>}
+                          {!serializedLoading && serializedUnits.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>{t('No available serialized units')}</td></tr>}
+                          {serializedLoading && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>{t('Loading serialized units…')}</td></tr>}
                         </tbody>
                       </table>
                     </div>
@@ -726,27 +726,27 @@ function AdjustmentsPage() {
               </div>
             )}
             <label style={{ gridColumn: '1 / -1' }}>
-              <div className="field-label">Transaction Title</div>
-              <input className="input" value={transactionTitle} onChange={e => setTransactionTitle(e.target.value)} placeholder="Optional bulk adjustment title" />
+              <div className="field-label">{t('Transaction Title')}</div>
+              <input className="input" value={transactionTitle} onChange={e => setTransactionTitle(e.target.value)} placeholder={t('Optional bulk adjustment title')} />
             </label>
             <label style={{ gridColumn: '1 / -1' }}>
-              <div className="field-label">Reason</div>
-              <input className="input" value={reason} onChange={e => setReason(e.target.value)} placeholder="Reason for adjustment" />
+              <div className="field-label">{t('Reason')}</div>
+              <input className="input" value={reason} onChange={e => setReason(e.target.value)} placeholder={t('Reason for adjustment')} />
             </label>
             <label style={{ gridColumn: '1 / -1' }}>
-              <div className="field-label">Remark (required)</div>
-              <input className="input" value={remark} onChange={e => setRemark(e.target.value)} placeholder="Reason or note" />
+              <div className="field-label">{t('Remark (required)')}</div>
+              <input className="input" value={remark} onChange={e => setRemark(e.target.value)} placeholder={t('Reason or note')} />
             </label>
           </div>
           <div style={{ marginTop: 12 }}>
-            <div className="field-label">Items In This Request</div>
+            <div className="field-label">{t('Items In This Request')}</div>
             <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
-                  <th align="left">Product</th>
-                  <th align="left">Adjustment Type</th>
-                  <th align="left">Quantity</th>
+                  <th align="left">{t('Product')}</th>
+                  <th align="left">{t('Adjustment Type')}</th>
+                  <th align="left">{t('Quantity')}</th>
                   <th align="left"></th>
                 </tr>
               </thead>
@@ -771,11 +771,11 @@ function AdjustmentsPage() {
                       </td>
                       <td>{adjustment.typeLabel}</td>
                       <td>{adjustment.quantity}</td>
-                      <td><button className="btn" onClick={() => removeItem(item.lineId)}>Remove</button></td>
+                      <td><button className="btn" onClick={() => removeItem(item.lineId)}>{t('Remove')}</button></td>
                     </tr>
                   );
                 })}
-                {items.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No items added yet. You can still submit a single item.</td></tr>}
+                {items.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>{t('No items added yet. You can still submit a single item.')}</td></tr>}
               </tbody>
             </table>
             </div>
@@ -783,7 +783,7 @@ function AdjustmentsPage() {
         </Modal>
       )}
       <BarcodeScannerModal
-        title="Scan IMEI Barcode"
+        title={t('Scan IMEI Barcode')}
         open={serializedCameraOpen}
         onClose={() => setSerializedCameraOpen(false)}
         onDetected={(value) => {

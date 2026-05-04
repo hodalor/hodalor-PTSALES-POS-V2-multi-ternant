@@ -372,7 +372,7 @@ function DashboardPage() {
     const lineData = {
       labels: last30,
       datasets: [{
-        label: 'Revenue',
+        label: t('Revenue'),
         data: last30.map(d => +(perDay[d] || 0).toFixed(2)),
         fill: true,
         tension: 0.35,
@@ -422,7 +422,7 @@ function DashboardPage() {
     const topBar = {
       labels: top5.map(x => x.name),
       datasets: [{
-        label: 'Units',
+        label: t('Units'),
         data: top5.map(x => x.qty),
         backgroundColor: '#2563eb',
         borderRadius: 8,
@@ -485,7 +485,7 @@ function DashboardPage() {
     const cashierTop = cashierRows.slice(0, 6);
     const cashierBar = {
       labels: cashierTop.map((row) => (multiBranchCashierView ? `${row.branchName} • ${row.seller}` : row.seller)),
-      datasets: [{ label: 'Revenue', data: cashierTop.map((row) => +(row.revenue || 0).toFixed(2)), backgroundColor: '#14b8a6', borderRadius: 8, maxBarThickness: 22 }]
+      datasets: [{ label: t('Revenue'), data: cashierTop.map((row) => +(row.revenue || 0).toFixed(2)), backgroundColor: '#14b8a6', borderRadius: 8, maxBarThickness: 22 }]
     };
     const cashierLeaderboard = cashierRows.slice(0, 10);
     const customerRows = Array.from(customerMap.values());
@@ -501,7 +501,7 @@ function DashboardPage() {
     const topProfitProducts = Array.from(productProfit.values()).sort((a, b) => b.profit - a.profit).slice(0, 10);
 
     return { todayTotal, todayProfit, itemsSold, transactionCount: sourceSales.length, lineData, paymentBar, doughData, topBar, stackedOptions, lineOptions, barOptions, cashierBar, last30Revenue, last30Profit, last30Cost, marginPct, cashierLeaderboard, customerLeaderboardByAmount, customerLeaderboardByProducts, topProfitProducts, multiBranchCashierView };
-  }, [sales, products, branches, branchId, dateFrom, dateTo, inRange, matchBranch, matchCompetitionBranch, defaultFromIso, todayIso, periodMode, canUseScopedDashboardBranches, canViewBranchCompetitionAll, canViewCashierCompetitionAll]);
+  }, [sales, products, branches, branchId, dateFrom, dateTo, inRange, matchBranch, matchCompetitionBranch, defaultFromIso, todayIso, periodMode, canUseScopedDashboardBranches, canViewBranchCompetitionAll, canViewCashierCompetitionAll, t]);
 
   const finance = useMemo(() => {
     const expenseTotal = expenses.reduce((s, x) => s + (Number(x.amount) || 0), 0);
@@ -543,7 +543,7 @@ function DashboardPage() {
       : metrics.customerLeaderboardByAmount
   ), [customerLeaderboardMode, metrics.customerLeaderboardByAmount, metrics.customerLeaderboardByProducts]);
   const customerLeaderboardChart = useMemo(() => {
-    const label = customerLeaderboardMode === 'products' ? 'Products Bought' : 'Amount Spent';
+    const label = customerLeaderboardMode === 'products' ? t('Products Bought') : t('Amount Spent');
     return {
       labels: customerLeaderboard.map((row) => row.customerName),
       datasets: [{
@@ -556,7 +556,7 @@ function DashboardPage() {
         barPercentage: 0.8
       }]
     };
-  }, [customerLeaderboard, customerLeaderboardMode]);
+  }, [customerLeaderboard, customerLeaderboardMode, t]);
 
   const warehouseStats = useMemo(() => {
     const warehouseBranches = branches.filter(b => String(b.branchType || 'retail').toLowerCase() === 'warehouse');
@@ -921,7 +921,7 @@ function DashboardPage() {
                     label: (ctx) => {
                       const raw = ctx.parsed?.x ?? ctx.parsed?.y ?? 0;
                       if (!canViewRevenue) return '***';
-                      return `${ctx.label || 'Cashier'}: ${formatCurrency(raw, settings)}`;
+                      return `${ctx.label || t('Cashier')}: ${formatCurrency(raw, settings)}`;
                     }
                   }
                 }

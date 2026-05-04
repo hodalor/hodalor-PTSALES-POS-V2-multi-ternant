@@ -1538,12 +1538,11 @@ function PosPage({ mode = 'retail' }) {
               <div style={{ display: 'grid', gap: 8 }}>
                 <div style={{ color: easyBuyBlockedItem ? '#b91c1c' : '#64748b', fontSize: 12 }}>
                   {easyBuyBlockedItem
-                    ? `${easyBuyBlockedItem.name} does not allow ${creditModeLabel.toLowerCase()}`
-                    : `Minimum upfront: ${formatCurrency(easyBuyMinimum, settings)}${customerMaxCreditLimit > 0 ? ` • Limit: ${formatCurrency(customerMaxCreditLimit, settings)}` : ''}`}
+                    ? `${easyBuyBlockedItem.name} ${t('does not allow')} ${creditModeLabel.toLowerCase()}`
+                    : `${t('Minimum upfront')}: ${formatCurrency(easyBuyMinimum, settings)}${customerMaxCreditLimit > 0 ? ` • ${t('Limit')}: ${formatCurrency(customerMaxCreditLimit, settings)}` : ''}`}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <label>
-                    <div style={{ marginBottom: 6, color: '#64748b' }}>Amount paid now</div>
                     <div style={{ marginBottom: 6, color: '#64748b' }}>{t('Amount paid now')}</div>
                     <input className="input" type="number" min="0" value={easyBuyAmountPaidNow} onChange={e => setEasyBuyAmountPaidNow(e.target.value)} />
                   </label>
@@ -1624,7 +1623,7 @@ function PosPage({ mode = 'retail' }) {
                   if (e.key === 'Enter' && serializedScanInput.trim()) {
                     e.preventDefault();
                     if (reservingSerializedKeys.includes(serializedScanInput.trim())) {
-                      toast.show('Serialized item is already being added', { type: 'error' });
+                      toast.show(t('Serialized item is already being added'), { type: 'error' });
                       return;
                     }
                     await addSerializedUnitToCart(serializedPickerProduct, { imei: serializedScanInput.trim(), serialNumber: serializedScanInput.trim() });
