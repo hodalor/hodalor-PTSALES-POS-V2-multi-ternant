@@ -26,6 +26,12 @@ function parseIceServers(rawValue) {
   return servers.length ? servers : [{ urls: 'stun:stun.l.google.com:19302' }];
 }
 
+function branchLabelForUser(row, branchNameById) {
+  const branchId = String(row?.branchId || '').trim();
+  if (!branchId) return '';
+  return branchNameById.get(branchId) || branchId;
+}
+
 function buildCallSignalKey(event) {
   const signalType = String(event?.signalType || '').trim();
   const callId = String(event?.callId || '').trim();
@@ -87,6 +93,7 @@ function formatDuration(totalSeconds) {
 function CommunicationChatPage() {
   const auth = useSelector((s) => s.auth);
   const settings = useSelector((s) => s.settings);
+  const branches = useSelector((s) => s.branches.branches || []);
   const toast = useToast();
   const [users, setUsers] = useState([]);
   const [userQuery, setUserQuery] = useState('');
@@ -137,6 +144,10 @@ function CommunicationChatPage() {
   const currentUserName = String(auth.user?.name || '').trim();
   const callSound = String(settings?.callNotificationSound || settings?.chatNotificationSound || 'bright').toLowerCase();
   const iceServers = useMemo(() => parseIceServers(settings?.webRtcIceServers), [settings?.webRtcIceServers]);
+  const branchNameById = useMemo(
+    () => new Map((Array.isArray(branches) ? branches : []).map((branch) => [String(branch.id || ''), String(branch.name || branch.id || '')])),
+    [branches]
+  );
 
   const appendUniqueMessage = useCallback((incoming) => {
     setMessages((prev) => {
@@ -933,8 +944,8 @@ function CommunicationChatPage() {
   const filteredUsers = useMemo(() => {
     const q = String(userQuery || '').trim().toLowerCase();
     if (!q) return users;
-    return users.filter((row) => `${row.name || ''} ${row.role || ''} ${row.branchId || ''}`.toLowerCase().includes(q));
-  }, [users, userQuery]);
+    return users.filter((row) => `${row.name || ''} ${row.role || ''} ${branchLabelForUser(row, branchNameById)}`.toLowerCase().includes(q));
+  }, [users, userQuery, branchNameById]);
 
   const selectedUser = users.find((row) => String(row.name || '') === selectedUserName) || null;
   const unreadThreads = users.filter((row) => Number(row.unreadCount || 0) > 0).length;
@@ -1109,7 +1120,7 @@ function CommunicationChatPage() {
                     <strong>{row.name}</strong>
                     {Number(row.unreadCount || 0) > 0 ? <span className="status-pill status-pill-rejected">{row.unreadCount}</span> : null}
                   </div>
-                  <div className="mini-record-meta">{row.role || 'User'}{row.branchId ? ` • ${row.branchId}` : ''}</div>
+                  <div className="mini-record-meta">{row.role || 'User'}{branchLabelForUser(row, branchNameById) ? ` • ${branchLabelForUser(row, branchNameById)}` : ''}</div>
                 </button>
               );
             })}
@@ -1121,7 +1132,7 @@ function CommunicationChatPage() {
           <div className="section-header chat-room-header">
             <div>
               <h2 className="section-title" style={{ margin: 0 }}>{selectedUser?.name || 'Select a user'}</h2>
-              <div className="section-note">{selectedUser ? `${selectedUser.role || 'User'}${selectedUser.branchId ? ` • ${selectedUser.branchId}` : ''}` : 'Choose someone from the left side to start chatting.'}</div>
+              <div className="section-note">{selectedUser ? `${selectedUser.role || 'User'}${branchLabelForUser(selectedUser, branchNameById) ? ` • ${branchLabelForUser(selectedUser, branchNameById)}` : ''}` : 'Choose someone from the left side to start chatting.'}</div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
               {selectedUser ? (
