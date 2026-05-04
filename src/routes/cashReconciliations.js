@@ -253,9 +253,10 @@ r.get('/backlog', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_fina
     branchNameMap()
   ]);
   const rows = Array.from(totals.values())
-    .filter((row) => Number(row.total || 0) > 0 && !coverage.coveredAny.has(`${row.branchId}:${row.date}`))
+    .filter((row) => Number(row.total || 0) > 0 && !coverage.coveredApproved.has(`${row.branchId}:${row.date}`))
     .sort((a, b) => `${a.date}:${a.branchId}`.localeCompare(`${b.date}:${b.branchId}`))
     .map((row) => ({
+      status: coverage.coveredAny.has(`${row.branchId}:${row.date}`) ? 'pending_approval' : 'awaiting_submission',
       branchId: row.branchId,
       branchName: branchNames.get(row.branchId) || row.branchId,
       date: row.date,
@@ -308,7 +309,7 @@ r.get('/summary', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_fina
   Array.from(awaitingTotals.values()).forEach((row) => {
     if (Number(row.total || 0) <= 0) return;
     const key = `${row.branchId}:${row.date}`;
-    if (!awaitingCoverage.coveredAny.has(key)) {
+    if (!awaitingCoverage.coveredApproved.has(key)) {
       awaitingAmount += Number(row.total || 0);
       backlogDays += 1;
     }
