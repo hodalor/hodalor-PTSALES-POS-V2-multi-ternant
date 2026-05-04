@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { useToast } from '../components/ToastProvider';
 import { askPtAi as askPtAiApi, transcribePtAi } from '../api/ptAi';
 import { findBestPtAiAnswer, PT_AI_TOPICS } from '../utils/ptAiKnowledge';
@@ -7,14 +8,70 @@ function normalizeChatText(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-function buildSmallTalkAnswer(query) {
+function friendlyUserName(value) {
+  const clean = String(value || '').trim();
+  if (!clean) return '';
+  const first = clean.split(/\s+/)[0] || '';
+  if (!first) return '';
+  return first.charAt(0).toUpperCase() + first.slice(1);
+}
+
+function addUserAddress(text, userName, { hello = false } = {}) {
+  const name = friendlyUserName(userName);
+  const clean = String(text || '').trim();
+  if (!clean) return '';
+  if (!name) return clean;
+  return hello ? `Hello ${name}, ${clean}` : `${name}, ${clean}`;
+}
+
+function politeLead(userName, variant = 0) {
+  const name = friendlyUserName(userName);
+  if (!name) {
+    return [
+      'Sure.',
+      'Absolutely.',
+      'Of course.',
+      'No problem.'
+    ][variant % 4];
+  }
+  return [
+    `Sure ${name},`,
+    `${name}, we have got this.`,
+    `Of course ${name},`,
+    `${name}, I am with you on this.`
+  ][variant % 4];
+}
+
+function introWithAssurance(userName, message, seed = '') {
+  const cleanMessage = String(message || '').trim();
+  if (!cleanMessage) return '';
+  const source = String(seed || cleanMessage);
+  const variant = Array.from(source).reduce((sum, char) => sum + char.charCodeAt(0), 0) % 4;
+  const lead = politeLead(userName, variant);
+  if (!lead) return cleanMessage;
+  return `${lead} ${cleanMessage}`.trim();
+}
+
+function buildInitialGreeting(userName) {
+  return {
+    title: 'Hello',
+    answer: [
+      addUserAddress('I am PT AI.', userName, { hello: true }),
+      'How can I help you today with the system?'
+    ],
+    related: []
+  };
+}
+
+function buildSmallTalkAnswer(query, options = {}) {
+  const userName = options.userName;
   const q = normalizeChatText(query);
   if (!q) return null;
   if (/^(hi|hello|hey|good morning|good afternoon|good evening)\b/.test(q)) {
     return {
       title: 'Hello',
       answer: [
-        'Hello, I am PT AI.',
+        addUserAddress('I am PT AI.', userName, { hello: true }),
         'How can I help you today with the system?'
       ],
       related: PT_AI_TOPICS.slice(0, 3)
@@ -32,7 +89,7 @@ function buildSmallTalkAnswer(query) {
     return {
       title: 'My day is going well',
       answer: [
-        'My day is going well, thank you.',
+        addUserAddress('my day is going well, thank you.', userName, { hello: true }),
         'I am here to help with the POS system. How can I help you today?'
       ],
       related: []
@@ -42,7 +99,7 @@ function buildSmallTalkAnswer(query) {
     return {
       title: 'I am here to help',
       answer: [
-        'I am here and ready to help.',
+        addUserAddress('I am here and ready to help.', userName, { hello: true }),
         'I was built to assist with the POS system. How can I help you today?'
       ],
       related: []
@@ -52,7 +109,7 @@ function buildSmallTalkAnswer(query) {
     return {
       title: 'About PT AI',
       answer: [
-        'I am PT AI, your in-system assistant for this POS, inventory, approvals, finance, and communication platform.',
+        addUserAddress('I am PT AI, your in-system assistant for this POS, inventory, approvals, finance, and communication platform.', userName, { hello: true }),
         'You can ask me how to use features, where to find pages, or how a workflow should work.',
         'What would you like help with today?'
       ],
@@ -63,7 +120,7 @@ function buildSmallTalkAnswer(query) {
     return {
       title: 'You are welcome',
       answer: [
-        'You are welcome.',
+        addUserAddress('you are welcome.', userName),
         'Is there anything else you want me to help you with?'
       ],
       related: []
@@ -73,7 +130,7 @@ function buildSmallTalkAnswer(query) {
     return {
       title: 'Goodbye',
       answer: [
-        'Goodbye for now.',
+        addUserAddress('goodbye for now.', userName),
         'Come back anytime if you want help with the system.'
       ],
       related: []
@@ -89,11 +146,11 @@ function ensureFollowUp(lines, followUp = 'Is there anything else you want me to
   return [...next, followUp];
 }
 
-function buildOffTopicAnswer() {
+function buildOffTopicAnswer(userName) {
   return {
     title: 'I focus on this POS system',
     answer: [
-      'I can give a brief general idea, but I was built mainly to help employees use this POS, inventory, approvals, finance, and communication system.',
+      addUserAddress('I can give a brief general idea, but I was built mainly to help employees use this POS, inventory, approvals, finance, and communication system.', userName),
       'Please ask me about a workflow in this system, such as POS sales, purchases, transfers, adjustments, expenses, cash reconciliation, invoices, customers, users, or reports.',
       'Is there anything else you want me to help you with inside the system?'
     ],
@@ -101,11 +158,11 @@ function buildOffTopicAnswer() {
   };
 }
 
-function buildProhibitedAnswer() {
+function buildProhibitedAnswer(userName) {
   return {
     title: 'I cannot help with that',
     answer: [
-      'I was not built to help with hacking, privacy abuse, sexual content, breaches of security, or other harmful activity.',
+      addUserAddress('I was not built to help with hacking, privacy abuse, sexual content, breaches of security, or other harmful activity.', userName),
       'If you need help, I can assist with safe and lawful use of this POS system, such as sales, stock, approvals, reports, finance, customers, users, or communication workflows.',
       'Is there anything else you want me to help you with inside the system?'
     ],
@@ -209,7 +266,7 @@ function isFollowUpQuestion(query, previousQuestion = '') {
   return sharedTokens.length >= 2;
 }
 
-function buildUnknownAnswer(query, previousQuestion = '') {
+function buildUnknownAnswer(query, previousQuestion = '', userName = '') {
   const connected = previousQuestion
     ? `I see this is connected to your earlier question about "${previousQuestion}".`
     : '';
@@ -217,7 +274,7 @@ function buildUnknownAnswer(query, previousQuestion = '') {
     title: 'I do not have a reliable answer yet',
     answer: ensureFollowUp([
       connected,
-      'I do not have a reliable answer for that question right now, so I do not want to guess or mislead you.',
+      addUserAddress('I do not have a reliable answer for that question right now, so I do not want to guess or mislead you.', userName),
       'If you want, ask the same question with the exact page, button, menu, or workflow name and I will help with what I know.'
     ].filter(Boolean), 'Is there another way I can help you inside the system?'),
     related: []
@@ -225,11 +282,12 @@ function buildUnknownAnswer(query, previousQuestion = '') {
 }
 
 function buildConversationalAnswer(query, result, fallbackTitle = 'PT AI Answer', options = {}) {
-  const smallTalk = buildSmallTalkAnswer(query);
+  const userName = options.userName;
+  const smallTalk = buildSmallTalkAnswer(query, { userName });
   if (smallTalk) return smallTalk;
 
   const previousQuestion = String(options.previousQuestion || '').trim();
-  if (isUnknownResult(result)) return buildUnknownAnswer(query, previousQuestion);
+  if (isUnknownResult(result)) return buildUnknownAnswer(query, previousQuestion, userName);
 
   const title = String(result?.title || fallbackTitle).trim() || fallbackTitle;
   const rawAnswerLines = Array.isArray(result?.answer)
@@ -240,11 +298,11 @@ function buildConversationalAnswer(query, result, fallbackTitle = 'PT AI Answer'
   const followUpMode = isFollowUpQuestion(query, previousQuestion);
   const intro = followUpMode
     ? tutorialMode
-      ? `That is a good follow-up question about "${previousQuestion}". Follow these steps.`
-      : `That is a good follow-up question about "${previousQuestion}". Here is what I can confirm.`
+      ? introWithAssurance(userName, `that is a good follow-up question about "${previousQuestion}". Follow these steps.`, `${query}|followup|tutorial`)
+      : introWithAssurance(userName, `that is a good follow-up question about "${previousQuestion}". Here is what I can confirm.`, `${query}|followup|general`)
     : tutorialMode
-      ? `Sure. Follow these steps for "${String(query || '').trim()}".`
-      : `Sure, here is the best help I found for "${String(query || '').trim()}".`;
+      ? introWithAssurance(userName, `follow these steps for "${String(query || '').trim()}".`, `${query}|tutorial`)
+      : introWithAssurance(userName, `here is the best help I found for "${String(query || '').trim()}".`, `${query}|general`);
   const followUp = tutorialMode
     ? 'If you want, I can also show the exact menu path or button names for another task. Is there anything else you want me to help you with?'
     : 'Is there anything else you want me to help you with?';
@@ -321,21 +379,12 @@ function AnimatedAnswerLines({ entryId, lines, animate, onProgress }) {
 }
 
 function AskPtAiPage() {
-  const defaultAnswer = useMemo(() => buildConversationalAnswer('hello', findBestPtAiAnswer('serialized item'), 'PT AI Local Help'), []);
+  const auth = useSelector((s) => s.auth);
+  const currentUserName = useMemo(() => friendlyUserName(auth?.user?.name || ''), [auth?.user?.name]);
   const [query, setQuery] = useState('');
-  const [answer, setAnswer] = useState(defaultAnswer);
+  const [answer, setAnswer] = useState(null);
   const [history, setHistory] = useState([]);
-  const [conversation, setConversation] = useState(() => ([
-    {
-      id: 'welcome-ai',
-      role: 'ai',
-      title: defaultAnswer.title,
-      answer: defaultAnswer.answer,
-      related: defaultAnswer.related,
-      meta: 'Built-in workflow guidance',
-      pending: false
-    }
-  ]));
+  const [conversation, setConversation] = useState([]);
   const [listening, setListening] = useState(false);
   const [recording, setRecording] = useState(false);
   const [speaking, setSpeaking] = useState(false);
@@ -351,6 +400,7 @@ function AskPtAiPage() {
   const bottomRef = useRef(null);
   const threadRef = useRef(null);
   const [animatedEntryId, setAnimatedEntryId] = useState(null);
+  const welcomedRef = useRef(false);
   const toast = useToast();
 
   const speechRecognition = useMemo(() => (
@@ -376,6 +426,26 @@ function AskPtAiPage() {
   useEffect(() => {
     scrollThreadToBottom('smooth');
   }, [conversation]);
+
+  useEffect(() => {
+    if (welcomedRef.current) return;
+    const greeting = buildInitialGreeting(currentUserName);
+    welcomedRef.current = true;
+    setAnswer(greeting);
+    setAnswerMeta('Built-in workflow guidance');
+    setConversation([
+      {
+        id: 'welcome-ai',
+        role: 'ai',
+        title: greeting.title,
+        answer: greeting.answer,
+        related: greeting.related,
+        meta: 'Built-in workflow guidance',
+        pending: false
+      }
+    ]);
+    setAnimatedEntryId('welcome-ai');
+  }, [currentUserName]);
 
   function scrollThreadToBottom(behavior = 'auto') {
     try {
@@ -426,12 +496,12 @@ function AskPtAiPage() {
     if (!clean) return;
     const previousQuestion = findPreviousUserQuestion(history, clean);
     const localMatch = findBestPtAiAnswer(clean);
-    const prohibitedResult = isProhibitedQuestion(clean) ? buildProhibitedAnswer() : null;
-    const offTopicResult = !prohibitedResult && !isLikelySystemQuestion(clean, localMatch) ? buildOffTopicAnswer() : null;
+    const prohibitedResult = isProhibitedQuestion(clean) ? buildProhibitedAnswer(currentUserName) : null;
+    const offTopicResult = !prohibitedResult && !isLikelySystemQuestion(clean, localMatch) ? buildOffTopicAnswer(currentUserName) : null;
     const requestId = Date.now();
     requestIdRef.current = requestId;
     const answerEntryId = `ai-${requestId}`;
-    const quickFallback = prohibitedResult || offTopicResult || buildConversationalAnswer(clean, localMatch, 'PT AI Local Help', { previousQuestion });
+    const quickFallback = prohibitedResult || offTopicResult || buildConversationalAnswer(clean, localMatch, 'PT AI Local Help', { previousQuestion, userName: currentUserName });
     setAnswer(quickFallback);
     setAnswerMeta('Built-in workflow guidance');
     saveHistoryEntry(clean, quickFallback);
@@ -462,7 +532,7 @@ function AskPtAiPage() {
         history: history.slice(0, 4).map((item) => ({ question: item.query, answer: item.answerText || item.answer }))
       });
       if (requestIdRef.current !== requestId) return;
-      const normalized = buildConversationalAnswer(clean, aiResult, 'PT AI Answer', { previousQuestion });
+      const normalized = buildConversationalAnswer(clean, aiResult, 'PT AI Answer', { previousQuestion, userName: currentUserName });
       setAnswer(normalized);
       setAnswerMeta(`${aiResult?.provider || 'AI backend'}${aiResult?.model ? ` • ${aiResult.model}` : ''}`);
       saveHistoryEntry(clean, normalized);
