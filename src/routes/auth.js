@@ -17,6 +17,12 @@ import { getPaymentManagementConfig } from '../utils/paymentManagement.js';
 const r = Router();
 const tenantMetaCache = new Map();
 const TENANT_META_TTL_MS = 30_000;
+const SUPPORTED_LANGUAGES = new Set(['en', 'tw', 'ga', 'ewe', 'dag', 'fr', 'zh']);
+
+function normalizeLanguage(value) {
+  const next = String(value || '').trim().toLowerCase();
+  return SUPPORTED_LANGUAGES.has(next) ? next : '';
+}
 
 async function getTenantMetaCached(tenantId) {
   const key = String(tenantId || '').toLowerCase();
@@ -116,6 +122,7 @@ r.post('/login', async (req, res) => {
     tenantId: loginTenantId,
     branchId: u.branchId || 'main',
     assignedBranches: u.assignedBranches,
+    preferredLanguage: normalizeLanguage(u.preferredLanguage),
     grants
   };
   const token = jwt.sign(payload, secret, { expiresIn: '7d' });
@@ -124,7 +131,13 @@ r.post('/login', async (req, res) => {
     role: u.role,
     grants,
     landing: toLanding(u.role),
-    user: { name: u.name, tenantId: loginTenantId, branchId: u.branchId || 'main', assignedBranches: u.assignedBranches || (u.branchId ? [u.branchId] : []) }
+    user: {
+      name: u.name,
+      tenantId: loginTenantId,
+      branchId: u.branchId || 'main',
+      assignedBranches: u.assignedBranches || (u.branchId ? [u.branchId] : []),
+      preferredLanguage: normalizeLanguage(u.preferredLanguage)
+    }
   });
 });
 
@@ -256,9 +269,15 @@ r.post('/logout', requireAuth, async (req, res) => {
 });
 
 r.get('/me', requireAuth, async (req, res) => {
-  const u = req.user || {};
+  const authUser = req.user || {};
+  const User = UserModelFor(req.db);
   const Settings = SettingsModelFor(req.db);
-  let grants = Array.isArray(u.grants) ? u.grants : [];
+  let grants = Array.isArray(authUser.grants) ? authUser.grants : [];
+  let currentUser = null;
+  try {
+    currentUser = await User.findById(authUser.sub).lean();
+  } catch {}
+  const u = currentUser || authUser;
   try {
     const doc = await Settings.findOne({ key: 'default' });
     const map = doc?.data?.userGrants || {};
@@ -268,6 +287,34 @@ r.get('/me', requireAuth, async (req, res) => {
   res.json({
     role: u.role || null,
     grants,
-    user: { name: u.name, tenantId: u.tenantId || req.tenantId || 'master', branchId: u.branchId || 'main', assignedBranches: u.assignedBranches || (u.branchId ? [u.branchId] : []) }
+    user: {
+      name: u.name,
+      tenantId: authUser.tenantId || req.tenantId || 'master',
+      branchId: u.branchId || 'main',
+      assignedBranches: u.assignedBranches || (u.branchId ? [u.branchId] : []),
+      preferredLanguage: normalizeLanguage(u.preferredLanguage)
+    }
+  });
+});
+
+r.patch('/me', requireAuth, async (req, res) => {
+  const User = UserModelFor(req.db);
+  const authUser = req.user || {};
+  const updates = req.body || {};
+  const u = await User.findById(authUser.sub);
+  if (!u) return res.status(404).json({ error: 'User not found' });
+  if (Object.prototype.hasOwnProperty.call(updates, 'preferredLanguage')) {
+    u.preferredLanguage = normalizeLanguage(updates.preferredLanguage);
+  }
+  await u.save();
+  res.json({
+    ok: true,
+    user: {
+      name: u.name,
+      tenantId: authUser.tenantId || req.tenantId || 'master',
+      branchId: u.branchId || 'main',
+      assignedBranches: u.assignedBranches || (u.branchId ? [u.branchId] : []),
+      preferredLanguage: normalizeLanguage(u.preferredLanguage)
+    }
   });
 });

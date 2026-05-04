@@ -11,6 +11,7 @@ const r = Router();
 const TENANT_ADMIN_ALLOWED_KEYS = new Set([
   'clientAppName',
   'clientLogoUrl',
+  'preferredLanguage',
   'receiptBrandName',
   'chatNotificationSound',
   'callNotificationSound',

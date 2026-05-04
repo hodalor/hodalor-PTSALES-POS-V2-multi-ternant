@@ -7,6 +7,7 @@ const UserSchema = new mongoose.Schema({
   pinHash: { type: String, required: true },
   assignedBranches: { type: mongoose.Schema.Types.Mixed, default: 'all' },
   branchId: { type: String, default: 'main' },
+  preferredLanguage: { type: String, default: '' },
   active: { type: Boolean, default: true }
 }, { timestamps: true });
 

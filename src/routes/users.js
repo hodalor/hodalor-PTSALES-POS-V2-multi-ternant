@@ -10,6 +10,12 @@ import { modelFor as TenantSessionModelFor } from '../models/TenantSession.js';
 import { getEffectiveTenantLimits, getTenantLimitDefaults } from '../utils/tenantLimits.js';
 
 const r = Router();
+const SUPPORTED_LANGUAGES = new Set(['en', 'tw', 'ga', 'ewe', 'dag', 'fr', 'zh']);
+
+function normalizeLanguage(value) {
+  const next = String(value || '').trim().toLowerCase();
+  return SUPPORTED_LANGUAGES.has(next) ? next : '';
+}
 
 r.use(requireAuth);
 
@@ -22,6 +28,7 @@ r.get('/', requireAdmin, async (req, res) => {
     role: u.role,
     branchId: u.branchId || 'main',
     assignedBranches: u.assignedBranches ?? (u.branchId ? [u.branchId] : []),
+    preferredLanguage: normalizeLanguage(u.preferredLanguage),
     active: u.active !== false
   }));
   res.json(mapped);
@@ -30,7 +37,7 @@ r.get('/', requireAdmin, async (req, res) => {
 r.post('/', requireAdmin, async (req, res) => {
   const User = UserModelFor(req.db);
   const Audit = AuditModelFor(req.db);
-  const { name, role, pin, branchId, assignedBranches } = req.body || {};
+  const { name, role, pin, branchId, assignedBranches, preferredLanguage } = req.body || {};
   if (!name || !role || !/^\d{4,6}$/.test(String(pin || ''))) {
     return res.status(400).json({ error: 'Invalid input' });
   }
@@ -64,6 +71,7 @@ r.post('/', requireAdmin, async (req, res) => {
     pinHash,
     assignedBranches: assigned,
     branchId: Array.isArray(assigned) ? (assigned[0] || branchId || 'main') : (branchId || 'main'),
+    preferredLanguage: normalizeLanguage(preferredLanguage),
     active: true
   });
   res.json({
@@ -72,6 +80,7 @@ r.post('/', requireAdmin, async (req, res) => {
     role: doc.role,
     branchId: doc.branchId || 'main',
     assignedBranches: doc.assignedBranches,
+    preferredLanguage: normalizeLanguage(doc.preferredLanguage),
     active: doc.active !== false
   });
   void Audit.create({
@@ -95,7 +104,7 @@ r.put('/:name', requireAdmin, async (req, res) => {
   const User = UserModelFor(req.db);
   const Audit = AuditModelFor(req.db);
   const name = req.params.name;
-  const { name: newName, role, pin, branchId, assignedBranches, active } = req.body || {};
+  const { name: newName, role, pin, branchId, assignedBranches, preferredLanguage, active } = req.body || {};
   const u = await User.findOne({ name });
   if (!u) return res.status(404).json({ error: 'Not found' });
   if (newName && newName !== u.name) {
@@ -128,6 +137,9 @@ r.put('/:name', requireAdmin, async (req, res) => {
   if (pin && /^\d{4,6}$/.test(String(pin))) {
     u.pinHash = await hashPin(String(pin));
   }
+  if (preferredLanguage !== undefined) {
+    u.preferredLanguage = normalizeLanguage(preferredLanguage);
+  }
   await u.save();
   const tenantId = String(req.user?.tenantId || req.tenantId || 'master');
   if (tenantId.toLowerCase() !== 'master' && typeof active === 'boolean' && active === false) {
@@ -138,7 +150,7 @@ r.put('/:name', requireAdmin, async (req, res) => {
     } catch {}
   }
   const changed = [];
-  const payload = { name: newName, role, branchId, assignedBranches, active };
+  const payload = { name: newName, role, branchId, assignedBranches, preferredLanguage, active };
   Object.keys(payload).forEach(k => {
     if (payload[k] !== undefined) changed.push(k);
   });
@@ -148,6 +160,7 @@ r.put('/:name', requireAdmin, async (req, res) => {
     role: u.role,
     branchId: u.branchId || 'main',
     assignedBranches: u.assignedBranches,
+    preferredLanguage: normalizeLanguage(u.preferredLanguage),
     active: u.active !== false
   });
   void Audit.create({
