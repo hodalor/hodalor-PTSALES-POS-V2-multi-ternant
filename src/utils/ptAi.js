@@ -1,6 +1,15 @@
 const DEFAULT_AI_BASE_URL = 'https://api.openai.com/v1';
 const DEFAULT_AI_MODEL = 'gpt-4o-mini';
 const DEFAULT_AI_TRANSCRIBE_MODEL = 'gpt-4o-mini-transcribe';
+const LANGUAGE_NAMES = {
+  en: 'English',
+  tw: 'Twi',
+  ga: 'Ga',
+  ewe: 'Ewe',
+  dag: 'Dagbani',
+  fr: 'French',
+  zh: 'Chinese'
+};
 
 const PT_AI_SYSTEM_PROMPT = `
 You are PT AI, the in-product assistant for a multi-tenant POS, inventory, finance, and approvals system.
@@ -39,6 +48,19 @@ Answer style:
 - If the user thanks you, respond politely and ask whether they want help with anything else.
 - For normal workflow answers, end naturally with a short follow-up such as asking whether they want help with the next step.
 `.trim();
+
+function normalizeOutputLanguage(value) {
+  const key = String(value || 'en').trim().toLowerCase();
+  return LANGUAGE_NAMES[key] || LANGUAGE_NAMES.en;
+}
+
+function buildLanguageAwareSystemPrompt(language) {
+  return [
+    PT_AI_SYSTEM_PROMPT,
+    `Language rule: Write your final answer in ${normalizeOutputLanguage(language)} unless the user explicitly asks for a different output language.`,
+    'Keep button names, route names, menu labels, and feature names recognizable when they are official in-product labels.'
+  ].join('\n\n');
+}
 
 function normalizeAiBaseUrl(value) {
   return String(value || DEFAULT_AI_BASE_URL).trim().replace(/\/+$/, '');
@@ -98,7 +120,7 @@ async function fetchWithTimeout(url, options, timeoutMs = 15000) {
   }
 }
 
-export async function askExternalPtAi({ query, history = [] }) {
+export async function askExternalPtAi({ query, history = [], language = 'en' }) {
   const cleanQuery = String(query || '').trim();
   if (!cleanQuery) throw new Error('Question is required');
 
@@ -119,7 +141,7 @@ export async function askExternalPtAi({ query, history = [] }) {
       model: config.model,
       temperature: 0.3,
       messages: [
-        { role: 'system', content: PT_AI_SYSTEM_PROMPT },
+        { role: 'system', content: buildLanguageAwareSystemPrompt(language) },
         ...normalizeHistory(history),
         { role: 'user', content: cleanQuery }
       ]
@@ -150,6 +172,100 @@ export async function askExternalPtAi({ query, history = [] }) {
     mode: 'ai',
     title: 'PT AI Answer',
     answer: splitAnswer(text),
+    provider: 'openai-compatible',
+    model: config.model
+  };
+}
+
+export async function translatePtAiContent({ content, language = 'en', format = 'text', context = '' }) {
+  const cleanContent = String(content || '').trim();
+  if (!cleanContent) throw new Error('Content is required');
+
+  const outputLanguage = normalizeOutputLanguage(language);
+  if (outputLanguage === LANGUAGE_NAMES.en) {
+    return {
+      content: cleanContent,
+      provider: 'local',
+      model: 'none'
+    };
+  }
+
+  const config = getAiConfig();
+  if (!config.configured) {
+    const err = new Error('PT AI backend is not configured');
+    err.code = 'PT_AI_NOT_CONFIGURED';
+    throw err;
+  }
+
+  const normalizedFormat = ['text', 'html', 'json'].includes(String(format || '').trim().toLowerCase())
+    ? String(format || '').trim().toLowerCase()
+    : 'text';
+
+  const instructions = normalizedFormat === 'html'
+    ? [
+        `Translate the following HTML into ${outputLanguage}.`,
+        'Preserve the HTML structure, tags, attributes, links, lists, headings, and inline formatting.',
+        'Do not wrap the result in markdown fences.',
+        'Do not add commentary before or after the HTML.',
+        'Do not translate code inside <pre> or <code> blocks.'
+      ].join(' ')
+    : normalizedFormat === 'json'
+      ? [
+          `Translate the following JSON string values into ${outputLanguage}.`,
+          'Preserve all keys, array shapes, ids, and JSON structure.',
+          'Return valid JSON only with no markdown fences or extra commentary.',
+          'Do not translate code-like identifiers or stable ids.'
+        ].join(' ')
+      : [
+          `Translate the following content into ${outputLanguage}.`,
+          'Preserve meaning, line breaks, and ordering.',
+          'Return only the translated content with no extra commentary.'
+        ].join(' ');
+
+  const response = await fetchWithTimeout(`${config.baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.apiKey}`
+    },
+    body: JSON.stringify({
+      model: config.model,
+      temperature: 0.1,
+      messages: [
+        {
+          role: 'system',
+          content: `You are a precise translator for ptSales manuals, help content, and UI guidance. ${context ? `Context: ${context}.` : ''}`
+        },
+        {
+          role: 'user',
+          content: `${instructions}\n\n${cleanContent}`
+        }
+      ]
+    })
+  }, 30000);
+
+  const raw = await response.text();
+  let parsed = null;
+  try {
+    parsed = raw ? JSON.parse(raw) : null;
+  } catch {}
+
+  if (!response.ok) {
+    const message = String(parsed?.error?.message || parsed?.message || raw || 'PT AI translation failed').trim();
+    const err = new Error(message);
+    err.code = `PT_AI_TRANSLATE_HTTP_${response.status}`;
+    throw err;
+  }
+
+  const text = String(parsed?.choices?.[0]?.message?.content || '').trim();
+  if (!text) {
+    const err = new Error('PT AI translation returned empty content');
+    err.code = 'PT_AI_TRANSLATE_EMPTY';
+    throw err;
+  }
+
+  return {
+    content: text,
     provider: 'openai-compatible',
     model: config.model
   };
