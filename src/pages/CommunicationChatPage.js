@@ -131,6 +131,9 @@ function CommunicationChatPage() {
   const longPressTimerRef = useRef(null);
   const peerConnectionRef = useRef(null);
   const localStreamRef = useRef(null);
+  const loadUsersInFlightRef = useRef(false);
+  const loadMessagesInFlightRef = useRef(false);
+  const loadCallHistoryInFlightRef = useRef(false);
   const pendingIceCandidatesRef = useRef([]);
   const activeCallRef = useRef({ callId: '', partner: '', role: '' });
   const callStateRef = useRef('idle');
@@ -199,7 +202,10 @@ function CommunicationChatPage() {
     };
   }, [actionMenu.open]);
 
-  const loadUsers = useCallback(async (preferredName = '') => {
+  const loadUsers = useCallback(async (preferredName = '', options = {}) => {
+    const silent = options?.silent === true;
+    if (loadUsersInFlightRef.current) return;
+    loadUsersInFlightRef.current = true;
     setLoadingUsers(true);
     try {
       const rows = await chatApi.listChatUsers();
@@ -215,18 +221,22 @@ function CommunicationChatPage() {
         setSelectedUserName(String(nextUsers[0]?.name || ''));
       }
     } catch (e) {
-      toast.show(String(e?.message || 'Failed to load chat users'), { type: 'error' });
+      if (!silent) toast.show(String(e?.message || 'Failed to load chat users'), { type: 'error' });
     } finally {
+      loadUsersInFlightRef.current = false;
       setLoadingUsers(false);
     }
   }, [toast]);
 
-  const loadMessages = useCallback(async (targetUser = selectedUserNameRef.current) => {
+  const loadMessages = useCallback(async (targetUser = selectedUserNameRef.current, options = {}) => {
+    const silent = options?.silent === true;
     const target = String(targetUser || '').trim();
     if (!target) {
       setMessages([]);
       return;
     }
+    if (loadMessagesInFlightRef.current) return;
+    loadMessagesInFlightRef.current = true;
     setLoadingMessages(true);
     try {
       const rows = await chatApi.listConversation(target, { limit: 200 });
@@ -235,33 +245,39 @@ function CommunicationChatPage() {
       const hasUnreadFromTarget = nextMessages.some((row) => String(row.senderName || '') === target && !row.readAt);
       if (hasUnreadFromTarget) {
         await chatApi.markConversationRead(target).catch(() => {});
-        await loadUsers(target);
+        await loadUsers(target, { silent: true });
       }
     } catch (e) {
-      toast.show(String(e?.message || 'Failed to load conversation'), { type: 'error' });
+      if (!silent) toast.show(String(e?.message || 'Failed to load conversation'), { type: 'error' });
     } finally {
+      loadMessagesInFlightRef.current = false;
       setLoadingMessages(false);
     }
   }, [loadUsers, toast]);
 
-  const loadCallHistory = useCallback(async (targetUser = selectedUserNameRef.current) => {
+  const loadCallHistory = useCallback(async (targetUser = selectedUserNameRef.current, options = {}) => {
+    const silent = options?.silent === true;
     const target = String(targetUser || '').trim();
     if (!target) {
       setCallHistory([]);
       return;
     }
+    if (loadCallHistoryInFlightRef.current) return;
+    loadCallHistoryInFlightRef.current = true;
     try {
       const rows = await chatApi.listCallHistory(target, { limit: 10 });
       setCallHistory(Array.isArray(rows) ? rows : []);
     } catch (e) {
-      toast.show(String(e?.message || 'Failed to load call history'), { type: 'error' });
+      if (!silent) toast.show(String(e?.message || 'Failed to load call history'), { type: 'error' });
+    } finally {
+      loadCallHistoryInFlightRef.current = false;
     }
   }, [toast]);
 
   useEffect(() => {
     loadUsers();
     const tid = setInterval(() => {
-      loadUsers();
+      loadUsers('', { silent: true });
     }, 5000);
     return () => clearInterval(tid);
   }, [loadUsers]);
@@ -270,13 +286,13 @@ function CommunicationChatPage() {
     loadMessages(selectedUserName);
     if (!selectedUserName) return undefined;
     const tid = setInterval(() => {
-      loadMessages(selectedUserName);
+      loadMessages(selectedUserName, { silent: true });
     }, 4000);
     return () => clearInterval(tid);
   }, [selectedUserName, loadMessages]);
 
   useEffect(() => {
-    loadCallHistory(selectedUserName);
+    loadCallHistory(selectedUserName, { silent: true });
   }, [selectedUserName, loadCallHistory]);
 
   useEffect(() => {
@@ -785,12 +801,12 @@ function CommunicationChatPage() {
             const otherUser = String(event.senderName || '') === currentUserName
               ? String(event.recipientName || '')
               : String(event.senderName || '');
-            loadUsers(otherUser).catch(() => {});
+            loadUsers(otherUser, { silent: true }).catch(() => {});
             if (String(event.conversationKey || '') === [currentUserName, String(selectedUserNameRef.current || '')].filter(Boolean).sort().join('::')) {
               appendUniqueMessage(event.message);
               if (String(event.senderName || '') === String(selectedUserNameRef.current || '') && String(event.recipientName || '') === currentUserName) {
                 await chatApi.markConversationRead(String(event.senderName || '')).catch(() => {});
-                loadUsers(String(event.senderName || '')).catch(() => {});
+                loadUsers(String(event.senderName || ''), { silent: true }).catch(() => {});
               }
             }
             return;
@@ -803,14 +819,14 @@ function CommunicationChatPage() {
                   : row
               )));
             }
-            loadUsers(String(event.recipientName || event.senderName || '')).catch(() => {});
+            loadUsers(String(event.recipientName || event.senderName || ''), { silent: true }).catch(() => {});
             return;
           }
           if (event.type === 'message.reaction') {
             if (String(event.conversationKey || '') === [currentUserName, String(selectedUserNameRef.current || '')].filter(Boolean).sort().join('::')) {
               replaceMessage(event.message);
             }
-            loadUsers(String(event.recipientName || event.senderName || '')).catch(() => {});
+            loadUsers(String(event.recipientName || event.senderName || ''), { silent: true }).catch(() => {});
             return;
           }
           if (event.type === 'call.signal') {
