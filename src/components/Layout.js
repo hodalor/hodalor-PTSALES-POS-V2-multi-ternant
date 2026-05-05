@@ -116,6 +116,7 @@ function Layout({ bootstrapLoading = false }) {
     '/warehouse-'
   ];
   const isBranchScopedRoute = branchScopedPrefix.some((prefix) => String(location.pathname || '').startsWith(prefix));
+  const isPosRoute = ['/pos', '/wholesale-pos'].some((prefix) => String(location.pathname || '').startsWith(prefix));
   const outletKey = isBranchScopedRoute
     ? `branch:${String(currentBranchId || '')}:${String(location.pathname || '')}`
     : String(location.pathname || '');
@@ -167,7 +168,7 @@ function Layout({ bootstrapLoading = false }) {
           )}
           <OfflineBanner />
           <Breadcrumbs />
-          <main className="main">
+          <main className={`main${isPosRoute ? ' pos-main-shell' : ''}`}>
             {bootstrapLoading ? (
               <div className="card" style={{ minHeight: 280, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
                 <div style={{ display: 'grid', gap: 14, justifyItems: 'center', maxWidth: 520 }}>
@@ -186,7 +187,7 @@ function Layout({ bootstrapLoading = false }) {
                 </div>
               </div>
             ) : (
-              <div key={outletKey}>
+              <div key={outletKey} className={isPosRoute ? 'pos-outlet-container' : ''}>
                 <Outlet />
               </div>
             )}

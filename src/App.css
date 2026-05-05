@@ -127,6 +127,14 @@ html, body, #root {
   flex: 1 1 auto;
   min-height: 0;
 }
+.main.pos-main-shell {
+  padding: 0;
+  overflow: hidden;
+}
+.pos-outlet-container {
+  height: 100%;
+  min-height: 0;
+}
 .main h1 {
   margin: 0 0 14px;
   font-size: 2rem;
@@ -1935,7 +1943,7 @@ html, body, #root {
 
 .pos-layout {
   display: grid;
-  grid-template-columns: 2fr 1fr;
+  grid-template-columns: minmax(0, 1.85fr) minmax(340px, 1fr);
   gap: 16px;
   padding: 16px;
   align-items: stretch;
@@ -1947,6 +1955,7 @@ html, body, #root {
 .pos-cart-pane {
   display: flex;
   flex-direction: column;
+  min-width: 0;
   min-height: 0;
   height: 100%;
   overflow: hidden;
@@ -1977,10 +1986,11 @@ html, body, #root {
   flex: 0 0 auto;
 }
 .pos-cart-head {
-  margin-bottom: 8px;
+  margin-bottom: 10px;
 }
 .pos-customer-card {
   padding-top: 12px;
+  margin-bottom: 2px;
 }
 .pos-products-scroll,
 .pos-cart-scroll {
@@ -1988,7 +1998,40 @@ html, body, #root {
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  padding-right: 4px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148, 163, 184, 0.7) transparent;
+  padding: 10px 6px 12px 2px;
+}
+.pos-products-scroll::-webkit-scrollbar,
+.pos-cart-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+.pos-products-scroll::-webkit-scrollbar-thumb,
+.pos-cart-scroll::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.55);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.pos-products-scroll::-webkit-scrollbar-track,
+.pos-cart-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+@media (max-width: 1280px) {
+  .pos-layout {
+    grid-template-columns: minmax(0, 1.6fr) minmax(320px, 0.95fr);
+    gap: 14px;
+    padding: 14px;
+  }
+  .pos-sticky-search,
+  .pos-cart-sticky {
+    padding-bottom: 6px;
+  }
+  .pos-products-scroll,
+  .pos-cart-scroll {
+    padding-top: 8px;
+  }
 }
 
 /* Topbar */
