@@ -1948,11 +1948,13 @@ html, body, #root {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 .pos-sticky-search {
   position: sticky;
   top: -16px;
-  align-self: flex-start;
+  align-self: stretch;
   z-index: 5;
   width: 100%;
   background: #f8fafc;
@@ -1960,17 +1962,19 @@ html, body, #root {
   padding-bottom: 8px;
   border-bottom: 1px solid rgba(226, 232, 240, 0.95);
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+  flex: 0 0 auto;
 }
 .pos-cart-sticky {
   position: sticky;
   top: -16px;
-  align-self: flex-start;
+  align-self: stretch;
   z-index: 4;
   background: #f8fafc;
   padding-top: 16px;
   padding-bottom: 8px;
   border-bottom: 1px solid rgba(226, 232, 240, 0.95);
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+  flex: 0 0 auto;
 }
 .pos-cart-head {
   margin-bottom: 8px;
@@ -1980,8 +1984,10 @@ html, body, #root {
 }
 .pos-products-scroll,
 .pos-cart-scroll {
+  flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding-right: 4px;
 }
 
@@ -1997,13 +2003,17 @@ html, body, #root {
   top: 0;
   z-index: 10;
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
+  gap: 12px;
+  flex-wrap: nowrap;
 }
 .topbar .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   min-width: 0;
   flex: 1 1 auto;
+  flex-wrap: nowrap;
+  overflow: hidden;
 }
 .topbar .brand-title {
   min-width: 0;
@@ -2019,19 +2029,23 @@ html, body, #root {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 6px;
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow: visible;
 }
 .topbar .topbar-branch-select {
-  margin-left: 12px;
-  min-width: 180px;
-  max-width: 260px;
+  margin-left: 8px;
+  min-width: 128px;
+  width: 128px;
+  max-width: 128px;
   flex: 0 0 auto;
 }
 .topbar .topbar-branch-badge {
-  margin-left: 12px;
-  min-width: 180px;
-  max-width: 280px;
+  margin-left: 8px;
+  min-width: 128px;
+  max-width: 148px;
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 14px;
@@ -2048,6 +2062,97 @@ html, body, #root {
   width: 28px;
   height: 28px;
   border-radius: 6px;
+  flex: 0 0 auto;
+}
+.topbar-subscription-badge {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.topbar-chat-button {
+  padding-left: 10px;
+  padding-right: 10px;
+}
+.topbar-chat-button span:first-of-type {
+  font-size: 13px;
+}
+.topbar-language-select {
+  width: 112px;
+  min-width: 112px;
+  max-width: 112px;
+}
+.topbar-sync-button {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+.topbar-profile {
+  position: relative;
+  flex: 0 0 auto;
+  z-index: 25;
+}
+.topbar-profile-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 44px;
+  width: 44px;
+  height: 40px;
+  padding: 0;
+}
+.topbar-profile-trigger svg {
+  margin-right: 0;
+}
+.topbar-profile-avatar {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+}
+.topbar-profile-avatar svg {
+  width: 18px;
+  height: 18px;
+}
+.topbar-profile-caret {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.16s ease;
+}
+.topbar-profile-caret.is-open {
+  transform: rotate(180deg);
+}
+.topbar-profile-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 220px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.14);
+  display: grid;
+  gap: 10px;
+  z-index: 20;
+}
+.topbar-profile-summary {
+  min-width: 0;
+}
+.topbar-profile-name {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.topbar-profile-role {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+.topbar-profile-logout {
+  width: 100%;
 }
 .hamburger {
   display: none;
@@ -2171,12 +2276,13 @@ html, body, #root {
   }
   .topbar .topbar-branch-select {
     margin-left: 0;
-    min-width: 160px;
-    max-width: 100%;
+    min-width: 140px;
+    width: 140px;
+    max-width: 140px;
   }
   .topbar .topbar-branch-badge {
     margin-left: 0;
-    min-width: 160px;
+    min-width: 140px;
     max-width: 100%;
   }
   .hamburger {
@@ -2220,6 +2326,7 @@ html, body, #root {
     min-height: auto;
     overflow: visible;
     padding-right: 0;
+    height: auto;
   }
   .toolbar {
     align-items: stretch;
@@ -2307,6 +2414,7 @@ html, body, #root {
   .topbar-actions {
     width: 100%;
     justify-content: flex-end;
+    overflow-x: auto;
   }
   .topbar > div:last-child {
     display: flex;

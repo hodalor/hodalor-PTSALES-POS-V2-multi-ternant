@@ -1,5 +1,5 @@
 import { useDispatch, useSelector, useStore } from 'react-redux';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { logout, setUserPreferredLanguage } from '../store/authSlice';
 import { setCurrentBranch } from '../store/settingsSlice';
@@ -25,6 +25,8 @@ function Header({ onToggleSidebar }) {
   const { unreadCount, liveStatus, enabled: communicationEnabled } = useChatNotifications();
   const { language, setLanguage, options: languageOptions, t } = useLanguage();
   const [syncing, setSyncing] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const profileRef = useRef(null);
   const roleLower = String(auth.role || '').toLowerCase();
   const canChangeBranch = ['admin', 'manager', 'branch manager', 'superadmin'].includes(roleLower);
   const expiryTs = settings?.subscriptionExpiresAt ? new Date(settings.subscriptionExpiresAt).getTime() : 0;
@@ -51,6 +53,36 @@ function Header({ onToggleSidebar }) {
     if (assignedIds[0]) return assignedIds[0];
     return t('Assigned Branch');
   }, [assigned, auth.user?.branchId, branches, currentBranchId, t]);
+  useEffect(() => {
+    if (!profileOpen) return undefined;
+    function handlePointerDown(event) {
+      if (!profileRef.current?.contains(event.target)) {
+        setProfileOpen(false);
+      }
+    }
+    function handleEscape(event) {
+      if (event.key === 'Escape') setProfileOpen(false);
+    }
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [profileOpen]);
+
+  async function handleLogout() {
+    const tenantId = String(auth.user?.tenantId || 'default');
+    try { if (navigator.onLine) await authApi.logout(); } catch {}
+    try {
+      localStorage.removeItem('ptSales:authToken');
+      localStorage.removeItem('ptSales:tenantId');
+      sessionStorage.removeItem('ptSales:sessionPin');
+    } catch {}
+    dispatch(resetTenantAppState(tenantId));
+    dispatch(logout());
+    navigate('/login', { replace: true });
+  }
 
   return (
     <div className="topbar">
@@ -99,6 +131,7 @@ function Header({ onToggleSidebar }) {
         )}
         {subscriptionLabel ? (
           <div
+            className="topbar-subscription-badge"
             title={subscriptionLabel}
             style={{
               display: 'inline-flex',
@@ -122,7 +155,7 @@ function Header({ onToggleSidebar }) {
             {communicationEnabled ? (
               <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginRight: 8, verticalAlign: 'middle' }}>
                 <button
-                  className="btn"
+                  className="btn topbar-chat-button"
                   onClick={() => navigate('/communication/chat')}
                   title={t('Open Communication')}
                   style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, minWidth: 42, height: 36 }}
@@ -143,7 +176,7 @@ function Header({ onToggleSidebar }) {
             ) : null}
             <NotificationBell />
             <select
-              className="select"
+              className="select topbar-language-select"
               value={language}
               onChange={async (e) => {
                 const nextLanguage = e.target.value;
@@ -155,14 +188,14 @@ function Header({ onToggleSidebar }) {
                 toast.show(t('Language changed to {label}', { label: languageOptions.find((item) => item.value === nextLanguage)?.label || 'English' }), { type: 'success' });
               }}
               title={t('Preferred language')}
-              style={{ width: 132, marginRight: 8 }}
+              style={{ marginRight: 8 }}
             >
               {languageOptions.map((option) => (
                 <option key={option.value} value={option.value}>{t(option.label)}</option>
               ))}
             </select>
             <button
-              className="btn"
+              className="btn topbar-sync-button"
               onClick={async () => {
                 if (syncing) return;
                 if (!navigator.onLine) { toast.show(t('Offline: connect internet to sync'), { type: 'error' }); return; }
@@ -183,21 +216,38 @@ function Header({ onToggleSidebar }) {
             >
               {syncing ? t('Syncing...') : t('Sync')}
             </button>
-            <span style={{ marginRight: 12 }}>
-              {auth.user?.name} — {auth.role}
-            </span>
-            <button className="btn" onClick={async () => {
-              const tenantId = String(auth.user?.tenantId || 'default');
-              try { if (navigator.onLine) await authApi.logout(); } catch {}
-              try {
-                localStorage.removeItem('ptSales:authToken');
-                localStorage.removeItem('ptSales:tenantId');
-                sessionStorage.removeItem('ptSales:sessionPin');
-              } catch {}
-              dispatch(resetTenantAppState(tenantId));
-              dispatch(logout());
-              navigate('/login', { replace: true });
-            }}>{t('Logout')}</button>
+            <div className="topbar-profile" ref={profileRef}>
+              <button
+                type="button"
+                className="btn topbar-profile-trigger"
+                onClick={() => setProfileOpen((open) => !open)}
+                aria-haspopup="menu"
+                aria-expanded={profileOpen ? 'true' : 'false'}
+                aria-label={t('Open profile menu')}
+                title={t('Open profile menu')}
+              >
+                <span className="topbar-profile-avatar" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none">
+                    <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z" stroke="currentColor" strokeWidth="2" />
+                    <path d="M4 20a8 8 0 0 1 16 0" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </span>
+                <svg className={`topbar-profile-caret${profileOpen ? ' is-open' : ''}`} viewBox="0 0 20 20" fill="none" aria-hidden="true">
+                  <path d="M5 7.5 10 12.5 15 7.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              {profileOpen ? (
+                <div className="topbar-profile-menu" role="menu">
+                  <div className="topbar-profile-summary">
+                    <div className="topbar-profile-name">{auth.user?.name || t('Unknown user')}</div>
+                    <div className="topbar-profile-role">{auth.role || t('User')}</div>
+                  </div>
+                  <button className="btn topbar-profile-logout" onClick={handleLogout} role="menuitem">
+                    {t('Logout')}
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </>
         ) : (
           <span>{t('Not signed in')}</span>
