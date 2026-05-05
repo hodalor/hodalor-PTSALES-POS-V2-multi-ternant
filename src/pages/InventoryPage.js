@@ -13,6 +13,7 @@ import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { exportCsv, exportTablePdf } from '../utils/exporters';
 import Modal from '../components/Modal';
 import { useAppLanguage } from '../utils/localization';
+import { getBranchStock, getTotalStock } from '../utils/branchStock';
 
 function branchTypeBadgeStyle(branchType = 'retail') {
   const kind = String(branchType || 'retail').toLowerCase();
@@ -97,13 +98,8 @@ function InventoryPage() {
   const selected = useMemo(() => rows.find(p => p.id === modalId) || null, [rows, modalId]);
 
   const getStockForProduct = useCallback((product, targetBranchId = branchId) => {
-    const source = viewInventoryType === 'wholesale'
-      ? (product.wholesaleStockByBranch || {})
-      : viewInventoryType === 'warehouse'
-        ? (product.warehouseStockByBranch || {})
-        : (product.stockByBranch || {});
-    if (!targetBranchId || String(targetBranchId) === 'all') return Object.values(source).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
-    return Number(source[targetBranchId] || 0);
+    if (!targetBranchId || String(targetBranchId) === 'all') return getTotalStock(product, viewInventoryType);
+    return getBranchStock(product, targetBranchId, viewInventoryType);
   }, [branchId, viewInventoryType]);
 
   const getSalePrice = useCallback((product) => {
@@ -137,13 +133,8 @@ function InventoryPage() {
   }, [rows, branchId, getSalePrice, getStockForProduct]);
 
   const getEntityStock = useCallback((entity, targetBranchId = branchId) => {
-    const source = viewInventoryType === 'wholesale'
-      ? (entity?.wholesaleStockByBranch || {})
-      : viewInventoryType === 'warehouse'
-        ? (entity?.warehouseStockByBranch || {})
-        : (entity?.stockByBranch || {});
-    if (!targetBranchId || String(targetBranchId) === 'all') return Object.values(source).reduce((sum, qty) => sum + (Number(qty) || 0), 0);
-    return Number(source[targetBranchId] || 0);
+    if (!targetBranchId || String(targetBranchId) === 'all') return getTotalStock(entity, viewInventoryType);
+    return getBranchStock(entity, targetBranchId, viewInventoryType);
   }, [branchId, viewInventoryType]);
 
   const getEntitySalePrice = useCallback((entity, parent = null) => {
@@ -579,9 +570,9 @@ function InventoryPage() {
                 ))}
                 <div><strong>Barcode:</strong> <code style={{ fontSize: 12 }}>{selected.barcode || '—'}</code></div>
                 <div><strong>Low Stock:</strong> {selected.lowStock ?? 0}</div>
-                <div><strong>{String(selected.trackType || 'quantity') === 'serialized' ? 'Serialized Retail Units' : 'Total Retail Across Branches'}:</strong> {Object.values(selected.stockByBranch || {}).reduce((a, b) => a + (b || 0), 0)}</div>
-                <div><strong>{String(selected.trackType || 'quantity') === 'serialized' ? 'Serialized Distribution Units' : 'Total Distribution Across Branches'}:</strong> {Object.values(selected.wholesaleStockByBranch || {}).reduce((a, b) => a + (b || 0), 0)}</div>
-                <div><strong>{String(selected.trackType || 'quantity') === 'serialized' ? 'Serialized Warehouse Units' : 'Total Warehouse Across Branches'}:</strong> {Object.values(selected.warehouseStockByBranch || {}).reduce((a, b) => a + (b || 0), 0)}</div>
+                <div><strong>{String(selected.trackType || 'quantity') === 'serialized' ? 'Serialized Retail Units' : 'Total Retail Across Branches'}:</strong> {getTotalStock(selected, 'retail')}</div>
+                <div><strong>{String(selected.trackType || 'quantity') === 'serialized' ? 'Serialized Distribution Units' : 'Total Distribution Across Branches'}:</strong> {getTotalStock(selected, 'wholesale')}</div>
+                <div><strong>{String(selected.trackType || 'quantity') === 'serialized' ? 'Serialized Warehouse Units' : 'Total Warehouse Across Branches'}:</strong> {getTotalStock(selected, 'warehouse')}</div>
                 <div style={{ gridColumn: '1 / -1', marginTop: 8 }}>
                   <strong>Branch Breakdown</strong>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 10, marginTop: 6 }}>

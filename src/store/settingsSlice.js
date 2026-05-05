@@ -3,7 +3,7 @@ import { createSlice } from '@reduxjs/toolkit';
 const initialState = {
   appName: 'ptSales POS',
   footerText: '© ptSales',
-  currentBranchId: 'main',
+  currentBranchId: '',
   receiptLogoUrl: '',
   receiptHeader: 'Thank you for shopping with us!',
   receiptFooter: 'No refunds without receipt',

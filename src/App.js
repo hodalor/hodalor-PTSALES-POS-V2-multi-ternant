@@ -8,7 +8,7 @@ import SerializedInventoryPage from './pages/SerializedInventoryPage';
 import ReportsPage from './pages/ReportsPage';
 import NotFoundPage from './pages/NotFoundPage';
 import ProtectedRoute from './components/ProtectedRoute';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import * as productsApi from './api/products';
 import * as suppliersApi from './api/suppliers';
@@ -104,6 +104,7 @@ function App() {
   const authInitialized = useSelector(s => s.auth.initialized);
   const settings = useSelector(s => s.settings);
   const currentBranchId = useSelector(s => s.settings.currentBranchId || '');
+  const branches = useSelector(s => s.branches.branches || []);
   const userName = useSelector(s => s.auth.user?.name || '');
   const isAuthedNow = useSelector(s => s.auth.isAuthenticated);
   const authTenantId = useSelector(s => s.auth.user?.tenantId || '');
@@ -117,6 +118,27 @@ function App() {
   const themeColor = settings?.themeColor || '#0b1220';
   const [settingsReady, setSettingsReady] = useState(false);
   const [dataBootstrapReady, setDataBootstrapReady] = useState(false);
+  const resolveValidBranchId = useCallback((availableBranches = []) => {
+    const roleLower = String(authRole || '').toLowerCase();
+    const canChangeBranch = ['admin', 'manager', 'branch manager', 'superadmin'].includes(roleLower);
+    const assigned = authAssignedBranches;
+    const assignedIds = assigned === 'all'
+      ? []
+      : (Array.isArray(assigned) ? assigned : [assigned]).map(v => String(v || '').trim()).filter(Boolean);
+    const current = String(currentBranchId || '').trim();
+    const preferredId = String(authUserBranchId || '').trim();
+    const visibleBranches = canChangeBranch || assigned === 'all'
+      ? availableBranches
+      : availableBranches.filter(branch => {
+          const id = String(branch.id || '').trim();
+          return id === preferredId || assignedIds.includes(id);
+        });
+    if (current && visibleBranches.some(branch => String(branch.id || '').trim() === current)) return current;
+    return visibleBranches.find(branch => String(branch.id || '').trim() === preferredId)?.id
+      || visibleBranches[0]?.id
+      || availableBranches[0]?.id
+      || '';
+  }, [authAssignedBranches, authRole, authUserBranchId, currentBranchId]);
   useEffect(() => {
     function resizeToPng(src, size) {
       return new Promise((resolve) => {
@@ -478,8 +500,12 @@ function App() {
           authInitialized && isAuthed ? branchesApi.list() : Promise.resolve([])
         ]);
 
+        if (alive && criticalBranches.status === 'fulfilled' && Array.isArray(criticalBranches.value)) {
+          dispatch(setBranches(criticalBranches.value));
+          const nextBranchId = resolveValidBranchId(criticalBranches.value);
+          if (nextBranchId) dispatch(setCurrentBranch(nextBranchId));
+        }
         if (alive && criticalProducts.status === 'fulfilled' && Array.isArray(criticalProducts.value)) dispatch(setProducts(criticalProducts.value));
-        if (alive && criticalBranches.status === 'fulfilled' && Array.isArray(criticalBranches.value)) dispatch(setBranches(criticalBranches.value));
         if (alive) setDataBootstrapReady(true);
 
         const [s, c, r, sl] = await Promise.allSettled([
@@ -498,7 +524,7 @@ function App() {
       }
     })();
     return () => { alive = false; };
-  }, [dispatch, authInitialized, isAuthed, settings, settingsReady, authRole, authGrants]);
+  }, [dispatch, authInitialized, isAuthed, settings, settingsReady, authRole, authGrants, resolveValidBranchId]);
   useEffect(() => {
     if (!authInitialized || !isAuthed || !settingsReady) {
       setDataBootstrapReady(false);
@@ -543,6 +569,15 @@ function App() {
     const nextBranchId = String(authUserBranchId || '').trim() || assignedIds[0] || '';
     if (nextBranchId) dispatch(setCurrentBranch(nextBranchId));
   }, [authAssignedBranches, authInitialized, authRole, authUserBranchId, currentBranchId, dispatch, isAuthed]);
+  useEffect(() => {
+    if (!authInitialized || !isAuthed) return;
+    if (!Array.isArray(branches) || branches.length === 0) return;
+    const current = String(currentBranchId || '').trim();
+    const nextBranchId = resolveValidBranchId(branches);
+    if (nextBranchId && current !== String(nextBranchId)) {
+      dispatch(setCurrentBranch(nextBranchId));
+    }
+  }, [authInitialized, branches, currentBranchId, dispatch, isAuthed, resolveValidBranchId]);
   useEffect(() => {
     let alive = true;
     const idleMs = 180000;
@@ -605,10 +640,14 @@ function App() {
           section('sections.expense') && (allow('modules.expenses', ['Admin','Manager'], ['view_expenses','see_expenses','add_expenses']) || allow('modules.expenseApprovals', ['Admin','Manager'], ['approve_expenses'])) ? expensesApi.listRequests({ status: 'pending', limit: 200 }) : Promise.resolve([]),
           section('sections.retail') && allow('pages.retail.adjustments', ['Admin','Manager','Inventory Staff','Director'], ['approve_adjustments','view_adjustments','see_adjustments']) ? adjustmentsApi.listRequests({ status: 'pending_director', limit: 200 }) : Promise.resolve([])
         ]);
+        if (alive && b.status === 'fulfilled' && Array.isArray(b.value) && b.value.length > 0) {
+          dispatch(setBranches(b.value));
+          const nextBranchId = resolveValidBranchId(b.value);
+          if (nextBranchId) dispatch(setCurrentBranch(nextBranchId));
+        }
         if (alive && p.status === 'fulfilled' && Array.isArray(p.value)) dispatch(setProducts(p.value));
         if (alive && s.status === 'fulfilled' && Array.isArray(s.value)) dispatch(setSuppliers(s.value));
         if (alive && c.status === 'fulfilled' && Array.isArray(c.value)) dispatch(setCustomers(c.value));
-        if (alive && b.status === 'fulfilled' && Array.isArray(b.value) && b.value.length > 0) dispatch(setBranches(b.value));
         if (alive && r.status === 'fulfilled' && Array.isArray(r.value)) dispatch(setRequests(r.value));
         if (alive && sl.status === 'fulfilled' && Array.isArray(sl.value)) dispatch(setSales(sl.value));
         if (alive && u.status === 'fulfilled' && Array.isArray(u.value)) dispatch(setUsers(u.value));
@@ -630,7 +669,7 @@ function App() {
       window.removeEventListener('scroll', bump);
       document.removeEventListener('visibilitychange', onVis);
     };
-  }, [dispatch, refreshSec, authInitialized, isAuthed, isAuthedNow, settings, settingsReady, authTenantId, authRole, authGrants]);
+  }, [dispatch, refreshSec, authInitialized, isAuthed, isAuthedNow, settings, settingsReady, authTenantId, authRole, authGrants, resolveValidBranchId]);
   return (
     <ToastProvider>
       <LanguageProvider>

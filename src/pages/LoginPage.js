@@ -220,9 +220,14 @@ function LoginPage() {
 
   const regenerateCaptcha = useCallback(() => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let str = '';
-    for (let i = 0; i < 4; i += 1) str += chars[Math.floor(Math.random() * chars.length)];
-    setCaptcha(str);
+    setCaptcha((previous) => {
+      let next = '';
+      do {
+        next = '';
+        for (let i = 0; i < 4; i += 1) next += chars[Math.floor(Math.random() * chars.length)];
+      } while (next === previous);
+      return next;
+    });
     setExpiresAt(Date.now() + 60_000);
     setCaptchaInput('');
   }, []);
@@ -628,6 +633,19 @@ function LoginPage() {
             <div className="captcha-row">
               <input placeholder={t('captcha')} value={captchaInput} onChange={e => setCaptchaInput(e.target.value)} />
               <div className="captcha-box">{captcha}</div>
+              <button
+                type="button"
+                className="outline"
+                onClick={regenerateCaptcha}
+                title={t('Refresh captcha')}
+                aria-label={t('Refresh captcha')}
+                style={{ width: 42, minWidth: 42, padding: 0, display: 'inline-grid', placeItems: 'center' }}
+              >
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
+                  <path d="M20 12a8 8 0 0 1-13.66 5.66M4 12a8 8 0 0 1 13.66-5.66" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <path d="M16 4h4v4M8 20H4v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
             </div>
             <div style={{ fontSize: 12, color: '#64748b' }}>
               {t('Captcha refreshes in {count}s', { count: Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)) })}

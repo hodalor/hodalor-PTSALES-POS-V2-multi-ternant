@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import Header from './Header';
 import OfflineBanner from './OfflineBanner';
 import Sidebar from './Sidebar';
@@ -20,7 +20,9 @@ function Layout({ bootstrapLoading = false }) {
   const store = useStore();
   const footer = useSelector(s => s.settings.footerText);
   const settings = useSelector(s => s.settings);
+  const currentBranchId = useSelector(s => s.settings.currentBranchId || '');
   const { t } = useAppLanguage();
+  const location = useLocation();
   const [installEvt, setInstallEvt] = useState(null);
   const [showInstall, setShowInstall] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -100,6 +102,23 @@ function Layout({ bootstrapLoading = false }) {
   }
   const brandedName = settings?.clientAppName || settings?.receiptBrandName || settings?.appName || 'ptSales POS';
   const brandedLogo = settings?.clientLogoUrl || '/clientlogo512.png';
+  const branchScopedPrefix = [
+    '/pos',
+    '/wholesale-pos',
+    '/inventory',
+    '/serialized-inventory',
+    '/purchases',
+    '/transfers',
+    '/adjustments',
+    '/expenses',
+    '/cash-reconciliation',
+    '/wholesale-',
+    '/warehouse-'
+  ];
+  const isBranchScopedRoute = branchScopedPrefix.some((prefix) => String(location.pathname || '').startsWith(prefix));
+  const outletKey = isBranchScopedRoute
+    ? `branch:${String(currentBranchId || '')}:${String(location.pathname || '')}`
+    : String(location.pathname || '');
   return (
     <ChatNotificationsProvider>
       <div className={`layout ${sidebarOpen ? 'sidebar-open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
@@ -167,7 +186,9 @@ function Layout({ bootstrapLoading = false }) {
                 </div>
               </div>
             ) : (
-              <Outlet />
+              <div key={outletKey}>
+                <Outlet />
+              </div>
             )}
           </main>
           <div style={{ padding: 12, color: '#64748b', borderTop: '1px solid #e2e8f0', textAlign: 'right' }}>{footer}</div>

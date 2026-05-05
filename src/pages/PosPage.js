@@ -25,6 +25,7 @@ import { getAllowedPriceTiers, getDisplayPrice, getPreferredPriceTier, getPriceT
 import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { useAppLanguage } from '../utils/localization';
+import { getBranchStock } from '../utils/branchStock';
 
 function createReservationToken() {
   return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `RES-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -71,9 +72,17 @@ function PosPage({ mode = 'retail' }) {
   }, [assignedBranchIds, auth.user?.branchId, branchId, branches, isFixedBranchUser, isWholesale]);
   const activeBranch = useMemo(() => (branches || []).find(branch => String(branch.id) === String(activeBranchId)) || null, [activeBranchId, branches]);
   const branchNameById = useMemo(() => new Map((branches || []).map(branch => [String(branch.id), branch.name])), [branches]);
-  const displayBranchId = useMemo(() => (
-    String(activeBranchId || branchId || auth.user?.branchId || assignedBranchIds[0] || '').trim()
-  ), [activeBranchId, assignedBranchIds, auth.user?.branchId, branchId]);
+  const stockBranchId = useMemo(() => (
+    String(isFixedBranchUser
+      ? (activeBranchId || auth.user?.branchId || branchId || assignedBranchIds[0] || '')
+      : (branchId || activeBranchId || '')).trim()
+  ), [activeBranchId, assignedBranchIds, auth.user?.branchId, branchId, isFixedBranchUser]);
+  const branchLabel = useMemo(() => (
+    branchNameById.get(String(stockBranchId || ''))
+    || activeBranch?.name
+    || branchNameById.get(String(branchId || ''))
+    || ''
+  ), [activeBranch?.name, branchId, branchNameById, stockBranchId]);
   const allowedPriceTiers = useMemo(() => getAllowedPriceTiers(auth), [auth]);
   const initialVisiblePriceTier = useMemo(() => getPreferredPriceTier(allowedPriceTiers, initialPriceTier), [allowedPriceTiers, initialPriceTier]);
   const [query, setQuery] = useState('');
@@ -130,6 +139,16 @@ function PosPage({ mode = 'retail' }) {
     if (!next || current === next) return;
     dispatch(setCurrentBranch(next));
   }, [activeBranchId, branchId, dispatch, isFixedBranchUser]);
+  useEffect(() => {
+    setLiveSerializedUnits([]);
+    setLiveSerializedLoading(false);
+    setSerializedUnits([]);
+    setSerializedUnitsQuery('');
+    setSerializedUnitsPage(1);
+    setSerializedUnitsTotal(0);
+    setSerializedPickerProduct(null);
+    setSerializedScanInput('');
+  }, [activeBranchId]);
   useEffect(() => {
     try { localStorage.setItem(reservationStorageKey, reservationToken); } catch {}
   }, [reservationStorageKey, reservationToken]);
@@ -356,9 +375,11 @@ function PosPage({ mode = 'retail' }) {
       const key = `${String(p.productId || p.id || '')}:${String(p.variantId || '')}`;
       return Number(serializedStockCountMap.get(key) || 0);
     }
-    const stockMap = isWholesale ? (p.wholesaleStockByBranch || p.stockByBranch || {}) : (p.stockByBranch || {});
-    const available = Number(stockMap?.[displayBranchId] || 0);
-    return available;
+    return getAvailableStockForBranch(p);
+  }
+
+  function getAvailableStockForBranch(p) {
+    return getBranchStock(p, stockBranchId, isWholesale ? 'wholesale' : 'retail');
   }
 
   function onChangeHeldSort(v) {
@@ -601,8 +622,7 @@ function PosPage({ mode = 'retail' }) {
   }
 
   async function addToCart(p) {
-    const stockMap = isWholesale ? (p.wholesaleStockByBranch || p.stockByBranch || {}) : (p.stockByBranch || {});
-    const available = Number(stockMap?.[displayBranchId] || 0);
+    const available = getAvailableStockForBranch(p);
     const inCart = cart.items.filter(i => i.sku === p.sku).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
     if (available - inCart <= 0) {
       toast.show('Out of stock for current branch', { type: 'error' });
@@ -1160,7 +1180,11 @@ function PosPage({ mode = 'retail' }) {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
               <h2 style={{ marginBottom: 4 }}>{modeLabel}</h2>
-              <div style={{ color: '#64748b', fontSize: 12 }}>{isWholesale ? `${t('Distribution inventory')}${activeBranch ? ` • ${activeBranch.name}` : ''}` : `${t('Retail inventory')}${activeBranch ? ` • ${activeBranch.name}` : ''} ${t('with EasyBuy support')}`}</div>
+              <div style={{ color: '#64748b', fontSize: 12 }}>
+                {isWholesale
+                  ? `${t('Distribution inventory')}${branchLabel ? ` • ${branchLabel}` : ''}`
+                  : `${t('Retail inventory')}${branchLabel ? ` • ${branchLabel}` : ''} ${t('with EasyBuy support')}`}
+              </div>
             </div>
             <OfflineQueueIndicator collection="sales" label={t('Sales queued')} />
           </div>
