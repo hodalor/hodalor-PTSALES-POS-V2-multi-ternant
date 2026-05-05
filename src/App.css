@@ -1189,8 +1189,9 @@ html, body, #root {
 }
 .captcha-row {
   display: grid;
-  grid-template-columns: 1fr 100px;
+  grid-template-columns: 1fr 100px 42px;
   gap: 8px;
+  align-items: stretch;
 }
 .captcha-box {
   display: grid;
@@ -2335,7 +2336,7 @@ html, body, #root {
 }
 @media (max-width: 360px) {
   .captcha-row {
-    grid-template-columns: 1fr 80px;
+    grid-template-columns: 1fr 80px 42px;
   }
 }
 

@@ -115,6 +115,7 @@ function LoginPage() {
   const [captchaInput, setCaptchaInput] = useState('');
   const [captcha, setCaptcha] = useState('');
   const [expiresAt, setExpiresAt] = useState(0);
+  const [captchaSecondsLeft, setCaptchaSecondsLeft] = useState(0);
   const [loading, setLoading] = useState(false);
   const [activationOpen, setActivationOpen] = useState(false);
   const [activationTenantId, setActivationTenantId] = useState('');
@@ -246,10 +247,15 @@ function LoginPage() {
 
   useEffect(() => {
     const id = setInterval(() => {
-      if (Date.now() >= expiresAt) regenerateCaptcha();
+      const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+      setCaptchaSecondsLeft(remaining);
+      if (expiresAt && Date.now() >= expiresAt) regenerateCaptcha();
     }, 1000);
     return () => clearInterval(id);
   }, [expiresAt, regenerateCaptcha]);
+  useEffect(() => {
+    setCaptchaSecondsLeft(Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)));
+  }, [expiresAt]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search || '');
@@ -630,7 +636,7 @@ function LoginPage() {
             <input placeholder={t('tenant id')} value={tenantId} onChange={e => setTenantId(e.target.value)} />
             <input placeholder={t('username')} value={name} onChange={e => setName(e.target.value)} />
             <input placeholder={t('PIN (4-6 digits)')} type="password" value={pin} onChange={e => setPin(e.target.value)} />
-            <div className="captcha-row">
+            <div className="captcha-row" data-no-localize="true">
               <input placeholder={t('captcha')} value={captchaInput} onChange={e => setCaptchaInput(e.target.value)} />
               <div className="captcha-box">{captcha}</div>
               <button
@@ -647,8 +653,8 @@ function LoginPage() {
                 </svg>
               </button>
             </div>
-            <div style={{ fontSize: 12, color: '#64748b' }}>
-              {t('Captcha refreshes in {count}s', { count: Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)) })}
+            <div style={{ fontSize: 12, color: '#64748b' }} data-no-localize="true">
+              {t('Captcha refreshes in {count}s', { count: captchaSecondsLeft })}
             </div>
             <label className="remember-row">
               <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />

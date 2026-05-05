@@ -13,6 +13,36 @@ import { useAppLanguage } from '../utils/localization';
 
 Chart.register(BarElement, LineElement, PointElement, CategoryScale, LinearScale, ArcElement, Tooltip, Legend, Filler);
 
+function formatLocalDateKey(value) {
+  const dt = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(dt.getTime())) return '';
+  const year = dt.getFullYear();
+  const month = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseInputDateKey(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  const [year, month, day] = raw.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day, 12, 0, 0, 0);
+}
+
+function enumerateDateKeys(fromKey, toKey) {
+  const start = parseInputDateKey(fromKey);
+  const end = parseInputDateKey(toKey);
+  if (!start || !end || start.getTime() > end.getTime()) return [];
+  const dates = [];
+  const cursor = new Date(start.getTime());
+  while (cursor.getTime() <= end.getTime()) {
+    dates.push(formatLocalDateKey(cursor));
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return dates;
+}
+
 function DashboardPage() {
   const sales = useSelector(s => s.sales.sales);
   const products = useSelector(s => s.products.products);
@@ -119,11 +149,9 @@ function DashboardPage() {
 
   const inRange = useCallback((iso) => {
     if (periodMode === 'all_time') return true;
-    const ts = new Date(iso).getTime();
-    if (Number.isNaN(ts)) return false;
-    const fromTs = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : -Infinity;
-    const toTs = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : Infinity;
-    return ts >= fromTs && ts <= toTs;
+    const key = formatLocalDateKey(iso);
+    if (!key) return false;
+    return (!dateFrom || key >= dateFrom) && (!dateTo || key <= dateTo);
   }, [dateFrom, dateTo, periodMode]);
   const matchBranch = useCallback((value) => {
     const key = String(value || '').trim();
@@ -274,7 +302,8 @@ function DashboardPage() {
     const customerMap = new Map();
     const productProfit = new Map();
     for (const sale of sourceSales) {
-      const day = new Date(sale.created_at).toISOString().slice(0, 10);
+      const day = formatLocalDateKey(sale.created_at);
+      if (!day) continue;
       perDay[day] = (perDay[day] || 0) + sale.total;
       perDayPayments[day] = perDayPayments[day] || {};
       (sale.payment_methods || []).forEach(pm => {
@@ -356,17 +385,13 @@ function DashboardPage() {
       cashierRow.revenue += Number(sale.total || 0);
       cashierRow.profit += Number(sale.profitTotal || 0);
     }
-    const filteredDates = sourceSales.map((sale) => new Date(sale.created_at).getTime()).filter((ts) => !Number.isNaN(ts)).sort((a, b) => a - b);
-    const start = periodMode === 'all_time'
-      ? new Date(filteredDates[0] || Date.now())
-      : new Date(`${dateFrom || defaultFromIso}T00:00:00`);
-    const end = periodMode === 'all_time'
-      ? new Date(filteredDates[filteredDates.length - 1] || Date.now())
-      : new Date(`${dateTo || todayIso}T00:00:00`);
-    const daysInRange = [];
-    for (let t = start.getTime(); t <= end.getTime(); t += 24 * 3600 * 1000) {
-      daysInRange.push(new Date(t).toISOString().slice(0, 10));
-    }
+    const filteredDateKeys = sourceSales
+      .map((sale) => formatLocalDateKey(sale.created_at))
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+    const daysInRange = periodMode === 'all_time'
+      ? Array.from(new Set(filteredDateKeys))
+      : enumerateDateKeys(dateFrom || defaultFromIso, dateTo || todayIso);
     const last7 = daysInRange.slice(-7);
     const last30 = daysInRange;
     const lineData = {

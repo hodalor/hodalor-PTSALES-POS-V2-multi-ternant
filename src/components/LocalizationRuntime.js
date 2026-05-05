@@ -3,7 +3,9 @@ import { LANGUAGE_CHANGED_EVENT, translate } from '../utils/localization';
 import { useLanguage } from './LanguageProvider';
 
 const ORIGINAL_TEXT = Symbol('ptOriginalText');
+const LAST_TEXT_OUTPUT = Symbol('ptLastTextOutput');
 const ORIGINAL_ATTRS = Symbol('ptOriginalAttrs');
+const LAST_ATTR_OUTPUTS = Symbol('ptLastAttrOutputs');
 
 function shouldSkipTextNode(node) {
   const parent = node?.parentElement;
@@ -25,10 +27,14 @@ function translateTextNode(node, language) {
   if (!node || shouldSkipTextNode(node)) return;
   const current = String(node.nodeValue || '');
   if (!current.trim()) return;
-  const original = node[ORIGINAL_TEXT] ?? current;
-  if (!node[ORIGINAL_TEXT]) node[ORIGINAL_TEXT] = original;
+  const previousOutput = String(node[LAST_TEXT_OUTPUT] || '');
+  if (!node[ORIGINAL_TEXT] || (current !== previousOutput && current !== node[ORIGINAL_TEXT])) {
+    node[ORIGINAL_TEXT] = current;
+  }
+  const original = String(node[ORIGINAL_TEXT] || current);
   const translated = translate(language, String(original).trim());
   const nextValue = preserveSpacing(original, translated);
+  node[LAST_TEXT_OUTPUT] = nextValue;
   if (node.nodeValue !== nextValue) {
     node.nodeValue = nextValue;
   }
@@ -37,6 +43,11 @@ function translateTextNode(node, language) {
 function translateAttribute(element, attr, language) {
   if (!element?.hasAttribute?.(attr)) return;
   const attrs = element[ORIGINAL_ATTRS] || (element[ORIGINAL_ATTRS] = {});
+  const outputs = element[LAST_ATTR_OUTPUTS] || (element[LAST_ATTR_OUTPUTS] = {});
+  const current = element.getAttribute(attr) || '';
+  if (!Object.prototype.hasOwnProperty.call(attrs, attr) || (current !== String(outputs[attr] || '') && current !== String(attrs[attr] || ''))) {
+    attrs[attr] = current;
+  }
   if (!Object.prototype.hasOwnProperty.call(attrs, attr)) {
     attrs[attr] = element.getAttribute(attr) || '';
   }
@@ -44,6 +55,7 @@ function translateAttribute(element, attr, language) {
   if (!original.trim()) return;
   const translated = translate(language, original.trim());
   const nextValue = preserveSpacing(original, translated);
+  outputs[attr] = nextValue;
   if (element.getAttribute(attr) !== nextValue) {
     element.setAttribute(attr, nextValue);
   }
@@ -54,6 +66,11 @@ function translateInputValue(element, language) {
   const type = String(element.getAttribute('type') || '').toLowerCase();
   if (!['button', 'submit', 'reset'].includes(type)) return;
   const attrs = element[ORIGINAL_ATTRS] || (element[ORIGINAL_ATTRS] = {});
+  const outputs = element[LAST_ATTR_OUTPUTS] || (element[LAST_ATTR_OUTPUTS] = {});
+  const current = element.getAttribute('value') || element.value || '';
+  if (!Object.prototype.hasOwnProperty.call(attrs, 'value') || (current !== String(outputs.value || '') && current !== String(attrs.value || ''))) {
+    attrs.value = current;
+  }
   if (!Object.prototype.hasOwnProperty.call(attrs, 'value')) {
     attrs.value = element.getAttribute('value') || element.value || '';
   }
@@ -61,6 +78,7 @@ function translateInputValue(element, language) {
   if (!original.trim()) return;
   const translated = translate(language, original.trim());
   const nextValue = preserveSpacing(original, translated);
+  outputs.value = nextValue;
   if (element.value !== nextValue) element.value = nextValue;
   if (element.getAttribute('value') !== nextValue) element.setAttribute('value', nextValue);
 }
