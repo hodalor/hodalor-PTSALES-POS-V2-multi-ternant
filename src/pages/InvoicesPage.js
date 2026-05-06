@@ -3,15 +3,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { productSpec } from '../utils/productSpec';
 import { formatCurrency } from '../utils/currency';
 import { useToast } from '../components/ToastProvider';
+import { addCustomer } from '../store/customersSlice';
 import { addInvoice } from '../store/invoicesSlice';
 import { setNextInvoiceNumber, setNextWarehouseInvoiceNumber, setNextWholesaleInvoiceNumber } from '../store/settingsSlice';
 import { buildInvoiceA4Html, printInvoiceA4 } from '../utils/invoicePrint';
 import * as invoicesApi from '../api/invoices';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import { isFeatureEnabled } from '../utils/featureFlags';
-import { getAllowedPriceTiers, getDisplayPrice, getPreferredPriceTier } from '../utils/priceVisibility';
+import { getAllowedPriceTiers, getDisplayPrice, getPreferredPriceTier, getPriceTierLabel } from '../utils/priceVisibility';
 
-const MANUAL_INVOICE_PRICE_TIERS = ['retail', 'wholesale', 'agent', 'warehouse'];
+const MANUAL_INVOICE_PRICE_TIERS = ['retail', 'wholesale', 'agent'];
 
 function InvoicesPage({ mode = 'retail' }) {
   const dispatch = useDispatch();
@@ -38,6 +39,7 @@ function InvoicesPage({ mode = 'retail' }) {
   const [items, setItems] = useState([]);
   const [customerId, setCustomerId] = useState('');
   const [adhocName, setAdhocName] = useState('');
+  const [adhocBusinessName, setAdhocBusinessName] = useState('');
   const [adhocContact, setAdhocContact] = useState('');
   const [adhocAddress, setAdhocAddress] = useState('');
   const [notes, setNotes] = useState('');
@@ -60,7 +62,7 @@ function InvoicesPage({ mode = 'retail' }) {
   const activeInvoiceTier = useMemo(() => getPreferredPriceTier(allowedPriceTiers, preferredModeTier), [allowedPriceTiers, preferredModeTier]);
   const selectableInvoiceTiers = useMemo(() => (
     modeLower === 'retail'
-      ? allowedPriceTiers
+      ? allowedPriceTiers.filter((tier) => tier !== 'warehouse')
       : MANUAL_INVOICE_PRICE_TIERS.slice()
   ), [allowedPriceTiers, modeLower]);
   const [selectedInvoiceTier, setSelectedInvoiceTier] = useState(activeInvoiceTier);
@@ -138,6 +140,70 @@ function InvoicesPage({ mode = 'retail' }) {
     );
   }, [sellables, query]);
 
+  const selectedCustomer = useMemo(() => {
+    if (!customerId) return null;
+    return customers.find(c => String(c.id) === String(customerId)) || null;
+  }, [customerId, customers]);
+
+  const customerMatches = useMemo(() => {
+    const q = String(adhocName || '').trim().toLowerCase();
+    if (customerId || !q) return [];
+    return customers
+      .filter((row) => {
+        const fields = [
+          String(row.name || ''),
+          String(row.businessName || ''),
+          String(row.phone || ''),
+          String(row.businessPhone || ''),
+          String(row.customerCode || '')
+        ].join(' ').toLowerCase();
+        return fields.includes(q);
+      })
+      .slice(0, 8);
+  }, [adhocName, customerId, customers]);
+
+  const registerLocalCustomer = useCallback((payload) => {
+    const row = payload && typeof payload === 'object' ? payload : null;
+    const name = String(row?.name || '').trim();
+    if (!name) return;
+    const normalizedPhone = String(row?.phone || row?.businessPhone || '').trim();
+    const exists = customers.some((customerRow) => (
+      (row?.customerId && String(customerRow.id || '') === String(row.customerId))
+      || (row?.clientId && String(customerRow.clientId || '') === String(row.clientId))
+      || (
+        String(customerRow.name || '').trim().toLowerCase() === name.toLowerCase()
+        && String(customerRow.phone || customerRow.businessPhone || '').trim() === normalizedPhone
+      )
+    ));
+    if (exists) return;
+    dispatch(addCustomer({
+      id: String(row.customerId || row.clientId || `invoice-customer-${Date.now()}`),
+      clientId: row.clientId || undefined,
+      customerCode: row.customerCode || '',
+      name,
+      phone: String(row.phone || '').trim(),
+      address: String(row.address || '').trim(),
+      businessName: String(row.businessName || '').trim(),
+      businessAddress: String(row.businessAddress || '').trim(),
+      businessPhone: String(row.businessPhone || '').trim(),
+      customerType: row.customerType || (modeLower === 'wholesale' ? 'distribution' : 'retail'),
+      offline: !row.customerId
+    }));
+  }, [customers, dispatch, modeLower]);
+
+  function selectExistingCustomer(row) {
+    if (!row) return;
+    setCustomerId(String(row.id || row._id || ''));
+    setAdhocName(String(row.name || ''));
+    setAdhocBusinessName(String(row.businessName || ''));
+    setAdhocContact(String(row.phone || row.businessPhone || ''));
+    setAdhocAddress(String(row.address || row.businessAddress || ''));
+  }
+
+  function clearSelectedCustomer() {
+    setCustomerId('');
+  }
+
   function addItem(p) {
     setItems(list => {
       const ex = list.find(i => i.sku === p.sku);
@@ -176,11 +242,6 @@ function InvoicesPage({ mode = 'retail' }) {
     }));
   }, [resolveSellableRate]);
 
-  const customer = useMemo(() => {
-    if (customerId) return customers.find(c => String(c.id) === String(customerId)) || null;
-    if (adhocName.trim()) return { name: adhocName.trim(), contact: adhocContact.trim(), address: adhocAddress.trim() };
-    return null;
-  }, [customers, customerId, adhocName, adhocContact, adhocAddress]);
   const subtotal = items.reduce((s, i) => s + (Number(i.qty) || 0) * (Number(i.rate) || 0), 0);
   const tax = Math.max(0, subtotal * Number(settings.taxRate || 0));
   const total = Math.max(0, subtotal + tax);
@@ -193,24 +254,52 @@ function InvoicesPage({ mode = 'retail' }) {
     }
     const digits = Number(settings.invoiceNumberDigits || 6);
     const number = `${invoicePrefix}-${String(nextInvoiceNumberValue || 1).padStart(digits, '0')}`;
+    const customerClientId = !selectedCustomer && adhocName.trim()
+      ? `invoice-customer-${Date.now()}-${Math.random().toString(16).slice(2)}`
+      : '';
+    const invoiceCustomer = selectedCustomer ? {
+      name: selectedCustomer.name || '',
+      phone: selectedCustomer.phone || '',
+      email: selectedCustomer.email || '',
+      address: selectedCustomer.address || '',
+      businessName: selectedCustomer.businessName || '',
+      businessAddress: selectedCustomer.businessAddress || '',
+      taxId: selectedCustomer.taxId || '',
+      customerCode: selectedCustomer.customerCode || '',
+      customerId: selectedCustomer.id
+    } : adhocName.trim() ? {
+      clientId: customerClientId,
+      name: adhocName.trim(),
+      phone: adhocContact.trim(),
+      address: adhocAddress.trim(),
+      businessName: adhocBusinessName.trim(),
+      businessAddress: adhocAddress.trim(),
+      businessPhone: adhocContact.trim(),
+      customerType: modeLower === 'wholesale' ? 'distribution' : 'retail'
+    } : null;
     const inv = {
       number,
       date: new Date().toISOString(),
       clientId: crypto.randomUUID ? crypto.randomUUID() : `manual-inv-${Date.now()}`,
-      customer: customer ? {
-        name: customer.name || '',
-        phone: customer.phone || customer.contact || '',
-        email: customer.email || '',
-        address: customer.address || '',
-        businessName: customer.businessName || '',
-        businessAddress: customer.businessAddress || '',
-        taxId: customer.taxId || '',
-        customerCode: customer.customerCode || '',
-        customerId: customer.id
+      customer: invoiceCustomer ? {
+        name: invoiceCustomer.name || '',
+        phone: invoiceCustomer.phone || invoiceCustomer.contact || '',
+        email: invoiceCustomer.email || '',
+        address: invoiceCustomer.address || '',
+        businessName: invoiceCustomer.businessName || '',
+        businessAddress: invoiceCustomer.businessAddress || '',
+        taxId: invoiceCustomer.taxId || '',
+        customerCode: invoiceCustomer.customerCode || '',
+        customerId: invoiceCustomer.customerId,
+        clientId: invoiceCustomer.clientId || undefined,
+        businessPhone: invoiceCustomer.businessPhone || ''
       } : {
         name: adhocName || '—',
         phone: adhocContact || '',
-        address: adhocAddress || ''
+        address: adhocAddress || '',
+        businessName: adhocBusinessName || '',
+        businessAddress: adhocAddress || '',
+        clientId: customerClientId || undefined
       },
       items: items.map(i => ({ name: i.name, spec: i.spec, qty: i.qty, rate: i.rate, per: i.per })),
       subtotal,
@@ -240,12 +329,14 @@ function InvoicesPage({ mode = 'retail' }) {
         }
         await enqueueHttp({ collection: 'invoices', label: 'Invoice', path: '/api/invoices', method: 'POST', body: inv });
         dispatch(addInvoice(inv));
+        if (!selectedCustomer && invoiceCustomer) registerLocalCustomer(inv.customer);
         bumpInvoiceSequence();
         toast.show('Saved offline. Will backup when online.', { type: 'success' });
       } else {
         try {
           savedServer = await invoicesApi.create(inv);
           dispatch(addInvoice(savedServer || inv));
+          if (savedServer?.customer && savedServer.customer.customerId) registerLocalCustomer(savedServer.customer);
           bumpInvoiceSequence();
           toast.show('Invoice generated', { type: 'success' });
         } catch (e) {
@@ -257,6 +348,7 @@ function InvoicesPage({ mode = 'retail' }) {
               if (ok) {
                 savedServer = await invoicesApi.create(inv);
                 dispatch(addInvoice(savedServer || inv));
+                if (savedServer?.customer && savedServer.customer.customerId) registerLocalCustomer(savedServer.customer);
                 bumpInvoiceSequence();
                 toast.show('Invoice generated', { type: 'success' });
                 savedServer = savedServer || null;
@@ -270,6 +362,7 @@ function InvoicesPage({ mode = 'retail' }) {
             if (offlineBackupAllowed) {
               await enqueueHttp({ collection: 'invoices', label: 'Invoice', path: '/api/invoices', method: 'POST', body: inv });
               dispatch(addInvoice(inv));
+              if (!selectedCustomer && invoiceCustomer) registerLocalCustomer(inv.customer);
               bumpInvoiceSequence();
               toast.show('Server not ready. Saved invoice locally for backup.', { type: 'warning' });
             } else {
@@ -285,6 +378,7 @@ function InvoicesPage({ mode = 'retail' }) {
       setItems([]);
       setCustomerId('');
       setAdhocName('');
+      setAdhocBusinessName('');
       setAdhocContact('');
       setAdhocAddress('');
       setNotes('');
@@ -330,7 +424,7 @@ function InvoicesPage({ mode = 'retail' }) {
                 <select className="select" value={selectedInvoiceTier} onChange={e => setSelectedInvoiceTier(e.target.value)}>
                   {selectableInvoiceTiers.map((tier) => (
                     <option key={tier} value={tier}>
-                      {tier === 'wholesale' ? 'Distribution Price' : tier === 'warehouse' ? 'Warehouse Price' : tier === 'agent' ? 'Agent Price' : 'Retail Price'}
+                      {getPriceTierLabel(tier)}
                     </option>
                   ))}
                 </select>
@@ -364,23 +458,56 @@ function InvoicesPage({ mode = 'retail' }) {
         <div className="card" style={{ marginBottom: 12 }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Customer</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
-            <select className="select" value={customerId} onChange={e => setCustomerId(e.target.value)}>
-              <option value="">Ad-hoc</option>
-              {customers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+            <div style={{ position: 'relative' }}>
+              <input
+                className="input"
+                placeholder="Name"
+                value={adhocName}
+                onChange={e => {
+                  const nextValue = e.target.value;
+                  if (customerId && nextValue !== String(selectedCustomer?.name || '')) setCustomerId('');
+                  setAdhocName(nextValue);
+                }}
+              />
+              {!customerId && customerMatches.length > 0 && (
+                <div style={{ position: 'absolute', top: 44, left: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', zIndex: 20 }}>
+                  {customerMatches.map((row) => (
+                    <button
+                      key={row.id}
+                      className="btn"
+                      onClick={() => selectExistingCustomer(row)}
+                      style={{ width: '100%', justifyContent: 'space-between', borderRadius: 0 }}
+                    >
+                      <span style={{ textAlign: 'left' }}>
+                        <div style={{ fontWeight: 700 }}>{row.name}</div>
+                        <div style={{ color: '#64748b', fontSize: 12 }}>
+                          {row.businessName || '—'} {(row.phone || row.businessPhone) ? `• ${row.phone || row.businessPhone}` : ''}
+                        </div>
+                      </span>
+                      <span>Select</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             {!customerId && (
               <>
-                <input className="input" placeholder="Name" value={adhocName} onChange={e => setAdhocName(e.target.value)} />
+                <input className="input" placeholder="Business name" value={adhocBusinessName} onChange={e => setAdhocBusinessName(e.target.value)} />
                 <input className="input" placeholder="Contact" value={adhocContact} onChange={e => setAdhocContact(e.target.value)} />
                 <input className="input" placeholder="Address" value={adhocAddress} onChange={e => setAdhocAddress(e.target.value)} />
               </>
             )}
-              {customerId && (
+              {customerId && selectedCustomer && (
                 <div style={{ color: '#64748b', fontSize: 12 }}>
-                  <div>Name: {customer?.name || ''}</div>
-                  <div>Phone: {customer?.phone || ''}</div>
-                  <div>Customer ID: {customer?.customerCode || customer?.id || ''}</div>
-                  <div>Address: {customer?.address || ''}</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                    <strong style={{ color: '#0f172a' }}>Existing customer selected</strong>
+                    <button className="btn" onClick={clearSelectedCustomer}>Use new customer</button>
+                  </div>
+                  <div>Name: {selectedCustomer.name || ''}</div>
+                  <div>Business: {selectedCustomer.businessName || '—'}</div>
+                  <div>Phone: {selectedCustomer.phone || selectedCustomer.businessPhone || ''}</div>
+                  <div>Customer ID: {selectedCustomer.customerCode || selectedCustomer.id || ''}</div>
+                  <div>Address: {selectedCustomer.address || selectedCustomer.businessAddress || ''}</div>
                 </div>
               )}
           </div>

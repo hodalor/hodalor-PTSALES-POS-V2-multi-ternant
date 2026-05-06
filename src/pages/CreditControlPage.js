@@ -20,6 +20,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   const [sales, setSales] = useState([]);
   const [repayments, setRepayments] = useState([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
   const [workingId, setWorkingId] = useState('');
@@ -87,6 +88,25 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
     customers.forEach(row => map.set(String(row._id || row.id), row));
     return map;
   }, [customers]);
+  const selectedCustomer = useMemo(() => (
+    customers.find((row) => String(row._id || row.id) === String(selectedCustomerId || '')) || null
+  ), [customers, selectedCustomerId]);
+  const customerMatches = useMemo(() => {
+    const q = String(customerSearch || '').trim().toLowerCase();
+    if (!q) return [];
+    return customers
+      .filter((row) => {
+        const fields = [
+          String(row.name || ''),
+          String(row.businessName || ''),
+          String(row.phone || ''),
+          String(row.businessPhone || ''),
+          String(row.customerCode || '')
+        ].join(' ').toLowerCase();
+        return fields.includes(q);
+      })
+      .slice(0, 10);
+  }, [customerSearch, customers]);
   const goodClients = useMemo(() => customers.filter(row => Number(row.latePayments || 0) === 0 && Number(row.outstandingBalance || 0) <= 0), [customers]);
   const riskyClients = useMemo(() => customers.filter(row => Number(row.latePayments || 0) > 0 || Number(row.overdueDays || 0) > 0), [customers]);
   const visibleCustomers = useMemo(() => {
@@ -397,18 +417,54 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       {section === 'clients' && <div className="card">
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 12 }}>
           <h2 className="section-title" style={{ margin: 0 }}>Customer Credit Ranking</h2>
-          <select className="select" value={selectedCustomerId} onChange={e => setSelectedCustomerId(e.target.value)} style={{ minWidth: 260 }}>
-            <option value="">Select customer</option>
-            {customers.map(row => (
-              <option key={row._id || row.id} value={row._id || row.id}>{row.name} {(row.customerCode || '') && `(${row.customerCode})`}</option>
-            ))}
-          </select>
+          <div style={{ position: 'relative', minWidth: 320, maxWidth: 420, width: '100%' }}>
+            <input
+              className="input"
+              placeholder="Search customer, business name, phone or code"
+              value={customerSearch}
+              onChange={e => setCustomerSearch(e.target.value)}
+            />
+            {customerMatches.length > 0 && (
+              <div style={{ position: 'absolute', top: 44, left: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', zIndex: 20, maxHeight: 320, overflowY: 'auto' }}>
+                {customerMatches.map((row) => (
+                  <button
+                    key={row._id || row.id}
+                    className="btn"
+                    onClick={() => {
+                      setSelectedCustomerId(String(row._id || row.id || ''));
+                      setCustomerSearch(String(row.name || ''));
+                    }}
+                    style={{ width: '100%', justifyContent: 'space-between', borderRadius: 0 }}
+                  >
+                    <span style={{ textAlign: 'left' }}>
+                      <div style={{ fontWeight: 700 }}>{row.name}</div>
+                      <div style={{ color: '#64748b', fontSize: 12 }}>
+                        {row.businessName || '—'} {(row.phone || row.businessPhone) ? `• ${row.phone || row.businessPhone}` : ''} {(row.customerCode || '') && `• ${row.customerCode}`}
+                      </div>
+                    </span>
+                    <span>Select</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+        {selectedCustomer && (
+          <div style={{ marginBottom: 12, color: '#64748b', fontSize: 12, display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+            <div>
+              Selected: <strong style={{ color: '#0f172a' }}>{selectedCustomer.name}</strong>
+              {selectedCustomer.businessName ? ` • ${selectedCustomer.businessName}` : ''}
+              {(selectedCustomer.phone || selectedCustomer.businessPhone) ? ` • ${selectedCustomer.phone || selectedCustomer.businessPhone}` : ''}
+            </div>
+            <button className="btn" onClick={() => { setSelectedCustomerId(''); setCustomerSearch(''); }}>Clear</button>
+          </div>
+        )}
         <div style={{ overflowX: 'auto' }}>
         <table className="table">
           <thead>
             <tr>
               <th align="left">Customer</th>
+              <th align="left">Business Name</th>
               <th align="left">Behaviour</th>
               <th align="left">Rank</th>
               <th align="left">Score</th>
@@ -420,6 +476,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
             {visibleCustomers.map(row => (
               <tr key={row._id || row.id}>
                 <td>{row.name}</td>
+                <td>{row.businessName || '—'}</td>
                 <td>
                   <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, background: Number(row.latePayments || 0) > 0 || Number(row.overdueDays || 0) > 0 ? '#fee2e2' : '#dcfce7', color: Number(row.latePayments || 0) > 0 || Number(row.overdueDays || 0) > 0 ? '#b91c1c' : '#166534', fontWeight: 700, fontSize: 12 }}>
                     {Number(row.latePayments || 0) > 0 || Number(row.overdueDays || 0) > 0 ? 'Bad / Risky' : 'Good Client'}
@@ -431,7 +488,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                 <td>{Number(row.overdueDays || 0)}</td>
               </tr>
             ))}
-            {!loading && visibleCustomers.length === 0 && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}>No customer credit data</td></tr>}
+            {!loading && visibleCustomers.length === 0 && <tr><td colSpan="7" style={{ padding: 12, color: '#64748b' }}>No customer credit data</td></tr>}
           </tbody>
         </table>
         </div>
