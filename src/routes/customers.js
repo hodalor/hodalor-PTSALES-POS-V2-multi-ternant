@@ -29,8 +29,11 @@ r.get('/', async (req, res) => {
       { customerCode: re },
       { name: re },
       { phone: re },
+      { businessPhone: re },
       { email: re },
-      { idCardNumber: re }
+      { idCardNumber: re },
+      { businessName: re },
+      { businessAddress: re }
     ];
   }
   const rows = await Customer.find(query).sort({ createdAt: -1 }).limit(limit);
