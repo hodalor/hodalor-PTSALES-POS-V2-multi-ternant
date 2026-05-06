@@ -507,6 +507,17 @@ function PosPage({ mode = 'retail' }) {
   }, [query, activeBranchId, isWholesale, reservationToken]);
 
   const subtotal = cart.items.reduce((sum, i) => sum + (i.price || 0) * (i.quantity || 1), 0);
+  const serializedPickerCartItems = useMemo(() => {
+    if (!serializedPickerProduct) return [];
+    const productId = String(serializedPickerProduct.productId || serializedPickerProduct.id || '').trim();
+    const variantId = String(serializedPickerProduct.variantId || '').trim();
+    return cart.items.filter((item) => {
+      const itemProductId = String(item.productId || item.id || '').trim();
+      const itemVariantId = String(item.variantId || '').trim();
+      const hasSerializedCode = String(item.imei || '').trim() || String(item.serialNumber || '').trim();
+      return itemProductId === productId && itemVariantId === variantId && hasSerializedCode;
+    });
+  }, [cart.items, serializedPickerProduct]);
   const manualDiscount = cart.discount || 0;
   const canOverrideTax = ['Admin','Manager'].includes(auth.role) || String(auth.role || '').toLowerCase() === 'superadmin';
   const taxRate = canOverrideTax && taxOverridePct !== '' ? Math.max(0, Math.min(1, Number(taxOverridePct) / 100)) : Number(settings.taxRate ?? 0);
@@ -610,7 +621,7 @@ function PosPage({ mode = 'retail' }) {
   }
 
   async function addSerializedUnitToCart(product, unit) {
-    const optimisticUnitId = String(unit?._id || '');
+    const optimisticUnitId = String(unit?._id || serializedUnitKey(unit) || '');
     const optimisticCode = unit?.imei || unit?.serialNumber || '';
     const reservationKey = serializedUnitKey(unit);
     if (isSerializedAlreadyInCart(unit)) {
@@ -640,7 +651,7 @@ function PosPage({ mode = 'retail' }) {
     }));
     setSerializedScanInput('');
     try {
-      await (unit?._id ? productUnitsApi.reserveProductUnit({
+      const reservedUnit = await (unit?._id ? productUnitsApi.reserveProductUnit({
         unitId: unit._id,
         productId: product.productId || product.id,
         variantId: product.variantId || '',
@@ -655,6 +666,26 @@ function PosPage({ mode = 'retail' }) {
         reservationToken,
         imei: unit?.imei || unit?.serialNumber || ''
       }));
+      const resolvedUnitId = String(reservedUnit?._id || '');
+      if (resolvedUnitId && resolvedUnitId !== optimisticUnitId) {
+        dispatch(removeItemByUnitId(optimisticUnitId));
+        dispatch(addItem({
+          name: product.name,
+          brand: product.brand || getProductBrand(product),
+          sku: product.sku,
+          price: product.price,
+          priceTier: selectedPriceTier,
+          prices: product.prices || { retail: product.price, wholesale: product.price, warehouse: product.warehousePrice || 0, agent: product.price },
+          allowCredit: product.allowCredit !== false,
+          minimumCreditPercentage: Number(product.minimumCreditPercentage || 0),
+          spec: productSpec(product),
+          productId: product.productId || product.id,
+          variantId: product.variantId || null,
+          unitId: resolvedUnitId,
+          imei: reservedUnit?.imei || unit?.imei || '',
+          serialNumber: reservedUnit?.serialNumber || unit?.serialNumber || ''
+        }));
+      }
       toast.show(`Added unit ${optimisticCode}`, { type: 'success' });
     } catch (e) {
       dispatch(removeItemByUnitId(optimisticUnitId));
@@ -663,6 +694,16 @@ function PosPage({ mode = 'retail' }) {
       toast.show(String(e?.message || 'Failed to reserve serialized unit'), { type: 'error' });
     } finally {
       if (reservationKey) setReservingSerializedKeys(prev => prev.filter(key => key !== reservationKey));
+    }
+  }
+
+  async function removeSerializedUnitFromCart(item) {
+    if (!item) return;
+    dispatch(removeItem(item.id));
+    setSerializedScanInput('');
+    void releaseSerializedCartItems([item]);
+    if (serializedPickerProduct) {
+      void loadSerializedUnits(serializedPickerProduct, serializedUnitsQuery, serializedUnitsPage, serializedUnitsPageSize);
     }
   }
 
@@ -1722,6 +1763,7 @@ function PosPage({ mode = 'retail' }) {
           <Modal
             title={`${t('Select Serialized Unit')} • ${serializedPickerProduct.name}`}
             onClose={() => setSerializedPickerProduct(null)}
+            panelClassName="modal-panel-serialized"
             footer={<button className="btn" onClick={() => setSerializedPickerProduct(null)}>{t('Close')}</button>}
           >
             <div style={{ display: 'grid', gap: 12 }}>
@@ -1759,32 +1801,59 @@ function PosPage({ mode = 'retail' }) {
                 }}
                 style={{ color: '#111827', background: '#ffffff' }}
               />
-              <div style={{ overflowX: 'auto', maxHeight: 420 }}>
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th align="left">{t('IMEI')}</th>
-                      <th align="left">{t('Serial')}</th>
-                      <th align="left"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {serializedUnits.map(unit => (
-                      <tr key={unit._id}>
-                        <td style={{ color: '#111827' }}>{unit.imei || '—'}</td>
-                        <td style={{ color: '#111827' }}>{unit.serialNumber || '—'}</td>
-                        <td style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
-                          {isSerializedAlreadyInCart(unit) && <span style={{ color: '#b45309', fontSize: 12 }}>{t('In Cart')}</span>}
-                          {!isSerializedAlreadyInCart(unit) && isSerializedPending(unit) && <span style={{ color: '#2563eb', fontSize: 12 }}>{t('Adding...')}</span>}
-                          <button className="btn btn-primary" onClick={() => addSerializedUnitToCart(serializedPickerProduct, unit)} disabled={isSerializedAlreadyInCart(unit) || isSerializedPending(unit)}>
-                            {isSerializedAlreadyInCart(unit) ? t('Selected') : isSerializedPending(unit) ? t('Adding...') : t('Select')}
-                          </button>
-                        </td>
+              <div className="serialized-picker-layout">
+                <div style={{ overflowX: 'auto', maxHeight: 420, minWidth: 0 }}>
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th align="left">{t('IMEI')}</th>
+                        <th align="left">{t('Serial')}</th>
+                        <th align="left"></th>
                       </tr>
+                    </thead>
+                    <tbody>
+                      {serializedUnits.map(unit => (
+                        <tr key={unit._id}>
+                          <td style={{ color: '#111827' }}>{unit.imei || '—'}</td>
+                          <td style={{ color: '#111827' }}>{unit.serialNumber || '—'}</td>
+                          <td style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center' }}>
+                            {isSerializedAlreadyInCart(unit) && <span style={{ color: '#b45309', fontSize: 12 }}>{t('In Cart')}</span>}
+                            {!isSerializedAlreadyInCart(unit) && isSerializedPending(unit) && <span style={{ color: '#2563eb', fontSize: 12 }}>{t('Adding...')}</span>}
+                            <button className="btn btn-primary" onClick={() => addSerializedUnitToCart(serializedPickerProduct, unit)} disabled={isSerializedAlreadyInCart(unit) || isSerializedPending(unit)}>
+                              {isSerializedAlreadyInCart(unit) ? t('Selected') : isSerializedPending(unit) ? t('Adding...') : t('Select')}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {!serializedLoading && serializedUnits.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>{t('No serialized units available')}</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="serialized-picker-cart">
+                  <div className="serialized-picker-cart-title">{t('In Cart')} ({serializedPickerCartItems.length})</div>
+                  <div className="serialized-picker-cart-list">
+                    {serializedPickerCartItems.map((item) => (
+                      <div key={item.id} className="serialized-picker-cart-item">
+                        <div className="serialized-picker-cart-code">{item.imei || item.serialNumber || '—'}</div>
+                        <div className="serialized-picker-cart-meta">{item.serialNumber && item.imei && item.serialNumber !== item.imei ? item.serialNumber : (item.spec || '—')}</div>
+                        <button
+                          type="button"
+                          className="serialized-picker-delete"
+                          onClick={() => removeSerializedUnitFromCart(item)}
+                          aria-label={t('Remove')}
+                          title={t('Remove')}
+                        >
+                          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                            <path d="M4 7h16M9 7V5h6v2M8 10v7M12 10v7M16 10v7M6 7l1 12h10l1-12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </button>
+                      </div>
                     ))}
-                    {!serializedLoading && serializedUnits.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>{t('No serialized units available')}</td></tr>}
-                  </tbody>
-                </table>
+                    {serializedPickerCartItems.length === 0 ? (
+                      <div className="serialized-picker-cart-empty">{t('No serialized units in cart yet')}</div>
+                    ) : null}
+                  </div>
+                </div>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>

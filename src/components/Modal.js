@@ -1,7 +1,17 @@
 import React, { useEffect } from 'react';
 import { useAppLanguage } from '../utils/localization';
 
-export default function Modal({ title, children, onClose, footer, variant = 'light' }) {
+export default function Modal({
+  title,
+  children,
+  onClose,
+  footer,
+  variant = 'light',
+  panelClassName = '',
+  panelStyle,
+  bodyClassName = '',
+  bodyStyle
+}) {
   const { t } = useAppLanguage();
   useEffect(() => {
     const handleEsc = (e) => {
@@ -15,7 +25,8 @@ export default function Modal({ title, children, onClose, footer, variant = 'lig
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div
-        className={`modal-panel ${isLight ? 'modal-panel-light' : 'modal-panel-dark'}`}
+        className={`modal-panel ${isLight ? 'modal-panel-light' : 'modal-panel-dark'} ${panelClassName}`.trim()}
+        style={panelStyle}
         onClick={e => e.stopPropagation()}
       >
         <div className="modal-header">
@@ -27,7 +38,7 @@ export default function Modal({ title, children, onClose, footer, variant = 'lig
             </svg>
           </button>
         </div>
-        <div className="modal-body">
+        <div className={`modal-body ${bodyClassName}`.trim()} style={bodyStyle}>
           {children}
         </div>
         {footer && (

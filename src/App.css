@@ -1589,6 +1589,85 @@ html, body, #root {
   background: #f8fafc;
   font-size: 12px;
 }
+.serialized-picker-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2.1fr) minmax(250px, 0.95fr);
+  gap: 14px;
+  align-items: start;
+}
+.serialized-picker-cart {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+}
+.serialized-picker-cart-title {
+  font-size: 12px;
+  font-weight: 800;
+  color: #0f172a;
+}
+.serialized-picker-cart-list {
+  display: grid;
+  gap: 8px;
+  max-height: 420px;
+  overflow: auto;
+}
+.serialized-picker-cart-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 10px;
+  align-items: start;
+  padding: 8px 10px;
+  border: 1px solid #dbe4f0;
+  border-radius: 12px;
+  background: #ffffff;
+}
+.serialized-picker-cart-code {
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f172a;
+  word-break: break-word;
+}
+.serialized-picker-cart-meta {
+  grid-column: 1 / 2;
+  font-size: 11px;
+  color: #64748b;
+  word-break: break-word;
+}
+.serialized-picker-cart-empty {
+  padding: 10px 12px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
+  color: #64748b;
+  font-size: 12px;
+  background: #ffffff;
+}
+.serialized-picker-delete {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 10px;
+  border: 1px solid #fecaca;
+  background: #fff5f5;
+  color: #dc2626;
+  cursor: pointer;
+  transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+}
+.serialized-picker-delete svg {
+  width: 15px;
+  height: 15px;
+}
+.serialized-picker-delete:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  transform: translateY(-1px);
+}
 .filter-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -1693,6 +1772,9 @@ html, body, #root {
   border-radius: 20px;
   overflow: hidden;
   box-shadow: 0 28px 60px rgba(2, 6, 23, 0.28);
+}
+.modal-panel-serialized {
+  width: min(96vw, 980px);
 }
 .modal-panel-light {
   background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
@@ -2731,6 +2813,9 @@ html, body, #root {
   .goods-filter-card,
   .inventory-toolbar-inline {
     flex-wrap: wrap;
+    grid-template-columns: 1fr;
+  }
+  .serialized-picker-layout {
     grid-template-columns: 1fr;
   }
   .toolbar-inline .select,
