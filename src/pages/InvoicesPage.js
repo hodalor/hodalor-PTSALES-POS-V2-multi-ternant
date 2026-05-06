@@ -211,6 +211,7 @@ function InvoicesPage({ mode = 'retail' }) {
         sourceProductId: p.productId || p.id,
         sourceVariantId: p.variantId || '',
         name: p.name,
+        brand: p.brand || getProductBrand(p),
         sku: p.sku,
         spec,
         qty: 1,
@@ -298,7 +299,7 @@ function InvoicesPage({ mode = 'retail' }) {
         businessAddress: adhocAddress || '',
         clientId: customerClientId || undefined
       },
-      items: items.map(i => ({ name: i.name, spec: i.spec, qty: i.qty, rate: i.rate, per: i.per })),
+      items: items.map(i => ({ name: i.name, brand: i.brand || '', spec: i.spec, qty: i.qty, rate: i.rate, per: i.per })),
       subtotal,
       tax,
       total,
@@ -436,10 +437,10 @@ function InvoicesPage({ mode = 'retail' }) {
           </div>
           <div className="product-list">
             {filtered.map(p => (
-              <button key={p.id} onClick={() => addItem(p)} className="product-list-item">
+              <button key={p.id} onClick={() => addItem(p)} className={`product-list-item${p.image ? '' : ' no-thumb'}`}>
                 {p.image && <img src={p.image} alt={p.name} className="thumb" />}
                 <div className="meta">
-                  <div>
+                  <div className="details">
                     <div className="title">{p.name}</div>
                     {p.brand ? <div className="sku" style={{ color: '#64748b' }}>{p.brand}</div> : null}
                     {productSpec(p) && <div className="sku" style={{ color: '#64748b' }}>{productSpec(p)}</div>}
@@ -515,6 +516,7 @@ function InvoicesPage({ mode = 'retail' }) {
             <li key={item.id} className="cart-item">
               <div className="cart-title">
                 <div>{item.name}</div>
+                {item.brand ? <small style={{ color: '#64748b' }}>{item.brand}</small> : null}
                 {item.spec && <small style={{ color: '#64748b' }}>{item.spec}</small>}
                 <small>{item.sku}</small>
               </div>
@@ -613,6 +615,7 @@ function InvoicesPage({ mode = 'retail' }) {
                 const fields = [
                   String(inv.number || ''),
                   String(inv.customer?.name || ''),
+                  ...((inv.items || []).map((item) => `${item.name || ''} ${item.brand || ''} ${item.sku || ''}`)),
                   String(inv.buyerOrderNo || ''),
                   String(inv.supplierRef || ''),
                   String(inv.otherRef || '')

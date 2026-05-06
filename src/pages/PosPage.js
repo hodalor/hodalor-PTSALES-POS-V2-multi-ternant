@@ -1298,10 +1298,10 @@ function PosPage({ mode = 'retail' }) {
         ) : (
           <div className="product-list">
             {filtered.map(p => (
-              <button key={p.id} onClick={() => addToCart(p)} className="product-list-item">
+              <button key={p.id} onClick={() => addToCart(p)} className={`product-list-item${p.image ? '' : ' no-thumb'}`}>
                 {p.image && <img src={p.image} alt={p.name} className="thumb" />}
                 <div className="meta">
-                  <div>
+                  <div className="details">
                     <div className="title">{p.name}</div>
                     {p.brand ? <div className="sku" style={{ color: '#64748b' }}>{p.brand}</div> : null}
                     {productSpec(p) && <div className="sku" style={{ color: '#64748b' }}>{productSpec(p)}</div>}

@@ -129,7 +129,7 @@ function WarehouseGoodsPage() {
               <div className="goods-item-meta">{product.sku || t('No SKU')}</div>
               <div className="goods-item-line"><strong>{t('Warehouse Stock')} ({activeBranch?.name || activeBranchId || t('Branch')}):</strong> {product.warehouseStock}</div>
               {visiblePriceTiers.map(tier => (
-                <div key={tier} className="goods-item-line price-line"><strong>{getPriceTierLabel(tier)}:</strong> {formatCurrency(getDisplayPrice(product, tier), settings)}</div>
+                <div key={tier} className="goods-item-line price-line"><strong>{getPriceTierLabel(tier)}:</strong> <span className="price-accent">{formatCurrency(getDisplayPrice(product, tier), settings)}</span></div>
               ))}
               <div className="goods-item-line"><strong>{t('Low Stock Threshold')}:</strong> {product.warehouseLowStock}</div>
               <div className={`goods-status-pill ${product.warehouseStock <= Number(product.warehouseLowStock || 0) ? 'low' : 'ok'}`}>

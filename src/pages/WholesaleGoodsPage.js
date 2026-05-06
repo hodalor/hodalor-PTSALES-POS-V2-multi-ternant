@@ -129,7 +129,7 @@ function WholesaleGoodsPage() {
               <div className="goods-item-meta">{product.sku || t('No SKU')}</div>
               <div className="goods-item-line"><strong>{t('Distribution Stock')} ({activeBranch?.name || activeBranchId || t('Branch')}):</strong> {product.wholesaleStock}</div>
               {visiblePriceTiers.map(tier => (
-                <div key={tier} className="goods-item-line price-line"><strong>{getPriceTierLabel(tier)}:</strong> {formatCurrency(getDisplayPrice(product, tier), settings)}</div>
+                <div key={tier} className="goods-item-line price-line"><strong>{getPriceTierLabel(tier)}:</strong> <span className="price-accent">{formatCurrency(getDisplayPrice(product, tier), settings)}</span></div>
               ))}
               <div className="goods-item-line"><strong>{t('Low Stock Threshold')}:</strong> {product.wholesaleLowStock}</div>
               <div className={`goods-status-pill ${product.wholesaleStock <= Number(product.wholesaleLowStock || 0) ? 'low' : 'ok'}`}>

@@ -1513,9 +1513,9 @@ html, body, #root {
   border: 1px solid var(--border);
 }
 .modal-panel-dark {
-  background: linear-gradient(180deg, #050816 0%, #020617 100%);
-  color: #e5e7eb;
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  color: var(--text);
+  border: 1px solid var(--border);
 }
 .modal-header {
   display: flex;
@@ -1523,7 +1523,7 @@ html, body, #root {
   align-items: center;
   gap: 12px;
   padding: 18px 22px;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  border-bottom: 1px solid var(--border);
 }
 .modal-title {
   margin: 0;
@@ -1547,8 +1547,8 @@ html, body, #root {
   transition: background 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
 }
 .modal-close:hover {
-  background: rgba(148, 163, 184, 0.12);
-  border-color: rgba(148, 163, 184, 0.14);
+  background: #f8fafc;
+  border-color: var(--border);
   transform: rotate(90deg);
 }
 .modal-body {
@@ -1573,8 +1573,8 @@ html, body, #root {
   justify-content: flex-end;
   gap: 10px;
   padding: 16px 22px 18px;
-  border-top: 1px solid rgba(148, 163, 184, 0.16);
-  background: linear-gradient(180deg, rgba(248,250,252,0.25) 0%, rgba(255,255,255,0.02) 100%);
+  border-top: 1px solid var(--border);
+  background: linear-gradient(180deg, #fbfdff 0%, #f8fafc 100%);
 }
 
 /* Tables */
@@ -1755,11 +1755,18 @@ html, body, #root {
   border-radius: 12px;
   cursor: pointer;
 }
+.product-list-item.no-thumb {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
 .product-list-item:hover { border-color: #cbd5e1; }
 .product-list-item .meta {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
+  min-width: 0;
+}
+.product-list-item .details {
   min-width: 0;
 }
 .product-list-item .title {
@@ -1767,15 +1774,19 @@ html, body, #root {
   font-size: 0.9rem;
   line-height: 1.18;
   color: #0f172a;
+  word-break: break-word;
 }
 .product-list-item .sku {
   color: #64748b;
   font-size: 11px;
   line-height: 1.35;
+  word-break: break-word;
 }
 .product-list-item .stock {
   font-size: 11px;
   color: #64748b;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .goods-page-shell {
@@ -1839,9 +1850,11 @@ html, body, #root {
   line-height: 1;
   color: #0f172a;
 }
-.goods-item-line.price-line,
+.goods-item-line.price-line {
+  color: #334155;
+}
 .goods-item-line.price-line strong {
-  color: var(--price-accent);
+  color: #0f172a;
 }
 .goods-low-card {
   padding: 14px;
