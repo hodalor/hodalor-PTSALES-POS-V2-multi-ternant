@@ -370,10 +370,16 @@ function PosPage({ mode = 'retail' }) {
     return key ? reservingSerializedKeys.includes(key) : false;
   }
 
+  function getSerializedVisibleStockForBranch(p) {
+    const branchStock = Number(getAvailableStockForBranch(p) || 0);
+    if (branchStock > 0) return branchStock;
+    const key = `${String(p.productId || p.id || '')}:${String(p.variantId || '')}`;
+    return Number(serializedStockCountMap.get(key) || 0);
+  }
+
   function visibleStockForProduct(p) {
     if (String(p.trackType || 'quantity') === 'serialized') {
-      const key = `${String(p.productId || p.id || '')}:${String(p.variantId || '')}`;
-      return Number(serializedStockCountMap.get(key) || 0);
+      return getSerializedVisibleStockForBranch(p);
     }
     return getAvailableStockForBranch(p);
   }
