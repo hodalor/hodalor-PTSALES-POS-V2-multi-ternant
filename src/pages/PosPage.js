@@ -1304,8 +1304,8 @@ function PosPage({ mode = 'retail' }) {
         ) : (
           <div className="product-list">
             {filtered.map(p => (
-              <button key={p.id} onClick={() => addToCart(p)} className={`product-list-item${p.image ? '' : ' no-thumb'}`}>
-                {p.image && <img src={p.image} alt={p.name} className="thumb" />}
+              <button key={p.id} onClick={() => addToCart(p)} className="product-list-item">
+                {p.image ? <img src={p.image} alt={p.name} className="thumb" /> : <div className="thumb-placeholder">---</div>}
                 <div className="meta">
                   <div className="details">
                     <div className="title">{p.name}</div>
@@ -1317,7 +1317,7 @@ function PosPage({ mode = 'retail' }) {
                     {t('Stock')}: {visibleStockForProduct(p)}{(p.lowStock ?? 0) > 0 && visibleStockForProduct(p) <= (p.lowStock ?? 0) ? ` • ${t('Low')}` : ''}
                   </div>
                 </div>
-                <div style={{ fontWeight: 700 }}>{formatCurrency(p.price, settings)}</div>
+                <div className="price">{formatCurrency(p.price, settings)}</div>
               </button>
             ))}
           </div>

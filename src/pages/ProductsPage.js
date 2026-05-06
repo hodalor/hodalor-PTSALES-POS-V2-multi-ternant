@@ -856,7 +856,8 @@ function ProductsPage() {
             </select>
           </label>
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+        <div className="table-wrap">
+        <table className="table products-catalog-table">
           <thead>
             <tr>
               <th align="left">{t('Image')}</th>
@@ -874,37 +875,37 @@ function ProductsPage() {
           </thead>
           <tbody>
             {filteredCatalogProducts.map(p => (
-              <tr key={p.id || p._id || p.sku} style={{ borderTop: '1px solid #e2e8f0' }}>
+              <tr key={p.id || p._id || p.sku}>
                 <td>
                   {p.image ? <img src={p.image} alt={p.name} className="thumb" /> : <span style={{ color: '#94a3b8' }}>—</span>}
                 </td>
-                <td>{p.name}</td>
+                <td className="name-cell">{p.name}</td>
                 <td>{getProductBrand(p) || '—'}</td>
                 <td>{p.sku}</td>
-                <td><span style={{ color: '#64748b' }}>{productSpec(p) || '—'}</span></td>
+                <td className="spec-cell"><span style={{ color: '#64748b' }}>{productSpec(p) || '—'}</span></td>
                 <td>
                   {p.barcode ? (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                       <code style={{ fontSize: 12, color: '#0f172a' }}>{p.barcode}</code>
-                      <button className="btn" onClick={() => copy(p.barcode)} title={t('Copy barcode')}>
+                      <button className="btn btn-compact" onClick={() => copy(p.barcode)} title={t('Copy barcode')}>
                         <svg viewBox="0 0 24 24" fill="none"><path d="M9 9h11v11H9z" stroke="currentColor" strokeWidth="2"/><path d="M5 5h11v11" stroke="currentColor" strokeWidth="2"/></svg>
                         {t('Copy')}
                       </button>
                     </div>
                   ) : '-'}
                 </td>
-                <td>{formatCurrency(getDisplayPrice(p, primaryVisibleTier), settings)}</td>
-                <td>{p.category || '-'}</td>
+                <td className="price-cell">{formatCurrency(getDisplayPrice(p, primaryVisibleTier), settings)}</td>
+                <td className="category-cell">{p.category || '-'}</td>
                 <td>{p.lowStock ?? 0}</td>
                 <td>
                   {Array.isArray(p.variants) && p.variants.length > 0 ? (
-                    <button className="btn" onClick={() => {
+                    <button className="btn btn-compact" onClick={() => {
                       const key = p.id || p._id || p.sku;
                       setOpenStockFor(o => o === key ? null : key);
                     }}>{t('Variants')}</button>
                   ) : (
                   <input
-                    className="input"
+                    className="input stock-input"
                     type="number"
                     min="0"
                     value={(currentInventoryType === 'warehouse' ? p.warehouseStockByBranch : currentInventoryType === 'wholesale' ? p.wholesaleStockByBranch : p.stockByBranch)?.[currentBranchId] || 0}
@@ -947,26 +948,26 @@ function ProductsPage() {
                         toast.show(t('Failed to save stock. Check your permission or connection.'), { type: 'error' });
                       });
                     }}
-                    style={{ width: 100 }}
                     disabled={!canEditStock || String(p.trackType || 'quantity') === 'serialized'}
                   />
                   )}
                 </td>
                 <td>
+                  <div className="products-row-actions">
                   {canEditProducts && (
-                  <button className="btn" onClick={() => startEdit(p)}>
+                  <button className="btn btn-compact" onClick={() => startEdit(p)}>
                     <svg viewBox="0 0 24 24" fill="none"><path d="M4 21h4l11-11-4-4L4 17v4z" stroke="currentColor" strokeWidth="2"/></svg>
                     {t('Edit')}
                   </button>
                   )}
                   {String(p.trackType || 'quantity') === 'serialized' && (
-                  <button className="btn" onClick={() => openSerializedManager(p)} style={{ marginLeft: 6 }}>
+                  <button className="btn btn-compact" onClick={() => openSerializedManager(p)}>
                     {t('Units')}
                   </button>
                   )}
                   {(roleLower === 'admin' || roleLower === 'superadmin') && (
                   <button
-                    className="btn"
+                    className="btn btn-compact"
                     onClick={() => {
                       const localKey = p.id || p._id || p.sku;
                       const serverKey = p._id || p.id;
@@ -993,12 +994,12 @@ function ProductsPage() {
                         }
                       })();
                     }}
-                    style={{ marginLeft: 6 }}
                   >
                     <svg viewBox="0 0 24 24" fill="none"><path d="M6 7h12M10 11v6M14 11v6M9 7l1-2h4l1 2M7 7l1 12h8l1-12" stroke="currentColor" strokeWidth="2"/></svg>
                     {t('Remove')}
                   </button>
                   )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -1072,6 +1073,7 @@ function ProductsPage() {
             ) : null}
           </tbody>
         </table>
+        </div>
       </div>
       )}
 

@@ -483,8 +483,8 @@ function InventoryPage() {
                         {p.image ? (
                           <img src={p.image} alt={p.name} style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 8, border: '1px solid #e2e8f0' }} />
                         ) : (
-                          <div style={{ width: 36, height: 36, borderRadius: 8, border: '1px dashed #cbd5e1', display: 'grid', placeItems: 'center', color: '#94a3b8', fontSize: 10 }}>
-                            —
+                          <div className="thumb-placeholder" style={{ width: 36, height: 36, fontSize: 10 }}>
+                            ---
                           </div>
                         )}
                         <div style={{ minWidth: 0 }}>

@@ -631,10 +631,10 @@ function DashboardPage() {
   }, [branches, products]);
   const summaryCardStyle = {
     background: '#fff',
-    padding: 14,
-    borderRadius: 16,
+    padding: 11,
+    borderRadius: 14,
     border: '1px solid #e2e8f0',
-    boxShadow: '0 10px 24px rgba(15, 23, 42, 0.06)',
+    boxShadow: '0 8px 18px rgba(15, 23, 42, 0.05)',
     position: 'relative',
     overflow: 'hidden'
   };
@@ -647,14 +647,14 @@ function DashboardPage() {
     background: `linear-gradient(90deg, ${accent} 0%, ${accent}cc 100%)`
   });
   const summaryCardBadgeStyle = (accent, tint) => ({
-    width: 42,
-    height: 42,
+    width: 36,
+    height: 36,
     borderRadius: 999,
     background: tint,
     color: accent,
     display: 'grid',
     placeItems: 'center',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: 800,
     letterSpacing: 0.3,
     flexShrink: 0,
@@ -766,19 +766,19 @@ function DashboardPage() {
         {summaryCards.map((card) => (
           <div key={card.key} style={summaryCardStyle}>
             <div style={summaryCardAccentStyle(card.accent)} />
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
               <div style={{ minWidth: 0 }}>
-                <div style={{ color: '#64748b', fontSize: 12, fontWeight: 700 }}>{card.label}</div>
-                <div style={{ fontSize: 27, lineHeight: 1.15, fontWeight: 800, color: '#0f172a', marginTop: 8 }}>
+                <div style={{ color: '#64748b', fontSize: 11, lineHeight: 1.25, fontWeight: 700 }}>{card.label}</div>
+                <div style={{ fontSize: 22, lineHeight: 1.1, fontWeight: 800, color: '#0f172a', marginTop: 6 }}>
                   {card.loading ? (
                     <LoadingDots label={t('Loading finance summary')} />
                   ) : card.value}
                 </div>
-                <div style={{ marginTop: 8, color: '#64748b', fontSize: 12 }}>{card.subtitle}</div>
+                <div style={{ marginTop: 6, color: '#64748b', fontSize: 11, lineHeight: 1.3 }}>{card.subtitle}</div>
               </div>
               <div style={summaryCardBadgeStyle(card.accent, card.tint)}>{card.badge}</div>
             </div>
-            <div style={{ marginTop: 12, height: 4, borderRadius: 999, background: `linear-gradient(90deg, ${card.accent} 0%, ${card.accent}99 72%, rgba(255,255,255,0) 100%)` }} />
+            <div style={{ marginTop: 10, height: 4, borderRadius: 999, background: `linear-gradient(90deg, ${card.accent} 0%, ${card.accent}99 72%, rgba(255,255,255,0) 100%)` }} />
           </div>
         ))}
       </div>
