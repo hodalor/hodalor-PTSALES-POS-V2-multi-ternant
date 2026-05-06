@@ -92,7 +92,7 @@ function PosPage({ mode = 'retail' }) {
   const [brandFilter, setBrandFilter] = useState('all');
   const [trackTypeFilter, setTrackTypeFilter] = useState('all');
   const [payments, setPayments] = useState([{ type: 'cash', amount: '' }]);
-  const [view, setView] = useState(isWholesale ? 'list' : 'grid');
+  const [view, setView] = useState('grid');
   const [selectedPriceTier, setSelectedPriceTier] = useState(initialVisiblePriceTier);
   const [easyBuyEnabled, setEasyBuyEnabled] = useState(false);
   const [easyBuyAmountPaidNow, setEasyBuyAmountPaidNow] = useState('');
@@ -163,7 +163,7 @@ function PosPage({ mode = 'retail' }) {
   }, [cart.items.length, reservationToken]);
   useEffect(() => {
     setSelectedPriceTier(getPreferredPriceTier(allowedPriceTiers, initialPriceTier));
-    setView(isWholesale ? 'list' : 'grid');
+    setView('grid');
   }, [allowedPriceTiers, initialPriceTier, isWholesale]);
   const sellables = useMemo(() => {
     const out = [];
@@ -1224,7 +1224,7 @@ function PosPage({ mode = 'retail' }) {
     <div className="pos-layout">
       <div className="pos-products-pane">
         <div className="pos-sticky-search">
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             <div>
               <h2 style={{ marginBottom: 4 }}>{modeLabel}</h2>
               <div style={{ color: '#64748b', fontSize: 12 }}>
@@ -1233,7 +1233,19 @@ function PosPage({ mode = 'retail' }) {
                   : `${t('Retail inventory')}${branchLabel ? ` • ${branchLabel}` : ''} ${t('with EasyBuy support')}`}
               </div>
             </div>
-            <OfflineQueueIndicator collection="sales" label={t('Sales queued')} />
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginLeft: 'auto', flexWrap: 'nowrap' }}>
+              <OfflineQueueIndicator collection="sales" label={t('Sales queued')} />
+              {isWholesale ? (
+                <div className="filter-actions" style={{ flexWrap: 'nowrap' }}>
+                  <button className={`btn-toggle ${view === 'grid' ? 'active' : ''}`} onClick={() => setView('grid')} aria-label={t('Card view')} title={t('Card view')}>
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" stroke="currentColor" strokeWidth="2"/></svg>
+                  </button>
+                  <button className={`btn-toggle ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')} aria-label={t('List view')} title={t('List view')}>
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2"/></svg>
+                  </button>
+                </div>
+              ) : null}
+            </div>
           </div>
           <div className="toolbar pos-toolbar">
             <input className="input pos-toolbar-search" placeholder={t('Search name, brand, SKU, barcode, IMEI, or serial number')} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onSearchKeyDown} />
@@ -1266,14 +1278,16 @@ function PosPage({ mode = 'retail' }) {
               {allowedPriceTiers.map(tier => <option key={tier} value={tier}>{getPriceTierLabel(tier)}</option>)}
             </select>
             )}
-            <div className="filter-actions pos-toolbar-actions">
-              <button className={`btn-toggle ${view === 'grid' ? 'active' : ''}`} onClick={() => setView('grid')}>
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" stroke="currentColor" strokeWidth="2"/></svg>
-              </button>
-              <button className={`btn-toggle ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')}>
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2"/></svg>
-              </button>
-            </div>
+            {!isWholesale ? (
+              <div className="filter-actions pos-toolbar-actions">
+                <button className={`btn-toggle ${view === 'grid' ? 'active' : ''}`} onClick={() => setView('grid')} aria-label={t('Card view')} title={t('Card view')}>
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" stroke="currentColor" strokeWidth="2"/></svg>
+                </button>
+                <button className={`btn-toggle ${view === 'list' ? 'active' : ''}`} onClick={() => setView('list')} aria-label={t('List view')} title={t('List view')}>
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="2"/></svg>
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
         <div className="pos-products-scroll">
