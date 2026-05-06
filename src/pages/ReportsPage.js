@@ -709,13 +709,13 @@ function ReportsPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
           <div className="card">
             <div style={{ fontWeight: 700, marginBottom: 6 }}>{t('Summary')}</div>
-            <div className="sp"><span className="muted">{t('Revenue')}</span><span>{maskRevenue(money.revenue)}</span></div>
-            <div className="sp"><span className="muted">{t('COGS')}</span><span>{maskProfit(money.cost)}</span></div>
-            <div className="sp"><span className="muted">{t('Profit')}</span><span>{maskProfit(money.profit)}</span></div>
+            <div className="sp"><span className="muted">{t('Revenue')}</span><span className="price-accent">{maskRevenue(money.revenue)}</span></div>
+            <div className="sp"><span className="muted">{t('COGS')}</span><span className="price-accent">{maskProfit(money.cost)}</span></div>
+            <div className="sp"><span className="muted">{t('Profit')}</span><span className="price-accent">{maskProfit(money.profit)}</span></div>
             <div className="sp"><span className="muted">{t('Margin')}</span><span>{maskProfitText(`${money.marginPct}%`)}</span></div>
-            <div className="sp"><span className="muted">{t('Expenses')}</span><span>{maskProfit(money.expenseTotal)}</span></div>
-            <div className="sp"><strong>{t('Net')}</strong><strong>{maskProfit(money.net)}</strong></div>
-            <div className="sp"><span className="muted">{t('Projected (30d)')}</span><span>{maskProfit(money.projected30)}</span></div>
+            <div className="sp"><span className="muted">{t('Expenses')}</span><span className="price-accent">{maskProfit(money.expenseTotal)}</span></div>
+            <div className="sp"><strong>{t('Net')}</strong><strong className="price-accent">{maskProfit(money.net)}</strong></div>
+            <div className="sp"><span className="muted">{t('Projected (30d)')}</span><span className="price-accent">{maskProfit(money.projected30)}</span></div>
           </div>
 
           <div className="card">
@@ -733,7 +733,7 @@ function ReportsPage() {
                   <tr key={String(r._id || r.id)}>
                     <td>{new Date(r.date).toLocaleDateString()}</td>
                     <td>{r.category}</td>
-                    <td>{maskProfit(Number(r.amount) || 0)}</td>
+                    <td><span className="price-accent">{maskProfit(Number(r.amount) || 0)}</span></td>
                   </tr>
                 ))}
                 {expenses.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>{t('No expenses in range')}</td></tr>}

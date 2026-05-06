@@ -18,6 +18,7 @@ import { getAllowedPriceTiers, getDisplayPrice, getPreferredPriceTier } from '..
 import { setAllSettings } from '../store/settingsSlice';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { useAppLanguage } from '../utils/localization';
+import { getProductBrand, getProductSearchText } from '../utils/productSearch';
 
 function ProductsPage() {
   const dispatch = useDispatch();
@@ -71,6 +72,7 @@ function ProductsPage() {
 
   // Unified form state
   const [name, setName] = useState('');
+  const [brand, setBrand] = useState('');
   const [sku, setSku] = useState('');
   const [price, setPrice] = useState('');
   const [wholesalePrice, setWholesalePrice] = useState('');
@@ -127,7 +129,7 @@ function ProductsPage() {
     return products.filter((p) => {
       if (catalogCategory !== 'all' && String(p.category || '') !== String(catalogCategory)) return false;
       if (!query) return true;
-      const hay = `${p.name || ''} ${p.sku || ''} ${p.category || ''} ${productSpec(p) || ''} ${p.barcode || ''}`.toLowerCase();
+      const hay = `${getProductSearchText(p)} ${productSpec(p) || ''}`.toLowerCase();
       return hay.includes(query);
     });
   }, [products, catalogCategory, catalogQuery]);
@@ -137,7 +139,7 @@ function ProductsPage() {
   }, [category, categoryOptions]);
 
   function resetForm() {
-    setName(''); setSku(''); setPrice(''); setWholesalePrice(''); setWarehousePrice(''); setAgentPrice('');
+    setName(''); setBrand(''); setSku(''); setPrice(''); setWholesalePrice(''); setWarehousePrice(''); setAgentPrice('');
     setCategory(categoryOptions[0] || 'General'); setNewCategory('');
     setInitialStock(0); setEditStockQty(0); setLowStock(0); setWholesaleLowStock(0); setWarehouseLowStock(0); setImagePreview('');
     setCostPrice(''); setExpiryDate('');
@@ -162,6 +164,7 @@ function ProductsPage() {
     const sb = p.stockByBranch || {};
     setEditStockQty(Number(sb?.[currentBranchId] || 0));
     setName(p.name);
+    setBrand(getProductBrand(p));
     setSku(p.sku);
     setPrice(String(p.price || 0));
     setWholesalePrice(String(p.wholesalePrice != null ? p.wholesalePrice : (p.price || 0)));
@@ -372,6 +375,7 @@ function ProductsPage() {
           : {};
         const payload = {
             name: name.trim(),
+            brand: brand.trim(),
             sku: sku.trim(),
             trackType,
             price: Number(price),
@@ -478,6 +482,7 @@ function ProductsPage() {
         const variantsServer = variantsLocal.map(({ stockByBranch, ...rest }) => rest);
         const updatedBaseLocal = {
             name: name.trim(),
+            brand: brand.trim(),
             sku: sku.trim(),
             trackType,
             price: Number(price),
@@ -583,6 +588,7 @@ function ProductsPage() {
         const changed = {};
         if (original) {
             if (original.name !== name.trim()) changed.name = { from: original.name, to: name.trim() };
+            if ((getProductBrand(original) || '') !== brand.trim()) changed.brand = { from: getProductBrand(original) || '', to: brand.trim() };
             if (original.sku !== sku.trim()) changed.sku = { from: original.sku, to: sku.trim() };
             if (Number(original.price) !== Number(price)) changed.price = { from: Number(original.price), to: Number(price) };
             if (Number(original.wholesalePrice || original.price || 0) !== (Number(wholesalePrice || price) || 0)) changed.wholesalePrice = { from: Number(original.wholesalePrice || original.price || 0), to: Number(wholesalePrice || price) || 0 };
@@ -840,7 +846,7 @@ function ProductsPage() {
         <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 12, marginBottom: 12 }}>
           <label>
             <div className="field-label">{t('Search')}</div>
-            <input className="input" value={catalogQuery} onChange={(e) => setCatalogQuery(e.target.value)} placeholder={t('Name, SKU, barcode, spec')} />
+            <input className="input" value={catalogQuery} onChange={(e) => setCatalogQuery(e.target.value)} placeholder={t('Name, brand, SKU, barcode, spec')} />
           </label>
           <label>
             <div className="field-label">{t('Category')}</div>
@@ -855,6 +861,7 @@ function ProductsPage() {
             <tr>
               <th align="left">{t('Image')}</th>
               <th align="left">{t('Name')}</th>
+              <th align="left">{t('Brand')}</th>
               <th align="left">{t('SKU')}</th>
               <th align="left">{t('Spec')}</th>
               <th align="left">{t('Barcode')}</th>
@@ -872,6 +879,7 @@ function ProductsPage() {
                   {p.image ? <img src={p.image} alt={p.name} className="thumb" /> : <span style={{ color: '#94a3b8' }}>—</span>}
                 </td>
                 <td>{p.name}</td>
+                <td>{getProductBrand(p) || '—'}</td>
                 <td>{p.sku}</td>
                 <td><span style={{ color: '#64748b' }}>{productSpec(p) || '—'}</span></td>
                 <td>
@@ -997,7 +1005,7 @@ function ProductsPage() {
             {filteredCatalogProducts.map(p => (
               (openStockFor === (p.id || p._id || p.sku) && Array.isArray(p.variants) && p.variants.length > 0) ? (
                 <tr key={`${p.id || p._id || p.sku}-variants`} style={{ background: '#fbfdff' }}>
-                  <td colSpan="10">
+                  <td colSpan="11">
                     <div style={{ display: 'grid', gap: 6, padding: 8 }}>
                       {p.variants.map(v => (
                         <div key={v.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 8, alignItems: 'center' }}>
@@ -1059,7 +1067,7 @@ function ProductsPage() {
             ))}
             {filteredCatalogProducts.length === 0 ? (
               <tr>
-                <td colSpan="10" style={{ padding: 12, color: '#64748b' }}>{t('No products match the current search or filter.')}</td>
+                <td colSpan="11" style={{ padding: 12, color: '#64748b' }}>{t('No products match the current search or filter.')}</td>
               </tr>
             ) : null}
           </tbody>
@@ -1108,9 +1116,15 @@ function ProductsPage() {
                 <input className="input" type="number" min="0" value={warehouseLowStock} onChange={e => setWarehouseLowStock(Number(e.target.value))} style={{ display: 'block', width: '100%' }} />
               </div>
             </div>
-            <div>
-                <label className="label">{t('Name')}</label>
-                <input className="input" placeholder={t('Name')} value={name} onChange={e => setName(e.target.value)} style={{ display: 'block', width: '100%' }} />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+                <div>
+                    <label className="label">{t('Name')}</label>
+                    <input className="input" placeholder={t('Name')} value={name} onChange={e => setName(e.target.value)} style={{ display: 'block', width: '100%' }} />
+                </div>
+                <div>
+                    <label className="label">{t('Brand')}</label>
+                    <input className="input" placeholder={t('Brand')} value={brand} onChange={e => setBrand(e.target.value)} style={{ display: 'block', width: '100%' }} />
+                </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
                 <div>

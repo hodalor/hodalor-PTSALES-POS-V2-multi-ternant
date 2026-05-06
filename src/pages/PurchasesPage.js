@@ -571,7 +571,7 @@ function PurchasesPage() {
       <div className="stats-grid">
         <div className="card stat-card"><div className="stat-label">{t('Purchase Records')}</div><div className="stat-value">{summary.records}</div></div>
         <div className="card stat-card"><div className="stat-label">{t('Units Purchased')}</div><div className="stat-value">{summary.totalQty}</div></div>
-        <div className="card stat-card"><div className="stat-label">{t('Purchase Value')}</div><div className="stat-value-compact">{formatCurrency(summary.totalCost, settings)}</div></div>
+        <div className="card stat-card"><div className="stat-label">{t('Purchase Value')}</div><div className="stat-value-compact price-accent">{formatCurrency(summary.totalCost, settings)}</div></div>
         <div className="card stat-card"><div className="stat-label">{t('Products')}</div><div className="stat-value">{summary.uniqueProducts}</div></div>
         <div className="card stat-card"><div className="stat-label">{t('Pending Approvals')}</div><div className="stat-value">{summary.pendingApprovals}</div></div>
       </div>
@@ -771,7 +771,7 @@ function PurchasesPage() {
                     <td>{branchName}</td>
                     <td>{r.baseUnits}</td>
                     <td>{r.supplier || '—'}</td>
-                    <td>{Number.isFinite(Number(r.cost)) ? formatCurrency(Number(r.cost), settings) : '—'}</td>
+                    <td>{Number.isFinite(Number(r.cost)) ? <span className="price-accent">{formatCurrency(Number(r.cost), settings)}</span> : '—'}</td>
                     <td>
                       {['pending_approval', 'pending_director', 'pending_manager'].includes(String(r.status || '')) ? (
                         <div className="approval-row-actions">
@@ -802,7 +802,7 @@ function PurchasesPage() {
             <div className="detail-field"><div className="detail-label">Base Units</div><div className="detail-value">{detail.baseUnits}</div></div>
             <div className="detail-field"><div className="detail-label">Pack</div><div className="detail-value">{detail.pack || 'Base Unit'}</div></div>
             <div className="detail-field"><div className="detail-label">Supplier</div><div className="detail-value">{detail.supplier || '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">Cost</div><div className="detail-value">{Number.isFinite(Number(detail.cost)) ? formatCurrency(Number(detail.cost), settings) : '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">Cost</div><div className="detail-value">{Number.isFinite(Number(detail.cost)) ? <span className="price-accent">{formatCurrency(Number(detail.cost), settings)}</span> : '—'}</div></div>
             <div className="detail-field"><div className="detail-label">Initiator</div><div className="detail-value">{detail.initiatorName} {detail.initiatorRole ? `(${detail.initiatorRole})` : ''}</div></div>
             <div className="detail-field"><div className="detail-label">Initiation Remark</div><div className="detail-value">{detail.remark || '—'}</div></div>
             <div className="detail-field"><div className="detail-label">Approver</div><div className="detail-value">{detail.approverName ? `${detail.approverName}${detail.approverRole ? ` (${detail.approverRole})` : ''}` : '—'}</div></div>
@@ -943,7 +943,7 @@ function PurchasesPage() {
                   <td>{d.pack || 'Base Unit'}</td>
                   <td>{d.baseUnits ?? (Number(d.qty) || 0) * (Number(d.factor) || 1)}</td>
                   <td>{d.supplier || '—'}</td>
-                  <td>{Number.isFinite(Number(d.cost)) ? formatCurrency(Number(d.cost), settings) : '—'}</td>
+                  <td>{Number.isFinite(Number(d.cost)) ? <span className="price-accent">{formatCurrency(Number(d.cost), settings)}</span> : '—'}</td>
                   <td>{e.remark || '—'}</td>
                   {canDeleteRecords && (
                     <td>
@@ -993,7 +993,7 @@ function PurchasesPage() {
             <div className="detail-field"><div className="detail-label">Pack</div><div className="detail-value">{(auditDetail.details || {}).pack || 'Base Unit'}</div></div>
             <div className="detail-field"><div className="detail-label">Base Units</div><div className="detail-value">{(auditDetail.details || {}).baseUnits ?? '—'}</div></div>
             <div className="detail-field"><div className="detail-label">Supplier</div><div className="detail-value">{(auditDetail.details || {}).supplier || '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">Cost</div><div className="detail-value">{Number.isFinite(Number((auditDetail.details || {}).cost)) ? formatCurrency(Number((auditDetail.details || {}).cost), settings) : '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">Cost</div><div className="detail-value">{Number.isFinite(Number((auditDetail.details || {}).cost)) ? <span className="price-accent">{formatCurrency(Number((auditDetail.details || {}).cost), settings)}</span> : '—'}</div></div>
             <div className="detail-field detail-field-full"><div className="detail-label">Remark</div><div className="detail-value">{auditDetail.remark || '—'}</div></div>
           </div>
         </Modal>

@@ -1,5 +1,5 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { buildBrandedReceiptHtml, printReceiptHtml } from '../utils/print';
 import { escposReceipt, downloadText } from '../utils/escpos';
 import { formatCurrency } from '../utils/currency';
@@ -10,10 +10,12 @@ import { removeSales, setSales } from '../store/salesSlice';
 import { useToast } from '../components/ToastProvider';
 import InlineSpinner from '../components/InlineSpinner';
 import BranchSelect from '../components/BranchSelect';
+import { getProductBrand } from '../utils/productSearch';
 
 function SalesPage() {
   const dispatch = useDispatch();
   const sales = useSelector(s => s.sales.sales);
+  const products = useSelector(s => s.products.products);
   const settings = useSelector(s => s.settings);
   const branches = useSelector(s => s.branches.branches);
   const currentBranchId = useSelector(s => s.settings.currentBranchId);
@@ -43,6 +45,7 @@ function SalesPage() {
   const [tab, setTab] = useState('sales'); // sales, leaderboard, branches
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const [searchTerm, setSearchTerm] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [periodMode, setPeriodMode] = useState('range');
@@ -51,6 +54,13 @@ function SalesPage() {
   const [bulkAction, setBulkAction] = useState('');
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [loadingSales, setLoadingSales] = useState(false);
+  const productBrandById = useMemo(() => {
+    const map = new Map();
+    (products || []).forEach((product) => {
+      map.set(String(product.id || ''), getProductBrand(product));
+    });
+    return map;
+  }, [products]);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -69,9 +79,9 @@ function SalesPage() {
     })();
     return () => { alive = false; };
   }, [canSeeAll, dispatch, effectiveBranchId, selectedBranchId, showAll, toast]);
-  function branchLabel(sale) {
-    return sale.branchName || (branches.find(b => b.id === sale.branchId)?.name || sale.branchId || '-');
-  }
+  const branchLabel = useCallback((sale) => (
+    sale.branchName || (branches.find(b => b.id === sale.branchId)?.name || sale.branchId || '-')
+  ), [branches]);
   const canUseCompetitionScope = canViewCashierCompetitionAssigned;
   const competitionAllowedBranchIds = useMemo(() => {
     if (canViewCashierCompetitionAll) return (branches || []).map((branch) => String(branch.id || '')).filter(Boolean);
@@ -124,8 +134,33 @@ function SalesPage() {
     } else if (creditKind === 'wholesale_credit') {
       list = list.filter(s => String(s.posType || 'retail') === 'wholesale' && Array.isArray(s.payment_methods) && s.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy'));
     }
+    const q = String(searchTerm || '').trim().toLowerCase();
+    if (q) {
+      list = list.filter((sale) => {
+        const itemText = Array.isArray(sale.items)
+          ? sale.items.map((item) => [
+              String(item.name || ''),
+              String(item.spec || ''),
+              String(item.sku || ''),
+              String(item.brand || ''),
+              String(productBrandById.get(String(item.productId || '')) || '')
+            ].join(' ')).join(' ')
+          : '';
+        const fields = [
+          String(sale.invoiceSerial || ''),
+          String(sale.receiptNumber || ''),
+          String(sale.sellerName || ''),
+          String(sale.customerName || ''),
+          String(sale.customerBusinessName || ''),
+          String(sale.customerCode || ''),
+          String(branchLabel(sale) || ''),
+          itemText
+        ].join(' ').toLowerCase();
+        return fields.includes(q);
+      });
+    }
     return list;
-  }, [auth.user?.name, canUseCompetitionScope, creditKind, dateFrom, dateTo, filteredByBranch, periodMode, roleLower, saleKind]);
+  }, [auth.user?.name, branchLabel, canUseCompetitionScope, creditKind, dateFrom, dateTo, filteredByBranch, periodMode, productBrandById, roleLower, saleKind, searchTerm]);
 
   const summary = useMemo(() => {
     const totalRevenue = filteredSales.reduce((sum, sale) => sum + (Number(sale.total) || 0), 0);
@@ -215,7 +250,7 @@ function SalesPage() {
       { key: 'branch', label: 'Branch', value: s => branchLabel(s) },
       { key: 'seller', label: 'Seller', value: s => s.sellerName || '' },
       { key: 'invoice', label: 'Invoice', value: s => s.invoiceSerial || '' },
-      { key: 'items', label: 'Items', value: s => s.items.map(i => `${i.name}x${i.qty}`).join('; ') },
+      { key: 'items', label: 'Items', value: s => s.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}x${i.qty}`).join('; ') },
       { key: 'total', label: 'Total', value: s => s.total }
     ];
     exportCsv('sales.csv', headers, filteredSales);
@@ -226,7 +261,7 @@ function SalesPage() {
       { key: 'branch', label: 'Branch', value: s => branchLabel(s) },
       { key: 'seller', label: 'Seller', value: s => s.sellerName || '' },
       { key: 'invoice', label: 'Invoice', value: s => s.invoiceSerial || '' },
-      { key: 'items', label: 'Items', value: s => s.items.map(i => `${i.name}x${i.qty}`).join('; ') },
+      { key: 'items', label: 'Items', value: s => s.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}x${i.qty}`).join('; ') },
       { key: 'total', label: 'Total', value: s => formatCurrency(s.total, settings) }
     ];
     exportTablePdf('Sales', headers, filteredSales);
@@ -266,6 +301,10 @@ function SalesPage() {
           ) : null}
           <div className="card" style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
             <label>
+              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Search</div>
+              <input className="input" value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setPage(1); }} placeholder="Invoice, customer, product, brand, SKU" />
+            </label>
+            <label>
               <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Period</div>
               <select className="select" value={periodMode} onChange={e => { setPeriodMode(e.target.value); setPage(1); }}>
                 <option value="range">Custom Range</option>
@@ -304,8 +343,8 @@ function SalesPage() {
           </div>
           <div className="summary-grid" style={{ marginTop: 12 }}>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Sales Count</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.totalSales}</div></div>
-            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Revenue</div><div style={{ fontSize: 24, fontWeight: 800 }}>{maskRevenue(summary.totalRevenue)}</div></div>
-            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Profit</div><div style={{ fontSize: 24, fontWeight: 800 }}>{maskProfit(summary.totalProfit)}</div></div>
+            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Revenue</div><div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{maskRevenue(summary.totalRevenue)}</div></div>
+            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Profit</div><div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{maskProfit(summary.totalProfit)}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Items Sold</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.itemsSold}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Retail EasyBuy</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.easybuyCount}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Distribution Credit</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.wholesaleCreditCount}</div></div>
@@ -361,8 +400,8 @@ function SalesPage() {
                 <tr key={x.seller}>
                   <td>{x.seller}</td>
                   <td>{x.sales}</td>
-                  <td>{maskRevenue(x.revenue)}</td>
-                  <td>{maskProfit(x.profit)}</td>
+                  <td><span className="price-accent">{maskRevenue(x.revenue)}</span></td>
+                  <td><span className="price-accent">{maskProfit(x.profit)}</span></td>
                 </tr>
               ))}
               {leaderboard.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No sales found</td></tr>}
@@ -390,8 +429,8 @@ function SalesPage() {
                 <tr key={b.branchId}>
                   <td>{b.name}</td>
                   <td>{b.sales}</td>
-                  <td>{maskRevenue(b.revenue)}</td>
-                  <td>{maskProfit(b.profit)}</td>
+                  <td><span className="price-accent">{maskRevenue(b.revenue)}</span></td>
+                  <td><span className="price-accent">{maskProfit(b.profit)}</span></td>
                 </tr>
               ))}
               {branchComparison.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No sales found</td></tr>}
@@ -466,8 +505,8 @@ function SalesPage() {
               </td>
               <td>{sale.sellerName || '-'}</td>
               <td>{sale.invoiceSerial || '—'}</td>
-              <td>{sale.items.map(i => `${i.name}${i.spec ? ' ['+i.spec+']' : ''}x${i.qty}`).join(', ')}</td>
-              <td>{formatCurrency(sale.total, settings)}</td>
+              <td>{sale.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}${i.spec ? ' ['+i.spec+']' : ''}x${i.qty}`).join(', ')}</td>
+              <td><span className="price-accent">{formatCurrency(sale.total, settings)}</span></td>
               <td>
                 <button className="btn btn-primary" onClick={() => reprint(sale, false)} disabled={bulkDeleting && selectedSaleIds.includes(String(sale.id || sale._id || sale.clientId || ''))}>
                   <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>

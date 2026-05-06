@@ -26,6 +26,7 @@ import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { useAppLanguage } from '../utils/localization';
 import { getBranchStock } from '../utils/branchStock';
+import { getProductBrand, getProductSearchText } from '../utils/productSearch';
 
 function createReservationToken() {
   return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `RES-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -182,6 +183,7 @@ function PosPage({ mode = 'retail' }) {
             variantId: v.id,
             trackType: p.trackType,
             name: `${p.name} (${v.label})`,
+            brand: getProductBrand(p),
             sku: v.sku || `${p.sku}-${v.label}`,
             price: prices[selectedPriceTier] ?? prices[getPreferredPriceTier(allowedPriceTiers, initialPriceTier)] ?? prices.retail,
             prices,
@@ -197,6 +199,7 @@ function PosPage({ mode = 'retail' }) {
       } else {
         out.push({
           ...p,
+          brand: getProductBrand(p),
           price: basePrices[selectedPriceTier] ?? basePrices[getPreferredPriceTier(allowedPriceTiers, initialPriceTier)] ?? basePrices.retail,
           prices: basePrices,
           stockByBranch: isWholesale ? (p.wholesaleStockByBranch || {}) : (p.stockByBranch || {}),
@@ -232,10 +235,7 @@ function PosPage({ mode = 'retail' }) {
     const q = query.trim().toLowerCase();
     if (!q) return sellables;
     return sellables.filter(p =>
-      p.name.toLowerCase().includes(q) ||
-      p.sku.toLowerCase().includes(q) ||
-      (p.barcode || '').toLowerCase().includes(q) ||
-      productSpec(p).toLowerCase().includes(q)
+      `${getProductSearchText(p)} ${productSpec(p)}`.toLowerCase().includes(q)
     );
   }, [sellables, query]);
   const liveSerializedMatches = useMemo(() => {
@@ -580,6 +580,7 @@ function PosPage({ mode = 'retail' }) {
     if (reservationKey) setReservingSerializedKeys(prev => prev.includes(reservationKey) ? prev : [...prev, reservationKey]);
     dispatch(addItem({
       name: product.name,
+      brand: product.brand || getProductBrand(product),
       sku: product.sku,
       price: product.price,
       priceTier: selectedPriceTier,
@@ -643,6 +644,7 @@ function PosPage({ mode = 'retail' }) {
     const spec = productSpec(p);
     dispatch(addItem({
       name: p.name,
+      brand: p.brand || getProductBrand(p),
       sku: p.sku,
       price: p.price,
       priceTier: selectedPriceTier,
@@ -862,6 +864,7 @@ function PosPage({ mode = 'retail' }) {
       loyaltyPointsRedeemed: (settings.loyaltyEnabled && checkoutCustomer) ? redeemable : 0,
       items: cart.items.map(i => ({
         name: i.name,
+        brand: i.brand || '',
         sku: i.sku,
         spec: i.spec,
         qty: i.quantity,
@@ -1189,7 +1192,7 @@ function PosPage({ mode = 'retail' }) {
             <OfflineQueueIndicator collection="sales" label={t('Sales queued')} />
           </div>
           <div className="toolbar pos-toolbar">
-            <input className="input pos-toolbar-search" placeholder={t('Search name, SKU, barcode, IMEI, or serial number')} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onSearchKeyDown} />
+            <input className="input pos-toolbar-search" placeholder={t('Search name, brand, SKU, barcode, IMEI, or serial number')} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onSearchKeyDown} />
             {isWholesale && (
             <select className="select pos-toolbar-tier" value={selectedPriceTier} onChange={e => setSelectedPriceTier(e.target.value)}>
               {allowedPriceTiers.map(tier => <option key={tier} value={tier}>{getPriceTierLabel(tier)}</option>)}
@@ -1228,6 +1231,7 @@ function PosPage({ mode = 'retail' }) {
                         <div style={{ minWidth: 0 }}>
                           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 2 }}>
                             <div style={{ fontWeight: 800 }}>{product.name}</div>
+                            {product.brand ? <span style={{ color: '#64748b', fontSize: 12 }}>{product.brand}</span> : null}
                             <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: '#dbeafe', color: '#1d4ed8' }}>{matchLabel}</span>
                             <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: '#ecfccb', color: '#3f6212' }}>
                               {branchNameById.get(String(unit.branchId || '')) || activeBranch?.name || 'Branch'}
@@ -1281,6 +1285,7 @@ function PosPage({ mode = 'retail' }) {
               <button key={p.id} onClick={() => addToCart(p)} className="product-card">
                 {p.image && <img src={p.image} alt={p.name} className="product-img" />}
                 <div className="product-name">{p.name}</div>
+                {p.brand ? <div className="product-sku" style={{ color: '#64748b' }}>{p.brand}</div> : null}
                 {productSpec(p) && <div className="product-sku" style={{ color: '#64748b' }}>{productSpec(p)}</div>}
                 <div className="product-sku">{p.sku}</div>
                 <div className="product-price">{formatCurrency(p.price, settings)}</div>
@@ -1298,6 +1303,7 @@ function PosPage({ mode = 'retail' }) {
                 <div className="meta">
                   <div>
                     <div className="title">{p.name}</div>
+                    {p.brand ? <div className="sku" style={{ color: '#64748b' }}>{p.brand}</div> : null}
                     {productSpec(p) && <div className="sku" style={{ color: '#64748b' }}>{productSpec(p)}</div>}
                     <div className="sku">{p.sku}</div>
                   </div>
@@ -1456,6 +1462,7 @@ function PosPage({ mode = 'retail' }) {
             <li key={item.id} className="cart-item">
               <div className="cart-title">
                 <div>{item.name}</div>
+                {item.brand ? <small style={{ color: '#64748b' }}>{item.brand}</small> : null}
                 {item.spec && <small style={{ color: '#64748b' }}>{item.spec}</small>}
                 <small>{item.sku}</small>
                 {item.imei ? <small style={{ color: '#1d4ed8', fontWeight: 700 }}>IMEI: {item.imei}</small> : null}

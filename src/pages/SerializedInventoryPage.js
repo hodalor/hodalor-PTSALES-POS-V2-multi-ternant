@@ -5,6 +5,7 @@ import * as productUnitsApi from '../api/productUnits';
 import { useToast } from '../components/ToastProvider';
 import InlineSpinner from '../components/InlineSpinner';
 import LoadingDots from '../components/LoadingDots';
+import { getProductBrand } from '../utils/productSearch';
 
 function SerializedInventoryPage() {
   const toast = useToast();
@@ -30,7 +31,10 @@ function SerializedInventoryPage() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [restoringId, setRestoringId] = useState('');
 
-  const productNameById = useMemo(() => new Map(products.map(product => [String(product.id), product.name])), [products]);
+  const productNameById = useMemo(() => new Map(products.map(product => {
+    const brand = getProductBrand(product);
+    return [String(product.id), brand ? `${product.name} (${brand})` : product.name];
+  })), [products]);
   const branchNameById = useMemo(() => new Map(branches.map(branch => [String(branch.id), branch.name])), [branches]);
   const summary = useMemo(() => ({
     totalUnits: total,
@@ -146,14 +150,14 @@ function SerializedInventoryPage() {
       <div className="card record-filters">
         <label>
           <div className="field-label">Search</div>
-          <input className="input" value={query} onChange={e => { setPage(1); setQuery(e.target.value); }} placeholder="IMEI or serial number" />
+          <input className="input" value={query} onChange={e => { setPage(1); setQuery(e.target.value); }} placeholder="IMEI, serial, product, SKU, or brand" />
         </label>
         <label>
           <div className="field-label">Product</div>
           <select className="select" value={productId} onChange={e => { setPage(1); setProductId(e.target.value); }}>
             <option value="">All Products</option>
             {products.filter(product => String(product.trackType || 'quantity') === 'serialized').map(product => (
-              <option key={product.id} value={product.id}>{product.name}</option>
+              <option key={product.id} value={product.id}>{getProductBrand(product) ? `${product.name} (${getProductBrand(product)})` : product.name}</option>
             ))}
           </select>
         </label>
@@ -235,7 +239,7 @@ function SerializedInventoryPage() {
                       />
                     </td>
                   )}
-                  <td>{productNameById.get(String(row.productId)) || row.productId}</td>
+                  <td>{row.productBrand ? `${row.productName || productNameById.get(String(row.productId)) || row.productId} (${row.productBrand})` : (row.productName || productNameById.get(String(row.productId)) || row.productId)}</td>
                   <td>{row.imei || '—'}</td>
                   <td>{row.serialNumber || '—'}</td>
                   <td>{branchNameById.get(String(row.branchId)) || row.branchId}</td>

@@ -78,7 +78,7 @@ function filterRows(params = {}) {
       if (!(status === 'in_stock' || (status === 'reserved' && reservationToken && String(row.reservationToken || '') === reservationToken))) return false;
     } else if (params.status && String(row.status || '') !== String(params.status)) return false;
     if (q) {
-      const hay = `${row.imei || ''} ${row.serialNumber || ''}`.toLowerCase();
+      const hay = `${row.imei || ''} ${row.serialNumber || ''} ${row.productName || ''} ${row.productSku || ''} ${row.productBrand || ''}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;

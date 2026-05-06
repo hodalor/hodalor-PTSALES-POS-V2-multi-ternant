@@ -11,6 +11,7 @@ import * as invoicesApi from '../api/invoices';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import { isFeatureEnabled } from '../utils/featureFlags';
 import { getAllowedPriceTiers, getDisplayPrice, getPreferredPriceTier, getPriceTierLabel } from '../utils/priceVisibility';
+import { getProductBrand, getProductSearchText } from '../utils/productSearch';
 
 const MANUAL_INVOICE_PRICE_TIERS = ['retail', 'wholesale', 'agent'];
 
@@ -116,6 +117,7 @@ function InvoicesPage({ mode = 'retail' }) {
             productId: p.id,
             variantId: v.id,
             name: `${p.name} (${v.label})`,
+            brand: getProductBrand(p),
             sku: v.sku || `${p.sku}-${v.label}`,
             price: defaultRateFor({ ...p, ...v, price: v.price != null ? v.price : p.price }),
             image: p.image,
@@ -124,7 +126,7 @@ function InvoicesPage({ mode = 'retail' }) {
           });
         });
       } else {
-        out.push({ ...p, price: defaultRateFor(p), unitSymbol: p.unitSymbol || 'pcs' });
+        out.push({ ...p, brand: getProductBrand(p), price: defaultRateFor(p), unitSymbol: p.unitSymbol || 'pcs' });
       }
     });
     return out;
@@ -132,12 +134,7 @@ function InvoicesPage({ mode = 'retail' }) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return sellables;
-    return sellables.filter(p =>
-      p.name.toLowerCase().includes(q) ||
-      p.sku.toLowerCase().includes(q) ||
-      (p.barcode || '').toLowerCase().includes(q) ||
-      productSpec(p).toLowerCase().includes(q)
-    );
+    return sellables.filter(p => `${getProductSearchText(p)} ${productSpec(p)}`.toLowerCase().includes(q));
   }, [sellables, query]);
 
   const selectedCustomer = useMemo(() => {
@@ -435,7 +432,7 @@ function InvoicesPage({ mode = 'retail' }) {
             </div>
           )}
           <div className="toolbar">
-            <input className="input" placeholder="Search name, SKU or scan barcode" value={query} onChange={e => setQuery(e.target.value)} style={{ width: '100%' }} />
+            <input className="input" placeholder="Search name, brand, SKU or scan barcode" value={query} onChange={e => setQuery(e.target.value)} style={{ width: '100%' }} />
           </div>
           <div className="product-list">
             {filtered.map(p => (
@@ -444,11 +441,12 @@ function InvoicesPage({ mode = 'retail' }) {
                 <div className="meta">
                   <div>
                     <div className="title">{p.name}</div>
+                    {p.brand ? <div className="sku" style={{ color: '#64748b' }}>{p.brand}</div> : null}
                     {productSpec(p) && <div className="sku" style={{ color: '#64748b' }}>{productSpec(p)}</div>}
                     <div className="sku">{p.sku}</div>
                   </div>
                 </div>
-                <div style={{ fontWeight: 700 }}>{formatCurrency(p.price, settings)}</div>
+                <div className="price-accent" style={{ fontWeight: 700 }}>{formatCurrency(p.price, settings)}</div>
               </button>
             ))}
           </div>
@@ -524,13 +522,13 @@ function InvoicesPage({ mode = 'retail' }) {
               <div style={{ display: 'grid', gap: 4 }}>
                 <input className="input" type="number" min="0" step="0.01" value={item.rate} onChange={e => setRate(item.id, e.target.value)} style={{ width: 110 }} />
                 <span style={{ fontSize: 12, color: '#64748b' }}>
-                  Unit: {formatCurrency(item.rate, settings)}
+                  <span className="price-accent">Unit: {formatCurrency(item.rate, settings)}</span>
                 </span>
               </div>
               <span style={{ width: 50, textAlign: 'center' }}>{item.per}</span>
               <div style={{ minWidth: 120, textAlign: 'right' }}>
                 <div style={{ fontSize: 12, color: '#64748b' }}>Line Total</div>
-                <strong>{formatCurrency((Number(item.qty) || 0) * (Number(item.rate) || 0), settings)}</strong>
+                <strong className="price-accent">{formatCurrency((Number(item.qty) || 0) * (Number(item.rate) || 0), settings)}</strong>
               </div>
               <button className="btn" onClick={() => remove(item.id)}>Remove</button>
             </li>
@@ -538,9 +536,9 @@ function InvoicesPage({ mode = 'retail' }) {
         </ul>
         <div className="totals-box">
           <div style={{ marginTop: 8 }}>
-            <div>Subtotal: {formatCurrency(subtotal, settings)}</div>
-            <div>Tax ({Math.round((settings.taxRate || 0) * 100)}%): {formatCurrency(tax, settings)}</div>
-            <div><strong>Total: {formatCurrency(total, settings)}</strong></div>
+            <div><span className="price-accent">Subtotal: {formatCurrency(subtotal, settings)}</span></div>
+            <div><span className="price-accent">Tax ({Math.round((settings.taxRate || 0) * 100)}%): {formatCurrency(tax, settings)}</span></div>
+            <div><strong className="price-accent">Total: {formatCurrency(total, settings)}</strong></div>
           </div>
         </div>
           <div className="card" style={{ marginTop: 12 }}>
@@ -626,7 +624,7 @@ function InvoicesPage({ mode = 'retail' }) {
                   <td>{inv.number}</td>
                   <td>{inv.customer?.name || '—'}</td>
                   <td>{new Date(inv.date || inv.created_at).toLocaleString()}</td>
-                  <td>{formatCurrency(inv.total || 0, settings)}</td>
+                  <td><span className="price-accent">{formatCurrency(inv.total || 0, settings)}</span></td>
                   <td>{inv.paymentStatus ? inv.paymentStatus.toUpperCase() : ''}</td>
                   <td>{inv.buyerOrderNo || ''}</td>
                   <td>

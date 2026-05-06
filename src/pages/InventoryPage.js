@@ -14,6 +14,7 @@ import { exportCsv, exportTablePdf } from '../utils/exporters';
 import Modal from '../components/Modal';
 import { useAppLanguage } from '../utils/localization';
 import { getBranchStock, getTotalStock } from '../utils/branchStock';
+import { getProductBrand, getProductSearchText } from '../utils/productSearch';
 
 function branchTypeBadgeStyle(branchType = 'retail') {
   const kind = String(branchType || 'retail').toLowerCase();
@@ -69,13 +70,13 @@ function InventoryPage() {
     return products.filter((p) => {
       if (categoryFilter !== 'all' && String(p.category || '') !== String(categoryFilter)) return false;
       if (term) {
-        const hay = `${p.name || ''} ${p.sku || ''} ${p.barcode || ''} ${p.category || ''}`.toLowerCase();
+        const hay = getProductSearchText(p);
         if (!hay.includes(term)) return false;
       }
       return true;
     });
   }, [products, categoryFilter, search]);
-  const productOptions = useMemo(() => baseFilteredRows.map((p) => ({ id: p.id, name: p.name })).sort((a, b) => a.name.localeCompare(b.name)), [baseFilteredRows]);
+  const productOptions = useMemo(() => baseFilteredRows.map((p) => ({ id: p.id, name: p.name, brand: getProductBrand(p) })).sort((a, b) => a.name.localeCompare(b.name)), [baseFilteredRows]);
   const rows = useMemo(() => (
     productFilter === 'all'
       ? baseFilteredRows
@@ -303,7 +304,7 @@ function InventoryPage() {
       <div className="page-header">
         <div>
           <h1 style={{ margin: 0 }}>{t('Inventory')}</h1>
-          <div className="page-subtitle-compact">{t('Search stock quickly by branch, category, SKU, barcode, and active inventory type.')}</div>
+          <div className="page-subtitle-compact">{t('Search stock quickly by branch, category, brand, SKU, barcode, and active inventory type.')}</div>
         </div>
         <div className="page-header-actions">
           <button className="btn" onClick={() => setExportOpen(true)}>
@@ -330,12 +331,12 @@ function InventoryPage() {
             <div className="field-label">{t('Product')}</div>
             <select className="select" value={productFilter} onChange={e => setProductFilter(e.target.value)}>
               <option value="all">{t('All Products')}</option>
-              {productOptions.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+              {productOptions.map((item) => <option key={item.id} value={item.id}>{item.brand ? `${item.name} (${item.brand})` : item.name}</option>)}
             </select>
           </label>
           <label>
             <div className="field-label">{t('Search')}</div>
-            <input className="input" value={search} onChange={e => setSearch(e.target.value)} placeholder={t('Name, SKU, barcode')} />
+            <input className="input" value={search} onChange={e => setSearch(e.target.value)} placeholder={t('Name, brand, SKU, barcode')} />
           </label>
           {!isAllBranches && branch && shouldShowBranchTypeBadge(branch.branchType) && (
             <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -488,7 +489,7 @@ function InventoryPage() {
                         )}
                         <div style={{ minWidth: 0 }}>
                           <div>{p.name}</div>
-                          <div style={{ color: '#64748b', fontSize: 12 }}>{p.sku || '—'}</div>
+                          <div style={{ color: '#64748b', fontSize: 12 }}>{getProductBrand(p) || '—'} • {p.sku || '—'}</div>
                         </div>
                       </div>
                     </td>
@@ -562,6 +563,7 @@ function InventoryPage() {
               <div>{selected.image ? <img src={selected.image} alt={selected.name} className="thumb" /> : <div style={{ color: '#94a3b8' }}>No image</div>}</div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8 }}>
                 <div><strong>SKU:</strong> {selected.sku}</div>
+                <div><strong>Brand:</strong> {getProductBrand(selected) || '—'}</div>
                 <div><strong>Category:</strong> {selected.category || '—'}</div>
                 <div><strong>Track Type:</strong> {String(selected.trackType || 'quantity') === 'serialized' ? 'Serialized' : 'Quantity'}</div>
                 <div><strong>Manual Stock Edit:</strong> {String(selected.trackType || 'quantity') === 'serialized' ? 'Disabled for serialized items' : 'Disabled'}</div>

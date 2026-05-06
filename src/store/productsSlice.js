@@ -50,6 +50,7 @@ function normalizeProduct(p) {
   return {
     ...p,
     id,
+    brand: String(p.brand || '').trim(),
     trackType: p.trackType || 'quantity',
     retailPrice: p.retailPrice != null ? Number(p.retailPrice) : Number(p.price || 0),
     wholesalePrice: p.wholesalePrice != null ? Number(p.wholesalePrice) : Number(p.retailPrice != null ? p.retailPrice : p.price || 0),
@@ -146,6 +147,7 @@ const productsSlice = createSlice({
           unitSymbol: '',
           sizeLabel: '',
           shoeSize: '',
+          brand: '',
           syncPending: true,
           retailPrice: product?.retailPrice != null ? Number(product.retailPrice) : Number(product?.price || 0),
           wholesalePrice: product?.wholesalePrice != null ? Number(product.wholesalePrice) : Number(product?.retailPrice != null ? product.retailPrice : product?.price || 0),

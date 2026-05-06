@@ -3,6 +3,7 @@ import { useSelector } from 'react-redux';
 import { formatCurrency } from '../utils/currency';
 import { getAllowedPriceTiers, getDisplayPrice, getPriceTierLabel } from '../utils/priceVisibility';
 import { useAppLanguage } from '../utils/localization';
+import { getProductBrand, getProductSearchText } from '../utils/productSearch';
 
 function WarehouseGoodsPage() {
   const { t } = useAppLanguage();
@@ -35,9 +36,9 @@ function WarehouseGoodsPage() {
       .map(product => {
         const warehouseStock = Number(product.warehouseStockByBranch?.[activeBranchId] || 0);
         const warehouseLowStock = Number(product.warehouseLowStock != null ? product.warehouseLowStock : (product.lowStock || 0));
-        return { ...product, warehouseStock, warehouseLowStock };
+        return { ...product, brand: getProductBrand(product), warehouseStock, warehouseLowStock };
       })
-      .filter(product => !q || [product.name, product.sku, product.barcode].some(value => String(value || '').toLowerCase().includes(q)))
+      .filter(product => !q || getProductSearchText(product).includes(q))
       .sort((a, b) => b.warehouseStock - a.warehouseStock || String(a.name || '').localeCompare(String(b.name || '')));
   }, [activeBranchId, products, query]);
   const summary = useMemo(() => ({
@@ -62,7 +63,7 @@ function WarehouseGoodsPage() {
       </div>
 
       <div className="card goods-filter-card">
-        <input className="input" placeholder={t('Search warehouse goods by name, SKU, or barcode')} value={query} onChange={e => setQuery(e.target.value)} />
+        <input className="input" placeholder={t('Search warehouse goods by name, brand, SKU, or barcode')} value={query} onChange={e => setQuery(e.target.value)} />
         <label>
           <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>{t('Warehouse Branch')}</div>
           <select className="select" value={activeBranchId} onChange={e => setSelectedBranchId(e.target.value)} disabled={warehouseBranches.length === 0}>
@@ -124,6 +125,7 @@ function WarehouseGoodsPage() {
                 <div className="goods-item-empty">{t('No image')}</div>
               )}
               <div className="goods-item-title">{product.name}</div>
+              {product.brand ? <div className="goods-item-meta">{product.brand}</div> : null}
               <div className="goods-item-meta">{product.sku || t('No SKU')}</div>
               <div className="goods-item-line"><strong>{t('Warehouse Stock')} ({activeBranch?.name || activeBranchId || t('Branch')}):</strong> {product.warehouseStock}</div>
               {visiblePriceTiers.map(tier => (
@@ -155,7 +157,7 @@ function WarehouseGoodsPage() {
               {rows.map(product => (
                 <tr key={product.id}>
                   <td>{product.image ? <img src={product.image} alt={product.name} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 8 }} /> : <span style={{ color: '#94a3b8' }}>—</span>}</td>
-                  <td>{product.name}</td>
+                  <td>{product.brand ? `${product.name} (${product.brand})` : product.name}</td>
                   <td>{product.sku || '—'}</td>
                   <td>{product.warehouseStock}</td>
                   <td>{product.warehouseLowStock}</td>
