@@ -37,6 +37,7 @@ function toNumberOrZero(value) {
 
 function normalizePricingPayload(body = {}) {
   const out = { ...body };
+  out.brand = String(out.brand || '').trim();
   const basePrice = toNumberOrZero(out.price || 0);
   if (hasNumber(out.retailPrice)) out.retailPrice = toNumberOrZero(out.retailPrice);
   else out.retailPrice = basePrice;

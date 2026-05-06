@@ -5,6 +5,7 @@ const SaleItemSchema = new mongoose.Schema({
   productId: String,
   sku: String,
   name: String,
+  brand: String,
   variantId: String,
   spec: String,
   qty: Number,

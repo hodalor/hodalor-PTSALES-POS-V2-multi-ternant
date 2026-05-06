@@ -212,9 +212,23 @@ export async function listSerializedUnits({ productId = '', variantId = '', bran
     filter.status = String(status);
   }
   if (query) {
+    const queryRegex = new RegExp(String(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    const matchedProducts = await Product.find({
+      $or: [
+        { name: queryRegex },
+        { sku: queryRegex },
+        { barcode: queryRegex },
+        { brand: queryRegex },
+        { attributes: { $elemMatch: { key: /^brand$/i, value: queryRegex } } }
+      ]
+    }, { id: 1 }).limit(250).lean();
+    const matchedProductIds = matchedProducts
+      .map((row) => String(row.id || row._id || '').trim())
+      .filter(Boolean);
     const queryFilter = [
-      { imei: new RegExp(String(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') },
-      { serialNumber: new RegExp(String(query).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i') }
+      { imei: queryRegex },
+      { serialNumber: queryRegex },
+      ...(matchedProductIds.length > 0 ? [{ productId: { $in: matchedProductIds } }] : [])
     ];
     if (availabilityFilter) {
       delete filter.$or;
@@ -242,7 +256,31 @@ export async function listSerializedUnits({ productId = '', variantId = '', bran
     }).sort({ createdAt: -1 }).skip(skip).limit(Math.max(1, Number(pageSize || 30))).lean(),
     ProductUnit.countDocuments(filter)
   ]);
-  return { rows, total };
+  const productIds = Array.from(new Set(rows.map((row) => String(row.productId || '')).filter(Boolean)));
+  const products = productIds.length > 0
+    ? await Product.find({ id: { $in: productIds } }, { id: 1, name: 1, sku: 1, brand: 1, attributes: 1 }).lean()
+    : [];
+  const productMap = new Map(products.map((row) => {
+    const attrs = Array.isArray(row.attributes) ? row.attributes : [];
+    const attrBrand = attrs.find((attr) => String(attr?.key || '').trim().toLowerCase() === 'brand' && String(attr?.value || '').trim());
+    return [String(row.id || row._id || ''), {
+      name: row.name || '',
+      sku: row.sku || '',
+      brand: String(row.brand || attrBrand?.value || '').trim()
+    }];
+  }));
+  return {
+    rows: rows.map((row) => {
+      const product = productMap.get(String(row.productId || '')) || {};
+      return {
+        ...row,
+        productName: product.name || '',
+        productSku: product.sku || '',
+        productBrand: product.brand || ''
+      };
+    }),
+    total
+  };
 }
 
 export async function releaseSerializedUnits({ unitIds = [], reservationToken = '' }) {
