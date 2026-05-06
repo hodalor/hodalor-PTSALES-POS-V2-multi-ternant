@@ -2,6 +2,7 @@ import { Router } from 'express';
 import mongoose from 'mongoose';
 import Invoice from '../models/Invoice.js';
 import Customer from '../models/Customer.js';
+import Branch from '../models/Branch.js';
 import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
 import Settings from '../models/Settings.js';
@@ -39,7 +40,17 @@ async function findCustomerByReference(customer = {}) {
   return null;
 }
 
-async function resolveInvoiceCustomer(payload = {}, source = 'manual') {
+async function resolveRegistrationBranch(req) {
+  const registrationBranchId = String(req.user?.branchId || '').trim();
+  if (!registrationBranchId) return { registrationBranchId: '', registrationBranchName: '' };
+  const branch = await Branch.findOne({ id: registrationBranchId }).lean().catch(() => null);
+  return {
+    registrationBranchId,
+    registrationBranchName: String(branch?.name || branch?.code || registrationBranchId || '').trim()
+  };
+}
+
+async function resolveInvoiceCustomer(payload = {}, source = 'manual', req = {}) {
   const raw = payload && typeof payload === 'object' ? payload : {};
   const name = String(raw.name || '').trim();
   if (!name) return null;
@@ -62,6 +73,7 @@ async function resolveInvoiceCustomer(payload = {}, source = 'manual') {
     }
   }
 
+  const registrationBranch = await resolveRegistrationBranch(req);
   const doc = {
     clientId: String(raw.clientId || '').trim() || undefined,
     customerCode: String(raw.customerCode || '').trim() || null,
@@ -70,6 +82,8 @@ async function resolveInvoiceCustomer(payload = {}, source = 'manual') {
     email: String(raw.email || '').trim() || '',
     customerType: String(source || '').startsWith('wholesale') ? 'distribution' : 'retail',
     address: String(raw.address || '').trim() || '',
+    registrationBranchId: registrationBranch.registrationBranchId,
+    registrationBranchName: registrationBranch.registrationBranchName,
     businessName,
     businessAddress: String(raw.businessAddress || raw.address || '').trim() || '',
     taxId: String(raw.taxId || '').trim() || '',
@@ -142,7 +156,7 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_invoices', 's
   }
   let normalizedCustomer = payload.customer || null;
   try {
-    const linkedCustomer = await resolveInvoiceCustomer(payload.customer || {}, source);
+    const linkedCustomer = await resolveInvoiceCustomer(payload.customer || {}, source, req);
     if (linkedCustomer) {
       normalizedCustomer = {
         name: linkedCustomer.name || '',

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import Customer from '../models/Customer.js';
+import Branch from '../models/Branch.js';
 import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireAdmin, requireRole, requireRoleOrPerm } from '../middleware/auth.js';
@@ -16,6 +17,19 @@ function escapeRegExp(s) {
 function makeCustomerCode() {
   const n = Math.floor(Math.random() * 1000000);
   return String(n).padStart(6, '0');
+}
+
+async function resolveRegistrationBranch(payload = {}, req) {
+  const registrationBranchId = String(payload.registrationBranchId || req.user?.branchId || '').trim();
+  let registrationBranchName = String(payload.registrationBranchName || '').trim();
+  if (registrationBranchId && !registrationBranchName) {
+    const branch = await Branch.findOne({ id: registrationBranchId }).lean().catch(() => null);
+    registrationBranchName = String(branch?.name || branch?.code || registrationBranchId || '').trim();
+  }
+  return {
+    registrationBranchId: registrationBranchId || '',
+    registrationBranchName: registrationBranchName || ''
+  };
 }
 
 r.get('/', async (req, res) => {
@@ -49,6 +63,7 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_customers'), a
     const existing = await Customer.findOne({ clientId });
     if (existing) return res.json(existing);
   }
+  const registrationBranch = await resolveRegistrationBranch(payload, req);
   const doc = {
     clientId: clientId || undefined,
     customerCode: String(payload.customerCode || '').trim() || null,
@@ -63,6 +78,8 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_customers'), a
     idBack: String(payload.idBack || '').trim() || '',
     businessCertificate: String(payload.businessCertificate || '').trim() || '',
     address: String(payload.address || '').trim() || '',
+    registrationBranchId: registrationBranch.registrationBranchId,
+    registrationBranchName: registrationBranch.registrationBranchName,
     businessName: String(payload.businessName || '').trim() || '',
     businessAddress: String(payload.businessAddress || '').trim() || '',
     registrationNumber: String(payload.registrationNumber || '').trim() || '',

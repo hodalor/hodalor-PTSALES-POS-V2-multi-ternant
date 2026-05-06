@@ -15,6 +15,8 @@ const CustomerSchema = new mongoose.Schema({
   idBack: { type: String },
   businessCertificate: { type: String },
   address: { type: String },
+  registrationBranchId: { type: String, index: true, default: '' },
+  registrationBranchName: { type: String, default: '' },
   businessName: { type: String },
   businessAddress: { type: String },
   registrationNumber: { type: String, index: true },
