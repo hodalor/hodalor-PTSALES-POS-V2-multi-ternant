@@ -21,6 +21,7 @@ import { isFeatureEnabled } from '../utils/featureFlags';
 import * as productUnitsApi from '../api/productUnits';
 import Modal from '../components/Modal';
 import BarcodeScannerModal from '../components/BarcodeScannerModal';
+import FilterSearchSelect from '../components/FilterSearchSelect';
 import { getAllowedPriceTiers, getDisplayPrice, getPreferredPriceTier, getPriceTierLabel } from '../utils/priceVisibility';
 import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
@@ -87,6 +88,9 @@ function PosPage({ mode = 'retail' }) {
   const allowedPriceTiers = useMemo(() => getAllowedPriceTiers(auth), [auth]);
   const initialVisiblePriceTier = useMemo(() => getPreferredPriceTier(allowedPriceTiers, initialPriceTier), [allowedPriceTiers, initialPriceTier]);
   const [query, setQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [brandFilter, setBrandFilter] = useState('all');
+  const [trackTypeFilter, setTrackTypeFilter] = useState('all');
   const [payments, setPayments] = useState([{ type: 'cash', amount: '' }]);
   const [view, setView] = useState(isWholesale ? 'list' : 'grid');
   const [selectedPriceTier, setSelectedPriceTier] = useState(initialVisiblePriceTier);
@@ -212,6 +216,35 @@ function PosPage({ mode = 'retail' }) {
     return out;
   }, [allowedPriceTiers, initialPriceTier, isWholesale, products, selectedPriceTier]);
   const serializedStockRefreshKey = `${cart.items.length}:${liveSerializedUnits.length}:${reservingSerializedKeys.length}`;
+  const categoryOptions = useMemo(() => (
+    Array.from(new Set(sellables.map((item) => String(item.category || '').trim()).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b))
+      .map((item) => ({ value: item, label: item }))
+  ), [sellables]);
+  const categoryScopedSellables = useMemo(() => (
+    categoryFilter === 'all'
+      ? sellables
+      : sellables.filter((item) => String(item.category || '').trim() === String(categoryFilter))
+  ), [categoryFilter, sellables]);
+  const brandOptions = useMemo(() => (
+    Array.from(new Set(categoryScopedSellables.map((item) => String(item.brand || '').trim()).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b))
+      .map((item) => ({ value: item, label: item }))
+  ), [categoryScopedSellables]);
+  const trackTypeOptions = useMemo(() => ([
+    { value: 'quantity', label: t('Quantity') },
+    { value: 'serialized', label: t('Serialized') }
+  ]), [t]);
+  useEffect(() => {
+    if (categoryFilter !== 'all' && !categoryOptions.some((item) => item.value === categoryFilter)) {
+      setCategoryFilter('all');
+    }
+  }, [categoryFilter, categoryOptions]);
+  useEffect(() => {
+    if (brandFilter !== 'all' && !brandOptions.some((item) => item.value === brandFilter)) {
+      setBrandFilter('all');
+    }
+  }, [brandFilter, brandOptions]);
   const serializedStockCountMap = useMemo(() => {
     void serializedStockRefreshKey;
     const inventoryType = isWholesale ? 'wholesale' : 'retail';
@@ -233,11 +266,14 @@ function PosPage({ mode = 'retail' }) {
   }, [activeBranchId, isWholesale, reservationToken, serializedStockRefreshKey]);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return sellables;
-    return sellables.filter(p =>
-      `${getProductSearchText(p)} ${productSpec(p)}`.toLowerCase().includes(q)
-    );
-  }, [sellables, query]);
+    return sellables.filter((p) => {
+      if (categoryFilter !== 'all' && String(p.category || '').trim() !== String(categoryFilter)) return false;
+      if (brandFilter !== 'all' && String(p.brand || '').trim() !== String(brandFilter)) return false;
+      if (trackTypeFilter !== 'all' && String(p.trackType || 'quantity').trim() !== String(trackTypeFilter)) return false;
+      if (!q) return true;
+      return `${getProductSearchText(p)} ${productSpec(p)}`.toLowerCase().includes(q);
+    });
+  }, [brandFilter, categoryFilter, query, sellables, trackTypeFilter]);
   const liveSerializedMatches = useMemo(() => {
     const normalized = String(query || '').trim().toLowerCase();
     return liveSerializedUnits
@@ -332,7 +368,9 @@ function PosPage({ mode = 'retail' }) {
       name: String(quickCustomerForm.name || '').trim(),
       phone: String(quickCustomerForm.phone || '').trim(),
       address: String(quickCustomerForm.address || '').trim(),
-      customerType: isWholesale ? 'distribution' : 'retail'
+      customerType: isWholesale ? 'distribution' : 'retail',
+      registrationBranchId: String(stockBranchId || '').trim(),
+      registrationBranchName: String(branchLabel || '').trim()
     };
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) throw new Error('Offline: connect internet and try again.');
@@ -1199,6 +1237,30 @@ function PosPage({ mode = 'retail' }) {
           </div>
           <div className="toolbar pos-toolbar">
             <input className="input pos-toolbar-search" placeholder={t('Search name, brand, SKU, barcode, IMEI, or serial number')} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onSearchKeyDown} />
+            <FilterSearchSelect
+              className="pos-toolbar-filter"
+              value={categoryFilter}
+              onChange={setCategoryFilter}
+              options={categoryOptions}
+              allLabel={t('All Categories')}
+              searchPlaceholder={t('Type category')}
+            />
+            <FilterSearchSelect
+              className="pos-toolbar-filter"
+              value={brandFilter}
+              onChange={setBrandFilter}
+              options={brandOptions}
+              allLabel={t('All Brands')}
+              searchPlaceholder={t('Type brand')}
+            />
+            <FilterSearchSelect
+              className="pos-toolbar-filter"
+              value={trackTypeFilter}
+              onChange={setTrackTypeFilter}
+              options={trackTypeOptions}
+              allLabel={t('All Types')}
+              searchPlaceholder={t('Type product type')}
+            />
             {isWholesale && (
             <select className="select pos-toolbar-tier" value={selectedPriceTier} onChange={e => setSelectedPriceTier(e.target.value)}>
               {allowedPriceTiers.map(tier => <option key={tier} value={tier}>{getPriceTierLabel(tier)}</option>)}

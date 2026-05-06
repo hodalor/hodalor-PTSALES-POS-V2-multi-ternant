@@ -437,8 +437,8 @@ function InvoicesPage({ mode = 'retail' }) {
           </div>
           <div className="product-list">
             {filtered.map(p => (
-              <button key={p.id} onClick={() => addItem(p)} className={`product-list-item${p.image ? '' : ' no-thumb'}`}>
-                {p.image && <img src={p.image} alt={p.name} className="thumb" />}
+              <button key={p.id} onClick={() => addItem(p)} className="product-list-item">
+                {p.image ? <img src={p.image} alt={p.name} className="thumb" /> : <div className="thumb-placeholder">---</div>}
                 <div className="meta">
                   <div className="details">
                     <div className="title">{p.name}</div>

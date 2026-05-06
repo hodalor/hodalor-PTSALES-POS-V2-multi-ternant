@@ -15,6 +15,7 @@ function WarehouseGoodsPage() {
   const [query, setQuery] = useState('');
   const [viewMode, setViewMode] = useState('card');
   const [selectedBranchId, setSelectedBranchId] = useState('');
+  const [lowStockOpen, setLowStockOpen] = useState(false);
   const visiblePriceTiers = useMemo(() => getAllowedPriceTiers(auth), [auth]);
 
   const warehouseBranches = useMemo(
@@ -70,7 +71,7 @@ function WarehouseGoodsPage() {
             {warehouseBranches.map(branch => <option key={branch.id} value={branch.id}>{branch.name || branch.code || branch.id}</option>)}
           </select>
         </label>
-        <div style={{ color: '#64748b', fontSize: 13 }}>{t('Active warehouse branch')}: {activeBranch?.name || activeBranchId || t('None configured')}</div>
+        <div className="goods-filter-note" style={{ color: '#64748b', fontSize: 13 }}>{t('Active warehouse branch')}: {activeBranch?.name || activeBranchId || t('None configured')}</div>
       </div>
 
       <div className="goods-stats-grid">
@@ -93,6 +94,18 @@ function WarehouseGoodsPage() {
       </div>
 
       {summary.lowStockProducts > 0 && (
+        <div className="goods-low-dropdown">
+          <button type="button" className="goods-low-toggle" onClick={() => setLowStockOpen((open) => !open)} aria-expanded={lowStockOpen ? 'true' : 'false'}>
+            <span>{t('Low Stock')}</span>
+            <span className="goods-low-toggle-count">{summary.lowStockProducts}</span>
+            <svg className={`goods-low-toggle-caret${lowStockOpen ? ' is-open' : ''}`} viewBox="0 0 20 20" fill="none" aria-hidden="true">
+              <path d="M5 7.5 10 12.5 15 7.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {summary.lowStockProducts > 0 && lowStockOpen && (
         <div className="card goods-low-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <div style={{ fontWeight: 700, color: '#b91c1c' }}>{t('Warehouse Low Stock Notifications')}</div>

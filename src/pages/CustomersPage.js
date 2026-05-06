@@ -1,5 +1,5 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { addCustomer, setCustomers, updateCustomer, removeCustomer } from '../store/customersSlice';
 import { addAudit } from '../store/auditSlice';
 import { useToast } from '../components/ToastProvider';
@@ -21,6 +21,8 @@ function CustomersPage() {
   const customers = useSelector(s => s.customers.customers);
   const sales = useSelector(s => s.sales.sales);
   const settings = useSelector(s => s.settings);
+  const branches = useSelector(s => s.branches.branches);
+  const currentBranchId = useSelector(s => s.settings.currentBranchId);
   const auth = useSelector(s => s.auth);
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);
   const roleLower = String(auth.role || '').toLowerCase();
@@ -67,6 +69,8 @@ function CustomersPage() {
     idBack: '',
     businessCertificate: '',
     address: '',
+    registrationBranchId: '',
+    registrationBranchName: '',
     businessName: '',
     businessAddress: '',
     registrationNumber: '',
@@ -89,6 +93,8 @@ function CustomersPage() {
     idBack: '',
     businessCertificate: '',
     address: '',
+    registrationBranchId: '',
+    registrationBranchName: '',
     businessName: '',
     businessAddress: '',
     registrationNumber: '',
@@ -101,6 +107,18 @@ function CustomersPage() {
   });
   const dispatch = useDispatch();
   const toast = useToast();
+  const branchNameById = useMemo(() => new Map((Array.isArray(branches) ? branches : []).map((branch) => [String(branch.id || '').trim(), branch.name || branch.code || branch.id])), [branches]);
+  const currentBranchName = useMemo(() => (
+    branchNameById.get(String(currentBranchId || '').trim())
+    || branchNameById.get(String(auth.user?.branchId || '').trim())
+    || ''
+  ), [auth.user?.branchId, branchNameById, currentBranchId]);
+
+  const getRegistrationBranchLabel = useCallback((customer = {}) => (
+    String(customer.registrationBranchName || '').trim()
+      || branchNameById.get(String(customer.registrationBranchId || '').trim())
+      || '—'
+  ), [branchNameById]);
 
   useEffect(() => {
     let alive = true;
@@ -154,7 +172,9 @@ function CustomersPage() {
         id: idKey,
         customerCode: codeKey,
         customerType: String(customer.customerType || 'retail').toLowerCase() === 'distribution' ? 'distribution' : 'retail',
-        name: String(customer.name || '').trim()
+        name: String(customer.name || '').trim(),
+        registrationBranchId: String(customer.registrationBranchId || '').trim(),
+        registrationBranchName: String(customer.registrationBranchName || '').trim()
       };
       if (idKey) map.set(`id:${idKey}`, payload);
       if (codeKey) map.set(`code:${codeKey}`, payload);
@@ -257,13 +277,14 @@ function CustomersPage() {
     ['ID Type', activeProfile.idType || '—'],
     ['ID Number', activeProfile.idCardNumber || '—'],
     ['Address', activeProfile.address || '—'],
+    ['Registered At Branch', getRegistrationBranchLabel(activeProfile)],
     ['Business Name', activeProfile.businessName || '—'],
     ['Business Address', activeProfile.businessAddress || '—'],
     ['Registration Number', activeProfile.registrationNumber || '—'],
     ['Tax ID', activeProfile.taxId || '—'],
     ['Business Phone', activeProfile.businessPhone || '—'],
     ['Business Email', activeProfile.businessEmail || '—']
-  ]), [activeProfile]);
+  ]), [activeProfile, getRegistrationBranchLabel]);
   const uploadedDocuments = useMemo(() => ([
     { key: 'photo', label: 'Photo', value: activeProfile.photo || '' },
     { key: 'idFront', label: 'ID Front', value: activeProfile.idFront || '' },
@@ -297,7 +318,7 @@ function CustomersPage() {
     setModalMode('create');
     setSelectedId(null);
     setSelectedTab('profile');
-    setCreateForm({ name: '', phone: '', email: '', customerType: 'retail', dob: '', idType: '', idCardNumber: '', idFront: '', idBack: '', businessCertificate: '', address: '', businessName: '', businessAddress: '', registrationNumber: '', taxId: '', businessPhone: '', businessEmail: '', anniversaryDate: '', vip: false, photo: '' });
+    setCreateForm({ name: '', phone: '', email: '', customerType: 'retail', dob: '', idType: '', idCardNumber: '', idFront: '', idBack: '', businessCertificate: '', address: '', registrationBranchId: String(currentBranchId || auth.user?.branchId || '').trim(), registrationBranchName: currentBranchName, businessName: '', businessAddress: '', registrationNumber: '', taxId: '', businessPhone: '', businessEmail: '', anniversaryDate: '', vip: false, photo: '' });
     setModalOpen(true);
   }
 
@@ -327,6 +348,8 @@ function CustomersPage() {
         idBack: createForm.idBack || '',
         businessCertificate: createForm.businessCertificate || '',
         address: createForm.address.trim(),
+        registrationBranchId: String(createForm.registrationBranchId || currentBranchId || auth.user?.branchId || '').trim(),
+        registrationBranchName: String(createForm.registrationBranchName || currentBranchName || '').trim(),
         businessName: createForm.businessName.trim(),
         businessAddress: createForm.businessAddress.trim(),
         registrationNumber: createForm.registrationNumber.trim(),
@@ -387,6 +410,8 @@ function CustomersPage() {
       idBack: target.idBack || '',
       businessCertificate: target.businessCertificate || '',
       address: target.address || '',
+      registrationBranchId: target.registrationBranchId || '',
+      registrationBranchName: target.registrationBranchName || '',
       businessName: target.businessName || '',
       businessAddress: target.businessAddress || '',
       registrationNumber: target.registrationNumber || '',
@@ -603,6 +628,7 @@ function CustomersPage() {
                   <th align="left">Customer</th>
                   <th align="left">Customer ID</th>
                   <th align="left">Type</th>
+                  <th align="left">Registered At</th>
                   <th align="left">Sales</th>
                   <th align="left">Products</th>
                   <th align="left">Amount</th>
@@ -615,12 +641,13 @@ function CustomersPage() {
                     <td style={{ fontWeight: 700 }}>{row.customerName}</td>
                     <td>{row.customerCode || '—'}</td>
                     <td>{row.customerType === 'distribution' ? 'Distribution' : 'Retail'}</td>
+                    <td>{getRegistrationBranchLabel(row)}</td>
                     <td>{row.sales}</td>
                     <td>{row.products}</td>
                     <td>{formatCurrency(row.amount, settings)}</td>
                   </tr>
                 ))}
-                {customerLeaderboardRows.length === 0 && <tr><td colSpan="7" style={{ padding: 12, color: '#64748b' }}>No ranked customer data</td></tr>}
+                {customerLeaderboardRows.length === 0 && <tr><td colSpan="8" style={{ padding: 12, color: '#64748b' }}>No ranked customer data</td></tr>}
               </tbody>
             </table>
           </div>
@@ -629,8 +656,8 @@ function CustomersPage() {
 
       {pageTab === 'customers' && (
       <div className="card">
-        <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
-          <input className="input" placeholder="Search by name, phone, email, ID" value={query} onChange={e => setQuery(e.target.value)} style={{ width: '100%' }} />
+        <div className="toolbar-inline" style={{ marginBottom: 8 }}>
+          <input className="input" placeholder="Search by name, phone, email, ID" value={query} onChange={e => setQuery(e.target.value)} />
           <select className="select" value={customerTypeFilter} onChange={e => setCustomerTypeFilter(e.target.value)} style={{ minWidth: 220 }}>
             <option value="all">All Customer Types</option>
             <option value="retail">Retail Customers</option>
@@ -667,6 +694,7 @@ function CustomersPage() {
               <th align="left">Customer</th>
               <th align="left">Customer ID</th>
               <th align="left">Type</th>
+              <th align="left">Registered At</th>
               <th align="left">Phone</th>
               <th align="left">Email</th>
               <th align="left">Business</th>
@@ -690,6 +718,7 @@ function CustomersPage() {
                 <td style={{ fontWeight: 700 }}>{c.name}</td>
                 <td>{c.customerCode || '—'}</td>
                 <td>{String(c.customerType || 'retail') === 'distribution' ? 'Distribution' : 'Retail'}</td>
+                <td>{getRegistrationBranchLabel(c)}</td>
                 <td>{c.phone || '—'}</td>
                 <td>{c.email || '—'}</td>
                 <td>{c.businessName || '—'}</td>
@@ -697,8 +726,8 @@ function CustomersPage() {
                 <td>{c.vip ? 'Yes' : 'No'}</td>
               </tr>
             ))}
-            {loading && <tr><td colSpan={canRemoveCustomers ? 9 : 8} style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading customers" /></td></tr>}
-            {!loading && filtered.length === 0 && <tr><td colSpan={canRemoveCustomers ? 9 : 8} style={{ padding: 12, color: '#64748b' }}>No customers</td></tr>}
+            {loading && <tr><td colSpan={canRemoveCustomers ? 10 : 9} style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading customers" /></td></tr>}
+            {!loading && filtered.length === 0 && <tr><td colSpan={canRemoveCustomers ? 10 : 9} style={{ padding: 12, color: '#64748b' }}>No customers</td></tr>}
           </tbody>
         </table>
       </div>

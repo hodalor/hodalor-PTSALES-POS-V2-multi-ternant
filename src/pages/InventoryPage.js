@@ -12,6 +12,7 @@ import { getAllowedPriceTiers, getDisplayPrice, getPriceTierLabel } from '../uti
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { exportCsv, exportTablePdf } from '../utils/exporters';
 import Modal from '../components/Modal';
+import FilterSearchSelect from '../components/FilterSearchSelect';
 import { useAppLanguage } from '../utils/localization';
 import { getBranchStock, getTotalStock } from '../utils/branchStock';
 import { getProductBrand, getProductSearchText } from '../utils/productSearch';
@@ -47,7 +48,8 @@ function InventoryPage() {
   const [modalId, setModalId] = useState(null);
   const [openVariantsFor, setOpenVariantsFor] = useState(null);
   const [categoryFilter, setCategoryFilter] = useState('all');
-  const [productFilter, setProductFilter] = useState('all');
+  const [brandFilter, setBrandFilter] = useState('all');
+  const [trackTypeFilter, setTrackTypeFilter] = useState('all');
   const [search, setSearch] = useState('');
   const [exportOpen, setExportOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState('pdf');
@@ -64,24 +66,38 @@ function InventoryPage() {
   const branch = useMemo(() => (isAllBranches ? null : (branches.find(b => b.id === branchId) || branches[0])), [branches, branchId, isAllBranches]);
   const selectedBranchInventoryType = useMemo(() => normalizeInventoryType(branch?.branchType), [branch?.branchType]);
   const inventoryTypeLocked = !isAllBranches && !!branch;
-  const categoryOptions = useMemo(() => Array.from(new Set(products.map((p) => String(p.category || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)), [products]);
-  const baseFilteredRows = useMemo(() => {
+  const categoryOptions = useMemo(() => (
+    Array.from(new Set(products.map((p) => String(p.category || '').trim()).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b))
+      .map((item) => ({ value: item, label: item }))
+  ), [products]);
+  const categoryScopedRows = useMemo(() => (
+    categoryFilter === 'all'
+      ? products
+      : products.filter((p) => String(p.category || '').trim() === String(categoryFilter))
+  ), [categoryFilter, products]);
+  const brandOptions = useMemo(() => (
+    Array.from(new Set(categoryScopedRows.map((p) => String(getProductBrand(p) || '').trim()).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b))
+      .map((item) => ({ value: item, label: item }))
+  ), [categoryScopedRows]);
+  const trackTypeOptions = useMemo(() => ([
+    { value: 'quantity', label: t('Quantity') },
+    { value: 'serialized', label: t('Serialized') }
+  ]), [t]);
+  const rows = useMemo(() => {
     const term = String(search || '').trim().toLowerCase();
     return products.filter((p) => {
-      if (categoryFilter !== 'all' && String(p.category || '') !== String(categoryFilter)) return false;
+      if (categoryFilter !== 'all' && String(p.category || '').trim() !== String(categoryFilter)) return false;
+      if (brandFilter !== 'all' && String(getProductBrand(p) || '').trim() !== String(brandFilter)) return false;
+      if (trackTypeFilter !== 'all' && String(p.trackType || 'quantity').trim() !== String(trackTypeFilter)) return false;
       if (term) {
         const hay = getProductSearchText(p);
         if (!hay.includes(term)) return false;
       }
       return true;
     });
-  }, [products, categoryFilter, search]);
-  const productOptions = useMemo(() => baseFilteredRows.map((p) => ({ id: p.id, name: p.name, brand: getProductBrand(p) })).sort((a, b) => a.name.localeCompare(b.name)), [baseFilteredRows]);
-  const rows = useMemo(() => (
-    productFilter === 'all'
-      ? baseFilteredRows
-      : baseFilteredRows.filter((p) => String(p.id) === String(productFilter))
-  ), [baseFilteredRows, productFilter]);
+  }, [brandFilter, categoryFilter, products, search, trackTypeFilter]);
   useEffect(() => { setBranchId(currentBranchId); }, [currentBranchId]);
   useEffect(() => {
     if (String(branchId || '') === 'all') return;
@@ -91,11 +107,11 @@ function InventoryPage() {
     setViewInventoryType((prev) => prev === nextType ? prev : nextType);
   }, [branches, branchId]);
   useEffect(() => {
-    if (categoryFilter !== 'all' && !categoryOptions.includes(categoryFilter)) setCategoryFilter('all');
+    if (categoryFilter !== 'all' && !categoryOptions.some((item) => item.value === categoryFilter)) setCategoryFilter('all');
   }, [categoryOptions, categoryFilter]);
   useEffect(() => {
-    if (productFilter !== 'all' && !productOptions.some((item) => String(item.id) === String(productFilter))) setProductFilter('all');
-  }, [productFilter, productOptions]);
+    if (brandFilter !== 'all' && !brandOptions.some((item) => String(item.value) === String(brandFilter))) setBrandFilter('all');
+  }, [brandFilter, brandOptions]);
   const selected = useMemo(() => rows.find(p => p.id === modalId) || null, [rows, modalId]);
 
   const getStockForProduct = useCallback((product, targetBranchId = branchId) => {
@@ -315,37 +331,36 @@ function InventoryPage() {
         </div>
       </div>
       <div className="card" style={{ marginBottom: 12 }}>
-        <div className="filter-grid-wide">
-          <label>
+        <div className="inventory-toolbar-inline">
+          <label style={{ margin: 0 }}>
             <div className="field-label">{t('Branch')}</div>
             <BranchSelect value={branchId} onChange={setBranchId} includeAll allLabel={t('All Branches')} style={{ minWidth: 180 }} />
           </label>
-          <label>
-            <div className="field-label">{t('Category')}</div>
-            <select className="select" value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}>
-              <option value="all">{t('All Categories')}</option>
-              {categoryOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-            </select>
-          </label>
-          <label>
-            <div className="field-label">{t('Product')}</div>
-            <select className="select" value={productFilter} onChange={e => setProductFilter(e.target.value)}>
-              <option value="all">{t('All Products')}</option>
-              {productOptions.map((item) => <option key={item.id} value={item.id}>{item.brand ? `${item.name} (${item.brand})` : item.name}</option>)}
-            </select>
-          </label>
-          <label>
+          <label style={{ margin: 0 }}>
             <div className="field-label">{t('Search')}</div>
-            <input className="input" value={search} onChange={e => setSearch(e.target.value)} placeholder={t('Name, brand, SKU, barcode')} />
+            <input className="input inventory-toolbar-search" value={search} onChange={e => setSearch(e.target.value)} placeholder={t('Name, brand, SKU, barcode')} />
+          </label>
+          <label style={{ margin: 0 }}>
+            <div className="field-label">{t('Category')}</div>
+            <FilterSearchSelect value={categoryFilter} onChange={setCategoryFilter} options={categoryOptions} allLabel={t('All Categories')} searchPlaceholder={t('Type category')} />
+          </label>
+          <label style={{ margin: 0 }}>
+            <div className="field-label">{t('Brand')}</div>
+            <FilterSearchSelect value={brandFilter} onChange={setBrandFilter} options={brandOptions} allLabel={t('All Brands')} searchPlaceholder={t('Type brand')} />
+          </label>
+          <label style={{ margin: 0 }}>
+            <div className="field-label">{t('Type')}</div>
+            <FilterSearchSelect value={trackTypeFilter} onChange={setTrackTypeFilter} options={trackTypeOptions} allLabel={t('All Types')} searchPlaceholder={t('Type product type')} />
           </label>
           {!isAllBranches && branch && shouldShowBranchTypeBadge(branch.branchType) && (
-            <div style={{ display: 'flex', alignItems: 'center' }}>
+            <div className="inventory-branch-badge" style={{ display: 'flex', alignItems: 'center' }}>
               <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 700, ...branchTypeBadgeStyle(branch.branchType) }}>
                 {String(branch.branchType || 'retail')}
               </span>
             </div>
           )}
-          <div className="filter-actions filter-actions-end" style={{ gridColumn: '1 / -1' }}>
+        </div>
+        <div className="filter-actions filter-actions-end" style={{ marginTop: 12 }}>
             <button
               className={viewInventoryType === 'retail' ? 'btn btn-primary' : 'btn'}
               onClick={() => !inventoryTypeLocked && setViewInventoryType('retail')}
@@ -375,7 +390,6 @@ function InventoryPage() {
                 {t('Locked to')} <strong>{selectedBranchInventoryType === 'wholesale' ? t('Distribution') : selectedBranchInventoryType === 'warehouse' ? t('Warehouse') : t('Retail')}</strong> {t('for')} <strong>{branch?.name || branch?.code || t('selected branch')}</strong>
               </span>
             ) : null}
-          </div>
         </div>
       </div>
       <div className="stats-grid">

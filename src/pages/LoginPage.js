@@ -111,6 +111,7 @@ function LoginPage() {
   const [name, setName] = useState('');
   const [tenantId, setTenantId] = useState('master');
   const [pin, setPin] = useState('');
+  const [pinVisible, setPinVisible] = useState(false);
   const [remember, setRemember] = useState(true);
   const [captchaInput, setCaptchaInput] = useState('');
   const [captcha, setCaptcha] = useState('');
@@ -635,7 +636,29 @@ function LoginPage() {
           <form onSubmit={handleSubmit} className="login-form">
             <input placeholder={t('tenant id')} value={tenantId} onChange={e => setTenantId(e.target.value)} />
             <input placeholder={t('username')} value={name} onChange={e => setName(e.target.value)} />
-            <input placeholder={t('PIN (4-6 digits)')} type="password" value={pin} onChange={e => setPin(e.target.value)} />
+            <div className="login-password-field">
+              <input placeholder={t('PIN (4-6 digits)')} type={pinVisible ? 'text' : 'password'} value={pin} onChange={e => setPin(e.target.value)} />
+              <button
+                type="button"
+                className="login-password-toggle"
+                onClick={() => setPinVisible((open) => !open)}
+                aria-label={pinVisible ? t('Hide PIN') : t('Show PIN')}
+                title={pinVisible ? t('Hide PIN') : t('Show PIN')}
+              >
+                {pinVisible ? (
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M3 3l18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M10.58 10.58A3 3 0 0 0 13.42 13.42" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M9.88 5.09A10.94 10.94 0 0 1 12 4.9c5.05 0 9.27 3.11 10.5 7.1a11.32 11.32 0 0 1-3.02 4.52M6.1 6.1A11.38 11.38 0 0 0 1.5 12c1.23 3.99 5.45 7.1 10.5 7.1 1.94 0 3.77-.46 5.35-1.27" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M1.5 12C2.73 8.01 6.95 4.9 12 4.9S21.27 8.01 22.5 12C21.27 15.99 17.05 19.1 12 19.1S2.73 15.99 1.5 12Z" stroke="currentColor" strokeWidth="2" />
+                    <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
+                  </svg>
+                )}
+              </button>
+            </div>
             <div className="captcha-row" data-no-localize="true">
               <input placeholder={t('captcha')} value={captchaInput} onChange={e => setCaptchaInput(e.target.value)} />
               <div className="captcha-box">{captcha}</div>
