@@ -127,7 +127,7 @@ function WarehouseGoodsPage() {
               <div className="goods-item-meta">{product.sku || t('No SKU')}</div>
               <div className="goods-item-line"><strong>{t('Warehouse Stock')} ({activeBranch?.name || activeBranchId || t('Branch')}):</strong> {product.warehouseStock}</div>
               {visiblePriceTiers.map(tier => (
-                <div key={tier} className="goods-item-line"><strong>{getPriceTierLabel(tier)}:</strong> {formatCurrency(getDisplayPrice(product, tier), settings)}</div>
+                <div key={tier} className="goods-item-line price-line"><strong>{getPriceTierLabel(tier)}:</strong> {formatCurrency(getDisplayPrice(product, tier), settings)}</div>
               ))}
               <div className="goods-item-line"><strong>{t('Low Stock Threshold')}:</strong> {product.warehouseLowStock}</div>
               <div className={`goods-status-pill ${product.warehouseStock <= Number(product.warehouseLowStock || 0) ? 'low' : 'ok'}`}>
@@ -159,7 +159,7 @@ function WarehouseGoodsPage() {
                   <td>{product.sku || '—'}</td>
                   <td>{product.warehouseStock}</td>
                   <td>{product.warehouseLowStock}</td>
-                  {visiblePriceTiers.map(tier => <td key={tier}>{formatCurrency(getDisplayPrice(product, tier), settings)}</td>)}
+                  {visiblePriceTiers.map(tier => <td key={tier}><span className="price-accent">{formatCurrency(getDisplayPrice(product, tier), settings)}</span></td>)}
                   <td>
                     <span style={{ display: 'inline-flex', padding: '4px 10px', borderRadius: 999, background: product.warehouseStock <= Number(product.warehouseLowStock || 0) ? '#fee2e2' : '#dcfce7', color: product.warehouseStock <= Number(product.warehouseLowStock || 0) ? '#b91c1c' : '#15803d', fontWeight: 700 }}>
                       {product.warehouseStock <= Number(product.warehouseLowStock || 0) ? t('Low stock') : t('Available')}

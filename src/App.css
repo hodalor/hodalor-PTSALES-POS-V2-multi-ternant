@@ -2,6 +2,8 @@
   --brand: #16a34a;
   --brand-strong: #15803d;
   --brand-soft: #dcfce7;
+  --price-accent: #4faa67;
+  --price-accent-soft: #d9f7df;
   --accent: #2563eb;
   --accent-soft: #dbeafe;
   --bg: #f5f7fb;
@@ -219,6 +221,10 @@ html, body, #root {
   line-height: 1.1;
   font-weight: 800;
   letter-spacing: -0.02em;
+}
+.price-accent {
+  color: var(--price-accent) !important;
+  font-weight: 700;
 }
 .field-label {
   margin-bottom: 6px;
@@ -1456,6 +1462,9 @@ html, body, #root {
   padding: 12px;
   box-shadow: var(--shadow-sm);
 }
+.totals-box strong {
+  color: var(--price-accent);
+}
 
 .toast-container {
   position: fixed;
@@ -1659,7 +1668,8 @@ html, body, #root {
   background: #fbfdff;
 }
 .table tbody tr:hover td {
-  background: #f8fbff;
+  background: linear-gradient(180deg, var(--price-accent-soft) 0%, #eefcf1 100%);
+  color: #0f172a;
 }
 .table tbody tr:first-child td {
   border-top: none;
@@ -1721,7 +1731,7 @@ html, body, #root {
   margin-top: 4px;
   font-size: 0.94rem;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--price-accent);
 }
 .product-card .product-stock {
   margin-top: 2px;
@@ -1828,6 +1838,10 @@ html, body, #root {
   font-weight: 800;
   line-height: 1;
   color: #0f172a;
+}
+.goods-item-line.price-line,
+.goods-item-line.price-line strong {
+  color: var(--price-accent);
 }
 .goods-low-card {
   padding: 14px;

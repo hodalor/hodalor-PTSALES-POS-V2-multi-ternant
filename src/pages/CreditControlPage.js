@@ -88,6 +88,13 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
     customers.forEach(row => map.set(String(row._id || row.id), row));
     return map;
   }, [customers]);
+  const getCustomerDetails = useCallback((customerId) => {
+    const row = customerMap.get(String(customerId || ''));
+    return {
+      name: row?.name || customerId || '—',
+      businessName: row?.businessName || '—'
+    };
+  }, [customerMap]);
   const selectedCustomer = useMemo(() => (
     customers.find((row) => String(row._id || row.id) === String(selectedCustomerId || '')) || null
   ), [customers, selectedCustomerId]);
@@ -389,16 +396,16 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
         </div>
         <div>
           <div style={{ color: '#64748b', fontSize: 12 }}>Retail EasyBuy Balance</div>
-          <div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(creditSummary.easybuyOutstanding, settings)}</div>
+          <div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(creditSummary.easybuyOutstanding, settings)}</div>
         </div>
         <div>
           <div style={{ color: '#64748b', fontSize: 12 }}>Distribution Credit Balance</div>
-          <div style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(creditSummary.wholesaleOutstanding, settings)}</div>
+          <div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(creditSummary.wholesaleOutstanding, settings)}</div>
         </div>
         <div>
           <div style={{ color: '#64748b', fontSize: 12 }}>Pending Repayments</div>
           <div style={{ fontSize: 28, fontWeight: 800 }}>{creditSummary.pendingRepaymentCount}</div>
-          <div style={{ color: '#64748b', fontSize: 12 }}>{formatCurrency(creditSummary.pendingRepaymentAmount, settings)}</div>
+          <div className="price-accent" style={{ fontSize: 12 }}>{formatCurrency(creditSummary.pendingRepaymentAmount, settings)}</div>
         </div>
         <div>
           <div style={{ color: '#64748b', fontSize: 12 }}>Due Today</div>
@@ -498,9 +505,9 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
         <div className="card">
           <h2 className="section-title">Selected Customer Summary</h2>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-            <div><div style={{ color: '#64748b', fontSize: 12 }}>Credit Purchases</div><strong>{formatCurrency(Number(summary.summary?.totalCreditPurchases || 0), settings)}</strong></div>
-            <div><div style={{ color: '#64748b', fontSize: 12 }}>Total Paid</div><strong>{formatCurrency(Number(summary.summary?.totalCreditPaid || 0), settings)}</strong></div>
-            <div><div style={{ color: '#64748b', fontSize: 12 }}>Outstanding</div><strong>{formatCurrency(Number(summary.summary?.outstandingBalance || 0), settings)}</strong></div>
+            <div><div style={{ color: '#64748b', fontSize: 12 }}>Credit Purchases</div><strong className="price-accent">{formatCurrency(Number(summary.summary?.totalCreditPurchases || 0), settings)}</strong></div>
+            <div><div style={{ color: '#64748b', fontSize: 12 }}>Total Paid</div><strong className="price-accent">{formatCurrency(Number(summary.summary?.totalCreditPaid || 0), settings)}</strong></div>
+            <div><div style={{ color: '#64748b', fontSize: 12 }}>Outstanding</div><strong className="price-accent">{formatCurrency(Number(summary.summary?.outstandingBalance || 0), settings)}</strong></div>
             <div><div style={{ color: '#64748b', fontSize: 12 }}>Rank</div><strong>{summary.summary?.creditRank || 'Bronze'}</strong></div>
             <div><div style={{ color: '#64748b', fontSize: 12 }}>Overdue Days</div><strong>{Number(summary.summary?.overdueDays || 0)}</strong></div>
             <div><div style={{ color: '#64748b', fontSize: 12 }}>Behaviour</div><strong style={{ color: Number(summary.summary?.latePayments || 0) > 0 || Number(summary.summary?.overdueDays || 0) > 0 ? '#b91c1c' : '#15803d' }}>{Number(summary.summary?.latePayments || 0) > 0 || Number(summary.summary?.overdueDays || 0) > 0 ? 'Bad / Risky' : 'Good Client'}</strong></div>
@@ -542,6 +549,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                 </th>
               )}
               <th align="left">Customer</th>
+              <th align="left">Business Name</th>
               <th align="left">Type</th>
               <th align="left">Items</th>
               <th align="left">Total</th>
@@ -567,13 +575,14 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                     />
                   </td>
                 )}
-                <td>{customerMap.get(String(row.customer_id))?.name || row.customer_id}</td>
+                <td>{getCustomerDetails(row.customer_id).name}</td>
+                <td>{getCustomerDetails(row.customer_id).businessName}</td>
                 <td>{String(row.posType || 'retail') === 'wholesale' ? 'Distribution Credit Sale' : 'Retail EasyBuy'}</td>
                 <td>{Array.isArray(row.items) ? row.items.map(item => `${item.name} × ${item.qty}`).join(', ') : '—'}</td>
-                <td>{formatCurrency(Number(row.total_amount || 0), settings)}</td>
-                <td>{formatCurrency(Number(row.amount_paid || 0), settings)}</td>
-                <td>{formatCurrency(Number(row.balance || 0), settings)}</td>
-                <td>{formatCurrency(Number(row.accumulated_penalty || 0), settings)}</td>
+                <td><span className="price-accent">{formatCurrency(Number(row.total_amount || 0), settings)}</span></td>
+                <td><span className="price-accent">{formatCurrency(Number(row.amount_paid || 0), settings)}</span></td>
+                <td><span className="price-accent">{formatCurrency(Number(row.balance || 0), settings)}</span></td>
+                <td><span className="price-accent">{formatCurrency(Number(row.accumulated_penalty || 0), settings)}</span></td>
                 <td>{row.due_date ? new Date(row.due_date).toLocaleDateString() : '—'} {row.status === 'overdue' ? `• ${row.overdue_days || 0} day(s)` : ''}</td>
                 <td>
                   <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, background: row.status === 'overdue' ? '#fee2e2' : row.status === 'active' ? '#fef3c7' : '#dcfce7', color: row.status === 'overdue' ? '#b91c1c' : row.status === 'active' ? '#92400e' : '#166534', fontWeight: 700, fontSize: 12 }}>
@@ -593,7 +602,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                 )}
               </tr>
             ))}
-            {!loading && shownActiveSales.length === 0 && <tr><td colSpan={canDeleteCredit ? 12 : 10} style={{ padding: 12, color: '#64748b' }}>No active credit sales</td></tr>}
+            {!loading && shownActiveSales.length === 0 && <tr><td colSpan={canDeleteCredit ? 13 : 11} style={{ padding: 12, color: '#64748b' }}>No active credit sales</td></tr>}
           </tbody>
         </table>
         </div>
@@ -633,6 +642,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                 </th>
               )}
               <th align="left">Customer</th>
+              <th align="left">Business Name</th>
               <th align="left">Amount</th>
               <th align="left">Status</th>
               <th align="left">Remark</th>
@@ -653,8 +663,9 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                     />
                   </td>
                 )}
-                <td>{customerMap.get(String(row.customerId))?.name || row.customerId}</td>
-                <td>{formatCurrency(Number(row.amount || 0), settings)}</td>
+                <td>{getCustomerDetails(row.customerId).name}</td>
+                <td>{getCustomerDetails(row.customerId).businessName}</td>
+                <td><span className="price-accent">{formatCurrency(Number(row.amount || 0), settings)}</span></td>
                 <td>{row.status}</td>
                 <td>{row.remark || '—'}</td>
                 <td>{row.createdAt ? new Date(row.createdAt).toLocaleString() : '—'}</td>
@@ -670,7 +681,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                 )}
               </tr>
             ))}
-            {!loading && shownRepayments.length === 0 && <tr><td colSpan={canDeleteCredit ? 7 : 5} style={{ padding: 12, color: '#64748b' }}>No repayments recorded yet</td></tr>}
+            {!loading && shownRepayments.length === 0 && <tr><td colSpan={canDeleteCredit ? 8 : 6} style={{ padding: 12, color: '#64748b' }}>No repayments recorded yet</td></tr>}
           </tbody>
         </table>
         </div>
