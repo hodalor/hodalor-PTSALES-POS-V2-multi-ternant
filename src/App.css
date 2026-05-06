@@ -1463,6 +1463,13 @@ html, body, #root {
   flex: 0 1 320px !important;
   width: 320px;
   min-width: 220px;
+  font-size: 13px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+.pos-toolbar-search::placeholder {
+  font-size: 12px;
+  letter-spacing: -0.01em;
 }
 .pos-toolbar-tier {
   flex: 0 0 142px !important;

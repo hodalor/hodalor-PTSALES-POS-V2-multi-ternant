@@ -78,7 +78,12 @@ function DashboardPage() {
   const [financeSummaryLoading, setFinanceSummaryLoading] = useState(false);
   const [warehousePending, setWarehousePending] = useState(0);
   const [wholesalePending, setWholesalePending] = useState(0);
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = useMemo(() => formatLocalDateKey(new Date()), []);
+  const defaultRevenueChartFromIso = useMemo(() => {
+    const start = new Date();
+    start.setDate(start.getDate() - 29);
+    return formatLocalDateKey(start);
+  }, []);
   const defaultFromIso = todayIso;
   const [periodMode, setPeriodMode] = useState('range');
   const [dateFrom, setDateFrom] = useState(defaultFromIso);
@@ -285,7 +290,8 @@ function DashboardPage() {
   };
 
   const metrics = useMemo(() => {
-    const sourceSales = sales.filter((s) => matchBranch(s.branchId) && inRange(s.created_at));
+    const branchSales = sales.filter((s) => matchBranch(s.branchId));
+    const sourceSales = branchSales.filter((s) => inRange(s.created_at));
     const competitionSales = sales.filter((s) => matchCompetitionBranch(s.branchId) && inRange(s.created_at));
     const branchNameById = new Map(branches.map((branch) => [String(branch.id), branch.name || branch.code || branch.id]));
     let todayTotal = 0;
@@ -295,6 +301,7 @@ function DashboardPage() {
     let last30Cost = 0;
     let itemsSold = 0;
     const perDay = {};
+    const revenuePerDay = {};
     const perDayPayments = {}; // { 'YYYY-MM-DD': { cash: x, card: y, ... } }
     const categoryTotals = {};
     const productUnits = {}; // sku -> qty
@@ -364,6 +371,26 @@ function DashboardPage() {
         }
       }
     }
+    const useRevenueChartDefaultWindow = periodMode === 'range'
+      && String(dateFrom || '') === String(todayIso || '')
+      && String(dateTo || '') === String(todayIso || '');
+    const revenueChartFromIso = periodMode === 'all_time'
+      ? ''
+      : (useRevenueChartDefaultWindow ? defaultRevenueChartFromIso : (dateFrom || defaultFromIso));
+    const revenueChartToIso = periodMode === 'all_time'
+      ? ''
+      : (dateTo || todayIso);
+    const revenueChartSales = branchSales.filter((sale) => {
+      if (periodMode === 'all_time') return true;
+      const key = formatLocalDateKey(sale.created_at);
+      if (!key) return false;
+      return (!revenueChartFromIso || key >= revenueChartFromIso) && (!revenueChartToIso || key <= revenueChartToIso);
+    });
+    for (const sale of revenueChartSales) {
+      const day = formatLocalDateKey(sale.created_at);
+      if (!day) continue;
+      revenuePerDay[day] = (revenuePerDay[day] || 0) + Number(sale.total || 0);
+    }
     for (const sale of competitionSales) {
       const seller = sale.sellerName || t('Unknown');
       const saleBranchId = String(sale.branchId || '').trim();
@@ -393,12 +420,15 @@ function DashboardPage() {
       ? Array.from(new Set(filteredDateKeys))
       : enumerateDateKeys(dateFrom || defaultFromIso, dateTo || todayIso);
     const last7 = daysInRange.slice(-7);
+    const revenueChartDays = periodMode === 'all_time'
+      ? Array.from(new Set(revenueChartSales.map((sale) => formatLocalDateKey(sale.created_at)).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+      : enumerateDateKeys(revenueChartFromIso, revenueChartToIso);
     const last30 = daysInRange;
     const lineData = {
-      labels: last30,
+      labels: revenueChartDays,
       datasets: [{
         label: t('Revenue'),
-        data: last30.map(d => +(perDay[d] || 0).toFixed(2)),
+        data: revenueChartDays.map(d => +(revenuePerDay[d] || 0).toFixed(2)),
         fill: true,
         tension: 0.35,
         backgroundColor: 'rgba(37,99,235,0.12)',
@@ -525,8 +555,11 @@ function DashboardPage() {
 
     const topProfitProducts = Array.from(productProfit.values()).sort((a, b) => b.profit - a.profit).slice(0, 10);
 
-    return { todayTotal, todayProfit, itemsSold, transactionCount: sourceSales.length, lineData, paymentBar, doughData, topBar, stackedOptions, lineOptions, barOptions, cashierBar, last30Revenue, last30Profit, last30Cost, marginPct, cashierLeaderboard, customerLeaderboardByAmount, customerLeaderboardByProducts, topProfitProducts, multiBranchCashierView };
-  }, [sales, products, branches, branchId, dateFrom, dateTo, inRange, matchBranch, matchCompetitionBranch, defaultFromIso, todayIso, periodMode, canUseScopedDashboardBranches, canViewBranchCompetitionAll, canViewCashierCompetitionAll, t]);
+    const revenueLineTitle = periodMode === 'all_time'
+      ? t('Revenue (All Time)')
+      : (useRevenueChartDefaultWindow ? t('Revenue (Last 30 Days)') : t('Revenue (Selected Range)'));
+    return { todayTotal, todayProfit, itemsSold, transactionCount: sourceSales.length, lineData, paymentBar, doughData, topBar, stackedOptions, lineOptions, barOptions, cashierBar, last30Revenue, last30Profit, last30Cost, marginPct, cashierLeaderboard, customerLeaderboardByAmount, customerLeaderboardByProducts, topProfitProducts, multiBranchCashierView, revenueLineTitle };
+  }, [sales, products, branches, branchId, dateFrom, dateTo, inRange, matchBranch, matchCompetitionBranch, defaultFromIso, defaultRevenueChartFromIso, todayIso, periodMode, canUseScopedDashboardBranches, canViewBranchCompetitionAll, canViewCashierCompetitionAll, t]);
 
   const finance = useMemo(() => {
     const expenseTotal = expenses.reduce((s, x) => s + (Number(x.amount) || 0), 0);
@@ -784,7 +817,7 @@ function DashboardPage() {
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, alignItems: 'start' }}>
         <div style={sectionCardStyle}>
-          <h2 style={sectionTitleStyle}>{t('Revenue (Selected Range)')}</h2>
+          <h2 style={sectionTitleStyle}>{metrics.revenueLineTitle}</h2>
           <div style={{ height: 220 }}>
             <Line data={metrics.lineData} options={{
               ...metrics.lineOptions,
