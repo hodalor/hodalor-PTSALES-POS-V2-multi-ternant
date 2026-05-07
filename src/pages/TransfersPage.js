@@ -1,9 +1,7 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { useEffect, useMemo, useState } from 'react';
-import { adjustStock } from '../store/productsSlice';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useToast } from '../components/ToastProvider';
 import BranchSelect from '../components/BranchSelect';
-import { promptDialog } from '../utils/dialogs';
 import { exportCsv, exportTablePdf } from '../utils/exporters';
 import * as transfersApi from '../api/transfers';
 import * as wholesaleApi from '../api/wholesale';
@@ -20,6 +18,28 @@ import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
 
+function normalizeTransferReviewStatus(value) {
+  return String(value || '').toLowerCase() === 'cancelled' ? 'cancelled' : 'accepted';
+}
+
+function normalizeTransferReviewItemsForCompare(items = []) {
+  return (Array.isArray(items) ? items : []).map((item, index) => ({
+    lineId: String(item?.lineId || `${index + 1}`),
+    productId: String(item?.productId || ''),
+    variantId: String(item?.variantId || ''),
+    qty: Math.max(0, Number(item?.qty || 0)),
+    unitIds: Array.isArray(item?.unitIds) ? item.unitIds.map(String).filter(Boolean) : [],
+    selectedUnits: Array.isArray(item?.selectedUnits)
+      ? item.selectedUnits.map((unit) => ({
+          unitId: String(unit?.unitId || ''),
+          imei: String(unit?.imei || '').trim(),
+          serialNumber: String(unit?.serialNumber || '').trim()
+        }))
+      : [],
+    status: normalizeTransferReviewStatus(item?.status)
+  }));
+}
+
 function TransfersPage() {
   const products = useSelector(s => s.products.products);
   const branches = useSelector(s => s.branches.branches);
@@ -34,6 +54,7 @@ function TransfersPage() {
   const [toId, setToId] = useState(branches.find(b => b.id !== currentBranchId)?.id || branches[1]?.id || branches[0]?.id || '');
   const [qty, setQty] = useState(1);
   const [transactionTitle, setTransactionTitle] = useState('');
+  const [requestRemark, setRequestRemark] = useState('');
   const [saving, setSaving] = useState(false);
   const [fActor, setFActor] = useState('');
   const [fFrom, setFFrom] = useState('');
@@ -53,6 +74,9 @@ function TransfersPage() {
   const [statusFilter, setStatusFilter] = useState('pending_director');
   const [detail, setDetail] = useState(null);
   const [busyId, setBusyId] = useState(null);
+  const [reviewItems, setReviewItems] = useState([]);
+  const [decisionRemark, setDecisionRemark] = useState('');
+  const [reviewing, setReviewing] = useState(false);
   const [auditDetail, setAuditDetail] = useState(null);
   const [wholesaleInbound, setWholesaleInbound] = useState([]);
   const dispatch = useDispatch();
@@ -64,16 +88,37 @@ function TransfersPage() {
   }, [currentBranchId]);
 
   const roleLower = String(auth.role || '').toLowerCase();
-  const grants = Array.isArray(auth.grants) ? auth.grants : [];
-  function has(g) {
+  const grants = useMemo(() => (Array.isArray(auth.grants) ? auth.grants : []), [auth.grants]);
+  const branchTypeById = useMemo(() => {
+    const map = new Map();
+    branches.forEach(branch => map.set(String(branch.id), String(branch.branchType || 'retail').toLowerCase()));
+    return map;
+  }, [branches]);
+  const inventoryTypeForBranch = useCallback((branchId) => {
+    const kind = String(branchTypeById.get(String(branchId)) || 'retail').toLowerCase();
+    return kind === 'warehouse' ? 'warehouse' : kind === 'wholesale' ? 'wholesale' : 'retail';
+  }, [branchTypeById]);
+  const has = useCallback((g) => {
     if (!g) return false;
     if (roleLower === 'superadmin') return true;
     return grants.includes(g);
-  }
+  }, [grants, roleLower]);
   const canTransfer = (['admin','manager','inventory staff'].includes(roleLower)) || has('add_transfers');
   const canApprove = (['admin','manager','director','superadmin'].includes(roleLower)) || has('approve_transfers');
-  const canWorkflowDirector = roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'director' || has('approve_wholesale_director');
-  const canWorkflowManager = roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'manager' || has('approve_wholesale_manager');
+  const canWorkflowDirector = useCallback((row = {}) => {
+    if (roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'director') return true;
+    const toInventory = String(row?.toInventoryType || inventoryTypeForBranch(row?.to) || 'retail').toLowerCase();
+    if (toInventory === 'warehouse') return has('approve_warehouse_director');
+    if (toInventory === 'wholesale') return has('approve_distribution_director');
+    return has('approve_transfers');
+  }, [has, inventoryTypeForBranch, roleLower]);
+  const canWorkflowManager = useCallback((row = {}) => {
+    if (roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'manager') return true;
+    const toInventory = String(row?.toInventoryType || inventoryTypeForBranch(row?.to) || 'retail').toLowerCase();
+    if (toInventory === 'warehouse') return has('approve_warehouse_manager');
+    if (toInventory === 'wholesale') return has('approve_distribution_manager');
+    return has('approve_transfers');
+  }, [has, inventoryTypeForBranch, roleLower]);
   const canDeleteRecords = roleLower === 'superadmin';
   const [selectedRecordIds, setSelectedRecordIds] = useState([]);
   const [bulkAction, setBulkAction] = useState('');
@@ -94,15 +139,6 @@ function TransfersPage() {
     branches.forEach(b => map.set(b.id, b.name));
     return map;
   }, [branches]);
-  const branchTypeById = useMemo(() => {
-    const map = new Map();
-    branches.forEach(branch => map.set(String(branch.id), String(branch.branchType || 'retail').toLowerCase()));
-    return map;
-  }, [branches]);
-  function inventoryTypeForBranch(branchId) {
-    const kind = String(branchTypeById.get(String(branchId)) || 'retail').toLowerCase();
-    return kind === 'warehouse' ? 'warehouse' : kind === 'wholesale' ? 'wholesale' : 'retail';
-  }
   const selectedProduct = useMemo(() => products.find(p => p.id === productId) || null, [productId, products]);
   useEffect(() => {
     if (!retailBranchOptions.some((branch) => String(branch.id) === String(fromId || ''))) {
@@ -192,8 +228,8 @@ function TransfersPage() {
       toast.show(t('Select the exact serialized units to transfer'), { type: 'error' });
       return;
     }
-    const remark = await promptDialog(t('Enter reason/remark for this transfer'));
-    if (!remark || !remark.trim()) {
+    const remark = String(requestRemark || '').trim();
+    if (!remark) {
       toast.show(t('Remark is required for transfers'), { type: 'error' });
       return;
     }
@@ -274,10 +310,12 @@ function TransfersPage() {
     setQty(1);
     setVariantId('');
     setTransactionTitle('');
+    setRequestRemark('');
     setItems([]);
     setSerializedUnits([]);
     setSerializedUnitsQuery('');
     toast.show(navigator.onLine ? t('Transfer request submitted for approval') : t('Saved offline. Will sync when online.'), { type: 'success' });
+    setOpenModal(false);
     setSaving(false);
   }
 
@@ -330,16 +368,61 @@ function TransfersPage() {
     setItems(prev => prev.filter(item => item.lineId !== lineId));
   }
 
+  function openDetail(row) {
+    setDetail(row);
+    setDecisionRemark('');
+    setReviewItems(
+      Array.isArray(row.items) && row.items.length > 0
+        ? row.items.map((item, index) => ({
+            lineId: item.lineId || `${index + 1}`,
+            productId: item.productId,
+            variantId: item.variantId || '',
+            qty: Number(item.qty || 0),
+            unitIds: Array.isArray(item.unitIds) ? item.unitIds.map(String) : [],
+            selectedUnits: Array.isArray(item.selectedUnits) ? item.selectedUnits.map(unit => ({ unitId: unit?.unitId || '', imei: unit?.imei || '', serialNumber: unit?.serialNumber || '' })) : [],
+            remark: item.remark || '',
+            reason: item.reason || '',
+            status: normalizeTransferReviewStatus(item.status)
+          }))
+        : [{
+            lineId: '1',
+            productId: row.productId,
+            variantId: row.variantId || '',
+            qty: Number(row.qty || row.baseUnits || 0),
+            unitIds: Array.isArray(row.unitIds) ? row.unitIds.map(String) : [],
+            selectedUnits: Array.isArray(row.selectedUnits) ? row.selectedUnits.map(unit => ({ unitId: unit?.unitId || '', imei: unit?.imei || '', serialNumber: unit?.serialNumber || '' })) : [],
+            remark: row.remark || '',
+            reason: row.reason || '',
+            status: 'accepted'
+          }]
+    );
+  }
+
   const requests = useSelector(s => s.transfers?.requests || []);
   const allowedBranches = useMemo(() => {
     if (roleLower === 'superadmin' || roleLower === 'admin' || assigned === 'all') return null;
     return new Set(Array.isArray(assigned) ? assigned : [assigned]);
   }, [roleLower, assigned]);
+  const canActOnRetailRequest = useCallback((row) => {
+    if (!row) return false;
+    const status = String(row.status || '').toLowerCase();
+    const sourceBranch = String(row.from || row.fromBranchId || '');
+    const destinationBranch = String(row.to || row.toBranchId || '');
+    const canSeeDirectorStage = !allowedBranches || allowedBranches.has(sourceBranch) || allowedBranches.has(destinationBranch);
+    const canSeeManagerStage = !allowedBranches || allowedBranches.has(destinationBranch);
+    if (status === 'pending_approval' || status === 'pending_director') {
+      return canWorkflowDirector(detail) && canSeeDirectorStage;
+    }
+    if (status === 'pending_manager') {
+      return canWorkflowManager(detail) && canSeeManagerStage;
+    }
+    return false;
+  }, [allowedBranches, canWorkflowDirector, canWorkflowManager, detail]);
   const pendingRequests = useMemo(() => {
     const legacy = requests.filter(r => {
       const s = r.status === 'pending_approval' ? 'pending_director' : r.status;
       if (s !== statusFilter) return false;
-      if (allowedBranches && !allowedBranches.has(r.to)) return false;
+      if (allowedBranches && !allowedBranches.has(r.to) && !allowedBranches.has(r.from)) return false;
       return true;
     });
     const workflow = wholesaleInbound.filter(r => {
@@ -363,6 +446,31 @@ function TransfersPage() {
       pendingApprovals: pendingRequests.length
     };
   }, [transfers, pendingRequests]);
+
+  const canActOnDetail = useMemo(() => {
+    if (!detail) return false;
+    return String(detail.approvalMode || '') === 'workflow'
+      ? ((String(detail.status || '') === 'pending_director' && canWorkflowDirector(detail)) || (String(detail.status || '') === 'pending_manager' && canWorkflowManager(detail)))
+      : canApprove && ((String(detail.status || '') === 'pending_director' && canWorkflowDirector(detail)) || (String(detail.status || '') === 'pending_manager' && canWorkflowManager(detail)) || String(detail.status || '') === 'pending_approval');
+  }, [canApprove, canWorkflowDirector, canWorkflowManager, detail]);
+
+  const hasWorkflowManagerReviewChanges = useMemo(() => {
+    if (!detail) return false;
+    if (String(detail.approvalMode || '').toLowerCase() !== 'workflow') return false;
+    if (String(detail.status || '').toLowerCase() !== 'pending_manager') return false;
+    const originalSource = Array.isArray(detail.items) && detail.items.length > 0
+      ? detail.items
+      : [{
+          lineId: '1',
+          productId: detail.productId,
+          variantId: detail.variantId || '',
+          qty: Number(detail.qty || detail.baseUnits || 0),
+          unitIds: Array.isArray(detail.unitIds) ? detail.unitIds.map(String) : [],
+          selectedUnits: Array.isArray(detail.selectedUnits) ? detail.selectedUnits : [],
+          status: 'accepted'
+        }];
+    return JSON.stringify(normalizeTransferReviewItemsForCompare(originalSource)) !== JSON.stringify(normalizeTransferReviewItemsForCompare(reviewItems));
+  }, [detail, reviewItems]);
 
   useEffect(() => {
     async function run() {
@@ -393,29 +501,43 @@ function TransfersPage() {
       }
     }
     run();
-  }, [fromId, productId, selectedTrackType, serializedUnitsQuery, toast, variantId, branchTypeById, t]);
+  }, [fromId, productId, selectedTrackType, serializedUnitsQuery, toast, variantId, inventoryTypeForBranch, t]);
+
+  const reloadApprovals = useCallback(async () => {
+    try {
+      const rows = await transfersApi.listRequests({ status: statusFilter, limit: 200 });
+      dispatch(setTransferRequests(Array.isArray(rows) ? rows : []));
+    } catch {}
+    try {
+      const rows = await wholesaleApi.listOperations({
+        operationType: 'transfer',
+        status: statusFilter
+      });
+      const filtered = Array.isArray(rows)
+        ? rows.filter(row => String(row.toInventoryType || '').toLowerCase() === 'retail')
+        : [];
+      setWholesaleInbound(filtered);
+    } catch {}
+  }, [dispatch, statusFilter]);
 
   useEffect(() => {
     let alive = true;
     async function load() {
       if (tab !== 'approvals') return;
-      setLoading(true);
+      if (requests.length === 0 && wholesaleInbound.length === 0) setLoading(true);
       try {
         const rows = await transfersApi.listRequests({ status: statusFilter, limit: 200 });
-        if (alive && Array.isArray(rows)) {
-          dispatch(setTransferRequests(rows));
-        }
+        if (alive) dispatch(setTransferRequests(Array.isArray(rows) ? rows : []));
       } catch {}
       try {
         const rows = await wholesaleApi.listOperations({
           operationType: 'transfer',
           status: statusFilter
         });
-        if (alive && Array.isArray(rows)) {
-          const filtered = rows.filter(row => {
-            const toInventory = String(row.toInventoryType || '').toLowerCase();
-            return toInventory === 'retail';
-          });
+        if (alive) {
+          const filtered = Array.isArray(rows)
+            ? rows.filter(row => String(row.toInventoryType || '').toLowerCase() === 'retail')
+            : [];
           setWholesaleInbound(filtered);
         }
       } catch {}
@@ -423,72 +545,101 @@ function TransfersPage() {
     }
     load();
     return () => { alive = false; };
-  }, [tab, statusFilter, dispatch]);
+  }, [tab, statusFilter, dispatch, requests.length, wholesaleInbound.length]);
 
-  async function approve(r) {
-    const isWorkflow = String(r.approvalMode || '') === 'workflow';
+  async function reviewAction(type) {
+    if (!detail || reviewing) return;
+    const isWorkflow = String(detail.approvalMode || '') === 'workflow';
     const allowed = isWorkflow
-      ? ((String(r.status || '') === 'pending_director' && canWorkflowDirector) || (String(r.status || '') === 'pending_manager' && canWorkflowManager))
-      : canApprove;
-    if (!allowed) { toast.show(t('Not authorized to approve transfers'), { type: 'error' }); return; }
-    const id = r._id || r.clientId;
+      ? ((String(detail.status || '') === 'pending_director' && canWorkflowDirector) || (String(detail.status || '') === 'pending_manager' && canWorkflowManager))
+      : canActOnRetailRequest(detail);
+    if (!allowed) {
+      toast.show(type === 'approve' ? t('Not authorized to approve transfers') : t('Not authorized to reject transfers'), { type: 'error' });
+      return;
+    }
+    const remark = String(decisionRemark || '').trim();
+    if (!remark) {
+      toast.show(type === 'approve' ? t('Approval remark is required') : t('Rejection remark is required'), { type: 'error' });
+      return;
+    }
+    const reviewedPayloadItems = reviewItems.map(item => ({ ...item, status: normalizeTransferReviewStatus(item.status) }));
+    const affectedProductIds = Array.from(new Set(reviewItems.map(item => String(item.productId || '')).filter(Boolean)));
+    const id = detail._id || detail.clientId;
+    setReviewing(true);
+    setBusyId(id);
     try {
-      const remark = await promptDialog(t('Enter remark for approval (required)'));
-      if (!remark || !String(remark).trim()) { toast.show(t('Remark is required'), { type: 'error' }); return; }
-      setBusyId(id);
-      if (!navigator.onLine && !isWorkflow) {
-        await enqueueHttp({ collection: 'transferrequests', label: t('Transfer approve'), path: '/api/transfers/approve', method: 'POST', body: { id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark } });
-      } else if (isWorkflow) {
-        await wholesaleApi.approveOperation(r, { approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
-      } else {
-        const response = await transfersApi.approve({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
-        const nextStatus = String(response?.status || '');
-        dispatch(approveTransfer({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark, nextStatus }));
-        if (nextStatus === 'approved') {
-          dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.from, delta: -Number(r.qty || 0), inventoryType: inventoryTypeForBranch(r.from) }));
-          dispatch(adjustStock({ productId: r.productId, variantId: r.variantId || undefined, branchId: r.to, delta: Number(r.qty || 0), inventoryType: inventoryTypeForBranch(r.to) }));
-          void refreshAffectedProducts(dispatch, [r.productId]);
-          toast.show(t('Transfer approved and stock updated'), { type: 'success' });
+      if (type === 'approve') {
+        if (!navigator.onLine && !isWorkflow) {
+          await enqueueHttp({
+            collection: 'transferrequests',
+            label: t('Transfer approve'),
+            path: '/api/transfers/approve',
+            method: 'POST',
+            body: { id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark, items: reviewedPayloadItems }
+          });
+          dispatch(approveTransfer({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark, nextStatus: 'pending_manager' }));
+          toast.show(t('Transfer approval queued offline'), { type: 'success' });
+        } else if (isWorkflow) {
+          const response = await wholesaleApi.approveOperation(detail, {
+            approverName: auth.user?.name || 'unknown',
+            approverRole: auth.role || '',
+            remark,
+            reason: remark,
+            items: reviewedPayloadItems,
+            resubmitToDirector: hasWorkflowManagerReviewChanges
+          });
+          const nextStatus = String(response?.status || '').toLowerCase();
+          if (nextStatus === 'pending_director') {
+            toast.show(t('Transfer changes resubmitted for director approval'), { type: 'success' });
+          } else if (nextStatus === 'pending_manager') {
+            toast.show(t('Director approval recorded. Waiting for manager approval.'), { type: 'success' });
+          } else {
+            toast.show(t('Transfer approved and stock updated'), { type: 'success' });
+            void refreshAffectedProducts(dispatch, affectedProductIds);
+          }
         } else {
-          toast.show(t('Director approval recorded. Waiting for manager approval.'), { type: 'success' });
+          const response = await transfersApi.approve({
+            id,
+            approverName: auth.user?.name || 'unknown',
+            approverRole: auth.role || '',
+            remark,
+            items: reviewedPayloadItems
+          });
+          const nextStatus = String(response?.status || '');
+          dispatch(approveTransfer({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark, nextStatus }));
+          if (nextStatus === 'approved') {
+            void refreshAffectedProducts(dispatch, affectedProductIds);
+            toast.show(t('Transfer approved and stock updated'), { type: 'success' });
+          } else {
+            toast.show(t('Director approval recorded. Waiting for manager approval.'), { type: 'success' });
+          }
         }
-        return;
-      }
-      if (!isWorkflow) {
-        dispatch(approveTransfer({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark, nextStatus: 'pending_manager' }));
-        toast.show(t('Transfer approval queued offline'), { type: 'success' });
       } else {
-        await wholesaleApi.listOperations({ operationType: 'transfer', status: statusFilter }).then(rows => setWholesaleInbound((Array.isArray(rows) ? rows : []).filter(row => String(row.toInventoryType || '').toLowerCase() === 'retail')));
-        toast.show(t('Transfer approved and stock updated'), { type: 'success' });
+        if (!navigator.onLine && !isWorkflow) {
+          await enqueueHttp({
+            collection: 'transferrequests',
+            label: t('Transfer reject'),
+            path: '/api/transfers/reject',
+            method: 'POST',
+            body: { id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark }
+          });
+        } else if (isWorkflow) {
+          await wholesaleApi.rejectOperation(detail, { approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark, reason: remark });
+        } else {
+          await transfersApi.reject({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
+        }
+        if (!isWorkflow) dispatch(rejectTransfer({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark }));
+        toast.show(t('Transfer rejected'), { type: 'success' });
       }
+      setDetail(null);
+      setDecisionRemark('');
+      await reloadApprovals();
     } catch (e) {
-      toast.show(String(e?.message || t('Failed to approve')), { type: 'error' });
-    } finally { setBusyId(null); }
-  }
-  async function reject(r) {
-    const isWorkflow = String(r.approvalMode || '') === 'workflow';
-    const allowed = isWorkflow
-      ? ((String(r.status || '') === 'pending_director' && canWorkflowDirector) || (String(r.status || '') === 'pending_manager' && canWorkflowManager))
-      : canApprove;
-    if (!allowed) { toast.show(t('Not authorized to reject transfers'), { type: 'error' }); return; }
-    const id = r._id || r.clientId;
-    try {
-      const remark = await promptDialog(t('Enter reason for rejection (required)'));
-      if (!remark || !String(remark).trim()) { toast.show(t('Remark is required'), { type: 'error' }); return; }
-      setBusyId(id);
-      if (!navigator.onLine && !isWorkflow) {
-        await enqueueHttp({ collection: 'transferrequests', label: t('Transfer reject'), path: '/api/transfers/reject', method: 'POST', body: { id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark } });
-      } else if (isWorkflow) {
-        await wholesaleApi.rejectOperation(r, { approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark, reason: remark });
-      } else {
-        await transfersApi.reject({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
-      }
-      if (!isWorkflow) dispatch(rejectTransfer({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark }));
-      else await wholesaleApi.listOperations({ operationType: 'transfer', status: statusFilter }).then(rows => setWholesaleInbound((Array.isArray(rows) ? rows : []).filter(row => String(row.toInventoryType || '').toLowerCase() === 'retail')));
-      toast.show(t('Transfer rejected'), { type: 'success' });
-    } catch (e) {
-      toast.show(String(e?.message || t('Failed to reject')), { type: 'error' });
-    } finally { setBusyId(null); }
+      toast.show(String(e?.message || (type === 'approve' ? t('Failed to approve') : t('Failed to reject'))), { type: 'error' });
+    } finally {
+      setReviewing(false);
+      setBusyId(null);
+    }
   }
 
   return (
@@ -520,11 +671,11 @@ function TransfersPage() {
         <div className="card stat-card"><div className="stat-label">{t('Pending Approvals')}</div><div className="stat-value">{summary.pendingApprovals}</div></div>
       </div>
       {openModal && (
-        <Modal title={t('Add Transfer')} onClose={() => setOpenModal(false)} footer={
+        <Modal title={t('Retail Transfer')} onClose={() => setOpenModal(false)} footer={
           <>
-            <button className="btn" onClick={() => setOpenModal(false)}>{t('Cancel')}</button>
+            <button className="btn" onClick={() => setOpenModal(false)}>{t('Close')}</button>
             <button className="btn" onClick={addCurrentItem} disabled={!canTransfer || saving}>{t('Add To List')}</button>
-            <button className="btn btn-primary" onClick={async () => { await transfer(); setOpenModal(false); }} disabled={!canTransfer || saving}>
+            <button className="btn btn-primary" onClick={transfer} disabled={!canTransfer || saving}>
               <svg viewBox="0 0 24 24" fill="none"><path d="M7 7h10M7 17h10M7 7l-3 3m3-3l-3-3M17 17l3 3m-3-3l3-3" stroke="currentColor" strokeWidth="2"/></svg>
               {saving ? t('Saving…') : t('Submit For Approval')}
             </button>
@@ -564,11 +715,11 @@ function TransfersPage() {
               </label>
             )}
             <label>
-              <div className="field-label">{t('From')}</div>
+              <div className="field-label">{t('From Branch')}</div>
               <BranchSelect value={fromId} onChange={setFromId} overrideBranches={retailBranchOptions} />
             </label>
             <label>
-              <div className="field-label">{t('To')}</div>
+              <div className="field-label">{t('To Branch')}</div>
               <BranchSelect value={toId} onChange={setToId} overrideBranches={branchOptions} />
             </label>
             <label>
@@ -577,7 +728,11 @@ function TransfersPage() {
             </label>
             <label style={{ gridColumn: '1 / -1' }}>
               <div className="field-label">{t('Transaction Title')}</div>
-              <input className="input" value={transactionTitle} onChange={e => setTransactionTitle(e.target.value)} placeholder={t('Optional bulk transfer title')} />
+              <input className="input" value={transactionTitle} onChange={e => setTransactionTitle(e.target.value)} placeholder={t('Optional transfer title for grouped items')} />
+            </label>
+            <label style={{ gridColumn: '1 / -1' }}>
+              <div className="field-label">{t('Remark')}</div>
+              <input className="input" value={requestRemark} onChange={e => setRequestRemark(e.target.value)} placeholder={t('Additional details for approvers')} />
             </label>
           </div>
           {selectedTrackType === 'serialized' && (
@@ -676,7 +831,7 @@ function TransfersPage() {
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}><LoadingDots label={t('Loading transfers')} /></td></tr>}
+              {loading && pendingRequests.length === 0 && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}><LoadingDots label={t('Loading transfers')} /></td></tr>}
               {!loading && pendingRequests.map(r => {
                 const p = products.find(x => x.id === r.productId);
                 const fromLabel = byId.get(r.fromBranchId || r.from) || r.fromBranchId || r.from;
@@ -689,10 +844,10 @@ function TransfersPage() {
                   : t('Retail Transfer');
                 const title = String(r.transactionTitle || '').trim() || (Array.isArray(r.items) && r.items.length > 1 ? `${p?.name || r.productId} +${r.items.length - 1} ${t('more')}` : (p?.name || r.productId));
                 const canAct = String(r.approvalMode || '') === 'workflow'
-                  ? ((String(r.status || '') === 'pending_director' && canWorkflowDirector) || (String(r.status || '') === 'pending_manager' && canWorkflowManager))
-                  : canApprove;
+                  ? ((String(r.status || '') === 'pending_director' && canWorkflowDirector(r)) || (String(r.status || '') === 'pending_manager' && canWorkflowManager(r)))
+                  : canActOnRetailRequest(r);
                 return (
-                  <tr key={r._id || r.clientId} style={{ cursor: 'pointer' }} onClick={() => setDetail(r)}>
+                  <tr key={r._id || r.clientId} style={{ cursor: 'pointer' }} onClick={() => openDetail(r)}>
                     <td>{title}</td>
                     <td>
                       <div style={{ display: 'grid', gap: 4 }}>
@@ -707,8 +862,7 @@ function TransfersPage() {
                     <td>
                       {(r.status === 'pending_approval' || r.status === 'pending_manager' || r.status === 'pending_director') ? (
                         <div className="approval-row-actions">
-                          <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={!canAct || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? t('Working…') : t('Approve')}</button>
-                          <button className="btn" onClick={(e) => { e.stopPropagation(); reject(r); }} disabled={!canAct || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? t('Working…') : t('Reject')}</button>
+                          <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); openDetail(r); }} disabled={!canAct || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? t('Working…') : t('Review')}</button>
                         </div>
                       ) : (
                         <span className={`status-pill ${r.status === 'approved' ? 'status-pill-approved' : 'status-pill-rejected'}`}>{r.status}</span>
@@ -856,21 +1010,15 @@ function TransfersPage() {
         </div>
       </div>
       {detail && (
-        <Modal title={t('Transfer Details')} onClose={() => setDetail(null)} footer={
+        <Modal title={canActOnDetail ? t('Request Review') : t('Transfer Details')} onClose={() => { if (!reviewing) { setDetail(null); setDecisionRemark(''); } }} footer={
           <>
-            <button className="btn" onClick={() => setDetail(null)}>{t('Close')}</button>
-            {(() => {
-              const canAct = String(detail.approvalMode || '') === 'workflow'
-                ? ((String(detail.status || '') === 'pending_director' && canWorkflowDirector) || (String(detail.status || '') === 'pending_manager' && canWorkflowManager))
-                : (((String(detail.status || '') === 'pending_director' && canWorkflowDirector) || (String(detail.status || '') === 'pending_manager' && canWorkflowManager)) && canApprove);
-              if (!canAct) return null;
-              return (
-                <>
-                  <button className="btn" onClick={async () => { await reject(detail); setDetail(null); }} disabled={busyId === (detail._id || detail.clientId)}>{t('Reject')}</button>
-                  <button className="btn btn-primary" onClick={async () => { await approve(detail); setDetail(null); }} disabled={busyId === (detail._id || detail.clientId)}>{busyId === (detail._id || detail.clientId) ? t('Working…') : t('Approve')}</button>
-                </>
-              );
-            })()}
+            <button className="btn" onClick={() => { setDetail(null); setDecisionRemark(''); }} disabled={reviewing}>{t('Close')}</button>
+            {canActOnDetail && (
+              <>
+                <button className="btn" onClick={() => reviewAction('reject')} disabled={reviewing}>{reviewing ? t('Working…') : t('Reject')}</button>
+                <button className="btn btn-primary" onClick={() => reviewAction('approve')} disabled={reviewing}>{reviewing ? t('Working…') : hasWorkflowManagerReviewChanges ? t('Resubmit') : t('Approve')}</button>
+              </>
+            )}
           </>
         }>
           <div className="detail-grid">
@@ -891,7 +1039,7 @@ function TransfersPage() {
             <div className="detail-field"><div className="detail-label">{t('Created')}</div><div className="detail-value">{detail.createdAt ? new Date(detail.createdAt).toLocaleString() : '—'}</div></div>
             <div className="detail-field"><div className="detail-label">{t('Updated')}</div><div className="detail-value">{detail.updatedAt ? new Date(detail.updatedAt).toLocaleString() : '—'}</div></div>
           </div>
-          {Array.isArray(detail.items) && detail.items.length > 0 && (
+          {Array.isArray(reviewItems) && reviewItems.length > 0 && (
             <div style={{ marginTop: 12 }}>
               <div className="field-label">{t('Request Items')}</div>
               <div className="table-wrap">
@@ -900,11 +1048,13 @@ function TransfersPage() {
                   <tr>
                     <th align="left">{t('Product')}</th>
                     <th align="left">{t('Qty')}</th>
+                    <th align="left">{t('Units')}</th>
                     <th align="left">{t('Status')}</th>
+                    <th align="left">{t('Reason')}</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {detail.items.map((item, index) => {
+                  {reviewItems.map((item, index) => {
                     const product = products.find(p => p.id === item.productId);
                     return (
                       <tr key={item.lineId || index}>
@@ -916,8 +1066,35 @@ function TransfersPage() {
                             </div>
                           )}
                         </td>
-                        <td>{item.qty}</td>
-                        <td>{item.status || t('accepted')}</td>
+                        <td>
+                          {canActOnDetail ? (
+                            <input
+                              className="input"
+                              type="number"
+                              min="0"
+                              value={item.qty}
+                              onChange={e => setReviewItems(prev => prev.map((row, rowIndex) => rowIndex === index ? { ...row, qty: Number(e.target.value) || 0 } : row))}
+                              style={{ width: 90, color: '#111827' }}
+                              disabled={(Array.isArray(item.unitIds) && item.unitIds.length > 0) || !canActOnDetail || reviewing}
+                            />
+                          ) : item.qty}
+                        </td>
+                        <td>{Array.isArray(item.unitIds) && item.unitIds.length > 0 ? item.unitIds.length : '—'}</td>
+                        <td>
+                          {canActOnDetail ? (
+                            <select
+                              className="select"
+                              value={normalizeTransferReviewStatus(item.status)}
+                              onChange={e => setReviewItems(prev => prev.map((row, rowIndex) => rowIndex === index ? { ...row, status: e.target.value } : row))}
+                              style={{ color: '#111827' }}
+                              disabled={!canActOnDetail || reviewing}
+                            >
+                              <option value="accepted">{t('Accepted')}</option>
+                              <option value="cancelled">{t('Cancelled')}</option>
+                            </select>
+                          ) : (item.status || t('accepted'))}
+                        </td>
+                        <td>{item.reason || item.remark || '—'}</td>
                       </tr>
                     );
                   })}
@@ -925,6 +1102,12 @@ function TransfersPage() {
               </table>
               </div>
             </div>
+          )}
+          {canActOnDetail && (
+            <label style={{ marginTop: 12, display: 'block' }}>
+              <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('Approval / Rejection Remark')}</div>
+              <textarea className="input" value={decisionRemark} onChange={e => setDecisionRemark(e.target.value)} rows={4} style={{ width: '100%', resize: 'vertical' }} />
+            </label>
           )}
         </Modal>
       )}

@@ -22,14 +22,20 @@ export const TENANT_GRANT_CATALOG = [
   { key: 'view_labels', label: 'Use Labels' },
   { key: 'view_purchases', label: 'Open Purchases' },
   { key: 'add_purchases', label: 'Create Purchases' },
+  { key: 'add_wholesale_purchases', label: 'Create Distribution Purchases' },
+  { key: 'add_warehouse_purchases', label: 'Create Warehouse Purchases' },
   { key: 'edit_purchases', label: 'Edit Purchases' },
   { key: 'approve_purchases', label: 'Approve Purchases' },
   { key: 'view_transfers', label: 'Open Transfers' },
   { key: 'add_transfers', label: 'Create Transfers' },
+  { key: 'add_wholesale_transfers', label: 'Create Distribution Transfers' },
+  { key: 'add_warehouse_transfers', label: 'Create Warehouse Transfers' },
   { key: 'edit_transfers', label: 'Edit Transfers' },
   { key: 'approve_transfers', label: 'Approve Transfers' },
   { key: 'view_adjustments', label: 'Open Adjustments' },
   { key: 'add_adjustments', label: 'Create Adjustments' },
+  { key: 'add_wholesale_adjustments', label: 'Create Distribution Adjustments' },
+  { key: 'add_warehouse_adjustments', label: 'Create Warehouse Adjustments' },
   { key: 'edit_adjustments', label: 'Edit Adjustments' },
   { key: 'approve_adjustments', label: 'Approve Adjustments' },
   { key: 'view_suppliers', label: 'Open Suppliers' },
@@ -43,8 +49,10 @@ export const TENANT_GRANT_CATALOG = [
   { key: 'approve_credit_manager', label: 'Manager Credit Approval' },
   { key: 'view_credit_repayment_approvals', label: 'Open Credit Repayment Approvals' },
   { key: 'view_approvals', label: 'Open Approvals Center' },
-  { key: 'approve_wholesale_director', label: 'Director Wholesale Approval' },
-  { key: 'approve_wholesale_manager', label: 'Manager Wholesale Approval' },
+  { key: 'approve_distribution_director', label: 'Director Distribution Approval' },
+  { key: 'approve_distribution_manager', label: 'Manager Distribution Approval' },
+  { key: 'approve_warehouse_director', label: 'Director Warehouse Approval' },
+  { key: 'approve_warehouse_manager', label: 'Manager Warehouse Approval' },
   { key: 'view_refunds', label: 'Open Retail Refunds' },
   { key: 'add_refunds', label: 'Create Retail Refund Requests' },
   { key: 'view_distribution_refunds', label: 'Open Distribution Refunds' },
@@ -105,7 +113,7 @@ export const PLAN_DEFAULT_FEATURES = {
     'admin.users', 'admin.manual', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords',
     'admin.cashDrawer', 'admin.config', 'features.offlineBackup',
     'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
-    ...TENANT_GRANT_CATALOG.map((item) => `grants.${item.key}`).filter((key) => !['grants.approve_credit_director', 'grants.approve_wholesale_director'].includes(key))
+    ...TENANT_GRANT_CATALOG.map((item) => `grants.${item.key}`).filter((key) => !['grants.approve_credit_director', 'grants.approve_distribution_director', 'grants.approve_warehouse_director'].includes(key))
   ],
   enterprise: null
 };
@@ -183,7 +191,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
       { label: 'Inventory', keys: ['modules.inventory', 'grants.view_inventory', 'grants.edit_inventory'] },
       { label: 'Serialized Inventory', keys: ['modules.inventory', 'grants.view_serialized_inventory'] },
       { label: 'Labels', keys: ['modules.labels', 'grants.view_labels'] },
-      { label: 'Approvals Center', keys: ['modules.approvalsCenter', 'grants.view_approvals', 'grants.approve_credit_director', 'grants.approve_credit_manager', 'grants.approve_wholesale_director', 'grants.approve_wholesale_manager'] },
+      { label: 'Approvals Center', keys: ['modules.approvalsCenter', 'grants.view_approvals', 'grants.approve_credit_director', 'grants.approve_credit_manager', 'grants.approve_distribution_director', 'grants.approve_distribution_manager', 'grants.approve_warehouse_director', 'grants.approve_warehouse_manager'] },
       { label: 'Refund Approvals', keys: ['modules.refundApprovals', 'grants.approve_refunds'] },
       { label: 'Reports', keys: ['modules.reports', 'grants.view_reports'] },
       { label: 'Finance', keys: ['modules.finance', 'pages.finance.reconciliation', 'grants.view_finance_reconciliation', 'grants.add_finance_reconciliation', 'grants.view_finance_reconciliation_all_branches', 'grants.approve_finance_reconciliation_director', 'grants.approve_finance_reconciliation_manager'] },
@@ -212,14 +220,14 @@ export const TENANT_SIDEBAR_SECTIONS = [
     title: 'Distribution',
     description: 'Matches the Distribution sidebar group and includes approval capabilities by default.',
     items: [
-      { label: 'Distribution Goods', keys: ['pages.distribution.goods', 'modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_distribution_products', 'grants.view_config'] },
-      { label: 'Distribution POS', keys: ['pages.distribution.pos', 'modules.wholesalePos', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_config'] },
+      { label: 'Distribution Goods', keys: ['pages.distribution.goods', 'modules.wholesalePos', 'modules.products', 'grants.view_distribution_products'] },
+      { label: 'Distribution POS', keys: ['pages.distribution.pos', 'modules.wholesalePos', 'grants.view_wholesale_pos'] },
       { label: 'Distribution Invoices', keys: ['pages.distribution.invoices', 'modules.invoices', 'grants.view_wholesale_invoices'] },
-      { label: 'Distribution Purchase', keys: ['pages.distribution.purchase', 'modules.wholesalePos', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_config', 'grants.add_purchases'] },
-      { label: 'Distribution Transfer', keys: ['pages.distribution.transfer', 'modules.wholesalePos', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_config', 'grants.add_transfers'] },
-      { label: 'Distribution Adjustment', keys: ['pages.distribution.adjustment', 'modules.wholesalePos', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_config', 'grants.add_adjustments'] },
-      { label: 'Distribution Refunds', keys: ['pages.distribution.refund', 'modules.wholesalePos', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_config', 'grants.view_distribution_refunds', 'grants.add_distribution_refunds'] },
-      { label: 'Director / Manager Approvals', keys: ['pages.distribution.approvals', 'modules.wholesalePos', 'admin.config', 'modules.approvalsCenter', 'grants.view_config', 'grants.approve_wholesale_director', 'grants.approve_wholesale_manager'] }
+      { label: 'Distribution Purchase', keys: ['pages.distribution.purchase', 'modules.wholesalePos', 'grants.view_distribution_products', 'grants.add_wholesale_purchases'] },
+      { label: 'Distribution Transfer', keys: ['pages.distribution.transfer', 'modules.wholesalePos', 'grants.view_distribution_products', 'grants.add_wholesale_transfers'] },
+      { label: 'Distribution Adjustment', keys: ['pages.distribution.adjustment', 'modules.wholesalePos', 'grants.view_distribution_products', 'grants.add_wholesale_adjustments'] },
+      { label: 'Distribution Refunds', keys: ['pages.distribution.refund', 'modules.wholesalePos', 'grants.view_distribution_products', 'grants.view_distribution_refunds', 'grants.add_distribution_refunds'] },
+      { label: 'Director / Manager Approvals', keys: ['pages.distribution.approvals', 'modules.wholesalePos', 'modules.approvalsCenter', 'grants.approve_distribution_director', 'grants.approve_distribution_manager'] }
     ]
   },
   {
@@ -228,12 +236,12 @@ export const TENANT_SIDEBAR_SECTIONS = [
     title: 'Warehouse',
     description: 'Matches the Warehouse sidebar group with warehouse-specific approvals.',
     items: [
-      { label: 'Warehouse Goods', keys: ['pages.warehouse.goods', 'modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_warehouse_products', 'grants.view_config'] },
+      { label: 'Warehouse Goods', keys: ['pages.warehouse.goods', 'modules.wholesalePos', 'modules.products', 'grants.view_warehouse_products'] },
       { label: 'Warehouse Invoices', keys: ['pages.warehouse.invoices', 'modules.invoices', 'grants.view_warehouse_invoices'] },
-      { label: 'Warehouse Purchase', keys: ['pages.warehouse.purchase', 'modules.wholesalePos', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_config', 'grants.add_purchases'] },
-      { label: 'Warehouse Transfer', keys: ['pages.warehouse.transfer', 'modules.wholesalePos', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_config', 'grants.add_transfers'] },
-      { label: 'Warehouse Adjustment', keys: ['pages.warehouse.adjustment', 'modules.wholesalePos', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_config', 'grants.add_adjustments'] },
-      { label: 'Warehouse Approvals', keys: ['pages.warehouse.approvals', 'modules.wholesalePos', 'admin.config', 'modules.approvalsCenter', 'grants.view_config', 'grants.view_warehouse_approvals', 'grants.approve_wholesale_director', 'grants.approve_wholesale_manager'] }
+      { label: 'Warehouse Purchase', keys: ['pages.warehouse.purchase', 'modules.wholesalePos', 'grants.view_warehouse_products', 'grants.add_warehouse_purchases'] },
+      { label: 'Warehouse Transfer', keys: ['pages.warehouse.transfer', 'modules.wholesalePos', 'grants.view_warehouse_products', 'grants.add_warehouse_transfers'] },
+      { label: 'Warehouse Adjustment', keys: ['pages.warehouse.adjustment', 'modules.wholesalePos', 'grants.view_warehouse_products', 'grants.add_warehouse_adjustments'] },
+      { label: 'Warehouse Approvals', keys: ['pages.warehouse.approvals', 'modules.wholesalePos', 'modules.approvalsCenter', 'grants.view_warehouse_approvals', 'grants.approve_warehouse_director', 'grants.approve_warehouse_manager'] }
     ]
   },
   {
@@ -368,7 +376,7 @@ export const TENANT_FEATURE_CATALOG = [
       group = 'Permissions / Pricing & Visibility';
     } else if (['view_chat', 'send_chat_messages', 'view_pt_ai'].includes(item.key)) {
       group = 'Permissions / Communication';
-    } else if (['view_wholesale_pos', 'view_purchases', 'add_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'edit_adjustments', 'approve_adjustments', 'view_credit_control', 'approve_credit_director', 'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_wholesale_director', 'approve_wholesale_manager', 'view_wholesale_invoices', 'view_warehouse_invoices', 'view_warehouse_approvals'].includes(item.key)) {
+    } else if (['view_wholesale_pos', 'view_purchases', 'add_purchases', 'add_wholesale_purchases', 'add_warehouse_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'add_wholesale_transfers', 'add_warehouse_transfers', 'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'add_wholesale_adjustments', 'add_warehouse_adjustments', 'edit_adjustments', 'approve_adjustments', 'view_credit_control', 'approve_credit_director', 'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_distribution_director', 'approve_distribution_manager', 'approve_warehouse_director', 'approve_warehouse_manager', 'view_wholesale_invoices', 'view_warehouse_invoices', 'view_warehouse_approvals'].includes(item.key)) {
       group = 'Permissions / Distribution Actions';
     } else if (['view_users', 'view_config', 'view_audit', 'view_stock_records', 'view_cashdrawer', 'view_imei_conflicts', 'export_tenant_data', 'import_tenant_data'].includes(item.key)) {
       group = 'Permissions / Admin Actions';

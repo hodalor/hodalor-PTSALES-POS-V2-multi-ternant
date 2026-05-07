@@ -2,6 +2,7 @@ import { useSelector } from 'react-redux';
 import { Navigate, useLocation } from 'react-router-dom';
 import { isFeatureEnabled } from '../utils/featureFlags';
 import { useAppLanguage } from '../utils/localization';
+import { resolveDefaultRoute } from '../utils/defaultRoute';
 
 function ProtectedRoute({ roles, grant, feature, children }) {
   const auth = useSelector(state => state.auth);
@@ -31,6 +32,7 @@ function ProtectedRoute({ roles, grant, feature, children }) {
   const expiryTs = settings?.subscriptionExpiresAt ? new Date(settings.subscriptionExpiresAt).getTime() : 0;
   const isPermanent = !!settings?.subscriptionPermanent;
   const isSuper = String(auth.role || '').toLowerCase() === 'superadmin' && String(auth.user?.tenantId || '').toLowerCase() === 'master';
+  const fallbackRoute = resolveDefaultRoute(auth, settings, { exclude: [location.pathname] });
   if (!isSuper && !settings?.hydrated) {
     return (
       <div style={{ minHeight: '60vh', display: 'grid', placeItems: 'center', padding: 24 }}>
@@ -56,8 +58,7 @@ function ProtectedRoute({ roles, grant, feature, children }) {
     );
   }
   if (!isSuper && feature && !isFeatureEnabled(settings, feature)) {
-    const fallback = location.pathname === '/pos' ? '/dashboard' : '/pos';
-    return <Navigate to={fallback} replace />;
+    return <Navigate to={fallbackRoute} replace />;
   }
   const grantFeatureEnabled = (g) => {
     const key = `grants.${String(g || '')}`;
@@ -66,7 +67,7 @@ function ProtectedRoute({ roles, grant, feature, children }) {
   if (!isSuper && grant) {
     const requested = Array.isArray(grant) ? grant : [grant];
     if (!requested.some(grantFeatureEnabled)) {
-      return <Navigate to="/dashboard" replace />;
+      return <Navigate to={fallbackRoute} replace />;
     }
   }
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
@@ -82,10 +83,10 @@ function ProtectedRoute({ roles, grant, feature, children }) {
   const roleAllowed = roles && roles.length > 0 && roles.indexOf(auth.role) !== -1;
   const enforceGrantForRole = grant && !['superadmin', 'admin'].includes(roleLower);
   if (!isSuper && enforceGrantForRole && !hasGrant) {
-    return <Navigate to="/pos" replace />;
+    return <Navigate to={fallbackRoute} replace />;
   }
   if (!isSuper && !enforceGrantForRole && !hasGrant && roles && roles.length > 0 && !roleAllowed) {
-    return <Navigate to="/pos" replace />;
+    return <Navigate to={fallbackRoute} replace />;
   }
   return children;
 }

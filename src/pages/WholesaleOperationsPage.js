@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useToast } from '../components/ToastProvider';
 import { formatCurrency } from '../utils/currency';
 import * as wholesaleApi from '../api/wholesale';
+import * as transfersApi from '../api/transfers';
 import * as productUnitsApi from '../api/productUnits';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
@@ -67,6 +68,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     const ids = new Set(Array.isArray(assigned) ? assigned : [assigned]);
     return branches.filter(b => ids.has(b.id));
   }, [assigned, branches, roleLower]);
+  const allowedBranchIds = useMemo(() => {
+    if (roleLower === 'superadmin' || roleLower === 'admin' || assigned === 'all') return null;
+    return new Set(Array.isArray(assigned) ? assigned : [assigned]);
+  }, [assigned, roleLower]);
   const normalizedArea = String(operationArea || 'wholesale').toLowerCase() === 'warehouse' ? 'warehouse' : 'wholesale';
   const scopedBranchOptions = useMemo(
     () => branchOptions.filter(branch => String(branch.branchType || 'retail').toLowerCase() === normalizedArea),
@@ -150,10 +155,24 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     const nextCost = Number(selectedProduct.costPrice || 0);
     setCost(Number.isFinite(nextCost) ? String(nextCost) : '');
   }, [operationType, productId, variantId, selectedProduct]);
-  const grants = Array.isArray(auth.grants) ? auth.grants : [];
-  const canDirectorApprove = roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'director' || grants.includes('approve_wholesale_director') || grants.includes('approve_credit_director');
-  const canManagerApprove = roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'manager' || grants.includes('approve_wholesale_manager') || grants.includes('approve_credit_manager');
+  const grants = useMemo(() => (Array.isArray(auth.grants) ? auth.grants : []), [auth.grants]);
+  const canDirectorApprove = roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'director'
+    || (normalizedArea === 'warehouse' ? grants.includes('approve_warehouse_director') : grants.includes('approve_distribution_director'))
+    || grants.includes('approve_credit_director');
+  const canManagerApprove = roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'manager'
+    || (normalizedArea === 'warehouse' ? grants.includes('approve_warehouse_manager') : grants.includes('approve_distribution_manager'))
+    || grants.includes('approve_credit_manager');
   const canViewCost = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_profit') || grants.includes('view_financials');
+  const canCreateRequest = useMemo(() => {
+    if (roleLower === 'superadmin' || roleLower === 'admin') return true;
+    if (operationType === 'transfer') {
+      return normalizedArea === 'warehouse' ? grants.includes('add_warehouse_transfers') : grants.includes('add_wholesale_transfers');
+    }
+    if (operationType === 'purchase') return grants.includes('add_purchases');
+    if (operationType === 'adjustment') return grants.includes('add_adjustments');
+    if (operationType === 'refund') return grants.includes('add_distribution_refunds');
+    return false;
+  }, [grants, normalizedArea, operationType, roleLower]);
   const defaultBranchIdRef = useRef(currentBranchId || scopedBranchOptions[0]?.id || branchOptions[0]?.id || '');
   const defaultTransferToBranchIdRef = useRef(branchOptions.find(branch => String(branch.id) !== String(currentBranchId || scopedBranchOptions[0]?.id || ''))?.id || branchOptions[0]?.id || '');
   const serializedScanInputRef = useRef(null);
@@ -268,11 +287,44 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   }, [adjustmentType, branchId, fromBranchId, inventoryTypeForBranch, normalizedArea, operationType, productId, selectedTrackType, serializedUnitsQuery, toast, variantId, t]);
 
   const loadOperations = useCallback(async (options = {}) => {
-    setLoading(true);
+    if (operations.length === 0) setLoading(true);
     try {
-      const result = await wholesaleApi.listOperations({ operationType, status: statusFilter, operationArea: normalizedArea, force: !!options.force, paged: true, page, pageSize });
-      setOperations(Array.isArray(result?.rows) ? result.rows : []);
-      setTotal(Number(result?.total || 0));
+      if (operationType === 'transfer') {
+        const [workflowResult, retailTransferRows] = await Promise.all([
+          wholesaleApi.listOperations({ operationType, status: statusFilter, operationArea: normalizedArea, force: !!options.force }),
+          transfersApi.listRequests({ status: statusFilter, limit: 500 })
+        ]);
+        const workflowRows = Array.isArray(workflowResult)
+          ? workflowResult
+          : (Array.isArray(workflowResult?.rows) ? workflowResult.rows : []);
+        const inboundRetailTransfers = (Array.isArray(retailTransferRows) ? retailTransferRows : [])
+          .filter((row) => {
+            const fromInventory = inventoryTypeForBranch(row.from || row.fromBranchId);
+            const toInventory = inventoryTypeForBranch(row.to || row.toBranchId);
+            return fromInventory === normalizedArea || toInventory === normalizedArea;
+          })
+          .map((row) => ({
+            ...row,
+            approvalMode: 'legacy_transfer',
+            operationType: 'transfer',
+            fromBranchId: row.from,
+            toBranchId: row.to,
+            fromInventoryType: inventoryTypeForBranch(row.from),
+            toInventoryType: inventoryTypeForBranch(row.to),
+            initiatedByName: row.initiatorName || row.initiatedByName || '',
+            initiatedByRole: row.initiatorRole || row.initiatedByRole || '',
+            cost: 0,
+            requestedAmount: 0
+          }));
+        const combined = [...workflowRows, ...inboundRetailTransfers]
+          .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime());
+        setTotal(combined.length);
+        setOperations(combined.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize));
+      } else {
+        const result = await wholesaleApi.listOperations({ operationType, status: statusFilter, operationArea: normalizedArea, force: !!options.force, paged: true, page, pageSize });
+        setOperations(Array.isArray(result?.rows) ? result.rows : []);
+        setTotal(Number(result?.total || 0));
+      }
     } catch (e) {
       const msg = String(e?.message || '');
       if (!/404|not found/i.test(msg)) {
@@ -283,7 +335,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     } finally {
       setLoading(false);
     }
-  }, [normalizedArea, operationType, page, pageSize, statusFilter, toast, t]);
+  }, [inventoryTypeForBranch, normalizedArea, operationType, operations.length, page, pageSize, statusFilter, toast, t]);
 
   useEffect(() => {
     loadOperations();
@@ -396,6 +448,24 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     return JSON.stringify(original) !== JSON.stringify(reviewed);
   }, [reviewItems, selectedRow]);
 
+  const canActOnSelectedRow = useMemo(() => {
+    if (!selectedRow) return false;
+    if (String(selectedRow.approvalMode || '').toLowerCase() === 'workflow') {
+      return (selectedRow.status === 'pending_director' && canDirectorApprove) || (selectedRow.status === 'pending_manager' && canManagerApprove);
+    }
+    const sourceBranch = String(selectedRow.from || selectedRow.fromBranchId || '');
+    const destinationBranch = String(selectedRow.to || selectedRow.toBranchId || '');
+    const canSeeDirectorStage = !allowedBranchIds || allowedBranchIds.has(sourceBranch) || allowedBranchIds.has(destinationBranch);
+    const canSeeManagerStage = !allowedBranchIds || allowedBranchIds.has(destinationBranch);
+    if (selectedRow.status === 'pending_director' || selectedRow.status === 'pending_approval') {
+      return canDirectorApprove && canSeeDirectorStage;
+    }
+    if (selectedRow.status === 'pending_manager') {
+      return canManagerApprove && canSeeManagerStage;
+    }
+    return false;
+  }, [allowedBranchIds, canDirectorApprove, canManagerApprove, selectedRow]);
+
   async function reviewAction(type) {
     if (!selectedRow || reviewing) return;
     const remark = String(decisionRemark || '').trim();
@@ -414,17 +484,37 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
       const affectedProductIds = Array.from(new Set(reviewItems.map(item => String(item.productId || '')).filter(Boolean)));
       const reviewedPayloadItems = reviewItems.map(item => ({ ...item, status: normalizeReviewStatus(item.status) }));
       let response = null;
-      if (type === 'approve') {
-        response = await wholesaleApi.approveOperation(selectedRow, {
+      if (String(selectedRow.approvalMode || '').toLowerCase() === 'workflow') {
+        if (type === 'approve') {
+          response = await wholesaleApi.approveOperation(selectedRow, {
+            ...payload,
+            items: reviewedPayloadItems,
+            resubmitToDirector: hasManagerTransferReviewChanges
+          });
+        } else {
+          await wholesaleApi.rejectOperation(selectedRow, payload);
+        }
+      } else if (type === 'approve') {
+        response = await transfersApi.approve({
+          id: selectedRow._id || selectedRow.clientId,
           ...payload,
-          items: reviewedPayloadItems,
-          resubmitToDirector: hasManagerTransferReviewChanges
+          items: reviewedPayloadItems
+        });
+      } else {
+        await transfersApi.reject({
+          id: selectedRow._id || selectedRow.clientId,
+          ...payload
         });
       }
-      else await wholesaleApi.rejectOperation(selectedRow, payload);
       const nextStatus = String(response?.status || '').toLowerCase();
       if (type === 'approve') {
-        if (nextStatus === 'pending_director') {
+        if (String(selectedRow.approvalMode || '').toLowerCase() !== 'workflow') {
+          if (nextStatus === 'pending_manager') {
+            toast.show(t('Director approval recorded. Waiting for destination branch manager approval.'), { type: 'success' });
+          } else {
+            toast.show(t('Transfer approved and stock updated'), { type: 'success' });
+          }
+        } else if (nextStatus === 'pending_director') {
           toast.show(t('Transfer changes resubmitted for director approval'), { type: 'success' });
         } else if (nextStatus === 'pending_manager') {
           toast.show(t('Director approval recorded. Waiting for manager approval.'), { type: 'success' });
@@ -648,7 +738,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
         </div>
         <div className="page-header-actions">
           <OfflineQueueIndicator collection="wholesaleoperations" label={`${normalizedArea === 'warehouse' ? t('Warehouse') : t('Distribution')} ${t('queued')}`} />
-          <button className="btn btn-primary" onClick={() => setIsCreateOpen(true)}>
+          <button className="btn btn-primary" onClick={() => setIsCreateOpen(true)} disabled={!canCreateRequest}>
             {t('New Request')}
           </button>
         </div>
@@ -699,7 +789,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}><LoadingDots label={t('Loading wholesale operations')} /></td></tr>}
+              {loading && operations.length === 0 && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}><LoadingDots label={t('Loading wholesale operations')} /></td></tr>}
               {!loading && operations.map(row => {
                 const product = products.find(item => String(item.id) === String(row.productId));
                 const variantLabel = row.variantId ? ((product?.variants || []).find(variant => String(variant.id) === String(row.variantId))?.label || row.variantId) : '';
@@ -708,13 +798,17 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                   : `${branchNameById.get(row.branchId) || row.branchId || '—'} • ${t(String(row.toInventoryType || row.fromInventoryType || 'wholesale'))}`;
                 const value = row.operationType === 'refund' ? Number(row.requestedAmount || 0) : Number(row.cost || 0);
                 const title = String(row.transactionTitle || '').trim() || (Array.isArray(row.items) && row.items.length > 1 ? `${product?.name || row.productId} +${row.items.length - 1} ${t('more')}` : `${product?.name || row.productId}${variantLabel ? ` • ${variantLabel}` : ''}`);
+                const rowCanAct = String(row.approvalMode || '').toLowerCase() === 'workflow'
+                  ? ((String(row.status || '') === 'pending_director' && canDirectorApprove) || (String(row.status || '') === 'pending_manager' && canManagerApprove))
+                  : (((String(row.status || '') === 'pending_director' || String(row.status || '') === 'pending_approval') && canDirectorApprove && (!allowedBranchIds || allowedBranchIds.has(String(row.from || row.fromBranchId || '')) || allowedBranchIds.has(String(row.to || row.toBranchId || ''))))
+                    || (String(row.status || '') === 'pending_manager' && canManagerApprove && (!allowedBranchIds || allowedBranchIds.has(String(row.to || row.toBranchId || '')))));
                 return (
                   <tr key={row._id || row.clientId} onClick={() => openReview(row)} style={{ cursor: 'pointer' }}>
                     <td>{title}</td>
                     <td>{route}</td>
                     <td>{Number(row.qty || 0)}</td>
                     <td>{value > 0 ? maskCostValue(value) : '—'}</td>
-                    <td>{row.status}</td>
+                    <td>{rowCanAct ? row.status : `${row.status} • ${t('Tracking')}`}</td>
                     <td>{row.initiatedByName || '—'} {row.initiatedByRole ? `(${row.initiatedByRole})` : ''}</td>
                   </tr>
                 );
@@ -732,8 +826,8 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
           footer={(
             <>
               <button className="btn" onClick={() => setIsCreateOpen(false)} disabled={saving}>{t('Close')}</button>
-              <button className="btn" onClick={addCurrentItem} disabled={saving}>{t('Add To List')}</button>
-              <button className="btn btn-primary" onClick={submit} disabled={saving}>
+              <button className="btn" onClick={addCurrentItem} disabled={saving || !canCreateRequest}>{t('Add To List')}</button>
+              <button className="btn btn-primary" onClick={submit} disabled={saving || !canCreateRequest}>
                 {saving ? t('Saving…') : t('Submit For Approval')}
               </button>
             </>
@@ -1003,10 +1097,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
           footer={(
             <>
               <button className="btn" onClick={() => { setSelectedRow(null); setDecisionRemark(''); }} disabled={reviewing}>{t('Close')}</button>
-              {((selectedRow.status === 'pending_director' && canDirectorApprove) || (selectedRow.status === 'pending_manager' && canManagerApprove)) && (
+              {canActOnSelectedRow && (
                 <>
                   <button className="btn" onClick={() => reviewAction('reject')} disabled={reviewing}>{reviewing ? t('Working…') : t('Reject')}</button>
-                  <button className="btn btn-primary" onClick={() => reviewAction('approve')} disabled={reviewing}>{reviewing ? t('Working…') : hasManagerTransferReviewChanges ? t('Resubmit') : t('Approve')}</button>
+                  <button className="btn btn-primary" onClick={() => reviewAction('approve')} disabled={reviewing}>{reviewing ? t('Working…') : (String(selectedRow.approvalMode || '').toLowerCase() === 'workflow' && hasManagerTransferReviewChanges) ? t('Resubmit') : t('Approve')}</button>
                 </>
               )}
             </>
@@ -1055,11 +1149,11 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                           )}
                         </td>
                         <td>
-                          <input className="input" type="number" min="0" value={item.qty} onChange={e => setReviewItems(prev => prev.map((row, rowIndex) => rowIndex === index ? { ...row, qty: Number(e.target.value) || 0 } : row))} style={{ width: 90, color: '#111827' }} disabled={(Array.isArray(item.unitIds) && item.unitIds.length > 0) || (Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0) || !((selectedRow.status === 'pending_director' && canDirectorApprove) || (selectedRow.status === 'pending_manager' && canManagerApprove)) || reviewing} />
+                          <input className="input" type="number" min="0" value={item.qty} onChange={e => setReviewItems(prev => prev.map((row, rowIndex) => rowIndex === index ? { ...row, qty: Number(e.target.value) || 0 } : row))} style={{ width: 90, color: '#111827' }} disabled={(Array.isArray(item.unitIds) && item.unitIds.length > 0) || (Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0) || !canActOnSelectedRow || reviewing} />
                         </td>
                         <td style={{ color: '#111827' }}>{Array.isArray(item.unitIds) && item.unitIds.length > 0 ? item.unitIds.length : (Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0 ? item.serializedEntries.length : '—')}</td>
                         <td>
-                          <select className="select" value={normalizeReviewStatus(item.status)} onChange={e => setReviewItems(prev => prev.map((row, rowIndex) => rowIndex === index ? { ...row, status: e.target.value } : row))} style={{ color: '#111827' }} disabled={!((selectedRow.status === 'pending_director' && canDirectorApprove) || (selectedRow.status === 'pending_manager' && canManagerApprove)) || reviewing}>
+                          <select className="select" value={normalizeReviewStatus(item.status)} onChange={e => setReviewItems(prev => prev.map((row, rowIndex) => rowIndex === index ? { ...row, status: e.target.value } : row))} style={{ color: '#111827' }} disabled={!canActOnSelectedRow || reviewing}>
                             <option value="accepted">{t('Accepted')}</option>
                             <option value="cancelled">{t('Cancelled')}</option>
                           </select>

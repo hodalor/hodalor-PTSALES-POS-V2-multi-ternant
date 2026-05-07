@@ -107,8 +107,15 @@ function Sidebar({ collapsed, onNavigate }) {
     (async () => {
       try {
         const canCredit = isFeatureEnabled(settings, 'modules.creditControl') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_credit_control']);
-        const canApprovals = isFeatureEnabled(settings, 'modules.approvalsCenter') && can(['Admin','Manager','SuperAdmin'],['view_approvals','approve_credit_director','approve_credit_manager','approve_wholesale_director','approve_wholesale_manager']);
-        const canWarehouse = sectionEnabled('sections.warehouse') && isFeatureEnabled(settings, 'modules.wholesalePos') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'],['view_wholesale_pos']);
+        const canApprovals = isFeatureEnabled(settings, 'modules.approvalsCenter') && can(['Admin','Manager','SuperAdmin'],['view_approvals','approve_credit_director','approve_credit_manager','approve_distribution_director','approve_distribution_manager','approve_warehouse_director','approve_warehouse_manager']);
+        const canWarehouse = sectionEnabled('sections.warehouse') && (
+          (isFeatureEnabled(settings, 'pages.warehouse.goods') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_warehouse_products']))
+          || (isFeatureEnabled(settings, 'pages.warehouse.invoices') && can(['Admin','Manager','Cashier','SuperAdmin'], ['view_warehouse_invoices']))
+          || (isFeatureEnabled(settings, 'pages.warehouse.purchase') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_warehouse_purchases']))
+          || (isFeatureEnabled(settings, 'pages.warehouse.transfer') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_warehouse_transfers']))
+          || (isFeatureEnabled(settings, 'pages.warehouse.adjustment') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_warehouse_adjustments']))
+          || (isFeatureEnabled(settings, 'pages.warehouse.approvals') && can(['Admin','Manager','SuperAdmin'], ['view_warehouse_approvals','approve_warehouse_director','approve_warehouse_manager']))
+        );
         const [overdueRows, directorRows, managerRows, warehouseRows] = await Promise.all([
           canCredit ? listCreditSales({ status: 'overdue' }).catch(() => []) : Promise.resolve([]),
           canApprovals ? listApprovals({ actionType: 'credit_repayment', status: 'pending_director' }).catch(() => []) : Promise.resolve([]),
@@ -218,9 +225,9 @@ function Sidebar({ collapsed, onNavigate }) {
           (isFeatureEnabled(settings, 'pages.distribution.goods') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_distribution_products'])) ||
           (isFeatureEnabled(settings, 'pages.distribution.pos') && can(['Admin','Manager','Cashier','SuperAdmin'], ['view_wholesale_pos'])) ||
           (isFeatureEnabled(settings, 'pages.distribution.invoices') && can(['Admin','Manager','Cashier','SuperAdmin'], ['view_wholesale_invoices'])) ||
-          (isFeatureEnabled(settings, 'pages.distribution.purchase') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_purchases','view_purchases','see_purchases'])) ||
-          (isFeatureEnabled(settings, 'pages.distribution.transfer') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_transfers','view_transfers','see_transfers'])) ||
-          (isFeatureEnabled(settings, 'pages.distribution.adjustment') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_adjustments','view_adjustments','see_adjustments'])) ||
+          (isFeatureEnabled(settings, 'pages.distribution.purchase') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_wholesale_purchases'])) ||
+          (isFeatureEnabled(settings, 'pages.distribution.transfer') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_wholesale_transfers'])) ||
+          (isFeatureEnabled(settings, 'pages.distribution.adjustment') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_wholesale_adjustments'])) ||
           (isFeatureEnabled(settings, 'pages.distribution.refund') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_distribution_refunds','add_distribution_refunds']))
         ) && (
         <div>
@@ -256,13 +263,13 @@ function Sidebar({ collapsed, onNavigate }) {
             {isFeatureEnabled(settings, 'pages.distribution.invoices') && can(['Admin','Manager','Cashier','SuperAdmin'], ['view_wholesale_invoices']) && (<NavLink to="/wholesale-invoices" className="sidebar-link" title={t('Distribution Invoices')}>
               <span className="sidebar-text">{t('Distribution Invoices')}</span>
             </NavLink>)}
-            {isFeatureEnabled(settings, 'pages.distribution.purchase') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_purchases','view_purchases','see_purchases']) && (<NavLink to="/wholesale-purchase" className="sidebar-link" title={t('Distribution Purchase')}>
+            {isFeatureEnabled(settings, 'pages.distribution.purchase') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_wholesale_purchases']) && (<NavLink to="/wholesale-purchase" className="sidebar-link" title={t('Distribution Purchase')}>
               <span className="sidebar-text">{t('Distribution Purchase')}</span>
             </NavLink>)}
-            {isFeatureEnabled(settings, 'pages.distribution.transfer') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_transfers','view_transfers','see_transfers']) && (<NavLink to="/wholesale-transfer" className="sidebar-link" title={t('Distribution Transfer')}>
+            {isFeatureEnabled(settings, 'pages.distribution.transfer') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_wholesale_transfers']) && (<NavLink to="/wholesale-transfer" className="sidebar-link" title={t('Distribution Transfer')}>
               <span className="sidebar-text">{t('Distribution Transfer')}</span>
             </NavLink>)}
-            {isFeatureEnabled(settings, 'pages.distribution.adjustment') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_adjustments','view_adjustments','see_adjustments']) && (<NavLink to="/wholesale-adjustment" className="sidebar-link" title={t('Distribution Adjustment')}>
+            {isFeatureEnabled(settings, 'pages.distribution.adjustment') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_wholesale_adjustments']) && (<NavLink to="/wholesale-adjustment" className="sidebar-link" title={t('Distribution Adjustment')}>
               <span className="sidebar-text">{t('Distribution Adjustment')}</span>
             </NavLink>)}
             {isFeatureEnabled(settings, 'pages.distribution.refund') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_distribution_refunds','add_distribution_refunds']) && (<NavLink to="/wholesale-refund" className="sidebar-link" title={t('Distribution Refund')}>
@@ -275,10 +282,10 @@ function Sidebar({ collapsed, onNavigate }) {
         {sectionEnabled('sections.warehouse') && (
           (isFeatureEnabled(settings, 'pages.warehouse.goods') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_warehouse_products'])) ||
           (isFeatureEnabled(settings, 'pages.warehouse.invoices') && can(['Admin','Manager','Cashier','SuperAdmin'], ['view_warehouse_invoices'])) ||
-          (isFeatureEnabled(settings, 'pages.warehouse.purchase') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_purchases','view_purchases','see_purchases'])) ||
-          (isFeatureEnabled(settings, 'pages.warehouse.transfer') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_transfers','view_transfers','see_transfers'])) ||
-          (isFeatureEnabled(settings, 'pages.warehouse.adjustment') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_adjustments','view_adjustments','see_adjustments'])) ||
-          (isFeatureEnabled(settings, 'pages.warehouse.approvals') && can(['Admin','Manager','SuperAdmin'], ['view_warehouse_approvals','approve_wholesale_director','approve_wholesale_manager']))
+          (isFeatureEnabled(settings, 'pages.warehouse.purchase') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_warehouse_purchases'])) ||
+          (isFeatureEnabled(settings, 'pages.warehouse.transfer') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_warehouse_transfers'])) ||
+          (isFeatureEnabled(settings, 'pages.warehouse.adjustment') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_warehouse_adjustments'])) ||
+          (isFeatureEnabled(settings, 'pages.warehouse.approvals') && can(['Admin','Manager','SuperAdmin'], ['view_warehouse_approvals','approve_warehouse_director','approve_warehouse_manager']))
         ) && (
         <div>
           <button className="sidebar-group-toggle" onClick={() => toggleGroup('warehouse')}>
@@ -315,16 +322,16 @@ function Sidebar({ collapsed, onNavigate }) {
             {isFeatureEnabled(settings, 'pages.warehouse.invoices') && can(['Admin','Manager','Cashier','SuperAdmin'], ['view_warehouse_invoices']) && (<NavLink to="/warehouse-invoices" className="sidebar-link" title={t('Warehouse Invoices')}>
               <span className="sidebar-text">{t('Warehouse Invoices')}</span>
             </NavLink>)}
-            {isFeatureEnabled(settings, 'pages.warehouse.purchase') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_purchases','view_purchases','see_purchases']) && (<NavLink to="/warehouse-purchase" className="sidebar-link" title={t('Warehouse Purchase')}>
+            {isFeatureEnabled(settings, 'pages.warehouse.purchase') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_warehouse_purchases']) && (<NavLink to="/warehouse-purchase" className="sidebar-link" title={t('Warehouse Purchase')}>
               <span className="sidebar-text">{t('Warehouse Purchase')}</span>
             </NavLink>)}
-            {isFeatureEnabled(settings, 'pages.warehouse.transfer') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_transfers','view_transfers','see_transfers']) && (<NavLink to="/warehouse-transfer" className="sidebar-link" title={t('Warehouse Transfer')}>
+            {isFeatureEnabled(settings, 'pages.warehouse.transfer') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_warehouse_transfers']) && (<NavLink to="/warehouse-transfer" className="sidebar-link" title={t('Warehouse Transfer')}>
               <span className="sidebar-text">{t('Warehouse Transfer')}</span>
             </NavLink>)}
-            {isFeatureEnabled(settings, 'pages.warehouse.adjustment') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_adjustments','view_adjustments','see_adjustments']) && (<NavLink to="/warehouse-adjustment" className="sidebar-link" title={t('Warehouse Adjustment')}>
+            {isFeatureEnabled(settings, 'pages.warehouse.adjustment') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_warehouse_adjustments']) && (<NavLink to="/warehouse-adjustment" className="sidebar-link" title={t('Warehouse Adjustment')}>
               <span className="sidebar-text">{t('Warehouse Adjustment')}</span>
             </NavLink>)}
-            {isFeatureEnabled(settings, 'pages.warehouse.approvals') && can(['Admin','Manager','SuperAdmin'], ['view_warehouse_approvals','approve_wholesale_director','approve_wholesale_manager']) && (<NavLink to="/warehouse-approvals" className="sidebar-link" title={t('Warehouse Approvals')} style={{ display: 'flex', alignItems: 'center' }}>
+            {isFeatureEnabled(settings, 'pages.warehouse.approvals') && can(['Admin','Manager','SuperAdmin'], ['view_warehouse_approvals','approve_warehouse_director','approve_warehouse_manager']) && (<NavLink to="/warehouse-approvals" className="sidebar-link" title={t('Warehouse Approvals')} style={{ display: 'flex', alignItems: 'center' }}>
               <span className="sidebar-text">{t('Warehouse Approvals')}</span>
               {warehousePendingApprovals > 0 && (
                 <span style={{ marginLeft: 'auto', minWidth: 22, height: 20, borderRadius: 999, padding: '0 8px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: 12 }}>
@@ -560,7 +567,7 @@ function Sidebar({ collapsed, onNavigate }) {
           )}
         </div>
         )}
-        {isFeatureEnabled(settings, 'modules.approvalsCenter') && can(['Admin','Manager','SuperAdmin'],['view_approvals','approve_wholesale_director','approve_wholesale_manager','approve_credit_director','approve_credit_manager']) && (
+        {isFeatureEnabled(settings, 'modules.approvalsCenter') && can(['Admin','Manager','SuperAdmin'],['view_approvals','approve_distribution_director','approve_distribution_manager','approve_warehouse_director','approve_warehouse_manager','approve_credit_director','approve_credit_manager']) && (
         <NavLink to="/approvals-center" className="sidebar-link" title={t('Approvals Center')}>
           <svg viewBox="0 0 24 24" fill="none"><path d="M5 3h14v18H5z" stroke="currentColor" strokeWidth="2"/><path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2"/></svg>
           <span className="sidebar-text">{t('Approvals Center')}</span>
