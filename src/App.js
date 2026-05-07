@@ -96,6 +96,7 @@ import { setPurchaseRequests } from './store/purchasesSlice';
 import { setTransferRequests } from './store/transfersSlice';
 import { setExpenseRequests } from './store/expenseRequestsSlice';
 import { setAdjustmentRequests } from './store/adjustmentRequestsSlice';
+import { resolveDefaultRoute } from './utils/defaultRoute';
 
 function App() {
   const dispatch = useDispatch();
@@ -116,6 +117,14 @@ function App() {
   const appName = settings?.appName;
   const clientLogoUrl = settings?.clientLogoUrl;
   const themeColor = settings?.themeColor || '#0b1220';
+  const defaultLandingRoute = resolveDefaultRoute({
+    role: authRole,
+    grants: authGrants,
+    user: {
+      tenantId: authTenantId,
+      branchId: authUserBranchId
+    }
+  }, settings);
   const [settingsReady, setSettingsReady] = useState(false);
   const [dataBootstrapReady, setDataBootstrapReady] = useState(false);
   const resolveValidBranchId = useCallback((availableBranches = []) => {
@@ -679,18 +688,18 @@ function App() {
           <Route path="/r/:id" element={<ReceiptPublicPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route element={<ProtectedRoute><Layout bootstrapLoading={!dataBootstrapReady} /></ProtectedRoute>}>
-            <Route path="/" element={<Navigate to="/pos" replace />} />
+            <Route path="/" element={<Navigate to={defaultLandingRoute} replace />} />
             <Route path="/dashboard" element={<ProtectedRoute feature="modules.dashboard" roles={['Admin','Manager']} grant={['view_dashboard','see_dashboard']}><DashboardPage /></ProtectedRoute>} />
             <Route path="/pos" element={<ProtectedRoute feature="pages.retail.pos" roles={['Admin','Manager','Cashier']} grant={['view_pos','see_pos']}><PosPage mode="retail" /></ProtectedRoute>} />
             <Route path="/wholesale-pos" element={<ProtectedRoute feature="pages.distribution.pos" roles={['Admin','Manager','Cashier']} grant={['view_wholesale_pos']}><PosPage mode="wholesale" /></ProtectedRoute>} />
             <Route path="/wholesale-goods" element={<ProtectedRoute feature="pages.distribution.goods" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['view_distribution_products']}><WholesaleGoodsPage /></ProtectedRoute>} />
             <Route path="/wholesale-invoices" element={<ProtectedRoute feature="pages.distribution.invoices" roles={['Admin','Manager','Cashier']} grant={['view_wholesale_invoices']}><WholesaleInvoicesPage /></ProtectedRoute>} />
             <Route path="/wholesale-purchase" element={<ProtectedRoute feature="pages.distribution.purchase" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['add_wholesale_purchases']}><WholesalePurchasePage /></ProtectedRoute>} />
-            <Route path="/wholesale-transfer" element={<ProtectedRoute feature="pages.distribution.transfer" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['add_transfers','view_transfers','see_transfers']}><WholesaleTransferPage /></ProtectedRoute>} />
+            <Route path="/wholesale-transfer" element={<ProtectedRoute feature="pages.distribution.transfer" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['add_wholesale_transfers']}><WholesaleTransferPage /></ProtectedRoute>} />
             <Route path="/wholesale-adjustment" element={<ProtectedRoute feature="pages.distribution.adjustment" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['add_wholesale_adjustments']}><WholesaleAdjustmentPage /></ProtectedRoute>} />
             <Route path="/wholesale-refund" element={<ProtectedRoute feature="pages.distribution.refund" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['view_distribution_refunds','add_distribution_refunds']}><WholesaleRefundPage /></ProtectedRoute>} />
             <Route path="/warehouse-purchase" element={<ProtectedRoute feature="pages.warehouse.purchase" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['add_warehouse_purchases']}><WarehousePurchasePage /></ProtectedRoute>} />
-            <Route path="/warehouse-transfer" element={<ProtectedRoute feature="pages.warehouse.transfer" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['add_transfers','view_transfers','see_transfers']}><WarehouseTransferPage /></ProtectedRoute>} />
+            <Route path="/warehouse-transfer" element={<ProtectedRoute feature="pages.warehouse.transfer" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['add_warehouse_transfers']}><WarehouseTransferPage /></ProtectedRoute>} />
             <Route path="/warehouse-adjustment" element={<ProtectedRoute feature="pages.warehouse.adjustment" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['add_warehouse_adjustments']}><WarehouseAdjustmentPage /></ProtectedRoute>} />
             <Route path="/warehouse-goods" element={<ProtectedRoute feature="pages.warehouse.goods" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['view_warehouse_products']}><WarehouseGoodsPage /></ProtectedRoute>} />
             <Route path="/warehouse-invoices" element={<ProtectedRoute feature="pages.warehouse.invoices" roles={['Admin','Manager','Cashier']} grant={['view_warehouse_invoices']}><WarehouseInvoicesPage /></ProtectedRoute>} />

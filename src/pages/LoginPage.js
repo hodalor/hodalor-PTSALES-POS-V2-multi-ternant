@@ -10,6 +10,7 @@ import { getApiBase } from '../api/client';
 import { clearTenantState } from '../store/persist';
 import { resetTenantAppState } from '../store';
 import { useAppLanguage } from '../utils/localization';
+import { resolveDefaultRoute } from '../utils/defaultRoute';
 
 const COUNTRY_LABELS = {
   GH: 'Ghana',
@@ -151,6 +152,7 @@ function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const appName = useSelector(s => s.settings.appName);
+  const settings = useSelector(s => s.settings);
   const from = location.state?.from?.pathname;
   const toast = useToast();
   const users = useSelector(s => s.users.users);
@@ -360,8 +362,18 @@ function LoginPage() {
       if (!rec) return null;
       const h = await hashPin(p);
       if (rec.pinHash !== h) return null;
-      const localUser = rec.user || users.find(x => String(x.name) === String(u)) || { id: u, name: u };
-      return { role: rec.role || localUser.role || 'Cashier', user: localUser, landing: '/pos' };
+      const localUser = {
+        tenantId,
+        ...(rec.user || users.find(x => String(x.name) === String(u)) || { id: u, name: u })
+      };
+      const role = rec.role || localUser.role || 'Cashier';
+      const grants = Array.isArray(rec.grants) ? rec.grants : [];
+      return {
+        role,
+        grants,
+        user: localUser,
+        landing: resolveDefaultRoute({ role, grants, user: localUser }, settings, { preferredPath: from })
+      };
     } catch {
       return null;
     }
@@ -533,20 +545,20 @@ function LoginPage() {
     setLoading(true);
     let role = null;
     let grants = [];
-    let landing = '/pos';
+    let landing = '/login';
     let user = null;
     try {
       const resp = await doServerLogin(name, pin);
       role = resp.role;
       grants = Array.isArray(resp.grants) ? resp.grants : [];
-      landing = resp.landing || landing;
       user = resp.user;
+      landing = resolveDefaultRoute({ role, grants, user }, settings, { preferredPath: resp.landing || from });
       try { sessionStorage.setItem('ptSales:sessionPin', pin); } catch {}
       try {
         const h = await hashPin(pin);
         const raw = localStorage.getItem('ptSales:offlineCreds');
         const map = raw ? JSON.parse(raw) : {};
-        map[`${String(tenantId || 'master')}:${String(name)}`] = { pinHash: h, role, user };
+        map[`${String(tenantId || 'master')}:${String(name)}`] = { pinHash: h, role, grants, user };
         localStorage.setItem('ptSales:offlineCreds', JSON.stringify(map));
       } catch {}
     } catch (e) {
@@ -604,7 +616,7 @@ function LoginPage() {
     clearTenantState(nextTenantId);
     try { localStorage.removeItem('ptSales:state'); } catch {}
     dispatch(loginSuccess({ user, role, grants }));
-    navigate(from || landing, { replace: true });
+    navigate(landing, { replace: true });
   }
 
   // removed API endpoint controls from login

@@ -4,12 +4,12 @@ const ROUTE_CANDIDATES = [
   { path: '/dashboard', feature: 'modules.dashboard', roles: ['Admin', 'Manager'], grant: ['view_dashboard', 'see_dashboard'] },
   { path: '/pos', feature: 'pages.retail.pos', roles: ['Admin', 'Manager', 'Cashier'], grant: ['view_pos', 'see_pos'] },
   { path: '/wholesale-pos', feature: 'pages.distribution.pos', roles: ['Admin', 'Manager', 'Cashier'], grant: ['view_wholesale_pos'] },
-  { path: '/wholesale-transfer', feature: 'pages.distribution.transfer', roles: ['Admin', 'Manager', 'Inventory Staff', 'Cashier'], grant: ['add_transfers', 'view_transfers', 'see_transfers'] },
+  { path: '/wholesale-transfer', feature: 'pages.distribution.transfer', roles: ['Admin', 'Manager', 'Inventory Staff', 'Cashier'], grant: ['add_wholesale_transfers'] },
   { path: '/wholesale-goods', feature: 'pages.distribution.goods', roles: ['Admin', 'Manager', 'Inventory Staff', 'Cashier'], grant: ['view_distribution_products'] },
   { path: '/wholesale-purchase', feature: 'pages.distribution.purchase', roles: ['Admin', 'Manager', 'Inventory Staff', 'Cashier'], grant: ['add_wholesale_purchases'] },
   { path: '/wholesale-adjustment', feature: 'pages.distribution.adjustment', roles: ['Admin', 'Manager', 'Inventory Staff', 'Cashier'], grant: ['add_wholesale_adjustments'] },
   { path: '/wholesale-invoices', feature: 'pages.distribution.invoices', roles: ['Admin', 'Manager', 'Cashier'], grant: ['view_wholesale_invoices'] },
-  { path: '/warehouse-transfer', feature: 'pages.warehouse.transfer', roles: ['Admin', 'Manager', 'Inventory Staff', 'Cashier'], grant: ['add_transfers', 'view_transfers', 'see_transfers'] },
+  { path: '/warehouse-transfer', feature: 'pages.warehouse.transfer', roles: ['Admin', 'Manager', 'Inventory Staff', 'Cashier'], grant: ['add_warehouse_transfers'] },
   { path: '/warehouse-goods', feature: 'pages.warehouse.goods', roles: ['Admin', 'Manager', 'Inventory Staff', 'Cashier'], grant: ['view_warehouse_products'] },
   { path: '/warehouse-purchase', feature: 'pages.warehouse.purchase', roles: ['Admin', 'Manager', 'Inventory Staff', 'Cashier'], grant: ['add_warehouse_purchases'] },
   { path: '/warehouse-adjustment', feature: 'pages.warehouse.adjustment', roles: ['Admin', 'Manager', 'Inventory Staff', 'Cashier'], grant: ['add_warehouse_adjustments'] },
@@ -84,4 +84,3 @@ export function resolveDefaultRoute(auth = {}, settings = {}, options = {}) {
   if (roleLower === 'admin' || roleLower === 'manager') return '/dashboard';
   return '/login';
 }
-
