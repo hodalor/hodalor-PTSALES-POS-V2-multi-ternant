@@ -31,8 +31,12 @@ function WarehouseApprovalsPage() {
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
   const canDirectorApprove = roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'director' || grants.includes('approve_wholesale_director');
   const canManagerApprove = roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'manager' || grants.includes('approve_wholesale_manager');
+  const canViewCost = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_profit') || grants.includes('view_financials');
   function normalizeReviewStatus(value) {
     return String(value || '').toLowerCase() === 'cancelled' ? 'cancelled' : 'accepted';
+  }
+  function maskCostValue(value) {
+    return canViewCost ? formatCurrency(Number(value || 0), settings) : '****';
   }
 
   const branchNameById = useMemo(() => {
@@ -232,7 +236,7 @@ function WarehouseApprovalsPage() {
                     <td>{product?.name || row.productId}</td>
                     <td>{route}</td>
                     <td>{Number(row.qty || 0)}</td>
-                    <td>{formatCurrency(Number(row.cost || row.requestedAmount || 0), settings)}</td>
+                    <td>{maskCostValue(row.cost || row.requestedAmount || 0)}</td>
                     <td>{row.status}</td>
                     <td>{row.initiatedByName || '—'} {row.initiatedByRole ? `(${row.initiatedByRole})` : ''}</td>
                   </tr>
@@ -268,7 +272,7 @@ function WarehouseApprovalsPage() {
             <div><strong>Type:</strong> {selectedRow.operationType}</div>
             <div><strong>Status:</strong> {selectedRow.status}</div>
             <div><strong>Quantity:</strong> {Number(selectedRow.qty || 0)}</div>
-            <div><strong>Value:</strong> {formatCurrency(Number(selectedRow.cost || selectedRow.requestedAmount || 0), settings)}</div>
+            <div><strong>Value:</strong> {maskCostValue(selectedRow.cost || selectedRow.requestedAmount || 0)}</div>
             <div><strong>Source:</strong> {branchNameById.get(selectedRow.fromBranchId || selectedRow.from || selectedRow.branchId) || selectedRow.fromBranchId || selectedRow.from || selectedRow.branchId || '—'} ({selectedRow.fromInventoryType || 'warehouse'})</div>
             <div><strong>Destination:</strong> {branchNameById.get(selectedRow.toBranchId || selectedRow.to) || selectedRow.toBranchId || selectedRow.to || '—'} ({selectedRow.toInventoryType || selectedRow.fromInventoryType || 'warehouse'})</div>
             <div><strong>Remark:</strong> {selectedRow.remark || '—'}</div>

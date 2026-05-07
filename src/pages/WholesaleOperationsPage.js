@@ -78,6 +78,15 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     branches.forEach(branch => map.set(branch.id, branch.name || branch.code || branch.id));
     return map;
   }, [branches]);
+  const branchTypeById = useMemo(() => {
+    const map = new Map();
+    branches.forEach(branch => map.set(String(branch.id), String(branch.branchType || 'retail').toLowerCase()));
+    return map;
+  }, [branches]);
+  const inventoryTypeForBranch = useCallback((targetBranchId) => {
+    const kind = String(branchTypeById.get(String(targetBranchId || '')) || 'retail').toLowerCase();
+    return kind === 'warehouse' ? 'warehouse' : kind === 'wholesale' ? 'wholesale' : 'retail';
+  }, [branchTypeById]);
 
   const [statusFilter, setStatusFilter] = useState('pending_director');
   const [operations, setOperations] = useState([]);
@@ -104,10 +113,8 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const [productQuery, setProductQuery] = useState('');
   const [variantId, setVariantId] = useState('');
   const [branchId, setBranchId] = useState(currentBranchId || scopedBranchOptions[0]?.id || branchOptions[0]?.id || '');
-  const [fromBranchId, setFromBranchId] = useState(currentBranchId || branchOptions[0]?.id || '');
-  const [toBranchId, setToBranchId] = useState(branchOptions.find(branch => branch.id !== currentBranchId)?.id || branchOptions[0]?.id || '');
-  const [fromInventoryType, setFromInventoryType] = useState(normalizedArea);
-  const [toInventoryType, setToInventoryType] = useState(normalizedArea);
+  const [fromBranchId, setFromBranchId] = useState(currentBranchId || scopedBranchOptions[0]?.id || branchOptions[0]?.id || '');
+  const [toBranchId, setToBranchId] = useState(branchOptions.find(branch => String(branch.id) !== String(currentBranchId || ''))?.id || branchOptions[0]?.id || '');
   const [qty, setQty] = useState(1);
   const [cost, setCost] = useState('');
   const [requestedAmount, setRequestedAmount] = useState('');
@@ -146,16 +153,17 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
   const canDirectorApprove = roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'director' || grants.includes('approve_wholesale_director') || grants.includes('approve_credit_director');
   const canManagerApprove = roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'manager' || grants.includes('approve_wholesale_manager') || grants.includes('approve_credit_manager');
+  const canViewCost = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_profit') || grants.includes('view_financials');
   const defaultBranchIdRef = useRef(currentBranchId || scopedBranchOptions[0]?.id || branchOptions[0]?.id || '');
-  const defaultTransferToBranchIdRef = useRef(branchOptions.find(branch => branch.id !== (currentBranchId || branchOptions[0]?.id))?.id || branchOptions[0]?.id || '');
+  const defaultTransferToBranchIdRef = useRef(branchOptions.find(branch => String(branch.id) !== String(currentBranchId || scopedBranchOptions[0]?.id || ''))?.id || branchOptions[0]?.id || '');
   const serializedScanInputRef = useRef(null);
   const transferFromBranchOptions = useMemo(
-    () => branchOptions.filter(branch => String(branch.branchType || 'retail').toLowerCase() === String(fromInventoryType || normalizedArea).toLowerCase()),
-    [branchOptions, fromInventoryType, normalizedArea]
+    () => scopedBranchOptions,
+    [scopedBranchOptions]
   );
   const transferToBranchOptions = useMemo(
-    () => branchOptions.filter(branch => String(branch.branchType || 'retail').toLowerCase() === String(toInventoryType || normalizedArea).toLowerCase()),
-    [branchOptions, toInventoryType, normalizedArea]
+    () => branchOptions.filter(branch => String(branch.id) !== String(fromBranchId || '')),
+    [branchOptions, fromBranchId]
   );
   const serializedEntries = useMemo(() => String(serializedEntriesText || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => {
     const parts = line.split(/[,\t|]/).map(part => part.trim()).filter(Boolean);
@@ -179,7 +187,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
 
   useEffect(() => {
     defaultBranchIdRef.current = currentBranchId || scopedBranchOptions[0]?.id || branchOptions[0]?.id || '';
-    defaultTransferToBranchIdRef.current = branchOptions.find(branch => branch.id !== (currentBranchId || branchOptions[0]?.id))?.id || branchOptions[0]?.id || '';
+    defaultTransferToBranchIdRef.current = branchOptions.find(branch => String(branch.id) !== String(currentBranchId || scopedBranchOptions[0]?.id || ''))?.id || branchOptions[0]?.id || '';
   }, [branchOptions, currentBranchId, scopedBranchOptions]);
 
   useEffect(() => {
@@ -202,11 +210,13 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
 
   useEffect(() => {
     if (!branchId && currentBranchId) setBranchId(currentBranchId);
-    if (!fromBranchId && currentBranchId) setFromBranchId(currentBranchId);
-    if (!toBranchId && branchOptions[0]?.id) {
-      setToBranchId(branchOptions.find(branch => branch.id !== (currentBranchId || branchOptions[0]?.id))?.id || branchOptions[0]?.id || '');
+    if (!fromBranchId && (currentBranchId || scopedBranchOptions[0]?.id)) {
+      setFromBranchId(currentBranchId || scopedBranchOptions[0]?.id || '');
     }
-  }, [branchId, branchOptions, currentBranchId, fromBranchId, toBranchId]);
+    if (!toBranchId && branchOptions[0]?.id) {
+      setToBranchId(branchOptions.find(branch => String(branch.id) !== String(fromBranchId || currentBranchId || branchOptions[0]?.id || ''))?.id || branchOptions[0]?.id || '');
+    }
+  }, [branchId, branchOptions, currentBranchId, fromBranchId, scopedBranchOptions, toBranchId]);
 
   useEffect(() => {
     setVariantId('');
@@ -217,11 +227,9 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     setTransactionTitle('');
     setReason('');
     setRemark('');
-    setFromInventoryType(normalizedArea);
     if (operationType === 'transfer') {
       setFromBranchId(defaultBranchIdRef.current);
       setToBranchId(defaultTransferToBranchIdRef.current);
-      setToInventoryType(normalizedArea);
     } else {
       setBranchId(defaultBranchIdRef.current);
     }
@@ -240,7 +248,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
           productId,
           variantId,
           branchId: operationType === 'transfer' ? fromBranchId : branchId,
-          inventoryType: operationType === 'transfer' ? fromInventoryType : normalizedArea,
+          inventoryType: operationType === 'transfer' ? inventoryTypeForBranch(fromBranchId) : normalizedArea,
           status: 'in_stock',
           query: serializedUnitsQuery,
           pageSize: 50
@@ -257,7 +265,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
       }
     }
     run();
-  }, [adjustmentType, branchId, fromBranchId, fromInventoryType, normalizedArea, operationType, productId, selectedTrackType, serializedUnitsQuery, toast, variantId, t]);
+  }, [adjustmentType, branchId, fromBranchId, inventoryTypeForBranch, normalizedArea, operationType, productId, selectedTrackType, serializedUnitsQuery, toast, variantId, t]);
 
   const loadOperations = useCallback(async (options = {}) => {
     setLoading(true);
@@ -300,6 +308,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     setSerializedUnitsQuery('');
     setSerializedEntriesText('');
     setSerializedScanInput('');
+  }
+
+  function maskCostValue(value) {
+    return canViewCost ? formatCurrency(Number(value || 0), settings) : '****';
   }
 
   function appendSerializedEntry(value) {
@@ -559,8 +571,8 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
       branchId: operationType === 'transfer' ? undefined : branchId,
       fromBranchId: operationType === 'transfer' ? fromBranchId : undefined,
       toBranchId: operationType === 'transfer' ? toBranchId : undefined,
-      fromInventoryType: operationType === 'transfer' ? fromInventoryType : normalizedArea,
-      toInventoryType: operationType === 'transfer' ? toInventoryType : normalizedArea,
+      fromInventoryType: operationType === 'transfer' ? inventoryTypeForBranch(fromBranchId) : normalizedArea,
+      toInventoryType: operationType === 'transfer' ? inventoryTypeForBranch(toBranchId) : normalizedArea,
       items: nextItems || ((selectedTrackType === 'serialized' && (usesSerializedSelection || !usesSerializedSelection))
         ? [{
             lineId: '1',
@@ -701,7 +713,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                     <td>{title}</td>
                     <td>{route}</td>
                     <td>{Number(row.qty || 0)}</td>
-                    <td>{value > 0 ? formatCurrency(value, settings) : '—'}</td>
+                    <td>{value > 0 ? maskCostValue(value) : '—'}</td>
                     <td>{row.status}</td>
                     <td>{row.initiatedByName || '—'} {row.initiatedByRole ? `(${row.initiatedByRole})` : ''}</td>
                   </tr>
@@ -782,25 +794,9 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                   </select>
                 </label>
                 <label>
-                  <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('Source Inventory')}</div>
-                  <select className="select" value={fromInventoryType} onChange={e => setFromInventoryType(e.target.value)} style={{ width: '100%' }}>
-                    <option value="retail">{t('Retail Inventory')}</option>
-                    <option value="wholesale">{t('Distribution Inventory')}</option>
-                    <option value="warehouse">{t('Warehouse Inventory')}</option>
-                  </select>
-                </label>
-                <label>
                   <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('To Branch')}</div>
                   <select className="select" value={toBranchId} onChange={e => setToBranchId(e.target.value)} style={{ width: '100%' }}>
                     {transferToBranchOptions.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
-                  </select>
-                </label>
-                <label>
-                  <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('Destination Inventory')}</div>
-                  <select className="select" value={toInventoryType} onChange={e => setToInventoryType(e.target.value)} style={{ width: '100%' }}>
-                    <option value="wholesale">{t('Distribution Inventory')}</option>
-                    <option value="retail">{t('Retail Inventory')}</option>
-                    <option value="warehouse">{t('Warehouse Inventory')}</option>
                   </select>
                 </label>
               </>
@@ -905,7 +901,20 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
             ) : (
               <label>
                 <div style={{ marginBottom: 6, color: '#94a3b8' }}>{operationType === 'refund' ? t('Refund Amount') : t('Cost')}</div>
-                <input className="input" type="number" min="0" step="0.01" value={operationType === 'refund' ? requestedAmount : cost} onChange={e => operationType === 'refund' ? setRequestedAmount(e.target.value) : setCost(e.target.value)} />
+                <input
+                  className="input"
+                  type={canViewCost ? 'number' : 'text'}
+                  min={canViewCost ? '0' : undefined}
+                  step={canViewCost ? '0.01' : undefined}
+                  value={canViewCost ? (operationType === 'refund' ? requestedAmount : cost) : '****'}
+                  onChange={e => {
+                    if (!canViewCost) return;
+                    if (operationType === 'refund') setRequestedAmount(e.target.value);
+                    else setCost(e.target.value);
+                  }}
+                  readOnly={!canViewCost}
+                  disabled={!canViewCost}
+                />
               </label>
             )}
 
@@ -1009,7 +1018,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Title')}</div><strong>{selectedRow.transactionTitle || '—'}</strong></div>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Initiator')}</div><strong>{selectedRow.initiatedByName || selectedRow.initiatorName || '—'}</strong></div>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Quantity')}</div><strong>{Number(selectedRow.qty || selectedRow.baseUnits || 0)}</strong></div>
-              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Value')}</div><strong>{formatCurrency(Number(selectedRow.cost || selectedRow.requestedAmount || 0), settings)}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Value')}</div><strong>{maskCostValue(selectedRow.cost || selectedRow.requestedAmount || 0)}</strong></div>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Source')}</div><strong>{branchNameById.get(selectedRow.fromBranchId || selectedRow.from || selectedRow.branchId) || selectedRow.fromBranchId || selectedRow.from || selectedRow.branchId || '—'}</strong></div>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Destination')}</div><strong>{branchNameById.get(selectedRow.toBranchId || selectedRow.to) || selectedRow.toBranchId || selectedRow.to || '—'}</strong></div>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('From Inventory')}</div><strong>{t(selectedRow.fromInventoryType || 'retail')}</strong></div>
