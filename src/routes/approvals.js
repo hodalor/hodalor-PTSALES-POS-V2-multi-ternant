@@ -61,13 +61,33 @@ r.post('/:id/approve', async (req, res) => {
   const remark = String(req.body?.remark || '').trim();
   if (approval.status === 'pending_director') {
     if (!canApproveDirector(req.user)) return res.status(403).json({ error: 'Director approval required' });
+    if (approval.referenceModel === 'WholesaleOperation' && Array.isArray(req.body?.items)) {
+      const operation = await WholesaleOperation.findById(approval.referenceId);
+      if (!operation) return res.status(404).json({ error: 'Wholesale operation not found' });
+      const reviewedItems = normalizeWholesaleReviewItems(req.body?.items);
+      const acceptedQty = reviewedItems
+        .filter((item) => String(item.status || 'accepted').toLowerCase() !== 'cancelled')
+        .reduce((sum, item) => sum + Math.max(0, Number(item.qty || 0)), 0);
+      if (reviewedItems.length === 0 || acceptedQty <= 0) {
+        return res.status(400).json({ error: 'Director approval requires at least one accepted item with quantity greater than zero' });
+      }
+      operation.items = reviewedItems;
+      operation.qty = acceptedQty;
+      operation.status = 'pending_manager';
+      await operation.save();
+      await syncReferenceStatus(approval.referenceModel, approval.referenceId, 'pending_manager', {
+        items: reviewedItems,
+        qty: acceptedQty
+      });
+    } else {
+      await syncReferenceStatus(approval.referenceModel, approval.referenceId, 'pending_manager');
+    }
     approval.directorApprovedByName = req.user?.name || 'unknown';
     approval.directorApprovedByRole = req.user?.role || '';
     approval.directorRemark = remark;
     approval.directorApprovedAt = new Date();
     approval.status = 'pending_manager';
     await approval.save();
-    await syncReferenceStatus(approval.referenceModel, approval.referenceId, 'pending_manager');
     return res.json(approval);
   }
   if (approval.status === 'pending_manager') {
