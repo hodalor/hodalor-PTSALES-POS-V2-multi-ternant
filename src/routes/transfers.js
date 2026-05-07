@@ -12,22 +12,27 @@ import { safeErrorMessage } from '../utils/safeError.js';
 const r = Router();
 r.use(requireAuth);
 
-function canDirectorApproveRetail(user) {
+function canDirectorApproveRetail(user, approvalArea = 'retail') {
   const role = String(user?.role || '').toLowerCase();
   const grants = Array.isArray(user?.grants) ? user.grants : [];
-  return ['superadmin', 'admin', 'director'].includes(role)
-    || grants.includes('approve_wholesale_director')
-    || grants.includes('approve_credit_director')
-    || grants.includes('approve_transfers');
+  if (['superadmin', 'admin', 'director'].includes(role)) return true;
+  if (approvalArea === 'warehouse') return grants.includes('approve_warehouse_director');
+  if (approvalArea === 'wholesale') return grants.includes('approve_distribution_director');
+  return grants.includes('approve_credit_director') || grants.includes('approve_transfers');
 }
 
-function canManagerApproveRetail(user) {
+function canManagerApproveRetail(user, approvalArea = 'retail') {
   const role = String(user?.role || '').toLowerCase();
   const grants = Array.isArray(user?.grants) ? user.grants : [];
-  return ['superadmin', 'admin', 'manager'].includes(role)
-    || grants.includes('approve_wholesale_manager')
-    || grants.includes('approve_credit_manager')
-    || grants.includes('approve_transfers');
+  if (['superadmin', 'admin', 'manager'].includes(role)) return true;
+  if (approvalArea === 'warehouse') return grants.includes('approve_warehouse_manager');
+  if (approvalArea === 'wholesale') return grants.includes('approve_distribution_manager');
+  return grants.includes('approve_credit_manager') || grants.includes('approve_transfers');
+}
+
+async function resolveTransferApprovalArea(transfer) {
+  const toInventoryType = await resolveInventoryTypeFromBranch(transfer?.to, 'retail');
+  return toInventoryType === 'warehouse' ? 'warehouse' : toInventoryType === 'wholesale' ? 'wholesale' : 'retail';
 }
 
 function productLookupQuery(productId) {
@@ -70,7 +75,10 @@ r.get('/requests', async (req, res) => {
   if (map[statusRaw]) q.status = map[statusRaw];
   if (!(role === 'superadmin' || role === 'admin') && assigned !== 'all') {
     const arr = Array.isArray(assigned) ? assigned : [assigned];
-    q.to = { $in: arr };
+    q.$or = [
+      { to: { $in: arr } },
+      { from: { $in: arr } }
+    ];
   }
   const limit = Math.min(1000, Math.max(20, Number(req.query?.limit || 200)));
   const rows = await TransferRequest.find(q).sort({ createdAt: -1 }).limit(limit).lean();
@@ -118,17 +126,26 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_tr
   const tr = await TransferRequest.findOne({ $or: or });
   if (!tr) return res.status(404).json({ error: 'Not found' });
   if (!['pending_approval', 'pending_director', 'pending_manager'].includes(String(tr.status || ''))) return res.json(tr);
+  const approvalArea = await resolveTransferApprovalArea(tr);
   const role = String(req.user?.role || '').toLowerCase();
   const assigned = req.user?.assignedBranches ?? 'all';
   if (!(role === 'superadmin' || role === 'admin')) {
     if (assigned !== 'all') {
       const arr = Array.isArray(assigned) ? assigned : [assigned];
-      if (!arr.includes(tr.to)) return res.status(403).json({ error: 'Forbidden for branch' });
+      const currentStatus = String(tr.status || '');
+      const canAccessDirectorStage = arr.includes(tr.from) || arr.includes(tr.to);
+      const canAccessManagerStage = arr.includes(tr.to);
+      if ((currentStatus === 'pending_approval' || currentStatus === 'pending_director') && !canAccessDirectorStage) {
+        return res.status(403).json({ error: 'Forbidden for branch' });
+      }
+      if (currentStatus === 'pending_manager' && !canAccessManagerStage) {
+        return res.status(403).json({ error: 'Forbidden for destination branch' });
+      }
     }
   }
   const nextItems = normalizeItems({ items: reviewedItems && reviewedItems.length ? reviewedItems : (tr.items || []) });
   if (String(tr.status || '') === 'pending_approval' || String(tr.status || '') === 'pending_director') {
-    if (!canDirectorApproveRetail(req.user)) return res.status(403).json({ error: 'Director approval required' });
+    if (!canDirectorApproveRetail(req.user, approvalArea)) return res.status(403).json({ error: 'Director approval required' });
     tr.status = 'pending_manager';
     tr.items = nextItems;
     tr.directorApproverName = approverName || req.user?.name || 'unknown';
@@ -138,7 +155,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_tr
     await tr.save();
     return res.json(tr);
   }
-  if (!canManagerApproveRetail(req.user)) return res.status(403).json({ error: 'Manager approval required' });
+  if (!canManagerApproveRetail(req.user, approvalArea)) return res.status(403).json({ error: 'Manager approval required' });
   let lastProduct = null;
   const fromInventoryType = await resolveInventoryTypeFromBranch(tr.from, 'retail');
   const toInventoryType = await resolveInventoryTypeFromBranch(tr.to, 'retail');
@@ -220,11 +237,12 @@ r.post('/reject', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_tra
   const tr = await TransferRequest.findOne({ $or: or });
   if (!tr) return res.status(404).json({ error: 'Not found' });
   if (!['pending_approval', 'pending_director', 'pending_manager'].includes(String(tr.status || ''))) return res.json(tr);
+  const approvalArea = await resolveTransferApprovalArea(tr);
   const currentStatus = String(tr.status || '');
-  if ((currentStatus === 'pending_approval' || currentStatus === 'pending_director') && !canDirectorApproveRetail(req.user)) {
+  if ((currentStatus === 'pending_approval' || currentStatus === 'pending_director') && !canDirectorApproveRetail(req.user, approvalArea)) {
     return res.status(403).json({ error: 'Director approval required' });
   }
-  if (currentStatus === 'pending_manager' && !canManagerApproveRetail(req.user)) {
+  if (currentStatus === 'pending_manager' && !canManagerApproveRetail(req.user, approvalArea)) {
     return res.status(403).json({ error: 'Manager approval required' });
   }
   const role = String(req.user?.role || '').toLowerCase();
@@ -232,7 +250,14 @@ r.post('/reject', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_tra
   if (!(role === 'superadmin' || role === 'admin')) {
     if (assigned !== 'all') {
       const arr = Array.isArray(assigned) ? assigned : [assigned];
-      if (!arr.includes(tr.to)) return res.status(403).json({ error: 'Forbidden for branch' });
+      const canAccessDirectorStage = arr.includes(tr.from) || arr.includes(tr.to);
+      const canAccessManagerStage = arr.includes(tr.to);
+      if ((currentStatus === 'pending_approval' || currentStatus === 'pending_director') && !canAccessDirectorStage) {
+        return res.status(403).json({ error: 'Forbidden for branch' });
+      }
+      if (currentStatus === 'pending_manager' && !canAccessManagerStage) {
+        return res.status(403).json({ error: 'Forbidden for destination branch' });
+      }
     }
   }
   tr.status = 'rejected';

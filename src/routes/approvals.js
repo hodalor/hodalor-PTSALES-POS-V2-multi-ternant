@@ -2,12 +2,18 @@ import { Router } from 'express';
 import Approval from '../models/Approval.js';
 import WholesaleOperation from '../models/WholesaleOperation.js';
 import { requireAuth } from '../middleware/auth.js';
-import { canApproveDirector, canApproveManager, executeApprovedReference, syncReferenceStatus } from '../utils/approvalWorkflow.js';
+import { canApproveAreaDirector, canApproveAreaManager, canApproveDirector, canApproveManager, executeApprovedReference, syncReferenceStatus } from '../utils/approvalWorkflow.js';
 import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
 
 const r = Router();
 
 r.use(requireAuth);
+
+async function resolveApprovalArea(approval) {
+  if (approval?.referenceModel !== 'WholesaleOperation') return '';
+  const operation = await WholesaleOperation.findById(approval.referenceId).lean().catch(() => null);
+  return String(operation?.operationArea || 'wholesale').toLowerCase() === 'warehouse' ? 'warehouse' : 'wholesale';
+}
 
 function normalizeWholesaleReviewItems(items = []) {
   return (Array.isArray(items) ? items : [])
@@ -60,7 +66,9 @@ r.post('/:id/approve', async (req, res) => {
   if (!approval) return res.status(404).json({ error: 'Approval not found' });
   const remark = String(req.body?.remark || '').trim();
   if (approval.status === 'pending_director') {
-    if (!canApproveDirector(req.user)) return res.status(403).json({ error: 'Director approval required' });
+    const approvalArea = await resolveApprovalArea(approval);
+    const canApprove = approvalArea ? canApproveAreaDirector(req.user, approvalArea) : canApproveDirector(req.user);
+    if (!canApprove) return res.status(403).json({ error: 'Director approval required' });
     if (approval.referenceModel === 'WholesaleOperation' && Array.isArray(req.body?.items)) {
       const operation = await WholesaleOperation.findById(approval.referenceId);
       if (!operation) return res.status(404).json({ error: 'Wholesale operation not found' });
@@ -91,7 +99,9 @@ r.post('/:id/approve', async (req, res) => {
     return res.json(approval);
   }
   if (approval.status === 'pending_manager') {
-    if (!canApproveManager(req.user)) return res.status(403).json({ error: 'Manager approval required' });
+    const approvalArea = await resolveApprovalArea(approval);
+    const canApprove = approvalArea ? canApproveAreaManager(req.user, approvalArea) : canApproveManager(req.user);
+    if (!canApprove) return res.status(403).json({ error: 'Manager approval required' });
     if (req.body?.resubmitToDirector) {
       if (approval.referenceModel !== 'WholesaleOperation') {
         return res.status(400).json({ error: 'Resubmission is only supported for wholesale operations' });
@@ -149,9 +159,10 @@ r.post('/:id/reject', async (req, res) => {
   if (!approval) return res.status(404).json({ error: 'Approval not found' });
   const reason = String(req.body?.reason || '').trim();
   if (!reason) return res.status(400).json({ error: 'Reason is required' });
+  const approvalArea = await resolveApprovalArea(approval);
   const canReject = approval.status === 'pending_director'
-    ? canApproveDirector(req.user)
-    : canApproveManager(req.user);
+    ? (approvalArea ? canApproveAreaDirector(req.user, approvalArea) : canApproveDirector(req.user))
+    : (approvalArea ? canApproveAreaManager(req.user, approvalArea) : canApproveManager(req.user));
   if (!canReject) return res.status(403).json({ error: 'Not allowed to reject this approval' });
   approval.status = 'rejected';
   approval.rejectedByName = req.user?.name || 'unknown';

@@ -9,11 +9,12 @@ const r = Router();
 
 r.use(requireAuth);
 
-function permissionForOperation(type = '') {
+function permissionForOperation(type = '', area = '') {
   const key = String(type || '').toLowerCase();
-  if (key === 'purchase') return 'add_purchases';
-  if (key === 'transfer') return 'add_transfers';
-  if (key === 'adjustment') return 'add_adjustments';
+  const scope = String(area || '').toLowerCase() === 'warehouse' ? 'warehouse' : 'wholesale';
+  if (key === 'purchase') return scope === 'warehouse' ? 'add_warehouse_purchases' : 'add_wholesale_purchases';
+  if (key === 'transfer') return scope === 'warehouse' ? 'add_warehouse_transfers' : 'add_wholesale_transfers';
+  if (key === 'adjustment') return scope === 'warehouse' ? 'add_warehouse_adjustments' : 'add_wholesale_adjustments';
   if (key === 'refund') return 'add_distribution_refunds';
   return '';
 }
@@ -66,17 +67,17 @@ r.get('/operations', async (req, res) => {
   res.json(normalized);
 });
 
-r.post('/operations', requireRoleOrPerm(['Admin', 'Manager', 'Inventory Staff', 'Cashier'], ['add_purchases', 'add_transfers', 'add_adjustments', 'add_distribution_refunds']), async (req, res) => {
+r.post('/operations', requireRoleOrPerm(['Admin', 'Manager', 'Inventory Staff', 'Cashier'], ['add_purchases', 'add_wholesale_purchases', 'add_warehouse_purchases', 'add_transfers', 'add_wholesale_transfers', 'add_warehouse_transfers', 'add_adjustments', 'add_wholesale_adjustments', 'add_warehouse_adjustments', 'add_distribution_refunds']), async (req, res) => {
   const body = req.body || {};
   const operationArea = String(body.operationArea || 'wholesale').toLowerCase() === 'warehouse' ? 'warehouse' : 'wholesale';
   const operationType = String(body.operationType || '').toLowerCase();
   if (!['purchase', 'transfer', 'adjustment', 'refund'].includes(operationType)) {
     return res.status(400).json({ error: 'Invalid operationType' });
   }
-  const specificPerm = permissionForOperation(operationType);
+  const specificPerm = permissionForOperation(operationType, operationArea);
   const role = String(req.user?.role || '').toLowerCase();
   const grants = Array.isArray(req.user?.grants) ? req.user.grants : [];
-  if (!['admin', 'manager', 'inventory staff', 'superadmin'].includes(role) && specificPerm && !grants.includes(specificPerm)) {
+  if (!['admin', 'superadmin'].includes(role) && specificPerm && !grants.includes(specificPerm)) {
     return res.status(403).json({ error: 'Forbidden' });
   }
   const qty = Math.max(0, Number(body.qty || 0));

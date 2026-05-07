@@ -2,14 +2,14 @@ export const TENANT_GRANT_KEYS = [
   'view_dashboard', 'view_dashboard_cashier_assigned', 'view_dashboard_cashier_all', 'view_dashboard_branch_comparison_assigned', 'view_dashboard_branch_comparison_all', 'view_pos', 'view_wholesale_pos', 'view_retail_price', 'view_wholesale_price',
   'view_agent_price', 'view_sales', 'add_sales', 'view_products', 'view_distribution_products', 'view_warehouse_products', 'add_products', 'edit_products',
   'view_inventory', 'edit_inventory', 'view_serialized_inventory', 'view_labels', 'view_purchases',
-  'add_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers',
-  'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'edit_adjustments',
+  'add_purchases', 'add_wholesale_purchases', 'add_warehouse_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'add_wholesale_transfers', 'add_warehouse_transfers',
+  'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'add_wholesale_adjustments', 'add_warehouse_adjustments', 'edit_adjustments',
   'approve_adjustments', 'view_suppliers', 'add_suppliers', 'edit_suppliers', 'view_customers',
   'view_finance_reconciliation', 'add_finance_reconciliation', 'view_finance_reconciliation_all_branches', 'manage_finance_accounts', 'approve_finance_reconciliation_director', 'approve_finance_reconciliation_manager',
   'view_chat', 'send_chat_messages', 'view_pt_ai',
   'add_customers', 'edit_customers', 'view_credit_control', 'approve_credit_director',
   'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals',
-  'approve_wholesale_director', 'approve_wholesale_manager', 'view_refunds', 'add_refunds', 'view_distribution_refunds', 'add_distribution_refunds',
+  'approve_distribution_director', 'approve_distribution_manager', 'approve_warehouse_director', 'approve_warehouse_manager', 'view_refunds', 'add_refunds', 'view_distribution_refunds', 'add_distribution_refunds',
   'approve_refunds', 'view_expenses', 'add_expenses', 'approve_expenses', 'view_reports', 'view_revenue', 'view_profit', 'view_financials',
   'view_stock_records', 'view_wholesale_invoices', 'view_warehouse_invoices',
   'view_warehouse_approvals', 'view_imei_conflicts', 'view_cashdrawer', 'view_users',
@@ -62,7 +62,7 @@ export const PLAN_FEATURES = {
     'grants.view_dashboard', 'grants.view_dashboard_cashier_assigned', 'grants.view_dashboard_cashier_all', 'grants.view_dashboard_branch_comparison_assigned', 'grants.view_dashboard_branch_comparison_all', 'grants.view_pos', 'grants.view_retail_price', 'grants.view_sales',
     'grants.add_sales', 'grants.view_products', 'grants.add_products', 'grants.edit_products',
     'grants.view_inventory', 'grants.edit_inventory', 'grants.view_labels', 'grants.view_purchases',
-    'grants.add_purchases', 'grants.view_suppliers', 'grants.add_suppliers', 'grants.view_customers', 'grants.view_finance_reconciliation', 'grants.add_finance_reconciliation',
+    'grants.add_purchases', 'grants.add_wholesale_purchases', 'grants.add_warehouse_purchases', 'grants.view_suppliers', 'grants.add_suppliers', 'grants.view_customers', 'grants.view_finance_reconciliation', 'grants.add_finance_reconciliation',
     'grants.view_chat', 'grants.send_chat_messages', 'grants.view_pt_ai', 'grants.add_customers', 'grants.view_cashdrawer', 'grants.view_users', 'grants.view_config',
     'grants.export_tenant_data', 'grants.import_tenant_data'
   ],
@@ -84,7 +84,7 @@ export const PLAN_FEATURES = {
     'admin.users', 'admin.manual', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords',
     'admin.cashDrawer', 'admin.config', 'features.offlineBackup',
     'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
-    ...GRANT_FEATURE_KEYS.filter((key) => !['grants.approve_credit_director', 'grants.approve_wholesale_director'].includes(key))
+    ...GRANT_FEATURE_KEYS.filter((key) => !['grants.approve_credit_director', 'grants.approve_distribution_director', 'grants.approve_warehouse_director'].includes(key))
   ],
   enterprise: ALL_FEATURES.slice()
 };
@@ -113,7 +113,7 @@ const PAGE_FALLBACKS = {
   'pages.communication.chat': ['sections.communication', 'modules.communication', 'grants.view_chat'],
   'pages.communication.askPtAi': ['sections.communication', 'modules.communication', 'grants.view_pt_ai'],
   'pages.distribution.invoices': ['sections.distribution', 'grants.view_wholesale_invoices'],
-  'pages.distribution.approvals': ['sections.distribution', 'grants.approve_wholesale_manager'],
+  'pages.distribution.approvals': ['sections.distribution', 'grants.approve_distribution_manager'],
   'pages.warehouse.invoices': ['sections.warehouse', 'grants.view_warehouse_invoices'],
   'pages.warehouse.approvals': ['sections.warehouse', 'grants.view_warehouse_approvals']
 };
@@ -127,20 +127,20 @@ const FEATURE_DEPENDENCIES = {
   'pages.finance.reconciliation': ['modules.finance', 'grants.view_finance_reconciliation', 'grants.add_finance_reconciliation'],
   'pages.communication.chat': ['modules.communication', 'grants.view_chat', 'grants.send_chat_messages'],
   'pages.communication.askPtAi': ['modules.communication', 'grants.view_pt_ai'],
-  'pages.distribution.goods': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_distribution_products', 'grants.view_config'],
-  'pages.distribution.pos': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_distribution_products', 'grants.view_config'],
+  'pages.distribution.goods': ['modules.wholesalePos', 'modules.products', 'grants.view_distribution_products'],
+  'pages.distribution.pos': ['modules.wholesalePos', 'modules.products', 'grants.view_wholesale_pos'],
   'pages.distribution.invoices': ['modules.invoices', 'grants.view_wholesale_invoices'],
-  'pages.distribution.purchase': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_distribution_products', 'grants.view_config', 'grants.add_purchases'],
-  'pages.distribution.transfer': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_distribution_products', 'grants.view_config', 'grants.add_transfers'],
-  'pages.distribution.adjustment': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_distribution_products', 'grants.view_config', 'grants.add_adjustments'],
-  'pages.distribution.refund': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_distribution_products', 'grants.view_config', 'grants.add_distribution_refunds'],
-  'pages.distribution.approvals': ['modules.wholesalePos', 'modules.products', 'admin.config', 'modules.approvalsCenter', 'grants.view_distribution_products', 'grants.view_config', 'grants.approve_wholesale_director', 'grants.approve_wholesale_manager'],
-  'pages.warehouse.goods': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_warehouse_products', 'grants.view_config'],
+  'pages.distribution.purchase': ['modules.wholesalePos', 'modules.products', 'grants.view_distribution_products', 'grants.add_wholesale_purchases'],
+  'pages.distribution.transfer': ['modules.wholesalePos', 'modules.products', 'grants.view_distribution_products', 'grants.add_transfers'],
+  'pages.distribution.adjustment': ['modules.wholesalePos', 'modules.products', 'grants.view_distribution_products', 'grants.add_wholesale_adjustments'],
+  'pages.distribution.refund': ['modules.wholesalePos', 'modules.products', 'grants.view_distribution_products', 'grants.add_distribution_refunds'],
+  'pages.distribution.approvals': ['modules.wholesalePos', 'modules.products', 'modules.approvalsCenter', 'grants.approve_distribution_director', 'grants.approve_distribution_manager'],
+  'pages.warehouse.goods': ['modules.wholesalePos', 'modules.products', 'grants.view_warehouse_products'],
   'pages.warehouse.invoices': ['modules.invoices', 'grants.view_warehouse_invoices'],
-  'pages.warehouse.purchase': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_warehouse_products', 'grants.view_config', 'grants.add_purchases'],
-  'pages.warehouse.transfer': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_warehouse_products', 'grants.view_config', 'grants.add_transfers'],
-  'pages.warehouse.adjustment': ['modules.wholesalePos', 'modules.products', 'admin.config', 'grants.view_wholesale_pos', 'grants.view_warehouse_products', 'grants.view_config', 'grants.add_adjustments'],
-  'pages.warehouse.approvals': ['modules.wholesalePos', 'modules.products', 'admin.config', 'modules.approvalsCenter', 'grants.view_warehouse_products', 'grants.view_config', 'grants.view_warehouse_approvals', 'grants.approve_wholesale_director', 'grants.approve_wholesale_manager']
+  'pages.warehouse.purchase': ['modules.wholesalePos', 'modules.products', 'grants.view_warehouse_products', 'grants.add_warehouse_purchases'],
+  'pages.warehouse.transfer': ['modules.wholesalePos', 'modules.products', 'grants.view_warehouse_products', 'grants.add_transfers'],
+  'pages.warehouse.adjustment': ['modules.wholesalePos', 'modules.products', 'grants.view_warehouse_products', 'grants.add_warehouse_adjustments'],
+  'pages.warehouse.approvals': ['modules.wholesalePos', 'modules.products', 'modules.approvalsCenter', 'grants.view_warehouse_approvals', 'grants.approve_warehouse_director', 'grants.approve_warehouse_manager']
 };
 
 function expandFeatureDependencies(inputKeys = []) {

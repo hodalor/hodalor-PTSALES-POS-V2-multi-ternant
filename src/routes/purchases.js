@@ -16,7 +16,6 @@ function canDirectorApproveRetail(user) {
   const role = String(user?.role || '').toLowerCase();
   const grants = Array.isArray(user?.grants) ? user.grants : [];
   return ['superadmin', 'admin', 'director'].includes(role)
-    || grants.includes('approve_wholesale_director')
     || grants.includes('approve_credit_director')
     || grants.includes('approve_purchases');
 }
@@ -25,7 +24,6 @@ function canManagerApproveRetail(user) {
   const role = String(user?.role || '').toLowerCase();
   const grants = Array.isArray(user?.grants) ? user.grants : [];
   return ['superadmin', 'admin', 'manager'].includes(role)
-    || grants.includes('approve_wholesale_manager')
     || grants.includes('approve_credit_manager')
     || grants.includes('approve_purchases');
 }

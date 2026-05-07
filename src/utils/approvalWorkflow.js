@@ -21,13 +21,29 @@ function productQuery(productId) {
 export function canApproveDirector(user) {
   const role = String(user?.role || '').toLowerCase();
   const grants = Array.isArray(user?.grants) ? user.grants : [];
-  return ['admin', 'superadmin', 'director'].includes(role) || grants.includes('approve_wholesale_director') || grants.includes('approve_credit_director') || grants.includes('approve_finance_reconciliation_director');
+  return ['admin', 'superadmin', 'director'].includes(role) || grants.includes('approve_credit_director') || grants.includes('approve_finance_reconciliation_director');
 }
 
 export function canApproveManager(user) {
   const role = String(user?.role || '').toLowerCase();
   const grants = Array.isArray(user?.grants) ? user.grants : [];
-  return ['manager', 'admin', 'superadmin'].includes(role) || grants.includes('approve_wholesale_manager') || grants.includes('approve_credit_manager') || grants.includes('approve_finance_reconciliation_manager');
+  return ['manager', 'admin', 'superadmin'].includes(role) || grants.includes('approve_credit_manager') || grants.includes('approve_finance_reconciliation_manager');
+}
+
+export function canApproveAreaDirector(user, area = 'wholesale') {
+  const role = String(user?.role || '').toLowerCase();
+  const grants = Array.isArray(user?.grants) ? user.grants : [];
+  if (['admin', 'superadmin', 'director'].includes(role)) return true;
+  if (String(area || '').toLowerCase() === 'warehouse') return grants.includes('approve_warehouse_director');
+  return grants.includes('approve_distribution_director');
+}
+
+export function canApproveAreaManager(user, area = 'wholesale') {
+  const role = String(user?.role || '').toLowerCase();
+  const grants = Array.isArray(user?.grants) ? user.grants : [];
+  if (['manager', 'admin', 'superadmin'].includes(role)) return true;
+  if (String(area || '').toLowerCase() === 'warehouse') return grants.includes('approve_warehouse_manager');
+  return grants.includes('approve_distribution_manager');
 }
 
 async function applyWholesaleOperation(operation, actor) {
