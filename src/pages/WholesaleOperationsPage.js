@@ -24,6 +24,30 @@ function normalizeReviewStatus(value) {
   return String(value || '').toLowerCase() === 'cancelled' ? 'cancelled' : 'accepted';
 }
 
+function normalizeReviewItemsForCompare(items = []) {
+  return (Array.isArray(items) ? items : []).map((item, index) => ({
+    lineId: String(item?.lineId || `${index + 1}`),
+    productId: String(item?.productId || ''),
+    variantId: String(item?.variantId || ''),
+    qty: Math.max(0, Number(item?.qty || 0)),
+    unitIds: Array.isArray(item?.unitIds) ? item.unitIds.map(String).filter(Boolean) : [],
+    selectedUnits: Array.isArray(item?.selectedUnits)
+      ? item.selectedUnits.map((unit) => ({
+          unitId: String(unit?.unitId || ''),
+          imei: String(unit?.imei || '').trim(),
+          serialNumber: String(unit?.serialNumber || '').trim()
+        }))
+      : [],
+    serializedEntries: Array.isArray(item?.serializedEntries)
+      ? item.serializedEntries.map((entry) => ({
+          imei: String(entry?.imei || '').trim(),
+          serialNumber: String(entry?.serialNumber || '').trim()
+        }))
+      : [],
+    status: normalizeReviewStatus(item?.status)
+  }));
+}
+
 function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' }) {
   const { t } = useAppLanguage();
   const toast = useToast();
@@ -338,6 +362,28 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     );
   }
 
+  const hasManagerTransferReviewChanges = useMemo(() => {
+    if (!selectedRow) return false;
+    if (String(selectedRow.approvalMode || '').toLowerCase() !== 'workflow') return false;
+    if (String(selectedRow.operationType || '').toLowerCase() !== 'transfer') return false;
+    if (String(selectedRow.status || '').toLowerCase() !== 'pending_manager') return false;
+    const originalSource = Array.isArray(selectedRow.items) && selectedRow.items.length > 0
+      ? selectedRow.items
+      : [{
+          lineId: '1',
+          productId: selectedRow.productId,
+          variantId: selectedRow.variantId || '',
+          qty: Number(selectedRow.qty || 0),
+          unitIds: Array.isArray(selectedRow.unitIds) ? selectedRow.unitIds.map(String) : [],
+          selectedUnits: Array.isArray(selectedRow.selectedUnits) ? selectedRow.selectedUnits : [],
+          serializedEntries: Array.isArray(selectedRow.serializedEntries) ? selectedRow.serializedEntries : [],
+          status: 'accepted'
+        }];
+    const original = normalizeReviewItemsForCompare(originalSource);
+    const reviewed = normalizeReviewItemsForCompare(reviewItems);
+    return JSON.stringify(original) !== JSON.stringify(reviewed);
+  }, [reviewItems, selectedRow]);
+
   async function reviewAction(type) {
     if (!selectedRow || reviewing) return;
     const remark = String(decisionRemark || '').trim();
@@ -354,14 +400,33 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
         approverRole: auth.role || ''
       };
       const affectedProductIds = Array.from(new Set(reviewItems.map(item => String(item.productId || '')).filter(Boolean)));
-      if (type === 'approve') await wholesaleApi.approveOperation(selectedRow, { ...payload, items: reviewItems.map(item => ({ ...item, status: normalizeReviewStatus(item.status) })) });
+      const reviewedPayloadItems = reviewItems.map(item => ({ ...item, status: normalizeReviewStatus(item.status) }));
+      let response = null;
+      if (type === 'approve') {
+        response = await wholesaleApi.approveOperation(selectedRow, {
+          ...payload,
+          items: reviewedPayloadItems,
+          resubmitToDirector: hasManagerTransferReviewChanges
+        });
+      }
       else await wholesaleApi.rejectOperation(selectedRow, payload);
-      toast.show(type === 'approve' ? t('Request updated') : t('Request rejected'), { type: 'success' });
+      const nextStatus = String(response?.status || '').toLowerCase();
+      if (type === 'approve') {
+        if (nextStatus === 'pending_director') {
+          toast.show(t('Transfer changes resubmitted for director approval'), { type: 'success' });
+        } else if (nextStatus === 'pending_manager') {
+          toast.show(t('Director approval recorded. Waiting for manager approval.'), { type: 'success' });
+        } else {
+          toast.show(t('Request updated'), { type: 'success' });
+        }
+      } else {
+        toast.show(t('Request rejected'), { type: 'success' });
+      }
       setOperations(prev => prev.filter(item => String(item._id || item.clientId) !== String(selectedRow._id || selectedRow.clientId)));
       setSelectedRow(null);
       setDecisionRemark('');
       void loadOperations({ force: true });
-      if (type === 'approve' && String(selectedRow.status || '').toLowerCase() === 'pending_manager') {
+      if (type === 'approve' && nextStatus === 'approved') {
         void refreshAffectedProducts(dispatch, affectedProductIds);
       }
     } catch (e) {
@@ -932,7 +997,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
               {((selectedRow.status === 'pending_director' && canDirectorApprove) || (selectedRow.status === 'pending_manager' && canManagerApprove)) && (
                 <>
                   <button className="btn" onClick={() => reviewAction('reject')} disabled={reviewing}>{reviewing ? t('Working…') : t('Reject')}</button>
-                  <button className="btn btn-primary" onClick={() => reviewAction('approve')} disabled={reviewing}>{reviewing ? t('Working…') : t('Approve')}</button>
+                  <button className="btn btn-primary" onClick={() => reviewAction('approve')} disabled={reviewing}>{reviewing ? t('Working…') : hasManagerTransferReviewChanges ? t('Resubmit') : t('Approve')}</button>
                 </>
               )}
             </>
