@@ -355,6 +355,14 @@ function PosPage({ mode = 'retail' }) {
     && !!String(quickCustomerForm.address || '').trim()
   ), [quickCustomerForm.address, quickCustomerForm.name, quickCustomerForm.phone]);
 
+  function updateCustomerLookup(value) {
+    const nextValue = String(value || '');
+    setCustomerQuery(nextValue);
+    if (!selectedCustomerId) {
+      setQuickCustomerForm((prev) => ({ ...prev, name: nextValue }));
+    }
+  }
+
   async function ensureCheckoutCustomer() {
     if (selectedCustomer) return selectedCustomer;
     if (!quickCustomerHasAny) return null;
@@ -835,6 +843,7 @@ function PosPage({ mode = 'retail' }) {
     try { localStorage.setItem(reservationStorageKey, resumedToken); } catch {}
     dispatch(replaceCart({ items: Array.isArray(h.items) ? h.items : [], discount: h.discount || 0, notes: h.notes || '' }));
     setSelectedCustomerId(h.selectedCustomerId || '');
+    setCustomerQuery(h.selectedCustomerId ? '' : String(h.quickCustomerForm?.name || ''));
     setQuickCustomerForm(h.quickCustomerForm || { name: '', phone: '', address: '', customerType: isWholesale ? 'distribution' : 'retail' });
     setRedeemPoints(h.redeemPoints || '');
     setTaxOverridePct(h.taxOverridePct ?? '');
@@ -1539,9 +1548,9 @@ function PosPage({ mode = 'retail' }) {
               <div>
                 <input
                   className="input"
-                  placeholder={t('Search by phone, customer ID, name, ID card')}
+                  placeholder={t('Search by phone, customer ID, name, ID card or enter new customer name')}
                   value={customerQuery}
-                  onChange={e => setCustomerQuery(e.target.value)}
+                  onChange={e => updateCustomerLookup(e.target.value)}
                 />
                 {customerMatches.length > 0 && (
                   <div style={{ position: 'absolute', top: 44, left: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', zIndex: 20 }}>
@@ -1549,7 +1558,11 @@ function PosPage({ mode = 'retail' }) {
                       <button
                         key={c.id}
                         className="btn"
-                        onClick={() => { setSelectedCustomerId(c.id); setCustomerQuery(''); }}
+                        onClick={() => {
+                          setSelectedCustomerId(c.id);
+                          setCustomerQuery('');
+                          setQuickCustomerForm((prev) => ({ ...prev, name: '' }));
+                        }}
                         style={{ width: '100%', justifyContent: 'space-between', borderRadius: 0 }}
                       >
                         <span style={{ textAlign: 'left' }}>
@@ -1564,9 +1577,6 @@ function PosPage({ mode = 'retail' }) {
               </div>
               {canQuickAddCustomer ? (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 10 }}>
-                  <div>
-                    <input className="input" value={quickCustomerForm.name} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, name: e.target.value }))} placeholder={t('Customer name')} />
-                  </div>
                   <div>
                     <input className="input" value={quickCustomerForm.phone} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, phone: e.target.value }))} placeholder={t('Phone number')} />
                   </div>
@@ -1711,13 +1721,13 @@ function PosPage({ mode = 'retail' }) {
               <>
                 {payments.map((p, i) => (
                   <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                    <select className="select" value={p.type} onChange={e => updatePayment(i, 'type', e.target.value)}>
+                    <select className="select" value={p.type} onChange={e => updatePayment(i, 'type', e.target.value)} style={{ width: 112, minWidth: 112, flex: '0 0 112px' }}>
                       <option value="cash">{t('Cash')}</option>
                       <option value="card">{t('Card')}</option>
                       <option value="mobile">{t('Mobile')}</option>
                       <option value="wallet">{t('Wallet')}</option>
                     </select>
-                    <input className="input" type="number" placeholder={t('amount')} value={p.amount} onChange={e => updatePayment(i, 'amount', e.target.value)} style={{ width: 140 }} />
+                    <input className="input" type="number" placeholder={t('amount')} value={p.amount} onChange={e => updatePayment(i, 'amount', e.target.value)} style={{ width: 140, flex: '1 1 160px', minWidth: 0 }} />
                     {payments.length > 1 && <button className="btn" onClick={() => removePaymentRow(i)}>
                       <svg viewBox="0 0 24 24" fill="none"><path d="M6 7h12M10 11v6M14 11v6M9 7l1-2h4l1 2M7 7l1 12h8l1-12" stroke="currentColor" strokeWidth="2"/></svg>
                       {t('Remove')}
