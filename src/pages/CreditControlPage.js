@@ -21,6 +21,8 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   const [repayments, setRepayments] = useState([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
+  const [salesSearch, setSalesSearch] = useState('');
+  const [repaymentsSearch, setRepaymentsSearch] = useState('');
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
   const [workingId, setWorkingId] = useState('');
@@ -92,9 +94,23 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
     const row = customerMap.get(String(customerId || ''));
     return {
       name: row?.name || customerId || '—',
-      businessName: row?.businessName || '—'
+      businessName: row?.businessName || '—',
+      phone: row?.phone || row?.businessPhone || '',
+      customerCode: row?.customerCode || '',
+      idCardNumber: row?.idCardNumber || ''
     };
   }, [customerMap]);
+  const getCustomerSearchText = useCallback((customerId) => {
+    const details = getCustomerDetails(customerId);
+    return [
+      details.name,
+      details.businessName,
+      details.phone,
+      details.customerCode,
+      details.idCardNumber,
+      customerId
+    ].join(' ').toLowerCase();
+  }, [getCustomerDetails]);
   const selectedCustomer = useMemo(() => (
     customers.find((row) => String(row._id || row.id) === String(selectedCustomerId || '')) || null
   ), [customers, selectedCustomerId]);
@@ -193,6 +209,33 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       return true;
     });
   }, [repayments, salesById, sourceFilter, branchFilter, inRange]);
+  const filteredActiveSales = useMemo(() => {
+    const q = String(salesSearch || '').trim().toLowerCase();
+    if (!q) return shownActiveSales;
+    return shownActiveSales.filter((row) => {
+      const itemText = Array.isArray(row.items)
+        ? row.items.map((item) => `${item?.name || ''} ${item?.sku || ''}`).join(' ')
+        : '';
+      const sourceText = String(row.posType || 'retail') === 'wholesale' ? 'distribution credit sale wholesale' : 'retail easybuy';
+      return [
+        getCustomerSearchText(row.customer_id),
+        itemText,
+        sourceText,
+        row.status,
+        row.due_date
+      ].join(' ').toLowerCase().includes(q);
+    });
+  }, [getCustomerSearchText, salesSearch, shownActiveSales]);
+  const filteredRepayments = useMemo(() => {
+    const q = String(repaymentsSearch || '').trim().toLowerCase();
+    if (!q) return shownRepayments;
+    return shownRepayments.filter((row) => [
+      getCustomerSearchText(row.customerId),
+      row.status,
+      row.remark,
+      row.createdAt
+    ].join(' ').toLowerCase().includes(q));
+  }, [getCustomerSearchText, repaymentsSearch, shownRepayments]);
   const creditSummary = useMemo(() => {
     const easybuyRows = branchFilteredSales.filter((row) => String(row.posType || 'retail') === 'retail');
     const wholesaleRows = branchFilteredSales.filter((row) => String(row.posType || 'retail') === 'wholesale');
@@ -518,7 +561,15 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       {section === 'sales' && <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
           <h2 className="section-title" style={{ margin: 0 }}>Active Credit Sales</h2>
-          <div style={{ color: '#64748b', fontSize: 12 }}>Filtered by {branchFilter ? 'selected branch' : 'all branches'} and {sourceFilter === 'all' ? 'all sources' : sourceFilter === 'retail' ? 'Retail EasyBuy' : 'Distribution Credit Sale'}</div>
+          <div style={{ display: 'grid', gap: 8, minWidth: 320, maxWidth: 420, width: '100%' }}>
+            <input
+              className="input"
+              placeholder="Search customer, business name, phone or code"
+              value={salesSearch}
+              onChange={e => setSalesSearch(e.target.value)}
+            />
+            <div style={{ color: '#64748b', fontSize: 12 }}>Filtered by {branchFilter ? 'selected branch' : 'all branches'} and {sourceFilter === 'all' ? 'all sources' : sourceFilter === 'retail' ? 'Retail EasyBuy' : 'Distribution Credit Sale'}</div>
+          </div>
         </div>
         {canDeleteCredit && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -543,8 +594,8 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                   <input
                     type="checkbox"
                     disabled={bulkDeleting}
-                    checked={shownActiveSales.length > 0 && shownActiveSales.every(row => selectedSaleIds.includes(String(row._id || row.saleId || '')))}
-                    onChange={e => setSelectedSaleIds(e.target.checked ? shownActiveSales.map(row => String(row._id || row.saleId || '')).filter(Boolean) : [])}
+                    checked={filteredActiveSales.length > 0 && filteredActiveSales.every(row => selectedSaleIds.includes(String(row._id || row.saleId || '')))}
+                    onChange={e => setSelectedSaleIds(e.target.checked ? filteredActiveSales.map(row => String(row._id || row.saleId || '')).filter(Boolean) : [])}
                   />
                 </th>
               )}
@@ -563,7 +614,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
             </tr>
           </thead>
           <tbody>
-            {shownActiveSales.map(row => (
+            {filteredActiveSales.map(row => (
               <tr key={row._id} style={(deletingId === String(row._id || row.saleId || '') || (bulkDeleting && selectedSaleIds.includes(String(row._id || row.saleId || '')))) ? { opacity: 0.55 } : undefined}>
                 {canDeleteCredit && (
                   <td>
@@ -602,7 +653,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                 )}
               </tr>
             ))}
-            {!loading && shownActiveSales.length === 0 && <tr><td colSpan={canDeleteCredit ? 13 : 11} style={{ padding: 12, color: '#64748b' }}>No active credit sales</td></tr>}
+            {!loading && filteredActiveSales.length === 0 && <tr><td colSpan={canDeleteCredit ? 13 : 11} style={{ padding: 12, color: '#64748b' }}>No active credit sales</td></tr>}
           </tbody>
         </table>
         </div>
@@ -611,7 +662,15 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       {section === 'repayments' && <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
           <h2 className="section-title" style={{ margin: 0 }}>Repayment History</h2>
-          <div style={{ color: '#64748b', fontSize: 12 }}>Filtered by {branchFilter ? 'selected branch' : 'all branches'} and {sourceFilter === 'all' ? 'all sources' : sourceFilter === 'retail' ? 'Retail EasyBuy' : 'Distribution Credit Sale'}</div>
+          <div style={{ display: 'grid', gap: 8, minWidth: 320, maxWidth: 420, width: '100%' }}>
+            <input
+              className="input"
+              placeholder="Search customer, business name, phone or code"
+              value={repaymentsSearch}
+              onChange={e => setRepaymentsSearch(e.target.value)}
+            />
+            <div style={{ color: '#64748b', fontSize: 12 }}>Filtered by {branchFilter ? 'selected branch' : 'all branches'} and {sourceFilter === 'all' ? 'all sources' : sourceFilter === 'retail' ? 'Retail EasyBuy' : 'Distribution Credit Sale'}</div>
+          </div>
         </div>
         {canDeleteCredit && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -636,8 +695,8 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                   <input
                     type="checkbox"
                     disabled={bulkDeleting}
-                    checked={shownRepayments.length > 0 && shownRepayments.every(row => selectedRepaymentIds.includes(String(row._id || '')))}
-                    onChange={e => setSelectedRepaymentIds(e.target.checked ? shownRepayments.map(row => String(row._id || '')).filter(Boolean) : [])}
+                    checked={filteredRepayments.length > 0 && filteredRepayments.every(row => selectedRepaymentIds.includes(String(row._id || '')))}
+                    onChange={e => setSelectedRepaymentIds(e.target.checked ? filteredRepayments.map(row => String(row._id || '')).filter(Boolean) : [])}
                   />
                 </th>
               )}
@@ -651,7 +710,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
             </tr>
           </thead>
           <tbody>
-            {shownRepayments.map(row => (
+            {filteredRepayments.map(row => (
               <tr key={row._id} style={(deletingId === String(row._id || '') || (bulkDeleting && selectedRepaymentIds.includes(String(row._id || '')))) ? { opacity: 0.55 } : undefined}>
                 {canDeleteCredit && (
                   <td>
@@ -681,7 +740,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                 )}
               </tr>
             ))}
-            {!loading && shownRepayments.length === 0 && <tr><td colSpan={canDeleteCredit ? 8 : 6} style={{ padding: 12, color: '#64748b' }}>No repayments recorded yet</td></tr>}
+            {!loading && filteredRepayments.length === 0 && <tr><td colSpan={canDeleteCredit ? 8 : 6} style={{ padding: 12, color: '#64748b' }}>No repayments recorded yet</td></tr>}
           </tbody>
         </table>
         </div>
