@@ -104,6 +104,29 @@ const settingsSlice = createSlice({
           state[k] = backfill[k];
         }
       });
+      const currencies = Array.isArray(state.currencies)
+        ? state.currencies
+            .map((entry) => ({
+              code: String(entry?.code || '').trim().toUpperCase(),
+              symbol: String(entry?.symbol || '').trim(),
+              position: String(entry?.position || 'prefix') === 'suffix' ? 'suffix' : 'prefix'
+            }))
+            .filter((entry) => entry.code)
+        : [];
+      state.currencies = currencies;
+      const activeCurrencyCode = String(state.activeCurrencyCode || state.currencyCode || '').trim().toUpperCase();
+      const selectedCurrency = currencies.find((entry) => entry.code === activeCurrencyCode) || null;
+      if (selectedCurrency) {
+        state.activeCurrencyCode = selectedCurrency.code;
+        state.currencyCode = selectedCurrency.code;
+        state.currencySymbol = selectedCurrency.symbol || state.currencySymbol || initialState.currencySymbol;
+        state.currencyPosition = selectedCurrency.position || state.currencyPosition || initialState.currencyPosition;
+      } else {
+        state.activeCurrencyCode = activeCurrencyCode || initialState.activeCurrencyCode;
+        state.currencyCode = String(state.currencyCode || state.activeCurrencyCode || initialState.currencyCode).trim().toUpperCase() || initialState.currencyCode;
+        state.currencySymbol = String(state.currencySymbol || initialState.currencySymbol);
+        state.currencyPosition = String(state.currencyPosition || initialState.currencyPosition) === 'suffix' ? 'suffix' : 'prefix';
+      }
     },
     setReceiptBrandName(state, action) {
       state.receiptBrandName = String(action.payload || '');
