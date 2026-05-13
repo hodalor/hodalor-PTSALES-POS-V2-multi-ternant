@@ -35,6 +35,11 @@ const TENANT_ADMIN_ALLOWED_KEYS = new Set([
   'invoicePaidStampShowDate',
   'invoicePaidStampColor',
   'taxRate',
+  'currencyCode',
+  'currencySymbol',
+  'currencyPosition',
+  'currencies',
+  'activeCurrencyCode',
   'themeColor',
   'subscriptionPaymentUnavailableMessage',
   'currentBranchId',
@@ -45,6 +50,28 @@ function normalizeSettingsData(input = {}) {
   const next = { ...(input || {}) };
   const parsedTax = Number(next.taxRate);
   next.taxRate = Number.isFinite(parsedTax) ? Math.max(0, Math.min(1, parsedTax)) : 0;
+  next.currencies = Array.isArray(next.currencies)
+    ? next.currencies
+        .map((entry) => ({
+          code: String(entry?.code || '').trim().toUpperCase(),
+          symbol: String(entry?.symbol || '').trim(),
+          position: String(entry?.position || 'prefix') === 'suffix' ? 'suffix' : 'prefix'
+        }))
+        .filter((entry) => entry.code)
+    : [];
+  const activeCurrencyCode = String(next.activeCurrencyCode || next.currencyCode || '').trim().toUpperCase();
+  const selectedCurrency = next.currencies.find((entry) => entry.code === activeCurrencyCode) || null;
+  if (selectedCurrency) {
+    next.activeCurrencyCode = selectedCurrency.code;
+    next.currencyCode = selectedCurrency.code;
+    next.currencySymbol = selectedCurrency.symbol || next.currencySymbol || '';
+    next.currencyPosition = selectedCurrency.position || next.currencyPosition || 'prefix';
+  } else {
+    next.activeCurrencyCode = activeCurrencyCode || 'GHS';
+    next.currencyCode = String(next.currencyCode || next.activeCurrencyCode || 'GHS').trim().toUpperCase() || 'GHS';
+    next.currencySymbol = String(next.currencySymbol || '₵').trim() || '₵';
+    next.currencyPosition = String(next.currencyPosition || 'prefix') === 'suffix' ? 'suffix' : 'prefix';
+  }
   if (!String(next.chatNotificationSound || '').trim()) next.chatNotificationSound = 'bright';
   if (!String(next.callNotificationSound || '').trim()) next.callNotificationSound = 'bright';
   if (!String(next.webRtcIceServers || '').trim()) next.webRtcIceServers = 'stun:stun.l.google.com:19302';
