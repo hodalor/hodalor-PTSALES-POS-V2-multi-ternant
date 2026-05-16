@@ -1,3 +1,5 @@
+import { productSpec } from './productSpec';
+
 export function normalizeFilterText(value) {
   return String(value || '').trim().toLowerCase();
 }
@@ -54,14 +56,12 @@ export function formatDateTime(value, fallback = '—') {
 export function getItemSearchValues(row = {}, products = []) {
   const items = Array.isArray(row?.items) ? row.items : [];
   return items.flatMap((item) => {
-    const product = products.find((entry) => String(entry.id) === String(item?.productId));
-    const variantLabel = item?.variantId
-      ? ((product?.variants || []).find((variant) => String(variant.id) === String(item.variantId))?.label || item.variantId)
-      : '';
+    const meta = getProductDisplayMeta(products, item?.productId, item?.variantId, item);
     return [
       item?.productId,
-      product?.name,
-      variantLabel,
+      meta.productName,
+      meta.variantLabel,
+      meta.attributeText,
       item?.remark,
       item?.reason,
       item?.supplier,
@@ -70,18 +70,43 @@ export function getItemSearchValues(row = {}, products = []) {
   });
 }
 
+export function getProductDisplayMeta(products = [], productId, variantId = '', fallback = {}) {
+  const product = (Array.isArray(products) ? products : []).find((entry) => String(entry.id) === String(productId)) || null;
+  const variant = variantId
+    ? ((product?.variants || []).find((entry) => String(entry.id) === String(variantId)) || null)
+    : null;
+  const productName = String(fallback?.productName || fallback?.name || product?.name || productId || '').trim();
+  const variantLabel = String(fallback?.variantLabel || fallback?.variant || variant?.label || variantId || '').trim();
+  const attributeText = String(
+    fallback?.attributeText
+    || fallback?.spec
+    || productSpec(variant ? { ...product, ...variant } : product)
+    || ''
+  ).trim();
+  const sku = String(fallback?.sku || variant?.sku || product?.sku || '').trim();
+  const secondaryLabel = variantLabel || attributeText || sku;
+  return {
+    product,
+    variant,
+    productName,
+    variantLabel,
+    attributeText,
+    sku,
+    secondaryLabel
+  };
+}
+
 export function getOperationSearchValues(row = {}, products = [], branchNameById = new Map()) {
-  const product = products.find((entry) => String(entry.id) === String(row?.productId));
-  const variantLabel = row?.variantId
-    ? ((product?.variants || []).find((variant) => String(variant.id) === String(row.variantId))?.label || row.variantId)
-    : '';
+  const meta = getProductDisplayMeta(products, row?.productId, row?.variantId, row);
   const fromLabel = branchNameById.get(row?.fromBranchId || row?.from || row?.branchId) || row?.fromBranchId || row?.from || row?.branchId || '';
   const toLabel = branchNameById.get(row?.toBranchId || row?.to) || row?.toBranchId || row?.to || '';
   return [
     row?.transactionTitle,
     row?.productId,
-    product?.name,
-    variantLabel,
+    meta.productName,
+    meta.variantLabel,
+    meta.attributeText,
+    meta.sku,
     row?.reason,
     row?.remark,
     row?.supplier,

@@ -631,6 +631,7 @@ function AdminGroup() {
       grants.includes('view_config') || grants.includes('see_config') ||
       grants.includes('view_audit') || grants.includes('see_audit') ||
       grants.includes('view_stock_records') || grants.includes('see_stock_records') ||
+      grants.includes('view_inventory_consistency') || grants.includes('see_inventory_consistency') ||
       grants.includes('view_cashdrawer') || grants.includes('see_cashdrawer')
     ))
     )
@@ -642,6 +643,7 @@ function AdminGroup() {
     isFeatureEnabled(settings, 'admin.audit') ||
     isFeatureEnabled(settings, 'admin.serverLogs') ||
     isFeatureEnabled(settings, 'admin.stockRecords') ||
+    isFeatureEnabled(settings, 'admin.inventoryConsistency') ||
     isFeatureEnabled(settings, 'admin.cashDrawer') ||
     isFeatureEnabled(settings, 'admin.config') ||
     isFeatureEnabled(settings, 'admin.godhand')
@@ -700,6 +702,12 @@ function AdminGroup() {
           <NavLink to="/stock-records" className="sidebar-link" title={t('Stock Records')}>
             <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16v10H4z" stroke="currentColor" strokeWidth="2"/><path d="M7 10h10M7 14h6" stroke="currentColor" strokeWidth="2"/></svg>
             <span className="sidebar-text">{t('Stock Records')}</span>
+          </NavLink>
+          )}
+          {isFeatureEnabled(settings, 'admin.inventoryConsistency') && ((Array.isArray(grants) && (grants.includes('view_inventory_consistency') || grants.includes('see_inventory_consistency'))) || ['Admin','SuperAdmin'].includes(role)) && (
+          <NavLink to="/inventory-consistency" className="sidebar-link" title={t('Inventory Consistency')}>
+            <svg viewBox="0 0 24 24" fill="none"><path d="M4 5h16v14H4z" stroke="currentColor" strokeWidth="2"/><path d="M8 15l3-3 2 2 3-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            <span className="sidebar-text">{t('Inventory Consistency')}</span>
           </NavLink>
           )}
           {isFeatureEnabled(settings, 'admin.cashDrawer') && ((Array.isArray(grants) && (grants.includes('view_cashdrawer') || grants.includes('see_cashdrawer'))) || ['Admin','SuperAdmin'].includes(role)) && (

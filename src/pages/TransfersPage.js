@@ -17,7 +17,7 @@ import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
-import { formatDateTime, getOperationSearchValues, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
+import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
 
 function normalizeTransferReviewStatus(value) {
   return String(value || '').toLowerCase() === 'cancelled' ? 'cancelled' : 'accepted';
@@ -804,10 +804,13 @@ function TransfersPage() {
               </thead>
               <tbody>
                 {items.map(item => {
-                  const product = products.find(p => p.id === item.productId);
+                  const meta = getProductDisplayMeta(products, item.productId, item.variantId, item);
                   return (
                     <tr key={item.lineId}>
-                      <td>{product?.name || item.productId}</td>
+                      <td>
+                        <div>{meta.productName || item.productId}</div>
+                        {meta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
+                      </td>
                       <td>{item.qty}</td>
                       <td>{Array.isArray(item.unitIds) && item.unitIds.length > 0 ? item.unitIds.length : '—'}</td>
                       <td><button className="btn" onClick={() => removeItem(item.lineId)}>{t('Remove')}</button></td>
@@ -874,7 +877,7 @@ function TransfersPage() {
             <tbody>
               {loading && filteredPendingRequests.length === 0 && <tr><td colSpan="8" style={{ padding: 12, color: '#64748b' }}><LoadingDots label={t('Loading transfers')} /></td></tr>}
               {!loading && filteredPendingRequests.map(r => {
-                const p = products.find(x => x.id === r.productId);
+                const meta = getProductDisplayMeta(products, r.productId, r.variantId, r);
                 const fromLabel = byId.get(r.fromBranchId || r.from) || r.fromBranchId || r.from;
                 const toLabel = byId.get(r.toBranchId || r.to) || r.toBranchId || r.to;
                 const qtyValue = Number(r.qty || r.baseUnits || 0);
@@ -883,13 +886,16 @@ function TransfersPage() {
                     ? t('Wholesale Incoming')
                     : t('Retail Transfer'))
                   : t('Retail Transfer');
-                const title = String(r.transactionTitle || '').trim() || (Array.isArray(r.items) && r.items.length > 1 ? `${p?.name || r.productId} +${r.items.length - 1} ${t('more')}` : (p?.name || r.productId));
+                const title = String(r.transactionTitle || '').trim() || (Array.isArray(r.items) && r.items.length > 1 ? `${meta.productName || r.productId} +${r.items.length - 1} ${t('more')}` : (meta.productName || r.productId));
                 const canAct = String(r.approvalMode || '') === 'workflow'
                   ? ((String(r.status || '') === 'pending_director' && canWorkflowDirector(r)) || (String(r.status || '') === 'pending_manager' && canWorkflowManager(r)))
                   : canActOnRetailRequest(r);
                 return (
                   <tr key={r._id || r.clientId} style={{ cursor: 'pointer' }} onClick={() => openDetail(r)}>
-                    <td>{title}</td>
+                    <td>
+                      <div>{title}</div>
+                      {meta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
+                    </td>
                     <td>
                       <div style={{ display: 'grid', gap: 4 }}>
                         <span>{fromLabel}{r.fromInventoryType ? ` (${t(r.fromInventoryType)})` : ''}</span>
@@ -1016,7 +1022,12 @@ function TransfersPage() {
                 <tr key={e.id} style={{ cursor: bulkDeleting ? 'default' : 'pointer', opacity: bulkDeleting && selectedRecordIds.includes(String(e._id || e.id || '')) ? 0.55 : 1 }} onClick={() => { if (!bulkDeleting) setAuditDetail(e); }}>
                   <td>{new Date(e.ts).toLocaleString()}</td>
                   <td>{e.actor}</td>
-                  <td>{d.product || '—'}</td>
+                  <td>
+                    <div>{getProductDisplayMeta(products, d.productId, d.variantId, d).productName || d.product || '—'}</div>
+                    {getProductDisplayMeta(products, d.productId, d.variantId, d).secondaryLabel ? (
+                      <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{getProductDisplayMeta(products, d.productId, d.variantId, d).secondaryLabel}</div>
+                    ) : null}
+                  </td>
                   <td>{fromName} → {toName}</td>
                   <td>{d.qty ?? '—'}</td>
                   <td>{e.remark || '—'}</td>
@@ -1072,8 +1083,8 @@ function TransfersPage() {
           <div className="detail-grid">
             <div className="detail-field"><div className="detail-label">{t('Status')}</div><div className="detail-value"><span className={`status-pill ${detail.status === 'approved' ? 'status-pill-approved' : detail.status === 'rejected' ? 'status-pill-rejected' : 'status-pill-pending'}`}>{detail.status}</span></div></div>
             <div className="detail-field"><div className="detail-label">{t('Title')}</div><div className="detail-value">{detail.transactionTitle || '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">{t('Product')}</div><div className="detail-value">{products.find(p => p.id === detail.productId)?.name || detail.productId}</div></div>
-            {detail.variantId ? <div className="detail-field"><div className="detail-label">{t('Variant')}</div><div className="detail-value">{(products.find(p => p.id === detail.productId)?.variants || []).find(v => v.id === detail.variantId)?.label || detail.variantId}</div></div> : null}
+            <div className="detail-field"><div className="detail-label">{t('Product')}</div><div className="detail-value">{getProductDisplayMeta(products, detail.productId, detail.variantId, detail).productName || detail.productId}</div></div>
+            {getProductDisplayMeta(products, detail.productId, detail.variantId, detail).secondaryLabel ? <div className="detail-field"><div className="detail-label">{t('Variant / Attribute')}</div><div className="detail-value">{getProductDisplayMeta(products, detail.productId, detail.variantId, detail).secondaryLabel}</div></div> : null}
             <div className="detail-field"><div className="detail-label">{t('From')}</div><div className="detail-value">{byId.get(detail.fromBranchId || detail.from) || detail.fromBranchId || detail.from}</div></div>
             <div className="detail-field"><div className="detail-label">{t('To')}</div><div className="detail-value">{byId.get(detail.toBranchId || detail.to) || detail.toBranchId || detail.to}</div></div>
             <div className="detail-field"><div className="detail-label">{t('From Inventory')}</div><div className="detail-value">{t(detail.fromInventoryType || 'retail')}</div></div>
@@ -1105,11 +1116,12 @@ function TransfersPage() {
                 </thead>
                 <tbody>
                   {reviewItems.map((item, index) => {
-                    const product = products.find(p => p.id === item.productId);
+                    const meta = getProductDisplayMeta(products, item.productId, item.variantId, item);
                     return (
                       <tr key={item.lineId || index}>
                         <td>
-                          <div>{product?.name || item.productId}</div>
+                          <div>{meta.productName || item.productId}</div>
+                          {meta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
                           {Array.isArray(item.selectedUnits) && item.selectedUnits.length > 0 && (
                             <div style={{ marginTop: 4, color: '#111827', fontSize: 12 }}>
                               {item.selectedUnits.map(unit => unit.imei || unit.serialNumber || unit.unitId).filter(Boolean).join(', ')}

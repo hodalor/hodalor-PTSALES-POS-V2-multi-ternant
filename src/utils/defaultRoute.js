@@ -31,6 +31,7 @@ const ROUTE_CANDIDATES = [
   { path: '/expenses', feature: 'sections.expense', roles: ['Admin', 'Manager'], grant: ['view_expenses', 'see_expenses', 'add_expenses'] },
   { path: '/approvals-center', feature: 'modules.approvalsCenter', roles: ['Admin', 'Manager', 'SuperAdmin'], grant: ['view_approvals', 'approve_distribution_director', 'approve_distribution_manager', 'approve_warehouse_director', 'approve_warehouse_manager', 'approve_credit_director', 'approve_credit_manager'] },
   { path: '/users', feature: 'sections.admin', roles: ['Admin', 'SuperAdmin'], grant: ['view_users', 'see_users'] },
+  { path: '/inventory-consistency', feature: 'admin.inventoryConsistency', roles: ['Admin', 'Manager', 'SuperAdmin'], grant: ['view_inventory_consistency', 'see_inventory_consistency'] },
   { path: '/config', feature: 'sections.admin', roles: ['Admin', 'Manager'], grant: ['view_config', 'see_config'] },
   { path: '/cashdrawer', feature: 'sections.admin', roles: ['Admin', 'Manager', 'Cashier'], grant: ['view_cashdrawer', 'see_cashdrawer'] },
   { path: '/tenants', roles: ['SuperAdmin'] }

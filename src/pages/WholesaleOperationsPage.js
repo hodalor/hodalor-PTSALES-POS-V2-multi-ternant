@@ -14,7 +14,7 @@ import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { ensureSupplierByName } from '../utils/suppliers';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
-import { formatDateTime, getOperationSearchValues, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
+import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
 
 function labelForArea(area, op, t) {
   const prefix = String(area || 'wholesale').toLowerCase() === 'warehouse' ? t('Warehouse') : t('Distribution');
@@ -850,20 +850,22 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
             <tbody>
               {loading && filteredOperations.length === 0 && <tr><td colSpan="9" style={{ padding: 12, color: '#64748b' }}><LoadingDots label={t('Loading wholesale operations')} /></td></tr>}
               {!loading && pageRows.map(row => {
-                const product = products.find(item => String(item.id) === String(row.productId));
-                const variantLabel = row.variantId ? ((product?.variants || []).find(variant => String(variant.id) === String(row.variantId))?.label || row.variantId) : '';
+                const meta = getProductDisplayMeta(products, row.productId, row.variantId, row);
                 const route = row.operationType === 'transfer'
                   ? `${branchNameById.get(row.fromBranchId || row.from) || row.fromBranchId || row.from || '—'} ${t(String(row.fromInventoryType || 'retail'))} → ${branchNameById.get(row.toBranchId || row.to) || row.toBranchId || row.to || '—'} ${t(String(row.toInventoryType || 'retail'))}`
                   : `${branchNameById.get(row.branchId) || row.branchId || '—'} • ${t(String(row.toInventoryType || row.fromInventoryType || 'wholesale'))}`;
                 const value = row.operationType === 'refund' ? Number(row.requestedAmount || 0) : Number(row.cost || 0);
-                const title = String(row.transactionTitle || '').trim() || (Array.isArray(row.items) && row.items.length > 1 ? `${product?.name || row.productId} +${row.items.length - 1} ${t('more')}` : `${product?.name || row.productId}${variantLabel ? ` • ${variantLabel}` : ''}`);
+                const title = String(row.transactionTitle || '').trim() || (Array.isArray(row.items) && row.items.length > 1 ? `${meta.productName || row.productId} +${row.items.length - 1} ${t('more')}` : (meta.productName || row.productId));
                 const rowCanAct = String(row.approvalMode || '').toLowerCase() === 'workflow'
                   ? ((String(row.status || '') === 'pending_director' && canDirectorApprove) || (String(row.status || '') === 'pending_manager' && canManagerApprove))
                   : (((String(row.status || '') === 'pending_director' || String(row.status || '') === 'pending_approval') && canDirectorApprove && (!allowedBranchIds || allowedBranchIds.has(String(row.from || row.fromBranchId || '')) || allowedBranchIds.has(String(row.to || row.toBranchId || ''))))
                     || (String(row.status || '') === 'pending_manager' && canManagerApprove && (!allowedBranchIds || allowedBranchIds.has(String(row.to || row.toBranchId || '')))));
                 return (
                   <tr key={row._id || row.clientId} onClick={() => openReview(row)} style={{ cursor: 'pointer' }}>
-                    <td>{title}</td>
+                    <td>
+                      <div>{title}</div>
+                      {meta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
+                    </td>
                     <td>{route}</td>
                     <td>{Number(row.qty || 0)}</td>
                     <td>{value > 0 ? maskCostValue(value) : '—'}</td>
@@ -1112,11 +1114,12 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                 </thead>
                 <tbody>
                   {items.map(item => {
-                    const product = products.find(row => String(row.id) === String(item.productId));
+                    const meta = getProductDisplayMeta(products, item.productId, item.variantId, item);
                     return (
                       <tr key={item.lineId}>
                         <td>
-                          <div style={{ color: '#111827' }}>{product?.name || item.productId}</div>
+                          <div style={{ color: '#111827' }}>{meta.productName || item.productId}</div>
+                          {meta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
                           {Array.isArray(item.selectedUnits) && item.selectedUnits.length > 0 && (
                             <div style={{ marginTop: 4, color: '#111827', fontSize: 12 }}>
                               {item.selectedUnits.map(unit => unit.imei || unit.serialNumber || unit.unitId).filter(Boolean).join(', ')}
@@ -1197,11 +1200,12 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                 </thead>
                 <tbody>
                   {reviewItems.map((item, index) => {
-                    const product = products.find(row => String(row.id) === String(item.productId));
+                    const meta = getProductDisplayMeta(products, item.productId, item.variantId, item);
                     return (
                       <tr key={item.lineId || index}>
                         <td>
-                          <div style={{ color: '#111827' }}>{product?.name || item.productId}</div>
+                          <div style={{ color: '#111827' }}>{meta.productName || item.productId}</div>
+                          {meta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
                           {Array.isArray(item.selectedUnits) && item.selectedUnits.length > 0 && (
                             <div style={{ marginTop: 4, color: '#111827', fontSize: 12 }}>
                               {item.selectedUnits.map(unit => unit.imei || unit.serialNumber || unit.unitId).filter(Boolean).join(', ')}

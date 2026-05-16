@@ -15,3 +15,11 @@ export function transfer(payload) {
 export function setStock(payload) {
   return fetchJson('/api/stock/set', { method: 'POST', body: JSON.stringify(payload) });
 }
+
+export function getConsistencyReport(params = {}) {
+  const query = new URLSearchParams();
+  if (params.limit != null && params.limit !== '') query.set('limit', String(params.limit));
+  if (params.mismatchOnly != null) query.set('mismatchOnly', String(params.mismatchOnly));
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+  return fetchJson(`/api/stock/consistency-report${suffix}`);
+}

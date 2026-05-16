@@ -74,6 +74,7 @@ export const TENANT_GRANT_CATALOG = [
   { key: 'send_chat_messages', label: 'Send Internal Chat Messages' },
   { key: 'view_pt_ai', label: 'Use Ask PT AI' },
   { key: 'view_stock_records', label: 'Open Stock Records' },
+  { key: 'view_inventory_consistency', label: 'Open Inventory Consistency' },
   { key: 'view_wholesale_invoices', label: 'Open Wholesale Invoices' },
   { key: 'view_warehouse_invoices', label: 'Open Warehouse Invoices' },
   { key: 'view_warehouse_approvals', label: 'Open Warehouse Approvals' },
@@ -110,7 +111,7 @@ export const PLAN_DEFAULT_FEATURES = {
     'modules.transfers', 'modules.adjustments', 'modules.suppliers', 'modules.customers',
     'modules.creditControl', 'modules.approvalsCenter', 'modules.refunds', 'modules.refundApprovals',
     'modules.expenseApprovals', 'modules.reports', 'modules.backup', 'modules.communication',
-    'admin.users', 'admin.manual', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords',
+    'admin.users', 'admin.manual', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords', 'admin.inventoryConsistency',
     'admin.cashDrawer', 'admin.config', 'features.offlineBackup',
     'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
     ...TENANT_GRANT_CATALOG.map((item) => `grants.${item.key}`).filter((key) => !['grants.approve_credit_director', 'grants.approve_distribution_director', 'grants.approve_warehouse_director'].includes(key))
@@ -307,6 +308,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
       { label: 'Audit Log', keys: ['admin.audit', 'grants.view_audit'] },
       { label: 'Server Logs', keys: ['admin.serverLogs'] },
       { label: 'Stock Records', keys: ['admin.stockRecords', 'grants.view_stock_records'] },
+      { label: 'Inventory Consistency', keys: ['admin.inventoryConsistency', 'grants.view_inventory_consistency'] },
       { label: 'Cash Drawer', keys: ['admin.cashDrawer', 'grants.view_cashdrawer'] },
       { label: 'Config', keys: ['admin.config', 'grants.view_config'] },
       { label: 'GodHand', keys: ['admin.godhand'] },
@@ -359,6 +361,7 @@ export const TENANT_FEATURE_CATALOG = [
   { key: 'admin.audit', label: 'Audit Log', group: 'Menus / Admin & Control' },
   { key: 'admin.serverLogs', label: 'Server Logs', group: 'Menus / Admin & Control' },
   { key: 'admin.stockRecords', label: 'Stock Records', group: 'Menus / Admin & Control' },
+  { key: 'admin.inventoryConsistency', label: 'Inventory Consistency', group: 'Menus / Admin & Control' },
   { key: 'admin.cashDrawer', label: 'Cash Drawer', group: 'Menus / Admin & Control' },
   { key: 'admin.config', label: 'Config', group: 'Menus / Admin & Control' },
   { key: 'admin.godhand', label: 'GodHand', group: 'Menus / Admin & Control' },
@@ -378,7 +381,7 @@ export const TENANT_FEATURE_CATALOG = [
       group = 'Permissions / Communication';
     } else if (['view_wholesale_pos', 'view_purchases', 'add_purchases', 'add_wholesale_purchases', 'add_warehouse_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'add_wholesale_transfers', 'add_warehouse_transfers', 'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'add_wholesale_adjustments', 'add_warehouse_adjustments', 'edit_adjustments', 'approve_adjustments', 'view_credit_control', 'approve_credit_director', 'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_distribution_director', 'approve_distribution_manager', 'approve_warehouse_director', 'approve_warehouse_manager', 'view_wholesale_invoices', 'view_warehouse_invoices', 'view_warehouse_approvals'].includes(item.key)) {
       group = 'Permissions / Distribution Actions';
-    } else if (['view_users', 'view_config', 'view_audit', 'view_stock_records', 'view_cashdrawer', 'view_imei_conflicts', 'export_tenant_data', 'import_tenant_data'].includes(item.key)) {
+    } else if (['view_users', 'view_config', 'view_audit', 'view_stock_records', 'view_inventory_consistency', 'view_cashdrawer', 'view_imei_conflicts', 'export_tenant_data', 'import_tenant_data'].includes(item.key)) {
       group = 'Permissions / Admin Actions';
     }
     return { key: `grants.${item.key}`, label: item.label, group };

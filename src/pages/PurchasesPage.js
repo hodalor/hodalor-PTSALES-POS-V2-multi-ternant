@@ -21,7 +21,7 @@ import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { ensureSupplierByName } from '../utils/suppliers';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
-import { formatDateTime, getOperationSearchValues, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
+import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
 
 function PurchasesPage() {
   const products = useSelector(s => s.products.products);
@@ -722,10 +722,13 @@ function PurchasesPage() {
               </thead>
               <tbody>
                 {items.map(item => {
-                  const product = products.find(p => p.id === item.productId);
+                  const meta = getProductDisplayMeta(products, item.productId, item.variantId, item);
                   return (
                     <tr key={item.lineId}>
-                      <td>{product?.name || item.productId}</td>
+                      <td>
+                        <div>{meta.productName || item.productId}</div>
+                        {meta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
+                      </td>
                       <td>{item.baseUnits}</td>
                       <td>{Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0 ? item.serializedEntries.length : '—'}</td>
                       <td>{item.supplier || '—'}</td>
@@ -803,12 +806,15 @@ function PurchasesPage() {
             <tbody>
               {loading && <tr><td colSpan="9" style={{ padding: 12, color: '#64748b' }}><LoadingDots label={t('Loading purchases')} /></td></tr>}
               {!loading && filteredPendingRequests.map(r => {
-                const p = products.find(x => x.id === r.productId);
+                const meta = getProductDisplayMeta(products, r.productId, r.variantId, r);
                 const branchName = byId.get(r.branchId) || r.branchId;
-                const title = String(r.transactionTitle || '').trim() || (Array.isArray(r.items) && r.items.length > 1 ? `${p?.name || r.productId} +${r.items.length - 1} more` : (p?.name || r.productId));
+                const title = String(r.transactionTitle || '').trim() || (Array.isArray(r.items) && r.items.length > 1 ? `${meta.productName || r.productId} +${r.items.length - 1} more` : (meta.productName || r.productId));
                 return (
                   <tr key={r._id || r.clientId} style={{ cursor: 'pointer' }} onClick={() => setDetail(r)}>
-                    <td>{title}</td>
+                    <td>
+                      <div>{title}</div>
+                      {meta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
+                    </td>
                     <td>{branchName}</td>
                     <td>{r.baseUnits}</td>
                     <td>{r.supplier || '—'}</td>
@@ -841,8 +847,8 @@ function PurchasesPage() {
             <div className="detail-field"><div className="detail-label">Status</div><div className="detail-value"><span className={`status-pill ${detail.status === 'approved' ? 'status-pill-approved' : detail.status === 'rejected' ? 'status-pill-rejected' : 'status-pill-pending'}`}>{detail.status}</span></div></div>
             <div className="detail-field"><div className="detail-label">Branch</div><div className="detail-value">{byId.get(detail.branchId) || detail.branchId}</div></div>
             <div className="detail-field"><div className="detail-label">Title</div><div className="detail-value">{detail.transactionTitle || '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">Product</div><div className="detail-value">{products.find(p => p.id === detail.productId)?.name || detail.productId}</div></div>
-            {detail.variantId ? <div className="detail-field"><div className="detail-label">Variant</div><div className="detail-value">{(products.find(p => p.id === detail.productId)?.variants || []).find(v => v.id === detail.variantId)?.label || detail.variantId}</div></div> : null}
+            <div className="detail-field"><div className="detail-label">Product</div><div className="detail-value">{getProductDisplayMeta(products, detail.productId, detail.variantId, detail).productName || detail.productId}</div></div>
+            {getProductDisplayMeta(products, detail.productId, detail.variantId, detail).secondaryLabel ? <div className="detail-field"><div className="detail-label">Variant / Attribute</div><div className="detail-value">{getProductDisplayMeta(products, detail.productId, detail.variantId, detail).secondaryLabel}</div></div> : null}
             <div className="detail-field"><div className="detail-label">Base Units</div><div className="detail-value">{detail.baseUnits}</div></div>
             <div className="detail-field"><div className="detail-label">Pack</div><div className="detail-value">{detail.pack || 'Base Unit'}</div></div>
             <div className="detail-field"><div className="detail-label">Supplier</div><div className="detail-value">{detail.supplier || '—'}</div></div>
@@ -872,11 +878,12 @@ function PurchasesPage() {
                 </thead>
                 <tbody>
                   {detail.items.map((item, index) => {
-                    const product = products.find(p => p.id === item.productId);
+                    const meta = getProductDisplayMeta(products, item.productId, item.variantId, item);
                     return (
                       <tr key={item.lineId || index}>
                         <td>
-                          <div style={{ color: '#111827' }}>{product?.name || item.productId}</div>
+                          <div style={{ color: '#111827' }}>{meta.productName || item.productId}</div>
+                          {meta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
                           {Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0 && (
                             <div style={{ marginTop: 4, color: '#111827', fontSize: 12 }}>
                               {item.serializedEntries.map(unit => unit.imei || unit.serialNumber).filter(Boolean).join(', ')}

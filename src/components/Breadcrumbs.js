@@ -15,6 +15,7 @@ const titles = {
   'refunds': 'Refunds',
   'reports': 'Reports',
   'users': 'Users',
+  'inventory-consistency': 'Inventory Consistency',
   'cashdrawer': 'Cash Drawer',
   'config': 'Config'
 };

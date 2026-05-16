@@ -64,6 +64,7 @@ import ReceiptPublicPage from './pages/ReceiptPublicPage';
 import AdminManualPage from './pages/AdminManualPage';
 import DocsPage from './pages/DocsPage';
 import StockRecordsPage from './pages/StockRecordsPage';
+import InventoryConsistencyPage from './pages/InventoryConsistencyPage';
 import ServerLogsPage from './pages/ServerLogsPage';
 import ExpensesPage from './pages/ExpensesPage';
 import ExpenseApprovalsPage from './pages/ExpenseApprovalsPage';
@@ -743,6 +744,7 @@ function App() {
             <Route path="/refunds" element={<ProtectedRoute feature="pages.retail.refunds" roles={['Admin','Manager','Cashier']} grant={['view_refunds','see_refunds']}><RefundsPage /></ProtectedRoute>} />
             <Route path="/refund-approvals" element={<ProtectedRoute feature="modules.refundApprovals" roles={['Admin','Manager','SuperAdmin']} grant="approve_refunds"><RefundApprovalsPage /></ProtectedRoute>} />
             <Route path="/stock-records" element={<ProtectedRoute feature="sections.admin" roles={['Admin','SuperAdmin']} grant={['view_stock_records','see_stock_records']}><StockRecordsPage /></ProtectedRoute>} />
+            <Route path="/inventory-consistency" element={<ProtectedRoute feature="admin.inventoryConsistency" roles={['Admin','Manager','SuperAdmin']} grant={['view_inventory_consistency','see_inventory_consistency']}><InventoryConsistencyPage /></ProtectedRoute>} />
             <Route path="/users" element={<ProtectedRoute feature="sections.admin" roles={['Admin','SuperAdmin']} grant={['view_users','see_users']}><UsersPage /></ProtectedRoute>} />
             <Route path="/tenants" element={<ProtectedRoute roles={['SuperAdmin']}><TenantsPage /></ProtectedRoute>} />
             <Route path="/cashdrawer" element={<ProtectedRoute feature="sections.admin" roles={['Admin','Manager','Cashier']} grant={['view_cashdrawer','see_cashdrawer']}><CashDrawerPage /></ProtectedRoute>} />

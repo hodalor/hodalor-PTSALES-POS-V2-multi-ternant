@@ -18,7 +18,7 @@ import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
-import { formatDateTime, getOperationSearchValues, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
+import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
 
 function inventoryTypeForBranch(branches, targetBranchId) {
   const branch = Array.isArray(branches)
@@ -761,12 +761,13 @@ function AdjustmentsPage() {
               </thead>
               <tbody>
                 {items.map(item => {
-                  const product = products.find(p => p.id === item.productId);
+                  const meta = getProductDisplayMeta(products, item.productId, item.variantId, item);
                   const adjustment = getAdjustmentDisplay(item);
                   return (
                     <tr key={item.lineId}>
                       <td>
-                        <div>{product?.name || item.productId}</div>
+                        <div>{meta.productName || item.productId}</div>
+                        {meta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
                         {Array.isArray(item.selectedUnits) && item.selectedUnits.length > 0 && (
                           <div style={{ marginTop: 4, color: '#111827', fontSize: 12 }}>
                             {item.selectedUnits.map(unit => unit.imei || unit.serialNumber || unit.unitId).filter(Boolean).join(', ')}
@@ -890,7 +891,7 @@ function AdjustmentsPage() {
               <th align="left">Timestamp</th>
               <th align="left">Actor</th>
               <th align="left">Product</th>
-              <th align="left">Variant</th>
+              <th align="left">Variant / Attribute</th>
               <th align="left">Branch</th>
               <th align="left">Adjustment Type</th>
               <th align="left">Quantity</th>
@@ -910,7 +911,7 @@ function AdjustmentsPage() {
           </thead>
           <tbody>
             {rows.slice((page-1)*pageSize, (page-1)*pageSize + pageSize).map(r => {
-              const adjustment = getAdjustmentDisplay(r);
+            const adjustment = getAdjustmentDisplay(r);
               return (
               <tr key={r.id} style={bulkDeleting && selectedRecordIds.includes(String(r._id || r.id || '')) ? { opacity: 0.55 } : undefined}>
                 <td>{new Date(r.ts).toLocaleString()}</td>
@@ -1146,12 +1147,15 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
         <tbody>
           {loading && <tr><td colSpan="8" style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading adjustments" /></td></tr>}
           {!loading && filteredRequests.map(r => {
-            const p = products.find(x => x.id === r.productId);
+            const meta = getProductDisplayMeta(products, r.productId, r.variantId, r);
             const adjustment = getAdjustmentDisplay(r);
-            const title = String(r.transactionTitle || '').trim() || (Array.isArray(r.items) && r.items.length > 1 ? `${p?.name || r.productId} +${r.items.length - 1} more` : `${p?.name || r.productId}${r.variantId ? ` • ${(p?.variants || []).find(v => v.id === r.variantId)?.label || r.variantId}` : ''}`);
+            const title = String(r.transactionTitle || '').trim() || (Array.isArray(r.items) && r.items.length > 1 ? `${meta.productName || r.productId} +${r.items.length - 1} more` : (meta.productName || r.productId));
             return (
               <tr key={r._id || r.clientId} style={{ cursor: 'pointer' }} onClick={() => setDetail(r)}>
-                <td>{title}</td>
+                <td>
+                  <div>{title}</div>
+                  {meta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
+                </td>
                 <td>{byId.get(r.branchId) || r.branchId}</td>
                 <td>{adjustment.typeLabel}</td>
                 <td>{adjustment.quantity}</td>
@@ -1180,15 +1184,15 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
 }
 
 function RequestDetail({ detail, products, byId }) {
-  const p = products.find(x => x.id === detail.productId);
-  const vLabel = detail.variantId ? ((p?.variants || []).find(v => v.id === detail.variantId)?.label || detail.variantId) : '';
+  const meta = getProductDisplayMeta(products, detail.productId, detail.variantId, detail);
   const adjustment = getAdjustmentDisplay(detail);
   return (
     <>
       <div className="detail-grid">
         <div className="detail-field"><div className="detail-label">Status</div><div className="detail-value"><span className={`status-pill ${detail.status === 'approved' ? 'status-pill-approved' : detail.status === 'rejected' ? 'status-pill-rejected' : 'status-pill-pending'}`}>{detail.status}</span></div></div>
         <div className="detail-field"><div className="detail-label">Title</div><div className="detail-value">{detail.transactionTitle || '—'}</div></div>
-        <div className="detail-field"><div className="detail-label">Product</div><div className="detail-value">{p?.name || detail.productId}{vLabel ? ` • ${vLabel}` : ''}</div></div>
+        <div className="detail-field"><div className="detail-label">Product</div><div className="detail-value">{meta.productName || detail.productId}</div></div>
+        {meta.secondaryLabel ? <div className="detail-field"><div className="detail-label">Variant / Attribute</div><div className="detail-value">{meta.secondaryLabel}</div></div> : null}
         <div className="detail-field"><div className="detail-label">Branch</div><div className="detail-value">{byId.get(detail.branchId) || detail.branchId}</div></div>
         <div className="detail-field"><div className="detail-label">Adjustment Type</div><div className="detail-value">{adjustment.typeLabel}</div></div>
         <div className="detail-field"><div className="detail-label">Quantity</div><div className="detail-value">{adjustment.quantity}</div></div>
@@ -1217,12 +1221,13 @@ function RequestDetail({ detail, products, byId }) {
             </thead>
             <tbody>
               {detail.items.map((item, index) => {
-                const product = products.find(row => row.id === item.productId);
+                const itemMeta = getProductDisplayMeta(products, item.productId, item.variantId, item);
                 const itemAdjustment = getAdjustmentDisplay(item);
                 return (
                   <tr key={item.lineId || index}>
                     <td>
-                      <div>{product?.name || item.productId}</div>
+                      <div>{itemMeta.productName || item.productId}</div>
+                      {itemMeta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{itemMeta.secondaryLabel}</div> : null}
                       {Array.isArray(item.selectedUnits) && item.selectedUnits.length > 0 && (
                         <div style={{ marginTop: 4, color: '#111827', fontSize: 12 }}>
                           {item.selectedUnits.map(unit => unit.imei || unit.serialNumber || unit.unitId).filter(Boolean).join(', ')}
