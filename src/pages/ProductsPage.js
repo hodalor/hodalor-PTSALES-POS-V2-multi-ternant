@@ -477,9 +477,17 @@ function ProductsPage() {
             const id = v.id || nextIdByIdx.get(idx) || crypto.randomUUID();
             nextIdByIdx.set(idx, id);
             const prev = original?.variants?.find(x => x.id === id);
-            return { id, label: v.label.trim(), sku: v.sku?.trim() || '', price: v.price !== '' ? Number(v.price) : undefined, stockByBranch: prev?.stockByBranch || {} };
+            return {
+              id,
+              label: v.label.trim(),
+              sku: v.sku?.trim() || '',
+              price: v.price !== '' ? Number(v.price) : undefined,
+              stockByBranch: prev?.stockByBranch || {},
+              wholesaleStockByBranch: prev?.wholesaleStockByBranch || {},
+              warehouseStockByBranch: prev?.warehouseStockByBranch || {}
+            };
         });
-        const variantsServer = variantsLocal.map(({ stockByBranch, ...rest }) => rest);
+        const variantsServer = variantsLocal.map(({ stockByBranch, wholesaleStockByBranch, warehouseStockByBranch, ...rest }) => rest);
         const updatedBaseLocal = {
             name: name.trim(),
             brand: brand.trim(),

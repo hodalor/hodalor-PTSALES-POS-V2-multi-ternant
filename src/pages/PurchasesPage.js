@@ -21,6 +21,7 @@ import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { ensureSupplierByName } from '../utils/suppliers';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
+import { formatDateTime, getOperationSearchValues, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
 
 function PurchasesPage() {
   const products = useSelector(s => s.products.products);
@@ -58,6 +59,11 @@ function PurchasesPage() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('pending_director');
+  const [recordQuery, setRecordQuery] = useState('');
+  const [approvalQuery, setApprovalQuery] = useState('');
+  const [approvalDateField, setApprovalDateField] = useState('created');
+  const [approvalDateFrom, setApprovalDateFrom] = useState('');
+  const [approvalDateTo, setApprovalDateTo] = useState('');
   const [detail, setDetail] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [reloadAt, setReloadAt] = useState(0);
@@ -153,9 +159,10 @@ function PurchasesPage() {
       if (ts < fromTs || ts > toTs) return false;
       if (fActor && e.actor !== fActor) return false;
       if (fBranch && e.branchId !== fBranch) return false;
+      if (!matchesFilterText([(e.details || {}).product, (e.details || {}).variant, (e.details || {}).supplier, e.remark, e.actor, byId.get(e.branchId)], recordQuery)) return false;
       return true;
     }).slice().reverse();
-  }, [basePurchases, dateFrom, dateTo, fActor, fBranch, periodMode]);
+  }, [basePurchases, byId, dateFrom, dateTo, fActor, fBranch, periodMode, recordQuery]);
 
   useEffect(() => {
     if (selectedTrackType === 'serialized') {
@@ -443,6 +450,14 @@ function PurchasesPage() {
       return true;
     });
   }, [requests, statusFilter, fBranch, allowedBranches]);
+  const filteredPendingRequests = useMemo(() => {
+    return pendingRequests.filter((row) => {
+      if (!matchesFilterText(getOperationSearchValues(row, products, byId), approvalQuery)) {
+        return false;
+      }
+      return matchesDateField(row, approvalDateField, approvalDateFrom, approvalDateTo);
+    });
+  }, [approvalDateField, approvalDateFrom, approvalDateTo, approvalQuery, byId, pendingRequests, products]);
   const summary = useMemo(() => {
     const totalQty = purchases.reduce((sum, row) => sum + (Number(row.details?.qty || 0) || 0), 0);
     const totalCost = purchases.reduce((sum, row) => sum + (Number(row.details?.qty || 0) * Number(row.details?.cost || 0)), 0);
@@ -747,6 +762,29 @@ function PurchasesPage() {
             </div>
             </div>
           </div>
+          <div className="record-filters" style={{ marginBottom: 12 }}>
+            <label>
+              <div className="field-label">{t('Search Product')}</div>
+              <input className="input" value={approvalQuery} onChange={e => setApprovalQuery(e.target.value)} placeholder={t('Search product, branch, supplier, or remark')} />
+            </label>
+            <label>
+              <div className="field-label">{t('Date Type')}</div>
+              <select className="select" value={approvalDateField} onChange={e => setApprovalDateField(e.target.value)}>
+                <option value="created">{t('Initiated Date')}</option>
+                <option value="director">{t('Director Approval Date')}</option>
+                <option value="manager">{t('Manager Approval Date')}</option>
+                <option value="decision">{t('Final Decision Date')}</option>
+              </select>
+            </label>
+            <label>
+              <div className="field-label">{t('From')}</div>
+              <input className="input" type="date" value={approvalDateFrom} onChange={e => setApprovalDateFrom(e.target.value)} />
+            </label>
+            <label>
+              <div className="field-label">{t('To')}</div>
+              <input className="input" type="date" value={approvalDateTo} onChange={e => setApprovalDateTo(e.target.value)} />
+            </label>
+          </div>
           <div className="table-wrap">
           <table className="table">
             <thead>
@@ -756,12 +794,15 @@ function PurchasesPage() {
                 <th align="left">Base Units</th>
                 <th align="left">Supplier</th>
                 <th align="left">Cost</th>
+                <th align="left">{t('Initiated Date')}</th>
+                <th align="left">{t('Director Approval Date')}</th>
+                <th align="left">{t('Manager Approval Date')}</th>
                 <th align="left"></th>
               </tr>
             </thead>
             <tbody>
-              {loading && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}><LoadingDots label={t('Loading purchases')} /></td></tr>}
-              {!loading && pendingRequests.map(r => {
+              {loading && <tr><td colSpan="9" style={{ padding: 12, color: '#64748b' }}><LoadingDots label={t('Loading purchases')} /></td></tr>}
+              {!loading && filteredPendingRequests.map(r => {
                 const p = products.find(x => x.id === r.productId);
                 const branchName = byId.get(r.branchId) || r.branchId;
                 const title = String(r.transactionTitle || '').trim() || (Array.isArray(r.items) && r.items.length > 1 ? `${p?.name || r.productId} +${r.items.length - 1} more` : (p?.name || r.productId));
@@ -772,6 +813,9 @@ function PurchasesPage() {
                     <td>{r.baseUnits}</td>
                     <td>{r.supplier || '—'}</td>
                     <td>{Number.isFinite(Number(r.cost)) ? <span className="price-accent">{formatCurrency(Number(r.cost), settings)}</span> : '—'}</td>
+                    <td>{formatDateTime(r.createdAt || r.created_at)}</td>
+                    <td>{formatDateTime(r.directorApproved_at || r.directorApprovedAt)}</td>
+                    <td>{formatDateTime(r.managerApproved_at || r.managerApprovedAt)}</td>
                     <td>
                       {['pending_approval', 'pending_director', 'pending_manager'].includes(String(r.status || '')) ? (
                         <div className="approval-row-actions">
@@ -785,7 +829,7 @@ function PurchasesPage() {
                   </tr>
                 );
               })}
-              {!loading && pendingRequests.length === 0 && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}>{t('No items')}</td></tr>}
+              {!loading && filteredPendingRequests.length === 0 && <tr><td colSpan="9" style={{ padding: 12, color: '#64748b' }}>{t('No items')}</td></tr>}
             </tbody>
           </table>
           </div>
@@ -809,6 +853,8 @@ function PurchasesPage() {
             {detail.status === 'approved' && <div className="detail-field"><div className="detail-label">Approval Remark</div><div className="detail-value">{detail.approvalRemark || '—'}</div></div>}
             {detail.status === 'rejected' && <div className="detail-field"><div className="detail-label">Rejection Remark</div><div className="detail-value">{detail.rejectionRemark || '—'}</div></div>}
             <div className="detail-field"><div className="detail-label">Created</div><div className="detail-value">{detail.createdAt ? new Date(detail.createdAt).toLocaleString() : '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('Director Approval Date')}</div><div className="detail-value">{formatDateTime(detail.directorApproved_at || detail.directorApprovedAt)}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('Manager Approval Date')}</div><div className="detail-value">{formatDateTime(detail.managerApproved_at || detail.managerApprovedAt)}</div></div>
             <div className="detail-field"><div className="detail-label">Updated</div><div className="detail-value">{detail.updatedAt ? new Date(detail.updatedAt).toLocaleString() : '—'}</div></div>
           </div>
           {Array.isArray(detail.items) && detail.items.length > 0 && (
@@ -881,6 +927,10 @@ function PurchasesPage() {
               {(roleLower === 'superadmin' || roleLower === 'admin') && <option value="">{t('All')}</option>}
               {branchOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
+          </label>
+          <label>
+            <div className="field-label">{t('Search Product')}</div>
+            <input className="input" value={recordQuery} onChange={e => setRecordQuery(e.target.value)} placeholder={t('Search product, branch, supplier, actor, or remark')} />
           </label>
           <div className="record-filters-actions">
             <button className="btn" onClick={onExportCsv}>{t('Export CSV')}</button>

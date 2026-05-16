@@ -1,21 +1,27 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { exportCsv, exportTablePdf } from '../utils/exporters';
 import * as auditsApi from '../api/audits';
-import { removeEntries as removeAuditEntries } from '../store/auditSlice';
+import * as wholesaleApi from '../api/wholesale';
+import { removeEntries as removeAuditEntries, setEntries as setAuditEntries } from '../store/auditSlice';
 import { useToast } from '../components/ToastProvider';
 import InlineSpinner from '../components/InlineSpinner';
+import { matchesFilterText } from '../utils/inventoryFilters';
 
 function StockRecordsPage() {
   const dispatch = useDispatch();
   const audit = useSelector(s => s.audit.entries);
   const branches = useSelector(s => s.branches.branches);
+  const products = useSelector(s => s.products.products);
   const settings = useSelector(s => s.settings);
   const auth = useSelector(s => s.auth);
   const toast = useToast();
+  const initialBranchFilter = ['superadmin', 'admin'].includes(String(auth.role || '').toLowerCase()) ? '' : settings.currentBranchId;
   const [fActor, setFActor] = useState('');
-  const [fBranch, setFBranch] = useState(settings.currentBranchId);
+  const [fBranch, setFBranch] = useState(initialBranchFilter);
   const [fSource, setFSource] = useState('');
+  const [fProduct, setFProduct] = useState('');
+  const [fInventoryType, setFInventoryType] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [periodMode, setPeriodMode] = useState('range');
@@ -24,6 +30,7 @@ function StockRecordsPage() {
   const [selectedRecordIds, setSelectedRecordIds] = useState([]);
   const [bulkAction, setBulkAction] = useState('');
   const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [workflowOperations, setWorkflowOperations] = useState([]);
   const roleLower = String(auth.role || '').toLowerCase();
   const canDeleteRecords = roleLower === 'superadmin';
   const assigned = auth.user?.assignedBranches || 'all';
@@ -42,59 +49,275 @@ function StockRecordsPage() {
     branches.forEach(b => map.set(b.id, b.name || b.code || b.id));
     return map;
   }, [branches]);
+  const productById = useMemo(() => {
+    const map = new Map();
+    products.forEach((product) => map.set(String(product.id), product));
+    return map;
+  }, [products]);
+  const branchTypeById = useMemo(() => {
+    const map = new Map();
+    branches.forEach((branch) => map.set(String(branch.id), String(branch.branchType || 'retail').toLowerCase()));
+    return map;
+  }, [branches]);
+  const inventoryTypeForBranch = useCallback((branchId) => {
+    const kind = String(branchTypeById.get(String(branchId || '')) || 'retail').toLowerCase();
+    return kind === 'warehouse' ? 'warehouse' : kind === 'wholesale' ? 'wholesale' : 'retail';
+  }, [branchTypeById]);
 
-  function normalize(e) {
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const [auditRows, warehouseOps, wholesaleOps] = await Promise.all([
+          auditsApi.list(1000),
+          wholesaleApi.listOperations({ status: 'approved', operationArea: 'warehouse', force: true }),
+          wholesaleApi.listOperations({ status: 'approved', operationArea: 'wholesale', force: true })
+        ]);
+        if (!alive) return;
+        if (Array.isArray(auditRows) && auditRows.length > 0) dispatch(setAuditEntries(auditRows));
+        setWorkflowOperations([
+          ...(Array.isArray(warehouseOps) ? warehouseOps : []),
+          ...(Array.isArray(wholesaleOps) ? wholesaleOps : [])
+        ]);
+      } catch (error) {
+        const message = String(error?.message || '');
+        if (message && !/forbidden|unauthorized/i.test(message)) {
+          toast.show(message, { type: 'error' });
+        }
+      }
+    })();
+    return () => { alive = false; };
+  }, [dispatch, toast]);
+
+  const normalize = useCallback((e) => {
     const t = e.actionType;
     const d = e.details || {};
     const b = e.branchId || d.branchId || null;
     const recordMeta = { id: e.id || e._id, _id: e._id || e.id };
+    const detailProduct = productById.get(String(d.productId || ''));
+    const detailVariant = d.variantId
+      ? ((detailProduct?.variants || []).find((variant) => String(variant.id) === String(d.variantId))?.label || d.variantId)
+      : '';
     if (t === 'stock_adjust') {
-      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, source: 'Adjustments', action: d.delta > 0 ? 'Add' : 'Remove', product: d.product || '', variant: d.variant || '', qty: d.delta, remark: e.remark || '' };
+      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, inventoryType: inventoryTypeForBranch(b), source: 'Adjustments', action: d.delta > 0 ? 'Add' : 'Remove', product: d.product || detailProduct?.name || '', variant: d.variant || detailVariant || '', qty: d.delta, remark: e.remark || '' };
     }
     if (t === 'stock_damage_remove') {
-      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, source: 'Adjustments', action: 'Remove', product: d.product || '', variant: d.variant || '', qty: -Math.abs(d.qty || 0), remark: e.remark || '' };
+      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, inventoryType: inventoryTypeForBranch(b), source: 'Adjustments', action: 'Remove', product: d.product || detailProduct?.name || '', variant: d.variant || detailVariant || '', qty: -Math.abs(d.qty || 0), remark: e.remark || '' };
     }
     if (t === 'stock_transfer') {
-      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: d.from || b, source: 'Transfers', action: `Transfer ${d.from} → ${d.to}`, product: d.product || '', variant: d.variant || '', qty: d.qty || 0, remark: e.remark || '' };
+      const fromBranchId = d.from || b;
+      const toBranchId = d.to || null;
+      const transferQty = Math.abs(Number(d.qty || 0));
+      return [
+        {
+          ...recordMeta,
+          rowKey: `${recordMeta.id}-out`,
+          ts: e.ts,
+          actor: e.actor,
+          branchId: fromBranchId,
+          inventoryType: inventoryTypeForBranch(fromBranchId),
+          source: 'Transfers',
+          action: `Transfer Out → ${byBranchId.get(toBranchId) || toBranchId || '—'}`,
+          product: d.product || detailProduct?.name || '',
+          variant: d.variant || detailVariant || '',
+          qty: -transferQty,
+          remark: e.remark || ''
+        },
+        {
+          ...recordMeta,
+          rowKey: `${recordMeta.id}-in`,
+          ts: e.ts,
+          actor: e.actor,
+          branchId: toBranchId,
+          inventoryType: inventoryTypeForBranch(toBranchId),
+          source: 'Transfers',
+          action: `Transfer In ← ${byBranchId.get(fromBranchId) || fromBranchId || '—'}`,
+          product: d.product || detailProduct?.name || '',
+          variant: d.variant || detailVariant || '',
+          qty: transferQty,
+          remark: e.remark || ''
+        }
+      ];
+    }
+    if (t === 'stock_wholesale_sale_deduct') {
+      const items = Array.isArray(d.items) ? d.items : [];
+      return items
+        .map((item, index) => {
+          const product = productById.get(String(item.productId || ''));
+          const variantLabel = item.variantId
+            ? ((product?.variants || []).find((variant) => String(variant.id) === String(item.variantId))?.label || item.variantId)
+            : '';
+          const soldQty = Number(item.qty || 0);
+          if (!soldQty) return null;
+          return {
+            ...recordMeta,
+            rowKey: `${recordMeta.id}-wholesale-sale-${index}`,
+            ts: e.ts,
+            actor: e.actor,
+            branchId: b,
+            inventoryType: String(d.inventoryType || inventoryTypeForBranch(b) || 'wholesale').toLowerCase(),
+            source: 'Wholesale POS',
+            action: 'Remove (Sale)',
+            product: product?.name || item.name || item.productId || '',
+            variant: variantLabel,
+            qty: -Math.abs(soldQty),
+            remark: e.remark || ''
+          };
+        })
+        .filter(Boolean);
     }
     if (t === 'stock_receive') {
-      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, source: 'Purchases', action: 'Add', product: d.product || '', variant: d.variant || '', qty: d.baseUnits ?? d.qty ?? 0, remark: e.remark || '' };
+      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, inventoryType: inventoryTypeForBranch(b), source: 'Purchases', action: 'Add', product: d.product || detailProduct?.name || '', variant: d.variant || detailVariant || '', qty: d.baseUnits ?? d.qty ?? 0, remark: e.remark || '' };
     }
     if (t === 'stock_set_initial') {
-      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, source: 'Products', action: 'Set', product: d.product || '', variant: d.variant || '', qty: d.quantity ?? 0, remark: e.remark || '' };
+      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, inventoryType: inventoryTypeForBranch(b), source: 'Products', action: 'Set', product: d.product || '', variant: d.variant || '', qty: d.quantity ?? 0, remark: e.remark || '' };
     }
     if (t === 'stock_set_manual') {
-      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, source: 'Inventory', action: 'Set', product: d.product || '', variant: d.variant || '', qty: d.delta ?? 0, remark: e.remark || '' };
+      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, inventoryType: inventoryTypeForBranch(b), source: 'Inventory', action: 'Set', product: d.product || '', variant: d.variant || '', qty: d.delta ?? 0, remark: e.remark || '' };
     }
     if (t === 'stock_sale_deduct') {
       const totalUnits = Array.isArray(d.items) ? d.items.reduce((s, it) => s + (Number(it.qty) || 0), 0) : 0;
-      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, source: 'POS', action: 'Remove (Sale)', product: `${totalUnits} unit(s) across ${d.items?.length || 0} item(s)`, variant: '', qty: -Math.abs(totalUnits), remark: e.remark || '' };
+      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, inventoryType: inventoryTypeForBranch(b), source: 'POS', action: 'Remove (Sale)', product: `${totalUnits} unit(s) across ${d.items?.length || 0} item(s)`, variant: '', qty: -Math.abs(totalUnits), remark: e.remark || '' };
     }
     if (t === 'stock_restock_refund') {
       const totalUnits = Array.isArray(d.items) ? d.items.reduce((s, it) => s + (Number(it.qty) || 0), 0) : 0;
-      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, source: 'Refund Approvals', action: 'Add (Restock)', product: `${totalUnits} unit(s) across ${d.items?.length || 0} item(s)`, variant: '', qty: totalUnits, remark: e.remark || '' };
+      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, inventoryType: inventoryTypeForBranch(b), source: 'Refund Approvals', action: 'Add (Restock)', product: `${totalUnits} unit(s) across ${d.items?.length || 0} item(s)`, variant: '', qty: totalUnits, remark: e.remark || '' };
     }
     return null;
-  }
+  }, [byBranchId, inventoryTypeForBranch, productById]);
+
+  const normalizeWorkflowOperation = useCallback((row) => {
+    const items = Array.isArray(row?.items) && row.items.length > 0
+      ? row.items
+      : [{
+          productId: row?.productId,
+          variantId: row?.variantId || '',
+          qty: Number(row?.qty || 0),
+          adjustmentType: row?.adjustmentType || 'increase'
+        }];
+    const actor = row?.managerApprovedByName || row?.directorApprovedByName || row?.initiatedByName || 'unknown';
+    const ts = row?.approved_at || row?.approvedAt || row?.managerApproved_at || row?.managerApprovedAt || row?.updatedAt || row?.createdAt || new Date().toISOString();
+    if (row?.operationType === 'transfer') {
+      return items.flatMap((item, index) => {
+        const product = productById.get(String(item?.productId || ''));
+        const variantLabel = item?.variantId
+          ? ((product?.variants || []).find((variant) => String(variant.id) === String(item.variantId))?.label || item.variantId)
+          : '';
+        const qty = Math.abs(Number(item?.qty || 0));
+        if (!qty) return [];
+        return [
+          {
+            id: `${row._id || row.clientId}-wf-out-${index}`,
+            _id: `${row._id || row.clientId}-wf-out-${index}`,
+            ts,
+            actor,
+            branchId: row.fromBranchId,
+            inventoryType: String(row.fromInventoryType || inventoryTypeForBranch(row.fromBranchId) || 'wholesale').toLowerCase(),
+            source: 'Transfers',
+            action: `Transfer Out → ${byBranchId.get(row.toBranchId) || row.toBranchId || '—'}`,
+            product: product?.name || item?.productId || '',
+            variant: variantLabel,
+            qty: -qty,
+            remark: row.remark || ''
+          },
+          {
+            id: `${row._id || row.clientId}-wf-in-${index}`,
+            _id: `${row._id || row.clientId}-wf-in-${index}`,
+            ts,
+            actor,
+            branchId: row.toBranchId,
+            inventoryType: String(row.toInventoryType || inventoryTypeForBranch(row.toBranchId) || 'wholesale').toLowerCase(),
+            source: 'Transfers',
+            action: `Transfer In ← ${byBranchId.get(row.fromBranchId) || row.fromBranchId || '—'}`,
+            product: product?.name || item?.productId || '',
+            variant: variantLabel,
+            qty,
+            remark: row.remark || ''
+          }
+        ];
+      });
+    }
+    return items.map((item, index) => {
+      const product = productById.get(String(item?.productId || row?.productId || ''));
+      const variantLabel = item?.variantId
+        ? ((product?.variants || []).find((variant) => String(variant.id) === String(item.variantId))?.label || item.variantId)
+        : '';
+      const qty = Math.abs(Number(item?.qty || row?.qty || 0));
+      const inventoryType = String(row.toInventoryType || row.fromInventoryType || row.operationArea || inventoryTypeForBranch(row.branchId) || 'wholesale').toLowerCase();
+      if (!qty) return null;
+      if (row?.operationType === 'adjustment') {
+        const isDecrease = String(item?.adjustmentType || row?.adjustmentType || 'increase').toLowerCase() === 'decrease';
+        return {
+          id: `${row._id || row.clientId}-wf-adjust-${index}`,
+          _id: `${row._id || row.clientId}-wf-adjust-${index}`,
+          ts,
+          actor,
+          branchId: row.branchId,
+          inventoryType,
+          source: 'Adjustments',
+          action: isDecrease ? 'Remove' : 'Add',
+          product: product?.name || item?.productId || row?.productId || '',
+          variant: variantLabel,
+          qty: isDecrease ? -qty : qty,
+          remark: row.remark || item?.remark || ''
+        };
+      }
+      return {
+        id: `${row._id || row.clientId}-wf-${row.operationType}-${index}`,
+        _id: `${row._id || row.clientId}-wf-${row.operationType}-${index}`,
+        ts,
+        actor,
+        branchId: row.branchId || row.toBranchId,
+        inventoryType,
+        source: row?.operationType === 'refund' ? 'Refund Approvals' : 'Purchases',
+        action: 'Add',
+        product: product?.name || item?.productId || row?.productId || '',
+        variant: variantLabel,
+        qty,
+        remark: row.remark || item?.remark || ''
+      };
+    }).filter(Boolean);
+  }, [byBranchId, inventoryTypeForBranch, productById]);
 
   const baseRows = useMemo(() => {
-    return audit.map(normalize).filter(Boolean);
-  }, [audit]);
+    return audit.flatMap((entry) => {
+      const normalized = normalize(entry);
+      if (Array.isArray(normalized)) return normalized.filter(Boolean);
+      return normalized ? [normalized] : [];
+    });
+  }, [audit, normalize]);
+  const workflowRows = useMemo(() => {
+    return workflowOperations.flatMap((row) => {
+      const normalized = normalizeWorkflowOperation(row);
+      if (Array.isArray(normalized)) return normalized.filter(Boolean);
+      return normalized ? [normalized] : [];
+    });
+  }, [normalizeWorkflowOperation, workflowOperations]);
+  const allRows = useMemo(() => [...workflowRows, ...baseRows], [baseRows, workflowRows]);
+  const branchFilterOptions = useMemo(() => {
+    const extras = Array.from(new Set(allRows.map((row) => String(row.branchId || '')).filter(Boolean)))
+      .filter((id) => !branchOptions.some((branch) => String(branch.id) === id))
+      .map((id) => ({ id, name: byBranchId.get(id) || id }));
+    return [...branchOptions, ...extras];
+  }, [allRows, branchOptions, byBranchId]);
 
-  const actors = useMemo(() => Array.from(new Set(baseRows.map(r => r.actor))).sort(), [baseRows]);
-  const sources = useMemo(() => Array.from(new Set(baseRows.map(r => r.source))).sort(), [baseRows]);
+  const actors = useMemo(() => Array.from(new Set(allRows.map(r => r.actor).filter(Boolean))).sort(), [allRows]);
+  const sources = useMemo(() => Array.from(new Set(allRows.map(r => r.source))).sort(), [allRows]);
+  const inventoryTypes = useMemo(() => Array.from(new Set(allRows.map((row) => row.inventoryType).filter(Boolean))).sort(), [allRows]);
   const rows = useMemo(() => {
     const fromTs = periodMode === 'all_time' ? 0 : (dateFrom ? new Date(dateFrom).getTime() : 0);
     const toTs = periodMode === 'all_time' ? Number.MAX_SAFE_INTEGER : (dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER);
-    return baseRows.filter(r => {
+    return allRows.filter(r => {
       const ts = new Date(r.ts).getTime();
       if (ts < fromTs || ts > toTs) return false;
       if (fActor && r.actor !== fActor) return false;
       if (fBranch && r.branchId !== fBranch) return false;
       if (fSource && r.source !== fSource) return false;
+      if (fInventoryType && r.inventoryType !== fInventoryType) return false;
+      if (!matchesFilterText([r.product, r.variant, r.remark, r.actor, byBranchId.get(r.branchId), r.action], fProduct)) return false;
       return true;
     }).slice().reverse();
-  }, [baseRows, fActor, fBranch, fSource, dateFrom, dateTo, periodMode]);
+  }, [allRows, byBranchId, dateFrom, dateTo, fActor, fBranch, fInventoryType, fProduct, fSource, periodMode]);
   const summary = useMemo(() => ({
     records: rows.length,
     totalMovement: rows.reduce((sum, row) => sum + Math.abs(Number(row.qty || 0)), 0),
@@ -104,6 +327,10 @@ function StockRecordsPage() {
 
   const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
   const pageRows = rows.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
+
+  useEffect(() => {
+    setPage(1);
+  }, [dateFrom, dateTo, fActor, fBranch, fInventoryType, fProduct, fSource, periodMode]);
 
   async function deleteSelectedRecords() {
     const ids = selectedRecordIds.filter(Boolean);
@@ -130,6 +357,7 @@ function StockRecordsPage() {
       { key: 'ts', label: 'Timestamp', value: r => new Date(r.ts).toLocaleString() },
       { key: 'actor', label: 'Actor' },
       { key: 'branch', label: 'Branch', value: r => byBranchId.get(r.branchId) || r.branchId || '' },
+      { key: 'inventoryType', label: 'Inventory Type' },
       { key: 'source', label: 'Source' },
       { key: 'action', label: 'Action' },
       { key: 'product', label: 'Product' },
@@ -144,6 +372,7 @@ function StockRecordsPage() {
       { key: 'ts', label: 'Timestamp', value: r => new Date(r.ts).toLocaleString() },
       { key: 'actor', label: 'Actor' },
       { key: 'branch', label: 'Branch', value: r => byBranchId.get(r.branchId) || r.branchId || '' },
+      { key: 'inventoryType', label: 'Inventory Type' },
       { key: 'source', label: 'Source' },
       { key: 'action', label: 'Action' },
       { key: 'product', label: 'Product' },
@@ -189,7 +418,7 @@ function StockRecordsPage() {
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Products</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.uniqueProducts}</div></div>
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Branches</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.uniqueBranches}</div></div>
       </div>
-      <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, marginBottom: 8 }}>
+      <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, marginBottom: 8 }}>
         <label>
           Period
           <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
@@ -216,7 +445,7 @@ function StockRecordsPage() {
           Branch
           <select className="select" value={fBranch} onChange={e => setFBranch(e.target.value)}>
             {(roleLower === 'superadmin' || roleLower === 'admin') && <option value="">All</option>}
-            {branchOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+            {branchFilterOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         </label>
         <label>
@@ -226,6 +455,17 @@ function StockRecordsPage() {
             {sources.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </label>
+        <label>
+          Inventory Type
+          <select className="select" value={fInventoryType} onChange={e => setFInventoryType(e.target.value)}>
+            <option value="">All</option>
+            {inventoryTypes.map(type => <option key={type} value={type}>{type}</option>)}
+          </select>
+        </label>
+        <label>
+          Search Product
+          <input className="input" value={fProduct} onChange={e => setFProduct(e.target.value)} placeholder="Search product, branch, action, or remark" />
+        </label>
       </div>
       <div className="card">
         <table className="table">
@@ -234,6 +474,7 @@ function StockRecordsPage() {
               <th align="left">Timestamp</th>
               <th align="left">Actor</th>
               <th align="left">Branch</th>
+              <th align="left">Inventory Type</th>
               <th align="left">Source</th>
               <th align="left">Action</th>
               <th align="left">Product</th>
@@ -254,10 +495,11 @@ function StockRecordsPage() {
           </thead>
           <tbody>
             {pageRows.map((r, idx) => (
-              <tr key={r._id || r.id || idx} style={bulkDeleting && selectedRecordIds.includes(String(r._id || r.id || '')) ? { opacity: 0.55 } : undefined}>
+              <tr key={r.rowKey || r._id || r.id || idx} style={bulkDeleting && selectedRecordIds.includes(String(r._id || r.id || '')) ? { opacity: 0.55 } : undefined}>
                 <td>{new Date(r.ts).toLocaleString()}</td>
                 <td>{r.actor}</td>
                 <td>{byBranchId.get(r.branchId) || r.branchId || '—'}</td>
+                <td>{r.inventoryType || '—'}</td>
                 <td>{r.source}</td>
                 <td>{r.action}</td>
                 <td>{r.product || '—'}</td>
@@ -277,7 +519,7 @@ function StockRecordsPage() {
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={canDeleteRecords ? 10 : 9} style={{ padding: 12, color: '#64748b' }}>No stock records.</td></tr>
+              <tr><td colSpan={canDeleteRecords ? 11 : 10} style={{ padding: 12, color: '#64748b' }}>No stock records.</td></tr>
             )}
           </tbody>
         </table>

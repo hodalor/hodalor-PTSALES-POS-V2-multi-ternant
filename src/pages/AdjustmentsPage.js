@@ -18,6 +18,7 @@ import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
+import { formatDateTime, getOperationSearchValues, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
 
 function inventoryTypeForBranch(branches, targetBranchId) {
   const branch = Array.isArray(branches)
@@ -90,6 +91,11 @@ function AdjustmentsPage() {
   const [periodMode, setPeriodMode] = useState('range');
   const [fActor, setFActor] = useState('');
   const [fBranch, setFBranch] = useState(currentBranchId);
+  const [recordQuery, setRecordQuery] = useState('');
+  const [approvalQuery, setApprovalQuery] = useState('');
+  const [approvalDateField, setApprovalDateField] = useState('created');
+  const [approvalDateFrom, setApprovalDateFrom] = useState('');
+  const [approvalDateTo, setApprovalDateTo] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const roleLower = String(auth.role || '').toLowerCase();
@@ -176,6 +182,7 @@ function AdjustmentsPage() {
       if (ts < fromTs || ts > toTs) return false;
       if (fActor && e.actor !== fActor) return false;
       if (fBranch && (e.branchId || (e.details || {}).branchId) !== fBranch) return false;
+      if (!matchesFilterText([(e.details || {}).product, (e.details || {}).variant, e.remark, e.actor, byId.get(e.branchId || (e.details || {}).branchId)], recordQuery)) return false;
       return true;
     }).map(e => {
       const d = e.details || {};
@@ -193,7 +200,7 @@ function AdjustmentsPage() {
         remark: e.remark || ''
       };
     }).slice().reverse();
-  }, [audit, dateFrom, dateTo, fActor, fBranch, periodMode]);
+  }, [audit, byId, dateFrom, dateTo, fActor, fBranch, periodMode, recordQuery]);
   const requestRows = useMemo(() => {
     const fromTs = periodMode === 'all_time' ? 0 : (dateFrom ? new Date(dateFrom).getTime() : 0);
     const toTs = periodMode === 'all_time' ? Number.MAX_SAFE_INTEGER : (dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER);
@@ -214,7 +221,8 @@ function AdjustmentsPage() {
           branchId: row.branchId || '',
           delta,
           type: String(row.status || '').toLowerCase() === 'rejected' ? 'Rejected' : 'Adjust',
-          remark: row.approvalRemark || row.managerApprovalRemark || row.rejectionRemark || row.remark || ''
+          remark: row.approvalRemark || row.managerApprovalRemark || row.rejectionRemark || row.remark || '',
+          items: Array.isArray(row.items) ? row.items : []
         };
       })
       .filter((row) => {
@@ -222,11 +230,12 @@ function AdjustmentsPage() {
         if (ts < fromTs || ts > toTs) return false;
         if (fActor && row.actor !== fActor) return false;
         if (fBranch && row.branchId !== fBranch) return false;
+        if (!matchesFilterText([...getOperationSearchValues(row, products, byId), row.product, row.variant, row.remark, row.actor, byId.get(row.branchId)], recordQuery)) return false;
         return true;
       })
       .slice()
       .reverse();
-  }, [approvalRows, dateFrom, dateTo, fActor, fBranch, periodMode, products]);
+  }, [approvalRows, byId, dateFrom, dateTo, fActor, fBranch, periodMode, products, recordQuery]);
   const rows = useMemo(() => {
     if (auditRows.length === 0) return requestRows;
     const merged = [...auditRows];
@@ -294,7 +303,7 @@ function AdjustmentsPage() {
     }
     run();
     return () => { alive = false; };
-  }, [branchId, productId, selectedTrackType, serializedAdjustmentMode, serializedEntries.length, serializedUnitsQuery, toast, variantId, t]);
+  }, [branchId, branches, productId, selectedTrackType, serializedAdjustmentMode, serializedEntries.length, serializedUnitsQuery, toast, variantId, t]);
 
   function appendSerializedEntry(value) {
     const text = String(value || '').trim();
@@ -810,6 +819,14 @@ function AdjustmentsPage() {
           toast={toast}
           auth={auth}
           dispatch={dispatch}
+          approvalQuery={approvalQuery}
+          setApprovalQuery={setApprovalQuery}
+          approvalDateField={approvalDateField}
+          setApprovalDateField={setApprovalDateField}
+          approvalDateFrom={approvalDateFrom}
+          setApprovalDateFrom={setApprovalDateFrom}
+          approvalDateTo={approvalDateTo}
+          setApprovalDateTo={setApprovalDateTo}
         />
       )}
       <div className="card" style={{ marginTop: 12 }}>
@@ -840,6 +857,10 @@ function AdjustmentsPage() {
           <label>
             <div className="field-label">Branch</div>
             <BranchSelect value={fBranch} onChange={setFBranch} />
+          </label>
+          <label>
+            <div className="field-label">{t('Search Product')}</div>
+            <input className="input" value={recordQuery} onChange={e => setRecordQuery(e.target.value)} placeholder={t('Search product, branch, actor, or remark')} />
           </label>
           <div className="record-filters-actions">
             <button className="btn" onClick={onExportCsv}>{t('Export CSV')}</button>
@@ -945,7 +966,7 @@ function AdjustmentsPage() {
   );
 }
 
-function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, statusFilter, setStatusFilter, loading, setLoading, products, branches, byId, setDetail, onRequestsChange, busyId, setBusyId, toast, auth, dispatch }) {
+function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, statusFilter, setStatusFilter, loading, setLoading, products, branches, byId, setDetail, onRequestsChange, busyId, setBusyId, toast, auth, dispatch, approvalQuery, setApprovalQuery, approvalDateField, setApprovalDateField, approvalDateFrom, setApprovalDateFrom, approvalDateTo, setApprovalDateTo }) {
   const [requests, setRequests] = useState([]);
   const [reloadAt, setReloadAt] = useState(0);
   useEffect(() => {
@@ -975,7 +996,15 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
       }
     })();
     return () => { alive = false; };
-  }, [statusFilter, setLoading, reloadAt, toast]);
+  }, [statusFilter, setLoading, reloadAt, toast, onRequestsChange]);
+  const filteredRequests = useMemo(() => {
+    return requests.filter((row) => {
+      if (!matchesFilterText(getOperationSearchValues(row, products, byId), approvalQuery)) {
+        return false;
+      }
+      return matchesDateField(row, approvalDateField, approvalDateFrom, approvalDateTo);
+    });
+  }, [approvalDateField, approvalDateFrom, approvalDateTo, approvalQuery, byId, products, requests]);
   async function approve(r) {
     if (!canApprove) { toast.show('Not authorized to approve adjustments', { type: 'error' }); return; }
     if (String(r.status || '') === 'pending_director' && !canDirectorApprove) { toast.show('Director approval required', { type: 'error' }); return; }
@@ -1077,6 +1106,29 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
         </div>
         </div>
       </div>
+      <div className="record-filters" style={{ marginBottom: 12 }}>
+        <label>
+          <div className="field-label">Search Product</div>
+          <input className="input" value={approvalQuery} onChange={e => setApprovalQuery(e.target.value)} placeholder="Search product, branch, or remark" />
+        </label>
+        <label>
+          <div className="field-label">Date Type</div>
+          <select className="select" value={approvalDateField} onChange={e => setApprovalDateField(e.target.value)}>
+            <option value="created">Initiated Date</option>
+            <option value="director">Director Approval Date</option>
+            <option value="manager">Manager Approval Date</option>
+            <option value="decision">Final Decision Date</option>
+          </select>
+        </label>
+        <label>
+          <div className="field-label">From</div>
+          <input className="input" type="date" value={approvalDateFrom} onChange={e => setApprovalDateFrom(e.target.value)} />
+        </label>
+        <label>
+          <div className="field-label">To</div>
+          <input className="input" type="date" value={approvalDateTo} onChange={e => setApprovalDateTo(e.target.value)} />
+        </label>
+      </div>
       <div className="table-wrap">
       <table className="table">
         <thead>
@@ -1085,12 +1137,15 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
             <th align="left">Branch</th>
             <th align="left">Adjustment Type</th>
             <th align="left">Quantity</th>
+            <th align="left">Initiated Date</th>
+            <th align="left">Director Approval Date</th>
+            <th align="left">Manager Approval Date</th>
             <th align="left"></th>
           </tr>
         </thead>
         <tbody>
-          {loading && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading adjustments" /></td></tr>}
-          {!loading && requests.map(r => {
+          {loading && <tr><td colSpan="8" style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading adjustments" /></td></tr>}
+          {!loading && filteredRequests.map(r => {
             const p = products.find(x => x.id === r.productId);
             const adjustment = getAdjustmentDisplay(r);
             const title = String(r.transactionTitle || '').trim() || (Array.isArray(r.items) && r.items.length > 1 ? `${p?.name || r.productId} +${r.items.length - 1} more` : `${p?.name || r.productId}${r.variantId ? ` • ${(p?.variants || []).find(v => v.id === r.variantId)?.label || r.variantId}` : ''}`);
@@ -1100,6 +1155,9 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
                 <td>{byId.get(r.branchId) || r.branchId}</td>
                 <td>{adjustment.typeLabel}</td>
                 <td>{adjustment.quantity}</td>
+                <td>{formatDateTime(r.createdAt || r.created_at)}</td>
+                <td>{formatDateTime(r.directorApproved_at || r.directorApprovedAt)}</td>
+                <td>{formatDateTime(r.managerApproved_at || r.managerApprovedAt)}</td>
                 <td>
                   {['pending_approval', 'pending_director', 'pending_manager'].includes(String(r.status || '')) ? (
                     <div className="approval-row-actions">
@@ -1113,7 +1171,7 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
               </tr>
             );
           })}
-          {!loading && requests.length === 0 && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>No items</td></tr>}
+          {!loading && filteredRequests.length === 0 && <tr><td colSpan="8" style={{ padding: 12, color: '#64748b' }}>No items</td></tr>}
         </tbody>
       </table>
       </div>
@@ -1140,6 +1198,8 @@ function RequestDetail({ detail, products, byId }) {
         {detail.status === 'approved' && <div className="detail-field"><div className="detail-label">Approval Remark</div><div className="detail-value">{detail.approvalRemark || '—'}</div></div>}
         {detail.status === 'rejected' && <div className="detail-field"><div className="detail-label">Rejection Remark</div><div className="detail-value">{detail.rejectionRemark || '—'}</div></div>}
         <div className="detail-field"><div className="detail-label">Created</div><div className="detail-value">{detail.createdAt ? new Date(detail.createdAt).toLocaleString() : '—'}</div></div>
+        <div className="detail-field"><div className="detail-label">Director Approval Date</div><div className="detail-value">{formatDateTime(detail.directorApproved_at || detail.directorApprovedAt)}</div></div>
+        <div className="detail-field"><div className="detail-label">Manager Approval Date</div><div className="detail-value">{formatDateTime(detail.managerApproved_at || detail.managerApprovedAt)}</div></div>
         <div className="detail-field"><div className="detail-label">Updated</div><div className="detail-value">{detail.updatedAt ? new Date(detail.updatedAt).toLocaleString() : '—'}</div></div>
       </div>
       {Array.isArray(detail.items) && detail.items.length > 0 && (

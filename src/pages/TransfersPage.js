@@ -17,6 +17,7 @@ import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
+import { formatDateTime, getOperationSearchValues, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
 
 function normalizeTransferReviewStatus(value) {
   return String(value || '').toLowerCase() === 'cancelled' ? 'cancelled' : 'accepted';
@@ -72,6 +73,11 @@ function TransfersPage() {
   const [serializedLoading, setSerializedLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [statusFilter, setStatusFilter] = useState('pending_director');
+  const [recordQuery, setRecordQuery] = useState('');
+  const [approvalQuery, setApprovalQuery] = useState('');
+  const [approvalDateField, setApprovalDateField] = useState('created');
+  const [approvalDateFrom, setApprovalDateFrom] = useState('');
+  const [approvalDateTo, setApprovalDateTo] = useState('');
   const [detail, setDetail] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [reviewItems, setReviewItems] = useState([]);
@@ -183,9 +189,10 @@ function TransfersPage() {
       const d = e.details || {};
       if (fFrom && d.from !== fFrom) return false;
       if (fTo && d.to !== fTo) return false;
+      if (!matchesFilterText([d.product, d.variant, e.remark, e.actor, byId.get(d.from), byId.get(d.to)], recordQuery)) return false;
       return true;
     }).slice().reverse();
-  }, [baseTransfers, fActor, fFrom, fTo, dateFrom, dateTo, periodMode]);
+  }, [baseTransfers, byId, dateFrom, dateTo, fActor, fFrom, fTo, periodMode, recordQuery]);
 
   function onExportCsv() {
     const headers = [
@@ -434,6 +441,14 @@ function TransfersPage() {
     });
     return [...workflow, ...legacy];
   }, [requests, wholesaleInbound, statusFilter, allowedBranches]);
+  const filteredPendingRequests = useMemo(() => {
+    return pendingRequests.filter((row) => {
+      if (!matchesFilterText(getOperationSearchValues(row, products, byId), approvalQuery)) {
+        return false;
+      }
+      return matchesDateField(row, approvalDateField, approvalDateFrom, approvalDateTo);
+    });
+  }, [approvalDateField, approvalDateFrom, approvalDateTo, approvalQuery, byId, pendingRequests, products]);
   const summary = useMemo(() => {
     const transferQty = transfers.reduce((sum, row) => sum + (Number(row.details?.qty || 0) || 0), 0);
     const uniqueProducts = new Set(transfers.map((row) => String(row.details?.product || '').trim()).filter(Boolean)).size;
@@ -819,6 +834,29 @@ function TransfersPage() {
             </div>
             </div>
           </div>
+          <div className="record-filters" style={{ marginBottom: 12 }}>
+            <label>
+              <div className="field-label">{t('Search Product')}</div>
+              <input className="input" value={approvalQuery} onChange={e => setApprovalQuery(e.target.value)} placeholder={t('Search product, title, branch, or remark')} />
+            </label>
+            <label>
+              <div className="field-label">{t('Date Type')}</div>
+              <select className="select" value={approvalDateField} onChange={e => setApprovalDateField(e.target.value)}>
+                <option value="created">{t('Initiated Date')}</option>
+                <option value="director">{t('Director Approval Date')}</option>
+                <option value="manager">{t('Manager Approval Date')}</option>
+                <option value="decision">{t('Final Decision Date')}</option>
+              </select>
+            </label>
+            <label>
+              <div className="field-label">{t('From')}</div>
+              <input className="input" type="date" value={approvalDateFrom} onChange={e => setApprovalDateFrom(e.target.value)} />
+            </label>
+            <label>
+              <div className="field-label">{t('To')}</div>
+              <input className="input" type="date" value={approvalDateTo} onChange={e => setApprovalDateTo(e.target.value)} />
+            </label>
+          </div>
           <div className="table-wrap">
           <table className="table">
             <thead>
@@ -827,12 +865,15 @@ function TransfersPage() {
                 <th align="left">{t('From')}</th>
                 <th align="left">{t('To')}</th>
                 <th align="left">{t('Qty')}</th>
+                <th align="left">{t('Initiated Date')}</th>
+                <th align="left">{t('Director Approval Date')}</th>
+                <th align="left">{t('Manager Approval Date')}</th>
                 <th align="left"></th>
               </tr>
             </thead>
             <tbody>
-              {loading && pendingRequests.length === 0 && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}><LoadingDots label={t('Loading transfers')} /></td></tr>}
-              {!loading && pendingRequests.map(r => {
+              {loading && filteredPendingRequests.length === 0 && <tr><td colSpan="8" style={{ padding: 12, color: '#64748b' }}><LoadingDots label={t('Loading transfers')} /></td></tr>}
+              {!loading && filteredPendingRequests.map(r => {
                 const p = products.find(x => x.id === r.productId);
                 const fromLabel = byId.get(r.fromBranchId || r.from) || r.fromBranchId || r.from;
                 const toLabel = byId.get(r.toBranchId || r.to) || r.toBranchId || r.to;
@@ -859,6 +900,9 @@ function TransfersPage() {
                     </td>
                     <td>{toLabel}{r.toInventoryType ? ` (${t(r.toInventoryType)})` : ''}</td>
                     <td>{qtyValue}</td>
+                    <td>{formatDateTime(r.createdAt || r.created_at)}</td>
+                    <td>{formatDateTime(r.directorApproved_at || r.directorApprovedAt)}</td>
+                    <td>{formatDateTime(r.managerApproved_at || r.managerApprovedAt)}</td>
                     <td>
                       {(r.status === 'pending_approval' || r.status === 'pending_manager' || r.status === 'pending_director') ? (
                         <div className="approval-row-actions">
@@ -871,7 +915,7 @@ function TransfersPage() {
                   </tr>
                 );
               })}
-              {!loading && pendingRequests.length === 0 && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>{t('No items')}</td></tr>}
+              {!loading && filteredPendingRequests.length === 0 && <tr><td colSpan="8" style={{ padding: 12, color: '#64748b' }}>{t('No items')}</td></tr>}
             </tbody>
           </table>
           </div>
@@ -915,6 +959,10 @@ function TransfersPage() {
               <option value="">{t('All')}</option>
               {branchOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
+          </label>
+          <label>
+            <div className="field-label">{t('Search Product')}</div>
+            <input className="input" value={recordQuery} onChange={e => setRecordQuery(e.target.value)} placeholder={t('Search product, branch, actor, or remark')} />
           </label>
           <div className="record-filters-actions">
             <button className="btn" onClick={onExportCsv}>{t('Export CSV')}</button>
@@ -1037,6 +1085,8 @@ function TransfersPage() {
             {detail.status === 'approved' && <div className="detail-field"><div className="detail-label">{t('Approval Remark')}</div><div className="detail-value">{detail.approvalRemark || '—'}</div></div>}
             {detail.status === 'rejected' && <div className="detail-field"><div className="detail-label">{t('Rejection Remark')}</div><div className="detail-value">{detail.rejectionRemark || '—'}</div></div>}
             <div className="detail-field"><div className="detail-label">{t('Created')}</div><div className="detail-value">{detail.createdAt ? new Date(detail.createdAt).toLocaleString() : '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('Director Approval Date')}</div><div className="detail-value">{formatDateTime(detail.directorApproved_at || detail.directorApprovedAt)}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('Manager Approval Date')}</div><div className="detail-value">{formatDateTime(detail.managerApproved_at || detail.managerApprovedAt)}</div></div>
             <div className="detail-field"><div className="detail-label">{t('Updated')}</div><div className="detail-value">{detail.updatedAt ? new Date(detail.updatedAt).toLocaleString() : '—'}</div></div>
           </div>
           {Array.isArray(reviewItems) && reviewItems.length > 0 && (

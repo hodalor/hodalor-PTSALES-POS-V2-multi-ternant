@@ -14,6 +14,7 @@ import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { ensureSupplierByName } from '../utils/suppliers';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
+import { formatDateTime, getOperationSearchValues, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
 
 function labelForArea(area, op, t) {
   const prefix = String(area || 'wholesale').toLowerCase() === 'warehouse' ? t('Warehouse') : t('Distribution');
@@ -113,6 +114,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const [serializedBatchMode, setSerializedBatchMode] = useState(true);
   const [serializedCameraOpen, setSerializedCameraOpen] = useState(false);
   const pageSize = 50;
+  const [trackingQuery, setTrackingQuery] = useState('');
+  const [trackingDateField, setTrackingDateField] = useState('created');
+  const [trackingDateFrom, setTrackingDateFrom] = useState('');
+  const [trackingDateTo, setTrackingDateTo] = useState('');
 
   const [productId, setProductId] = useState('');
   const [productQuery, setProductQuery] = useState('');
@@ -289,14 +294,17 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const loadOperations = useCallback(async (options = {}) => {
     if (operations.length === 0) setLoading(true);
     try {
+      const workflowResult = await wholesaleApi.listOperations({
+        operationType,
+        status: statusFilter,
+        operationArea: normalizedArea,
+        force: !!options.force
+      });
+      const workflowRows = Array.isArray(workflowResult)
+        ? workflowResult
+        : (Array.isArray(workflowResult?.rows) ? workflowResult.rows : []);
       if (operationType === 'transfer') {
-        const [workflowResult, retailTransferRows] = await Promise.all([
-          wholesaleApi.listOperations({ operationType, status: statusFilter, operationArea: normalizedArea, force: !!options.force }),
-          transfersApi.listRequests({ status: statusFilter, limit: 500 })
-        ]);
-        const workflowRows = Array.isArray(workflowResult)
-          ? workflowResult
-          : (Array.isArray(workflowResult?.rows) ? workflowResult.rows : []);
+        const retailTransferRows = await transfersApi.listRequests({ status: statusFilter, limit: 500 });
         const inboundRetailTransfers = (Array.isArray(retailTransferRows) ? retailTransferRows : [])
           .filter((row) => {
             const fromInventory = inventoryTypeForBranch(row.from || row.fromBranchId);
@@ -318,12 +326,17 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
           }));
         const combined = [...workflowRows, ...inboundRetailTransfers]
           .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime());
+        setOperations(combined);
         setTotal(combined.length);
-        setOperations(combined.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize));
       } else {
-        const result = await wholesaleApi.listOperations({ operationType, status: statusFilter, operationArea: normalizedArea, force: !!options.force, paged: true, page, pageSize });
-        setOperations(Array.isArray(result?.rows) ? result.rows : []);
-        setTotal(Number(result?.total || 0));
+        const scopedRows = workflowRows.filter((row) => {
+          if (operationType === 'purchase' || operationType === 'adjustment' || operationType === 'refund') {
+            return String(row.operationArea || normalizedArea).toLowerCase() === normalizedArea;
+          }
+          return true;
+        });
+        setOperations(scopedRows);
+        setTotal(scopedRows.length);
       }
     } catch (e) {
       const msg = String(e?.message || '');
@@ -335,7 +348,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     } finally {
       setLoading(false);
     }
-  }, [inventoryTypeForBranch, normalizedArea, operationType, operations.length, page, pageSize, statusFilter, toast, t]);
+  }, [inventoryTypeForBranch, normalizedArea, operationType, operations.length, statusFilter, toast, t]);
 
   useEffect(() => {
     loadOperations();
@@ -343,6 +356,25 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   useEffect(() => {
     setPage(1);
   }, [normalizedArea, operationType, statusFilter]);
+
+  const filteredOperations = useMemo(() => {
+    return operations.filter((row) => {
+      if (!matchesFilterText(getOperationSearchValues(row, products, branchNameById), trackingQuery)) {
+        return false;
+      }
+      return matchesDateField(row, trackingDateField, trackingDateFrom, trackingDateTo);
+    });
+  }, [branchNameById, operations, products, trackingDateField, trackingDateFrom, trackingDateTo, trackingQuery]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [trackingQuery, trackingDateField, trackingDateFrom, trackingDateTo]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredOperations.length / pageSize));
+  const pageRows = useMemo(
+    () => filteredOperations.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize),
+    [filteredOperations, page, pageSize]
+  );
 
   function resetForm() {
     setProductId('');
@@ -769,11 +801,35 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
           </div>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-          <div style={{ color: '#64748b', fontSize: 13 }}>{t('Showing {shown} of {total} requests', { shown: operations.length, total })}</div>
+          <div style={{ color: '#64748b', fontSize: 13 }}>{t('Showing {shown} of {total} requests', { shown: filteredOperations.length, total })}</div>
           <div style={{ display: 'flex', gap: 6 }}>
             <button className="btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={loading || page <= 1}>{t('Previous')}</button>
-            <button className="btn" onClick={() => setPage(p => p + 1)} disabled={loading || page * pageSize >= total}>{t('Next')}</button>
+            <button className="btn" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={loading || page >= totalPages}>{t('Next')}</button>
           </div>
+        </div>
+
+        <div className="record-filters">
+          <label>
+            <div className="field-label">{t('Search Product')}</div>
+            <input className="input" value={trackingQuery} onChange={e => setTrackingQuery(e.target.value)} placeholder={t('Search product, title, branch, supplier, or remark')} />
+          </label>
+          <label>
+            <div className="field-label">{t('Date Type')}</div>
+            <select className="select" value={trackingDateField} onChange={e => setTrackingDateField(e.target.value)}>
+              <option value="created">{t('Initiated Date')}</option>
+              <option value="director">{t('Director Approval Date')}</option>
+              <option value="manager">{t('Manager Approval Date')}</option>
+              <option value="decision">{t('Final Decision Date')}</option>
+            </select>
+          </label>
+          <label>
+            <div className="field-label">{t('From')}</div>
+            <input className="input" type="date" value={trackingDateFrom} onChange={e => setTrackingDateFrom(e.target.value)} />
+          </label>
+          <label>
+            <div className="field-label">{t('To')}</div>
+            <input className="input" type="date" value={trackingDateTo} onChange={e => setTrackingDateTo(e.target.value)} />
+          </label>
         </div>
 
         <div className="table-wrap">
@@ -786,11 +842,14 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                 <th align="left">{t('Value')}</th>
                 <th align="left">{t('Status')}</th>
                 <th align="left">{t('Initiator')}</th>
+                <th align="left">{t('Initiated Date')}</th>
+                <th align="left">{t('Director Approval Date')}</th>
+                <th align="left">{t('Manager Approval Date')}</th>
               </tr>
             </thead>
             <tbody>
-              {loading && operations.length === 0 && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}><LoadingDots label={t('Loading wholesale operations')} /></td></tr>}
-              {!loading && operations.map(row => {
+              {loading && filteredOperations.length === 0 && <tr><td colSpan="9" style={{ padding: 12, color: '#64748b' }}><LoadingDots label={t('Loading wholesale operations')} /></td></tr>}
+              {!loading && pageRows.map(row => {
                 const product = products.find(item => String(item.id) === String(row.productId));
                 const variantLabel = row.variantId ? ((product?.variants || []).find(variant => String(variant.id) === String(row.variantId))?.label || row.variantId) : '';
                 const route = row.operationType === 'transfer'
@@ -810,10 +869,13 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                     <td>{value > 0 ? maskCostValue(value) : '—'}</td>
                     <td>{rowCanAct ? row.status : `${row.status} • ${t('Tracking')}`}</td>
                     <td>{row.initiatedByName || '—'} {row.initiatedByRole ? `(${row.initiatedByRole})` : ''}</td>
+                    <td>{formatDateTime(row.createdAt || row.created_at)}</td>
+                    <td>{formatDateTime(row.directorApproved_at || row.directorApprovedAt)}</td>
+                    <td>{formatDateTime(row.managerApproved_at || row.managerApprovedAt)}</td>
                   </tr>
                 );
               })}
-              {!loading && operations.length === 0 && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}>{normalizedArea === 'warehouse' ? t('No warehouse requests yet') : t('No distribution requests yet')}</td></tr>}
+              {!loading && filteredOperations.length === 0 && <tr><td colSpan="9" style={{ padding: 12, color: '#64748b' }}>{normalizedArea === 'warehouse' ? t('No warehouse requests yet') : t('No distribution requests yet')}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -1117,6 +1179,9 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Destination')}</div><strong>{branchNameById.get(selectedRow.toBranchId || selectedRow.to) || selectedRow.toBranchId || selectedRow.to || '—'}</strong></div>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('From Inventory')}</div><strong>{t(selectedRow.fromInventoryType || 'retail')}</strong></div>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('To Inventory')}</div><strong>{t(selectedRow.toInventoryType || selectedRow.fromInventoryType || 'wholesale')}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Initiated Date')}</div><strong>{formatDateTime(selectedRow.createdAt || selectedRow.created_at)}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Director Approval Date')}</div><strong>{formatDateTime(selectedRow.directorApproved_at || selectedRow.directorApprovedAt)}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Manager Approval Date')}</div><strong>{formatDateTime(selectedRow.managerApproved_at || selectedRow.managerApprovedAt)}</strong></div>
             </div>
             <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Remark')}</div><strong>{selectedRow.remark || selectedRow.approvalRemark || selectedRow.rejectionRemark || '—'}</strong></div>
             <div className="table-wrap">
