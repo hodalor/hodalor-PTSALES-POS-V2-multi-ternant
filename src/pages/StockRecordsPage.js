@@ -8,6 +8,18 @@ import { useToast } from '../components/ToastProvider';
 import InlineSpinner from '../components/InlineSpinner';
 import { getProductDisplayMeta, matchesFilterText } from '../utils/inventoryFilters';
 
+function makeBranchLookup(branches = []) {
+  const map = new Map();
+  (Array.isArray(branches) ? branches : []).forEach((branch) => {
+    const label = String(branch?.name || branch?.code || branch?.id || branch?._id || '').trim();
+    const id = String(branch?.id || '').trim();
+    const objectId = String(branch?._id || '').trim();
+    if (id) map.set(id, label || id);
+    if (objectId) map.set(objectId, label || objectId);
+  });
+  return map;
+}
+
 function StockRecordsPage() {
   const dispatch = useDispatch();
   const audit = useSelector(s => s.audit.entries);
@@ -45,19 +57,27 @@ function StockRecordsPage() {
     if (!allowedIds.has(fBranch)) setFBranch(settings.currentBranchId);
   }, [roleLower, branchOptions, settings.currentBranchId, fBranch]); 
   const byBranchId = useMemo(() => {
-    const map = new Map();
-    branches.forEach(b => map.set(b.id, b.name || b.code || b.id));
-    return map;
+    return makeBranchLookup(branches);
   }, [branches]);
   const branchTypeById = useMemo(() => {
     const map = new Map();
-    branches.forEach((branch) => map.set(String(branch.id), String(branch.branchType || 'retail').toLowerCase()));
+    branches.forEach((branch) => {
+      const kind = String(branch.branchType || 'retail').toLowerCase();
+      if (branch?.id) map.set(String(branch.id), kind);
+      if (branch?._id) map.set(String(branch._id), kind);
+    });
     return map;
   }, [branches]);
   const inventoryTypeForBranch = useCallback((branchId) => {
     const kind = String(branchTypeById.get(String(branchId || '')) || 'retail').toLowerCase();
     return kind === 'warehouse' ? 'warehouse' : kind === 'wholesale' ? 'wholesale' : 'retail';
   }, [branchTypeById]);
+  const resolveBranchLabel = useCallback((branchId, fallbackName = '') => {
+    const id = String(branchId || '').trim();
+    const preferred = String(fallbackName || '').trim();
+    if (preferred) return preferred;
+    return byBranchId.get(id) || id || '—';
+  }, [byBranchId]);
 
   useEffect(() => {
     let alive = true;
@@ -88,17 +108,20 @@ function StockRecordsPage() {
     const t = e.actionType;
     const d = e.details || {};
     const b = e.branchId || d.branchId || null;
+    const branchName = e.branchName || d.branchName || '';
     const recordMeta = { id: e.id || e._id, _id: e._id || e.id };
     const detailMeta = getProductDisplayMeta(products, d.productId, d.variantId, d);
     if (t === 'stock_adjust') {
-      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, inventoryType: inventoryTypeForBranch(b), source: 'Adjustments', action: d.delta > 0 ? 'Add' : 'Remove', product: detailMeta.productName, variant: detailMeta.secondaryLabel, qty: d.delta, remark: e.remark || '' };
+      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, branchName, inventoryType: inventoryTypeForBranch(b), source: 'Adjustments', action: d.delta > 0 ? 'Add' : 'Remove', product: detailMeta.productName, variant: detailMeta.secondaryLabel, qty: d.delta, remark: e.remark || '' };
     }
     if (t === 'stock_damage_remove') {
-      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, inventoryType: inventoryTypeForBranch(b), source: 'Adjustments', action: 'Remove', product: detailMeta.productName, variant: detailMeta.secondaryLabel, qty: -Math.abs(d.qty || 0), remark: e.remark || '' };
+      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, branchName, inventoryType: inventoryTypeForBranch(b), source: 'Adjustments', action: 'Remove', product: detailMeta.productName, variant: detailMeta.secondaryLabel, qty: -Math.abs(d.qty || 0), remark: e.remark || '' };
     }
     if (t === 'stock_transfer') {
       const fromBranchId = d.from || b;
       const toBranchId = d.to || null;
+      const fromBranchName = d.fromBranchName || resolveBranchLabel(fromBranchId);
+      const toBranchName = d.toBranchName || resolveBranchLabel(toBranchId);
       const transferQty = Math.abs(Number(d.qty || 0));
       return [
         {
@@ -107,9 +130,10 @@ function StockRecordsPage() {
           ts: e.ts,
           actor: e.actor,
           branchId: fromBranchId,
+          branchName: fromBranchName,
           inventoryType: inventoryTypeForBranch(fromBranchId),
           source: 'Transfers',
-          action: `Transfer Out → ${byBranchId.get(toBranchId) || toBranchId || '—'}`,
+          action: `Transfer Out → ${toBranchName}`,
           product: detailMeta.productName,
           variant: detailMeta.secondaryLabel,
           qty: -transferQty,
@@ -121,9 +145,10 @@ function StockRecordsPage() {
           ts: e.ts,
           actor: e.actor,
           branchId: toBranchId,
+          branchName: toBranchName,
           inventoryType: inventoryTypeForBranch(toBranchId),
           source: 'Transfers',
-          action: `Transfer In ← ${byBranchId.get(fromBranchId) || fromBranchId || '—'}`,
+          action: `Transfer In ← ${fromBranchName}`,
           product: detailMeta.productName,
           variant: detailMeta.secondaryLabel,
           qty: transferQty,
@@ -144,6 +169,7 @@ function StockRecordsPage() {
             ts: e.ts,
             actor: e.actor,
             branchId: b,
+            branchName,
             inventoryType: String(d.inventoryType || inventoryTypeForBranch(b) || 'wholesale').toLowerCase(),
             source: 'Wholesale POS',
             action: 'Remove (Sale)',
@@ -156,24 +182,24 @@ function StockRecordsPage() {
         .filter(Boolean);
     }
     if (t === 'stock_receive') {
-      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, inventoryType: inventoryTypeForBranch(b), source: 'Purchases', action: 'Add', product: detailMeta.productName, variant: detailMeta.secondaryLabel, qty: d.baseUnits ?? d.qty ?? 0, remark: e.remark || '' };
+      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, branchName, inventoryType: inventoryTypeForBranch(b), source: 'Purchases', action: 'Add', product: detailMeta.productName, variant: detailMeta.secondaryLabel, qty: d.baseUnits ?? d.qty ?? 0, remark: e.remark || '' };
     }
     if (t === 'stock_set_initial') {
-      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, inventoryType: inventoryTypeForBranch(b), source: 'Products', action: 'Set', product: detailMeta.productName, variant: detailMeta.secondaryLabel, qty: d.quantity ?? 0, remark: e.remark || '' };
+      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, branchName, inventoryType: inventoryTypeForBranch(b), source: 'Products', action: 'Set', product: detailMeta.productName, variant: detailMeta.secondaryLabel, qty: d.quantity ?? 0, remark: e.remark || '' };
     }
     if (t === 'stock_set_manual') {
-      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, inventoryType: inventoryTypeForBranch(b), source: 'Inventory', action: 'Set', product: detailMeta.productName, variant: detailMeta.secondaryLabel, qty: d.delta ?? 0, remark: e.remark || '' };
+      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, branchName, inventoryType: inventoryTypeForBranch(b), source: 'Inventory', action: 'Set', product: detailMeta.productName, variant: detailMeta.secondaryLabel, qty: d.delta ?? 0, remark: e.remark || '' };
     }
     if (t === 'stock_sale_deduct') {
       const totalUnits = Array.isArray(d.items) ? d.items.reduce((s, it) => s + (Number(it.qty) || 0), 0) : 0;
-      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, inventoryType: inventoryTypeForBranch(b), source: 'POS', action: 'Remove (Sale)', product: `${totalUnits} unit(s) across ${d.items?.length || 0} item(s)`, variant: '', qty: -Math.abs(totalUnits), remark: e.remark || '' };
+      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, branchName, inventoryType: inventoryTypeForBranch(b), source: 'POS', action: 'Remove (Sale)', product: `${totalUnits} unit(s) across ${d.items?.length || 0} item(s)`, variant: '', qty: -Math.abs(totalUnits), remark: e.remark || '' };
     }
     if (t === 'stock_restock_refund') {
       const totalUnits = Array.isArray(d.items) ? d.items.reduce((s, it) => s + (Number(it.qty) || 0), 0) : 0;
-      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, inventoryType: inventoryTypeForBranch(b), source: 'Refund Approvals', action: 'Add (Restock)', product: `${totalUnits} unit(s) across ${d.items?.length || 0} item(s)`, variant: '', qty: totalUnits, remark: e.remark || '' };
+      return { ...recordMeta, ts: e.ts, actor: e.actor, branchId: b, branchName, inventoryType: inventoryTypeForBranch(b), source: 'Refund Approvals', action: 'Add (Restock)', product: `${totalUnits} unit(s) across ${d.items?.length || 0} item(s)`, variant: '', qty: totalUnits, remark: e.remark || '' };
     }
     return null;
-  }, [byBranchId, inventoryTypeForBranch, products]);
+  }, [inventoryTypeForBranch, products, resolveBranchLabel]);
 
   const normalizeWorkflowOperation = useCallback((row) => {
     const items = Array.isArray(row?.items) && row.items.length > 0
@@ -190,6 +216,8 @@ function StockRecordsPage() {
       return items.flatMap((item, index) => {
         const meta = getProductDisplayMeta(products, item?.productId, item?.variantId, item);
         const qty = Math.abs(Number(item?.qty || 0));
+        const fromBranchName = resolveBranchLabel(row.fromBranchId, row.fromBranchName);
+        const toBranchName = resolveBranchLabel(row.toBranchId, row.toBranchName);
         if (!qty) return [];
         return [
           {
@@ -198,9 +226,10 @@ function StockRecordsPage() {
             ts,
             actor,
             branchId: row.fromBranchId,
+            branchName: fromBranchName,
             inventoryType: String(row.fromInventoryType || inventoryTypeForBranch(row.fromBranchId) || 'wholesale').toLowerCase(),
             source: 'Transfers',
-            action: `Transfer Out → ${byBranchId.get(row.toBranchId) || row.toBranchId || '—'}`,
+            action: `Transfer Out → ${toBranchName}`,
             product: meta.productName,
             variant: meta.secondaryLabel,
             qty: -qty,
@@ -212,9 +241,10 @@ function StockRecordsPage() {
             ts,
             actor,
             branchId: row.toBranchId,
+            branchName: toBranchName,
             inventoryType: String(row.toInventoryType || inventoryTypeForBranch(row.toBranchId) || 'wholesale').toLowerCase(),
             source: 'Transfers',
-            action: `Transfer In ← ${byBranchId.get(row.fromBranchId) || row.fromBranchId || '—'}`,
+            action: `Transfer In ← ${fromBranchName}`,
             product: meta.productName,
             variant: meta.secondaryLabel,
             qty,
@@ -236,6 +266,7 @@ function StockRecordsPage() {
           ts,
           actor,
           branchId: row.branchId,
+          branchName: resolveBranchLabel(row.branchId, row.branchName),
           inventoryType,
           source: 'Adjustments',
           action: isDecrease ? 'Remove' : 'Add',
@@ -251,6 +282,7 @@ function StockRecordsPage() {
         ts,
         actor,
         branchId: row.branchId || row.toBranchId,
+        branchName: resolveBranchLabel(row.branchId || row.toBranchId, row.branchName || row.toBranchName),
         inventoryType,
         source: row?.operationType === 'refund' ? 'Refund Approvals' : 'Purchases',
         action: 'Add',
@@ -260,7 +292,7 @@ function StockRecordsPage() {
         remark: row.remark || item?.remark || ''
       };
     }).filter(Boolean);
-  }, [byBranchId, inventoryTypeForBranch, products]);
+  }, [inventoryTypeForBranch, products, resolveBranchLabel]);
 
   const baseRows = useMemo(() => {
     return audit.flatMap((entry) => {
@@ -280,9 +312,12 @@ function StockRecordsPage() {
   const branchFilterOptions = useMemo(() => {
     const extras = Array.from(new Set(allRows.map((row) => String(row.branchId || '')).filter(Boolean)))
       .filter((id) => !branchOptions.some((branch) => String(branch.id) === id))
-      .map((id) => ({ id, name: byBranchId.get(id) || id }));
+      .map((id) => {
+        const match = allRows.find((row) => String(row.branchId || '') === id);
+        return { id, name: resolveBranchLabel(id, match?.branchName) };
+      });
     return [...branchOptions, ...extras];
-  }, [allRows, branchOptions, byBranchId]);
+  }, [allRows, branchOptions, resolveBranchLabel]);
 
   const actors = useMemo(() => Array.from(new Set(allRows.map(r => r.actor).filter(Boolean))).sort(), [allRows]);
   const sources = useMemo(() => Array.from(new Set(allRows.map(r => r.source))).sort(), [allRows]);
@@ -297,10 +332,10 @@ function StockRecordsPage() {
       if (fBranch && r.branchId !== fBranch) return false;
       if (fSource && r.source !== fSource) return false;
       if (fInventoryType && r.inventoryType !== fInventoryType) return false;
-      if (!matchesFilterText([r.product, r.variant, r.remark, r.actor, byBranchId.get(r.branchId), r.action], fProduct)) return false;
+      if (!matchesFilterText([r.product, r.variant, r.remark, r.actor, resolveBranchLabel(r.branchId, r.branchName), r.action], fProduct)) return false;
       return true;
     }).slice().reverse();
-  }, [allRows, byBranchId, dateFrom, dateTo, fActor, fBranch, fInventoryType, fProduct, fSource, periodMode]);
+  }, [allRows, dateFrom, dateTo, fActor, fBranch, fInventoryType, fProduct, fSource, periodMode, resolveBranchLabel]);
   const summary = useMemo(() => ({
     records: rows.length,
     totalMovement: rows.reduce((sum, row) => sum + Math.abs(Number(row.qty || 0)), 0),
@@ -339,7 +374,7 @@ function StockRecordsPage() {
     const headers = [
       { key: 'ts', label: 'Timestamp', value: r => new Date(r.ts).toLocaleString() },
       { key: 'actor', label: 'Actor' },
-      { key: 'branch', label: 'Branch', value: r => byBranchId.get(r.branchId) || r.branchId || '' },
+      { key: 'branch', label: 'Branch', value: r => resolveBranchLabel(r.branchId, r.branchName) },
       { key: 'inventoryType', label: 'Inventory Type' },
       { key: 'source', label: 'Source' },
       { key: 'action', label: 'Action' },
@@ -354,7 +389,7 @@ function StockRecordsPage() {
     const headers = [
       { key: 'ts', label: 'Timestamp', value: r => new Date(r.ts).toLocaleString() },
       { key: 'actor', label: 'Actor' },
-      { key: 'branch', label: 'Branch', value: r => byBranchId.get(r.branchId) || r.branchId || '' },
+      { key: 'branch', label: 'Branch', value: r => resolveBranchLabel(r.branchId, r.branchName) },
       { key: 'inventoryType', label: 'Inventory Type' },
       { key: 'source', label: 'Source' },
       { key: 'action', label: 'Action' },
@@ -481,7 +516,7 @@ function StockRecordsPage() {
               <tr key={r.rowKey || r._id || r.id || idx} style={bulkDeleting && selectedRecordIds.includes(String(r._id || r.id || '')) ? { opacity: 0.55 } : undefined}>
                 <td>{new Date(r.ts).toLocaleString()}</td>
                 <td>{r.actor}</td>
-                <td>{byBranchId.get(r.branchId) || r.branchId || '—'}</td>
+                <td>{resolveBranchLabel(r.branchId, r.branchName)}</td>
                 <td>{r.inventoryType || '—'}</td>
                 <td>{r.source}</td>
                 <td>{r.action}</td>
