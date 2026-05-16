@@ -201,7 +201,16 @@ r.post('/', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (req,
   void Audit.create({
     actor: (req.user && req.user.name) || 'unknown',
     actionType: 'product_create',
-    details: { name: p.name, sku: p.sku, price: p.price, category: p.category || '', initialStock: initialStock > 0 ? initialStock : 0, initialBranchId: initialBranchId || '' },
+    details: {
+      productId: p.id || String(p._id),
+      name: p.name,
+      sku: p.sku,
+      price: p.price,
+      category: p.category || '',
+      initialStock: initialStock > 0 ? initialStock : 0,
+      initialBranchId: initialBranchId || '',
+      initialInventoryType: initialInventoryType || 'retail'
+    },
     branchId: req.user?.branchId || ''
   }).catch(() => {});
   void ServerLog.create({

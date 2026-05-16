@@ -11,7 +11,7 @@ export const TENANT_GRANT_KEYS = [
   'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals',
   'approve_distribution_director', 'approve_distribution_manager', 'approve_warehouse_director', 'approve_warehouse_manager', 'view_refunds', 'add_refunds', 'view_distribution_refunds', 'add_distribution_refunds',
   'approve_refunds', 'view_expenses', 'add_expenses', 'approve_expenses', 'view_reports', 'view_revenue', 'view_profit', 'view_financials',
-  'view_stock_records', 'view_wholesale_invoices', 'view_warehouse_invoices',
+  'view_stock_records', 'view_inventory_consistency', 'view_wholesale_invoices', 'view_warehouse_invoices',
   'view_warehouse_approvals', 'view_imei_conflicts', 'view_cashdrawer', 'view_users',
   'view_config', 'view_audit', 'export_tenant_data', 'import_tenant_data'
 ];
@@ -41,7 +41,7 @@ export const ALL_FEATURES = [
   'modules.transfers', 'modules.adjustments', 'modules.suppliers', 'modules.customers',
   'modules.creditControl', 'modules.approvalsCenter', 'modules.refunds', 'modules.refundApprovals',
   'modules.expenseApprovals', 'modules.reports', 'modules.backup',
-  'admin.users', 'admin.manual', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords',
+  'admin.users', 'admin.manual', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords', 'admin.inventoryConsistency',
   'admin.cashDrawer', 'admin.config', 'admin.godhand', 'admin.docs',
   'features.offlineBackup',
   'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
@@ -81,7 +81,7 @@ export const PLAN_FEATURES = {
     'modules.transfers', 'modules.adjustments', 'modules.suppliers', 'modules.customers',
     'modules.creditControl', 'modules.approvalsCenter', 'modules.refunds', 'modules.refundApprovals',
     'modules.expenseApprovals', 'modules.reports', 'modules.backup',
-    'admin.users', 'admin.manual', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords',
+    'admin.users', 'admin.manual', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords', 'admin.inventoryConsistency',
     'admin.cashDrawer', 'admin.config', 'features.offlineBackup',
     'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
     ...GRANT_FEATURE_KEYS.filter((key) => !['grants.approve_credit_director', 'grants.approve_distribution_director', 'grants.approve_warehouse_director'].includes(key))
@@ -99,7 +99,7 @@ const SECTION_FALLBACKS = {
   'sections.finance': ['modules.finance', 'pages.finance.reconciliation', 'grants.view_finance_reconciliation'],
   'sections.communication': ['modules.communication', 'pages.communication.chat', 'pages.communication.askPtAi', 'grants.view_chat', 'grants.send_chat_messages', 'grants.view_pt_ai'],
   'sections.partners': ['modules.suppliers', 'modules.customers'],
-  'sections.admin': ['admin.users', 'admin.config', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords', 'admin.cashDrawer', 'admin.manual', 'admin.docs', 'admin.godhand'],
+  'sections.admin': ['admin.users', 'admin.config', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords', 'admin.inventoryConsistency', 'admin.cashDrawer', 'admin.manual', 'admin.docs', 'admin.godhand'],
   'sections.tabsRuntime': ['features.offlineBackup', 'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords']
 };
 

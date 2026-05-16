@@ -1,11 +1,19 @@
 import { Router } from 'express';
+import Branch from '../models/Branch.js';
 import Product from '../models/Product.js';
 import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
-import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
+import PurchaseRequest from '../models/PurchaseRequest.js';
+import TransferRequest from '../models/TransferRequest.js';
+import AdjustmentRequest from '../models/AdjustmentRequest.js';
+import WholesaleOperation from '../models/WholesaleOperation.js';
+import Sale from '../models/Sale.js';
+import RefundRequest from '../models/RefundRequest.js';
+import { requireAuth, requireFeature, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
 import { normalizeTrackType, resolveInventoryTypeFromBranch } from '../utils/productUnits.js';
 import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from '../utils/inventory.js';
+import { buildInventoryConsistencyReport } from '../utils/inventoryConsistency.js';
 import { makeInventoryLine, withInventoryAudit } from '../utils/inventoryAudit.js';
 import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
 
@@ -334,6 +342,24 @@ r.post('/set', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'edit_in
     message: `Stock set -> ${Number(quantity)} (Δ ${delta}) for ${p?.name || productId} @ ${branchId}${variantId ? ` (variant ${varLabel})` : ''}`
   });
   res.json({ ok: true });
+});
+
+r.get('/consistency-report', requireFeature('admin.inventoryConsistency'), requireRoleOrPerm(['Admin','Manager'], ['view_inventory_consistency', 'see_inventory_consistency', 'view_stock_records', 'see_stock_records', 'view_audit', 'see_audit']), async (req, res) => {
+  const limit = Math.min(1000, Math.max(1, Number(req.query.limit || 200)));
+  const mismatchOnly = String(req.query.mismatchOnly || 'true').toLowerCase() !== 'false';
+  const [products, audits, branches, purchases, transfers, adjustments, wholesaleOperations, sales, refunds] = await Promise.all([
+    Product.find({}).lean(),
+    Audit.find({}).sort({ ts: -1 }).limit(20000).lean(),
+    Branch.find({}).lean(),
+    PurchaseRequest.find({ status: 'approved' }).lean(),
+    TransferRequest.find({ status: 'approved' }).lean(),
+    AdjustmentRequest.find({ status: 'approved' }).lean(),
+    WholesaleOperation.find({ status: 'approved' }).lean(),
+    Sale.find({}).lean(),
+    RefundRequest.find({ approved_at: { $ne: null }, restockMode: { $ne: 'none' } }).lean()
+  ]);
+  const report = buildInventoryConsistencyReport({ products, audits, branches, purchases, transfers, adjustments, wholesaleOperations, sales, refunds, mismatchOnly, limit });
+  res.json(report);
 });
 
 export default r;
