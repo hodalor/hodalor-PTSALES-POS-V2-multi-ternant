@@ -20,6 +20,25 @@ import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { useAppLanguage } from '../utils/localization';
 import { getProductBrand, getProductSearchText } from '../utils/productSearch';
 
+function stripInventoryMapsForProductUpdate(payload) {
+  if (!payload || typeof payload !== 'object') return payload;
+  const next = { ...payload };
+  delete next.stockByBranch;
+  delete next.wholesaleStockByBranch;
+  delete next.warehouseStockByBranch;
+  if (Array.isArray(next.variants)) {
+    next.variants = next.variants.map((variant) => {
+      if (!variant || typeof variant !== 'object') return variant;
+      const cleanVariant = { ...variant };
+      delete cleanVariant.stockByBranch;
+      delete cleanVariant.wholesaleStockByBranch;
+      delete cleanVariant.warehouseStockByBranch;
+      return cleanVariant;
+    });
+  }
+  return next;
+}
+
 function ProductsPage() {
   const dispatch = useDispatch();
   const products = useSelector(s => s.products.products);
@@ -517,11 +536,11 @@ function ProductsPage() {
             variants: variantsLocal
         };
         const sameImage = String(imagePreview || '') === String(original?.image || '');
-        const updatedBaseServer = {
+        const updatedBaseServer = stripInventoryMapsForProductUpdate({
             ...updatedBaseLocal,
             image: sameImage ? undefined : (imagePreview || null),
             variants: variantsServer
-        };
+        });
 
         const localId = original?.id || original?._id || editingId;
         const updated = { id: localId, ...updatedBaseLocal };
@@ -535,14 +554,14 @@ function ProductsPage() {
             if (!navigator.onLine) {
                 dispatch(updateProduct({ ...updated, offline: true }));
                 try {
-                    await enqueueHttp({ collection: 'products', label: 'Product update', path: `/api/products/${encodeURIComponent(serverId)}`, method: 'PUT', body: { id: original?.id, ...updatedBaseServer } });
+                    await enqueueHttp({ collection: 'products', label: 'Product update', path: `/api/products/${encodeURIComponent(serverId)}`, method: 'PUT', body: stripInventoryMapsForProductUpdate({ id: original?.id, ...updatedBaseServer }) });
                 } catch {
                     toast.show('Failed to save offline', { type: 'error' });
                     setSaving(false); return;
                 }
             } else {
                 try {
-                    await productsApi.update(serverId, { id: original?.id, ...updatedBaseServer });
+                    await productsApi.update(serverId, stripInventoryMapsForProductUpdate({ id: original?.id, ...updatedBaseServer }));
                     dispatch(updateProduct(updated));
                 } catch (e) {
                     toast.show(String(e?.message || 'Failed to update product'), { type: 'error' });
