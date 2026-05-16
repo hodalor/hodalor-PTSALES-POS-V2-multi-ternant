@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import Audit from '../models/Audit.js';
+import Branch from '../models/Branch.js';
 import { requireAuth, requireAdmin, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
 import { getMasterConnection, getTenantConnection, resolveStoredTenantId } from '../config/tenancy.js';
@@ -7,6 +8,39 @@ import { modelFor as TenantModelFor } from '../models/Tenant.js';
 
 const r = Router();
 r.use(requireAuth);
+
+function buildBranchLookupMap(branches = []) {
+  const map = new Map();
+  (Array.isArray(branches) ? branches : []).forEach((branch) => {
+    const label = String(branch?.name || branch?.code || branch?.id || branch?._id || '').trim();
+    const id = String(branch?.id || '').trim();
+    const objectId = String(branch?._id || '').trim();
+    if (id) map.set(id, label || id);
+    if (objectId) map.set(objectId, label || objectId);
+  });
+  return map;
+}
+
+function enrichAuditBranchNames(row, branchLookup) {
+  if (!row || typeof row !== 'object') return row;
+  const details = row.details && typeof row.details === 'object' ? row.details : {};
+  const branchId = String(row.branchId || details.branchId || '').trim();
+  const fromBranchId = String(details.from || '').trim();
+  const toBranchId = String(details.to || '').trim();
+  const branchName = branchId ? (branchLookup.get(branchId) || details.branchName || branchId) : '';
+  const fromBranchName = fromBranchId ? (branchLookup.get(fromBranchId) || details.fromBranchName || fromBranchId) : '';
+  const toBranchName = toBranchId ? (branchLookup.get(toBranchId) || details.toBranchName || toBranchId) : '';
+  return {
+    ...row,
+    branchName,
+    details: {
+      ...details,
+      ...(branchName ? { branchName } : {}),
+      ...(fromBranchName ? { fromBranchName } : {}),
+      ...(toBranchName ? { toBranchName } : {})
+    }
+  };
+}
 
 r.get('/', requireRoleOrPerm(['SuperAdmin', 'Admin'], ['view_audit', 'see_audit', 'view_stock_records', 'see_stock_records']), async (req, res) => {
   const limit = Math.min(1000, Math.max(50, Number(req.query.limit) || 500));
@@ -31,6 +65,9 @@ r.get('/', requireRoleOrPerm(['SuperAdmin', 'Admin'], ['view_audit', 'see_audit'
   const isMasterSuper = role === 'superadmin' && currentTenantId.toLowerCase() === 'master';
   if (!isMasterSuper) {
     rows = await Audit.find(match).sort({ ts: -1 }).limit(limit).lean();
+    const branches = await Branch.find({}, { id: 1, name: 1, code: 1 }).lean();
+    const branchLookup = buildBranchLookupMap(branches);
+    rows = rows.map((row) => enrichAuditBranchNames(row, branchLookup));
   } else {
     const master = await getMasterConnection();
     const TenantModel = TenantModelFor(master);
@@ -39,9 +76,12 @@ r.get('/', requireRoleOrPerm(['SuperAdmin', 'Admin'], ['view_audit', 'see_audit'
       try {
         const conn = await getTenantConnection(tenant.tenantId);
         const AuditModel = conn.models.Audit || conn.model('Audit', Audit.schema);
+        const BranchModel = conn.models.Branch || conn.model('Branch', Branch.schema);
         const found = await AuditModel.find(match).sort({ ts: -1 }).limit(limit).lean();
+        const branches = await BranchModel.find({}, { id: 1, name: 1, code: 1 }).lean();
+        const branchLookup = buildBranchLookupMap(branches);
         return found.map((row) => ({
-          ...row,
+          ...enrichAuditBranchNames(row, branchLookup),
           tenantId: row.tenantId || tenant.tenantId,
           tenantName: row.tenantName || tenant.name || tenant.tenantId
         }));
