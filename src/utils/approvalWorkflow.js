@@ -8,6 +8,7 @@ import ReconciliationAccount from '../models/ReconciliationAccount.js';
 import WholesaleOperation from '../models/WholesaleOperation.js';
 import mongoose from 'mongoose';
 import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from './inventory.js';
+import { makeInventoryLine, withInventoryAudit } from './inventoryAudit.js';
 import { refreshCreditSaleStatus, updateCustomerCreditMetrics } from './credit.js';
 import { adjustSerializedUnits, normalizeTrackType, transferSerializedUnits } from './productUnits.js';
 
@@ -81,6 +82,7 @@ async function applyWholesaleOperation(operation, actor) {
   });
   let acceptedCount = 0;
   const dirtyProducts = new Map();
+  const inventoryLines = [];
   for (const item of items) {
     if (String(item.status || '').toLowerCase() === 'cancelled') continue;
     const product = productByKey.get(String(item.productId || ''));
@@ -119,6 +121,16 @@ async function applyWholesaleOperation(operation, actor) {
       setMapQty(target.container, operation.branchId || operation.toBranchId, current + qty);
       markInventoryModified(target);
       dirtyProducts.set(String(product._id), product);
+      inventoryLines.push(makeInventoryLine({
+        productId: item.productId,
+        productName: product.name,
+        variantId: item.variantId || '',
+        branchId: operation.branchId || operation.toBranchId,
+        inventoryType: operation.toInventoryType || operation.fromInventoryType || operation.operationArea || 'wholesale',
+        delta: qty,
+        reason: item.reason || operation.reason || '',
+        remark: item.remark || operation.remark || ''
+      }));
     } else if (operation.operationType === 'adjustment') {
       if (normalizeTrackType(product.trackType) === 'serialized') {
         if (String(item.adjustmentType || operation.adjustmentType || 'increase') === 'decrease') {
@@ -170,6 +182,16 @@ async function applyWholesaleOperation(operation, actor) {
       setMapQty(target.container, branchId, current + delta);
       markInventoryModified(target);
       dirtyProducts.set(String(product._id), product);
+      inventoryLines.push(makeInventoryLine({
+        productId: item.productId,
+        productName: product.name,
+        variantId: item.variantId || '',
+        branchId,
+        inventoryType: operation.fromInventoryType || operation.operationArea || 'wholesale',
+        delta,
+        reason: item.reason || operation.reason || '',
+        remark: item.remark || operation.remark || ''
+      }));
     } else if (operation.operationType === 'transfer') {
       if (normalizeTrackType(product.trackType) === 'serialized') {
         if (!Array.isArray(item.unitIds) || item.unitIds.length !== qty) {
@@ -208,6 +230,28 @@ async function applyWholesaleOperation(operation, actor) {
       markInventoryModified(fromTarget);
       markInventoryModified(toTarget);
       dirtyProducts.set(String(product._id), product);
+      inventoryLines.push(
+        makeInventoryLine({
+          productId: item.productId,
+          productName: product.name,
+          variantId: item.variantId || '',
+          branchId: operation.fromBranchId,
+          inventoryType: operation.fromInventoryType || operation.operationArea || 'wholesale',
+          delta: -qty,
+          reason: item.reason || operation.reason || '',
+          remark: item.remark || operation.remark || ''
+        }),
+        makeInventoryLine({
+          productId: item.productId,
+          productName: product.name,
+          variantId: item.variantId || '',
+          branchId: operation.toBranchId,
+          inventoryType: operation.toInventoryType || operation.operationArea || 'wholesale',
+          delta: qty,
+          reason: item.reason || operation.reason || '',
+          remark: item.remark || operation.remark || ''
+        })
+      );
     }
     acceptedCount += 1;
   }
@@ -220,7 +264,7 @@ async function applyWholesaleOperation(operation, actor) {
   await Audit.create({
     actor: actor?.name || 'unknown',
     actionType: `wholesale_${operation.operationType}_approved`,
-    details: {
+    details: withInventoryAudit({
       productId: operation.productId,
       variantId: operation.variantId || '',
       qty: Number(operation.qty || 0),
@@ -231,7 +275,7 @@ async function applyWholesaleOperation(operation, actor) {
       toBranchId: operation.toBranchId || '',
       fromInventoryType: operation.fromInventoryType || '',
       toInventoryType: operation.toInventoryType || ''
-    },
+    }, inventoryLines),
     branchId: operation.branchId || operation.toBranchId || operation.fromBranchId || '',
     ts: new Date()
   });

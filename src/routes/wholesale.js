@@ -58,6 +58,21 @@ r.get('/operations', async (req, res) => {
     return {
       ...row,
       approvalId: row.approvalId || String(approval._id),
+      directorApprovedAt: approval.directorApprovedAt || null,
+      directorApproved_at: approval.directorApprovedAt || null,
+      directorApprovedByName: approval.directorApprovedByName || '',
+      directorApprovedByRole: approval.directorApprovedByRole || '',
+      directorApprovalRemark: approval.directorRemark || '',
+      managerApprovedAt: approval.managerApprovedAt || null,
+      managerApproved_at: approval.managerApprovedAt || null,
+      managerApprovedByName: approval.managerApprovedByName || '',
+      managerApprovedByRole: approval.managerApprovedByRole || '',
+      managerApprovalRemark: approval.managerRemark || '',
+      approvedAt: approval.status === 'approved' ? (approval.managerApprovedAt || approval.executedAt || approval.updatedAt || null) : null,
+      approved_at: approval.status === 'approved' ? (approval.managerApprovedAt || approval.executedAt || approval.updatedAt || null) : null,
+      rejectedAt: approval.status === 'rejected' ? (approval.rejectedAt || approval.updatedAt || null) : null,
+      rejected_at: approval.status === 'rejected' ? (approval.rejectedAt || approval.updatedAt || null) : null,
+      rejectionRemark: approval.status === 'rejected' ? (approval.managerRemark || approval.directorRemark || '') : '',
       status: ['pending_director', 'pending_manager', 'approved', 'rejected'].includes(String(approval.status || ''))
         ? String(approval.status)
         : row.status

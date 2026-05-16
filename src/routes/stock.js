@@ -6,6 +6,7 @@ import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
 import { normalizeTrackType, resolveInventoryTypeFromBranch } from '../utils/productUnits.js';
 import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from '../utils/inventory.js';
+import { makeInventoryLine, withInventoryAudit } from '../utils/inventoryAudit.js';
 import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
 
 const r = Router();
@@ -122,10 +123,14 @@ r.post('/adjust', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'add_
     return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to adjust stock') });
   }
   const varLabel = (Array.isArray(p?.variants) ? p.variants.find(v => v.id === variantId)?.label : '') || '';
+  const inventoryType = await resolveInventoryTypeFromBranch(branchId, 'retail');
   await Audit.create({
     actor: actor || 'unknown',
     actionType: 'stock_adjust',
-    details: { product: p?.name || productId, variant: varLabel, delta: Number(delta), branchId },
+    details: withInventoryAudit(
+      { product: p?.name || productId, variant: varLabel, delta: Number(delta), branchId, inventoryType },
+      [makeInventoryLine({ productId, productName: p?.name || productId, variantId: variantId || '', variantLabel: varLabel, branchId, inventoryType, delta: Number(delta), remark: remark || '' })]
+    ),
     remark: remark || '',
     branchId
   });
@@ -158,10 +163,14 @@ r.post('/damage-remove', requireRoleOrPerm(['Admin','Manager','Inventory Staff']
     return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to remove stock') });
   }
   const varLabel = (Array.isArray(p?.variants) ? p.variants.find(v => v.id === variantId)?.label : '') || '';
+  const inventoryType = await resolveInventoryTypeFromBranch(branchId, 'retail');
   await Audit.create({
     actor: actor || 'unknown',
     actionType: 'stock_damage_remove',
-    details: { product: p?.name || productId, variant: varLabel, qty: Math.abs(Number(qty)), branchId },
+    details: withInventoryAudit(
+      { product: p?.name || productId, variant: varLabel, qty: Math.abs(Number(qty)), branchId, inventoryType },
+      [makeInventoryLine({ productId, productName: p?.name || productId, variantId: variantId || '', variantLabel: varLabel, branchId, inventoryType, delta: -Math.abs(Number(qty)), remark: remark || '' })]
+    ),
     remark: remark || '',
     branchId
   });
@@ -205,10 +214,14 @@ r.post('/receive', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'add
     await p.save();
   }
   const varLabel = (Array.isArray(p?.variants) ? p.variants.find(v => v.id === variantId)?.label : '') || '';
+  const inventoryType = await resolveInventoryTypeFromBranch(branchId, 'retail');
   await Audit.create({
     actor: actor || 'unknown',
     actionType: 'stock_receive',
-    details: { product: p?.name || productId, variant: varLabel, baseUnits: Number(baseUnits), supplier: supplier || '', cost: Number(cost) || 0, costPerUnit: cpu != null ? cpu : 0, expiryDate: expiryDate || null, branchId },
+    details: withInventoryAudit(
+      { product: p?.name || productId, variant: varLabel, baseUnits: Number(baseUnits), supplier: supplier || '', cost: Number(cost) || 0, costPerUnit: cpu != null ? cpu : 0, expiryDate: expiryDate || null, branchId, inventoryType },
+      [makeInventoryLine({ productId, productName: p?.name || productId, variantId: variantId || '', variantLabel: varLabel, branchId, inventoryType, delta: Number(baseUnits), remark: remark || '' })]
+    ),
     remark: remark || '',
     branchId
   });
@@ -245,10 +258,18 @@ r.post('/transfer', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
     return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to transfer stock') });
   }
   const varLabel = (Array.isArray(p?.variants) ? p.variants.find(v => v.id === variantId)?.label : '') || '';
+  const fromInventoryType = await resolveInventoryTypeFromBranch(from, 'retail');
+  const toInventoryType = await resolveInventoryTypeFromBranch(to, 'retail');
   await Audit.create({
     actor: actor || 'unknown',
     actionType: 'stock_transfer',
-    details: { product: p?.name || productId, variant: varLabel, from, to, qty: Math.abs(Number(qty)) },
+    details: withInventoryAudit(
+      { product: p?.name || productId, variant: varLabel, from, to, qty: Math.abs(Number(qty)), fromInventoryType, toInventoryType },
+      [
+        makeInventoryLine({ productId, productName: p?.name || productId, variantId: variantId || '', variantLabel: varLabel, branchId: from, inventoryType: fromInventoryType, delta: -Math.abs(Number(qty)), remark: remark || '' }),
+        makeInventoryLine({ productId, productName: p?.name || productId, variantId: variantId || '', variantLabel: varLabel, branchId: to, inventoryType: toInventoryType, delta: Math.abs(Number(qty)), remark: remark || '' })
+      ]
+    ),
     remark: remark || '',
     branchId: from
   });
@@ -297,7 +318,10 @@ r.post('/set', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'edit_in
   await Audit.create({
     actor: actor || 'unknown',
     actionType: 'stock_set_manual',
-    details: { product: p?.name || productId, variant: varLabel, quantity: Number(quantity), delta, branchId },
+    details: withInventoryAudit(
+      { product: p?.name || productId, variant: varLabel, quantity: Number(quantity), delta, branchId, inventoryType },
+      [makeInventoryLine({ productId, productName: p?.name || productId, variantId: variantId || '', variantLabel: varLabel, branchId, inventoryType, delta, remark: remark || '' })]
+    ),
     remark: remark || '',
     branchId
   });

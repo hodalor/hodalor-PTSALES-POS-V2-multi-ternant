@@ -76,6 +76,31 @@ function normalizePricingPayload(body = {}) {
   return out;
 }
 
+function cloneInventoryMap(value) {
+  return normalizeStockByBranch(value);
+}
+
+function preserveInventoryMapsFromExisting(existing, payload) {
+  if (!existing || !payload) return payload;
+  const next = { ...payload };
+  next.stockByBranch = cloneInventoryMap(existing.stockByBranch);
+  next.wholesaleStockByBranch = cloneInventoryMap(existing.wholesaleStockByBranch);
+  next.warehouseStockByBranch = cloneInventoryMap(existing.warehouseStockByBranch);
+  if (Array.isArray(next.variants)) {
+    const existingVariants = Array.isArray(existing.variants) ? existing.variants : [];
+    next.variants = next.variants.map((variant, index) => {
+      const current = existingVariants.find((row) => String(row.id) === String(variant?.id)) || existingVariants[index] || {};
+      return {
+        ...(variant || {}),
+        stockByBranch: cloneInventoryMap(current.stockByBranch),
+        wholesaleStockByBranch: cloneInventoryMap(current.wholesaleStockByBranch),
+        warehouseStockByBranch: cloneInventoryMap(current.warehouseStockByBranch)
+      };
+    });
+  }
+  return next;
+}
+
 function stockFieldForInventoryType(inventoryType) {
   const type = String(inventoryType || 'retail').toLowerCase();
   if (type === 'warehouse') return 'warehouseStockByBranch';
@@ -193,20 +218,11 @@ r.put('/:id', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (re
   const id = req.params.id;
   const query = productLookupQuery(id);
   const before = await Product.findOne(query);
-  const payload = normalizePricingPayload(req.body || {});
-  if (payload && payload.stockByBranch != null) {
-    delete payload.stockByBranch;
-  }
-  if (Array.isArray(payload?.variants)) {
-    payload.variants = payload.variants.map(v => {
-      const out = { ...(v || {}) };
-      if (out.stockByBranch != null) delete out.stockByBranch;
-      return out;
-    });
-  }
+  let payload = normalizePricingPayload(req.body || {});
   if (!payload.id && before?.id) {
     payload.id = before.id;
   }
+  payload = preserveInventoryMapsFromExisting(before, payload);
   const p = await Product.findOneAndUpdate(query, payload, { new: true });
   const changed = [];
   Object.keys(payload).forEach(k => {

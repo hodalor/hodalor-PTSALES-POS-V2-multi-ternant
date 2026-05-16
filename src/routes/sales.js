@@ -12,6 +12,7 @@ import ProductUnit from '../models/ProductUnit.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
 import { getMapQty, getStockTarget, markInventoryModified, resolveTierPrice, setMapQty } from '../utils/inventory.js';
+import { makeInventoryLine, withInventoryAudit } from '../utils/inventoryAudit.js';
 import { refreshCreditSaleStatus, updateCustomerCreditMetrics } from '../utils/credit.js';
 import { normalizeTrackType, releaseSerializedUnits, sellSerializedUnits } from '../utils/productUnits.js';
 import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
@@ -440,7 +441,24 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
   await Audit.create({
     actor: sale.sellerName || 'unknown',
     actionType: posType === 'wholesale' ? 'stock_wholesale_sale_deduct' : 'stock_sale_deduct',
-    details: { items: sale.items.map(i => ({ sku: i.sku, qty: i.qty, productId: i.productId || null, variantId: i.variantId || null, priceTier: i.priceTier || defaultPriceTier })), invoiceSerial, receiptNumber, inventoryType, posType },
+    details: withInventoryAudit(
+      {
+        items: sale.items.map(i => ({ sku: i.sku, qty: i.qty, productId: i.productId || null, variantId: i.variantId || null, priceTier: i.priceTier || defaultPriceTier })),
+        invoiceSerial,
+        receiptNumber,
+        inventoryType,
+        posType
+      },
+      sale.items.map((item) => makeInventoryLine({
+        productId: item.productId || '',
+        productName: item.name || item.productId || '',
+        variantId: item.variantId || '',
+        branchId: sale.branchId,
+        inventoryType,
+        delta: -Math.abs(Number(item.qty || 0)),
+        remark: receiptNumber
+      }))
+    ),
     branchId: sale.branchId,
     ts: new Date()
   });
