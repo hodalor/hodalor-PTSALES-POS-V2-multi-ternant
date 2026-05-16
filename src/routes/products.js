@@ -76,26 +76,20 @@ function normalizePricingPayload(body = {}) {
   return out;
 }
 
-function cloneInventoryMap(value) {
-  return normalizeStockByBranch(value);
-}
-
-function preserveInventoryMapsFromExisting(existing, payload) {
-  if (!existing || !payload) return payload;
-  const next = { ...payload };
-  next.stockByBranch = cloneInventoryMap(existing.stockByBranch);
-  next.wholesaleStockByBranch = cloneInventoryMap(existing.wholesaleStockByBranch);
-  next.warehouseStockByBranch = cloneInventoryMap(existing.warehouseStockByBranch);
+function stripInventoryMapsFromPayload(body) {
+  if (!body || typeof body !== 'object') return body;
+  const next = { ...body };
+  delete next.stockByBranch;
+  delete next.wholesaleStockByBranch;
+  delete next.warehouseStockByBranch;
   if (Array.isArray(next.variants)) {
-    const existingVariants = Array.isArray(existing.variants) ? existing.variants : [];
-    next.variants = next.variants.map((variant, index) => {
-      const current = existingVariants.find((row) => String(row.id) === String(variant?.id)) || existingVariants[index] || {};
-      return {
-        ...(variant || {}),
-        stockByBranch: cloneInventoryMap(current.stockByBranch),
-        wholesaleStockByBranch: cloneInventoryMap(current.wholesaleStockByBranch),
-        warehouseStockByBranch: cloneInventoryMap(current.warehouseStockByBranch)
-      };
+    next.variants = next.variants.map((variant) => {
+      if (!variant || typeof variant !== 'object') return variant;
+      const cleanVariant = { ...variant };
+      delete cleanVariant.stockByBranch;
+      delete cleanVariant.wholesaleStockByBranch;
+      delete cleanVariant.warehouseStockByBranch;
+      return cleanVariant;
     });
   }
   return next;
@@ -239,11 +233,25 @@ r.put('/:id', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (re
   const query = productLookupQuery(id);
   const before = await Product.findOne(query);
   const hadInventoryMapAttempt = inventoryMapsAttempted(req.body || {});
+  if (hadInventoryMapAttempt) {
+    void ServerLog.create({
+      level: 'warn',
+      actor: (req.user && req.user.name) || 'unknown',
+      route: req.originalUrl || req.url || '',
+      method: req.method || 'PUT',
+      status: 400,
+      message: `Rejected normal product update with inventory map fields: ${before?.name || id}`,
+      details: { productId: before?.id || id }
+    }).catch(() => {});
+    return res.status(400).json({
+      error: 'Normal product editing cannot change stock balances. Use the inventory stock endpoints for stock changes.'
+    });
+  }
   let payload = normalizePricingPayload(req.body || {});
   if (!payload.id && before?.id) {
     payload.id = before.id;
   }
-  payload = preserveInventoryMapsFromExisting(before, payload);
+  payload = stripInventoryMapsFromPayload(payload);
   const p = await Product.findOneAndUpdate(query, payload, { new: true });
   const changed = [];
   Object.keys(payload).forEach(k => {
@@ -271,17 +279,6 @@ r.put('/:id', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (re
     message: `Product updated: ${p?.name || id}`,
     details: { changedKeys: changed }
   }).catch(() => {});
-  if (hadInventoryMapAttempt) {
-    void ServerLog.create({
-      level: 'warn',
-      actor: (req.user && req.user.name) || 'unknown',
-      route: req.originalUrl || req.url || '',
-      method: req.method || 'PUT',
-      status: 200,
-      message: `Inventory map fields were ignored during normal product update: ${p?.name || id}`,
-      details: { productId: p?.id || before?.id || id, changedKeys: changed }
-    }).catch(() => {});
-  }
 });
 
 r.delete('/:id', requireAdmin, async (req, res) => {
