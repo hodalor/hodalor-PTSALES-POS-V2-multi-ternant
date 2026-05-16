@@ -101,6 +101,17 @@ function preserveInventoryMapsFromExisting(existing, payload) {
   return next;
 }
 
+function inventoryMapsAttempted(body) {
+  if (!body || typeof body !== 'object') return false;
+  if ('stockByBranch' in body || 'wholesaleStockByBranch' in body || 'warehouseStockByBranch' in body) return true;
+  if (!Array.isArray(body.variants)) return false;
+  return body.variants.some((variant) => variant && typeof variant === 'object' && (
+    'stockByBranch' in variant ||
+    'wholesaleStockByBranch' in variant ||
+    'warehouseStockByBranch' in variant
+  ));
+}
+
 function stockFieldForInventoryType(inventoryType) {
   const type = String(inventoryType || 'retail').toLowerCase();
   if (type === 'warehouse') return 'warehouseStockByBranch';
@@ -227,6 +238,7 @@ r.put('/:id', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (re
   const id = req.params.id;
   const query = productLookupQuery(id);
   const before = await Product.findOne(query);
+  const hadInventoryMapAttempt = inventoryMapsAttempted(req.body || {});
   let payload = normalizePricingPayload(req.body || {});
   if (!payload.id && before?.id) {
     payload.id = before.id;
@@ -259,6 +271,17 @@ r.put('/:id', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (re
     message: `Product updated: ${p?.name || id}`,
     details: { changedKeys: changed }
   }).catch(() => {});
+  if (hadInventoryMapAttempt) {
+    void ServerLog.create({
+      level: 'warn',
+      actor: (req.user && req.user.name) || 'unknown',
+      route: req.originalUrl || req.url || '',
+      method: req.method || 'PUT',
+      status: 200,
+      message: `Inventory map fields were ignored during normal product update: ${p?.name || id}`,
+      details: { productId: p?.id || before?.id || id, changedKeys: changed }
+    }).catch(() => {});
+  }
 });
 
 r.delete('/:id', requireAdmin, async (req, res) => {
