@@ -67,14 +67,27 @@ r.post('/', requireAdmin, async (req, res) => {
 
 r.put('/:id', requireAdmin, async (req, res) => {
   const id = req.params.id;
-  const query = { $or: [{ _id: id }, { id }] };
+  const query = { $or: [{ id }] };
+  if (mongoose.isValidObjectId(id)) query.$or.unshift({ _id: id });
   const before = await Branch.findOne(query);
-  const b = await Branch.findOneAndUpdate(query, req.body, { new: true });
-  if (b) await provisionBranchProducts(b);
+  if (!before) return res.status(404).json({ error: 'Branch not found' });
+  const payload = {};
+  if (typeof req.body?.name === 'string') payload.name = req.body.name.trim();
+  if (typeof req.body?.code === 'string') payload.code = req.body.code.trim();
+  const requestedType = typeof req.body?.branchType === 'string' ? req.body.branchType.trim().toLowerCase() : '';
+  if (requestedType && requestedType !== String(before.branchType || 'retail').toLowerCase()) {
+    return res.status(400).json({ error: 'Branch type changes are blocked here for safety. Rename the branch only so stock remains untouched.' });
+  }
+  if (!payload.name) payload.name = before.name;
+  if (!Object.prototype.hasOwnProperty.call(payload, 'code')) payload.code = before.code || '';
+  const b = await Branch.findOneAndUpdate(query, payload, { new: true });
+  const changed = {};
+  if (before.name !== b?.name) changed.name = { from: before.name, to: b?.name || '' };
+  if (String(before.code || '') !== String(b?.code || '')) changed.code = { from: before.code || '', to: b?.code || '' };
   await Audit.create({
     actor: req.user?.name || 'unknown',
     actionType: 'branch_update',
-    details: { id, before: before ? { name: before.name, code: before.code } : null, after: b ? { name: b.name, code: b.code } : null },
+    details: { id, before: { name: before.name, code: before.code }, after: b ? { name: b.name, code: b.code } : null, changed },
     branchId: req.user?.branchId || ''
   });
   await ServerLog.create({
