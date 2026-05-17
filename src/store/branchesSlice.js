@@ -29,8 +29,8 @@ const branchesSlice = createSlice({
       const { id, name, code, branchType, offline, syncPending } = action.payload;
       const b = state.branches.find(x => x.id === id);
       if (b) {
-        b.name = name;
-        b.code = code;
+        if (typeof name === 'string') b.name = name;
+        if (typeof code === 'string') b.code = code;
         if (branchType) b.branchType = branchType;
         if (typeof offline === 'boolean') b.offline = offline;
         if (typeof syncPending === 'boolean') b.syncPending = syncPending;

@@ -469,18 +469,13 @@ function ConfigSettingsPage() {
     const { promptDialog } = await import('../utils/dialogs');
     const newName = await promptDialog('Enter new branch name', b.name);
     if (!newName || !newName.trim()) return;
-    const newCode = await promptDialog('Enter new branch code', b.code);
-    if (!newCode || !newCode.trim()) return;
-    const newType = await promptDialog('Enter branch type: retail, wholesale, or warehouse', b.branchType || 'retail');
-    if (!newType || !newType.trim()) return;
-    const normalizedType = ['retail', 'wholesale', 'warehouse'].includes(String(newType).toLowerCase()) ? String(newType).toLowerCase() : 'retail';
-    const patch = { name: newName.trim(), code: newCode.trim(), branchType: normalizedType };
+    const patch = { name: newName.trim() };
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) {
         toast.show('Offline: connect internet and try again.', { type: 'error' });
         return;
       }
-      dispatch(updateBranch({ id: b.id, ...patch, offline: true }));
+      dispatch(updateBranch({ id: b.id, name: patch.name, offline: true }));
       try {
         await enqueueHttp({ collection: 'branches', label: 'Branch update', path: `/api/branches/${encodeURIComponent(b.id)}`, method: 'PUT', body: patch });
         toast.show('Saved offline. Will backup when online.', { type: 'success' });
@@ -490,11 +485,16 @@ function ConfigSettingsPage() {
       return;
     }
     try {
-      await branchesApi.update(b.id, patch);
-      dispatch(updateBranch({ id: b.id, ...patch }));
+      const saved = await branchesApi.update(b.id, patch);
+      dispatch(updateBranch({
+        id: b.id,
+        name: saved?.name || patch.name,
+        code: saved?.code ?? b.code,
+        branchType: saved?.branchType || b.branchType
+      }));
       toast.show('Branch updated', { type: 'success' });
-    } catch {
-      toast.show('Failed to update branch on server', { type: 'error' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to update branch on server'), { type: 'error' });
     }
   }
   
