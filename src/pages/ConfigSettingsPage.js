@@ -1,6 +1,6 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { setAppName, setFooterText, setCurrentBranch, setReceiptHeader, setReceiptFooter, setBusinessPhone, setBusinessWebsite, setBusinessTpin, setReceiptQrBaseUrl, setInvoicePrefix, setNextInvoiceNumber, setWholesaleInvoicePrefix, setNextWholesaleInvoiceNumber, setWarehouseInvoicePrefix, setNextWarehouseInvoiceNumber, setReceiptPrefix, setNextReceiptNumber, setDrawerOpenOnCash, setTaxRate, setCurrencyCode, setCurrencySymbol, setCurrencyPosition, setRefreshIntervalSec, addCurrency, removeCurrency, setActiveCurrency, setLoyaltyEnabled, setLoyaltyEarnAmount, setLoyaltyEarnPoints, setLoyaltyRedeemValue, setLoyaltyMinRedeemPoints, setLoyaltyMaxRedeemPercent, setClientAppName, setClientLogoUrl, setPreferredLanguage, setInvoiceCompanyAddress, setInvoiceFooter, setInvoiceDeclaration, setInvoiceSignatoryLabel, setInvoiceTitle, setInvoiceWordsLabel, setInvoiceGeneratedNote, setInvoiceNumberDigits, setInvoicePaidStampEnabled, setInvoicePaidStampLabel, setInvoicePaidStampThankYou, setInvoicePaidStampShowDate, setInvoicePaidStampColor, setReceiptBrandName, setAllSettings, addSettingsCategory, removeSettingsCategory } from '../store/settingsSlice';
-import { addBranch, removeBranch, updateBranch } from '../store/branchesSlice';
+import { addBranch, removeBranch, setBranches, updateBranch } from '../store/branchesSlice';
 import * as branchesApi from '../api/branches';
 import { useEffect, useRef, useState } from 'react';
 import { useToast } from '../components/ToastProvider';
@@ -470,6 +470,12 @@ function ConfigSettingsPage() {
     const newName = await promptDialog('Enter new branch name', b.name);
     if (!newName || !newName.trim()) return;
     const patch = { name: newName.trim() };
+    const previous = {
+      id: b.id,
+      name: b.name,
+      code: b.code,
+      branchType: b.branchType
+    };
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) {
         toast.show('Offline: connect internet and try again.', { type: 'error' });
@@ -485,15 +491,21 @@ function ConfigSettingsPage() {
       return;
     }
     try {
+      dispatch(updateBranch({ id: b.id, name: patch.name }));
       const saved = await branchesApi.update(b.id, patch);
+      const latestBranches = await branchesApi.list().catch(() => null);
       dispatch(updateBranch({
         id: b.id,
         name: saved?.name || patch.name,
         code: saved?.code ?? b.code,
         branchType: saved?.branchType || b.branchType
       }));
+      if (Array.isArray(latestBranches) && latestBranches.length > 0) {
+        dispatch(setBranches(latestBranches));
+      }
       toast.show('Branch updated', { type: 'success' });
     } catch (e) {
+      dispatch(updateBranch(previous));
       toast.show(String(e?.message || 'Failed to update branch on server'), { type: 'error' });
     }
   }
