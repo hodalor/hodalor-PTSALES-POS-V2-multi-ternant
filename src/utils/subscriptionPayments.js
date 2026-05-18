@@ -338,6 +338,15 @@ export async function createPaystackRenewalPayment(info, payload = {}) {
   if (!redirectUrl) throw new Error('Missing renewal payment redirect URL');
   const method = String(payload.method || 'card').toLowerCase();
   const channels = method === 'mobile_money' ? ['mobile_money'] : ['card'];
+  const mobileMoney = method === 'mobile_money'
+    ? {
+        phone: String(payload.phone || info.billingPhone || '').trim(),
+        provider: String(payload.network || '').trim().toUpperCase()
+      }
+    : null;
+  if (method === 'mobile_money' && (!mobileMoney?.phone || !mobileMoney?.provider)) {
+    throw new Error('Phone number and mobile network are required for mobile money payment');
+  }
   const response = await fetch(`${getPaystackBaseUrl()}/transaction/initialize`, {
     method: 'POST',
     headers: {
@@ -351,6 +360,7 @@ export async function createPaystackRenewalPayment(info, payload = {}) {
       reference: txRef,
       callback_url: redirectUrl,
       channels,
+      ...(mobileMoney ? { mobile_money: mobileMoney } : {}),
       metadata: {
         tenantId: info.tenantId,
         months: Number(payload.months),
@@ -794,6 +804,15 @@ export async function createPaystackLimitUpgradePayment(info, payload = {}) {
   const redirectUrl = resolveLimitUpgradeRedirectUrl(payload);
   if (!redirectUrl) throw new Error('Missing tenant limit payment redirect URL');
   const channels = method === 'mobile_money' ? ['mobile_money'] : ['card'];
+  const mobileMoney = method === 'mobile_money'
+    ? {
+        phone: String(payload.phone || info.billingPhone || '').trim(),
+        provider: String(payload.network || '').trim().toUpperCase()
+      }
+    : null;
+  if (method === 'mobile_money' && (!mobileMoney?.phone || !mobileMoney?.provider)) {
+    throw new Error('Phone number and mobile network are required for mobile money payment');
+  }
   const response = await fetch(`${getPaystackBaseUrl()}/transaction/initialize`, {
     method: 'POST',
     headers: {
@@ -807,6 +826,7 @@ export async function createPaystackLimitUpgradePayment(info, payload = {}) {
       reference: txRef,
       callback_url: redirectUrl,
       channels,
+      ...(mobileMoney ? { mobile_money: mobileMoney } : {}),
       metadata: {
         tenantId: info.tenantId,
         resourceType,
