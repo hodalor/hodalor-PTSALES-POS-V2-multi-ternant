@@ -471,6 +471,20 @@ function ConfigSettingsPage() {
 
   function addNewBranch() {
     if (!branchName.trim() || !branchCode.trim()) return;
+    const currentBranchLimit = tenantQuota?.limits?.maxBranches;
+    const currentBranchCount = tenantQuota?.usage?.totalBranches;
+    if (currentBranchLimit != null && Number(currentBranchCount || 0) >= Number(currentBranchLimit || 0)) {
+      setLimitUpgradeContext({
+        ...(tenantQuota || {}),
+        resourceType: 'branch',
+        limits: tenantQuota?.limits,
+        usage: tenantQuota?.usage,
+        addOnPricing: tenantQuota?.addOnPricing,
+        enabledGateways: tenantQuota?.enabledGateways || [],
+        mobileMoneyNetworks: tenantQuota?.mobileMoneyNetworks || []
+      });
+      return;
+    }
     const action = dispatch(addBranch({ name: branchName.trim(), code: branchCode.trim(), branchType, offline: true }));
     const created = action?.payload;
     setAddingBranch(true);

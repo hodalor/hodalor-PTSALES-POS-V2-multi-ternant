@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Modal from './Modal';
 import * as tenantsApi from '../api/tenants';
 import { savePendingTenantLimitPayment } from '../utils/tenantLimitPayments';
@@ -12,7 +12,7 @@ function formatMoney(amount, currencySymbol = '', currencyCode = '', currencyPos
 
 export default function TenantLimitUpgradeModal({ open, onClose, context, resourceType = 'user', toast, onStarted }) {
   const [provider, setProvider] = useState('paystack');
-  const [method, setMethod] = useState('mobile_money');
+  const [method, setMethod] = useState('card');
   const [quantity, setQuantity] = useState('1');
   const [network, setNetwork] = useState('');
   const [phone, setPhone] = useState('');
@@ -37,10 +37,43 @@ export default function TenantLimitUpgradeModal({ open, onClose, context, resour
     return `${used} of ${limit} used`;
   }, [context, resolvedResourceType]);
 
+  useEffect(() => {
+    if (!open) return;
+    const nextProvider = enabledGateways.includes('paystack')
+      ? 'paystack'
+      : (enabledGateways[0] || 'paystack');
+    setProvider(nextProvider);
+    setMethod(nextProvider === 'paypal' ? 'card' : 'card');
+    setPhone(String(context?.billingPhone || ''));
+    setEmail(String(context?.billingEmail || ''));
+    setAddress(String(context?.billingAddress || ''));
+    setNetwork((current) => current || String(mobileMoneyNetworks[0] || ''));
+  }, [context?.billingAddress, context?.billingEmail, context?.billingPhone, enabledGateways, mobileMoneyNetworks, open]);
+
+  useEffect(() => {
+    if (provider === 'paypal') {
+      setMethod('card');
+      return;
+    }
+    if (method === 'mobile_money' && !mobileMoneyNetworks.length) {
+      setMethod('card');
+    }
+  }, [method, mobileMoneyNetworks.length, provider]);
+
   async function startPayment() {
     if (!unitRate) {
       toast?.show(`Additional ${resolvedResourceType} payment is not configured yet. Contact admin.`, { type: 'error' });
       return;
+    }
+    if (provider === 'paystack' && method === 'mobile_money') {
+      if (!String(phone || '').trim()) {
+        toast?.show('Enter a phone number for mobile money payment.', { type: 'error' });
+        return;
+      }
+      if (!String(network || '').trim()) {
+        toast?.show('Select a mobile network for mobile money payment.', { type: 'error' });
+        return;
+      }
     }
     try {
       setLoading(true);
@@ -110,8 +143,8 @@ export default function TenantLimitUpgradeModal({ open, onClose, context, resour
           <label>
             Method
             <select className="input" value={method} onChange={(e) => setMethod(e.target.value)}>
-              <option value="mobile_money">Mobile Money</option>
               <option value="card">Card</option>
+              {provider !== 'paypal' && mobileMoneyNetworks.length > 0 ? <option value="mobile_money">Mobile Money</option> : null}
             </select>
           </label>
           <label>
