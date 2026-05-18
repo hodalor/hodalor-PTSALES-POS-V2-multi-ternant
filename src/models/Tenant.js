@@ -42,6 +42,10 @@ const TenantSchema = new mongoose.Schema({
       provider: { type: String, default: '' },
       method: { type: String, default: '' },
       channel: { type: String, default: '' },
+      purpose: { type: String, default: 'subscription_renewal' },
+      resourceType: { type: String, default: '' },
+      quantity: { type: Number, default: null },
+      unitRate: { type: Number, default: null },
       status: { type: String, default: '' },
       transactionRef: { type: String, default: '' },
       providerTransactionId: { type: String, default: '' },
@@ -54,7 +58,12 @@ const TenantSchema = new mongoose.Schema({
     default: []
   },
   maxUserAccountsOverride: { type: Number, default: null },
-  maxActiveUsersOverride: { type: Number, default: null }
+  maxActiveUsersOverride: { type: Number, default: null },
+  maxBranchesOverride: { type: Number, default: null },
+  additionalUserRateOverride: { type: Number, default: null },
+  additionalBranchRateOverride: { type: Number, default: null },
+  additionalUserSlots: { type: Number, default: 0 },
+  additionalBranchSlots: { type: Number, default: 0 }
 }, { timestamps: true });
 
 export function modelFor(conn) {

@@ -5,6 +5,11 @@ import Product from '../models/Product.js';
 import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
 import { requireAdmin } from '../middleware/auth.js';
+import { getMasterConnection } from '../config/tenancy.js';
+import { modelFor as TenantModelFor } from '../models/Tenant.js';
+import { getEffectiveTenantLimits, getTenantLimitDefaults, getTenantUsageSummary } from '../utils/tenantLimits.js';
+import { getPaymentManagementConfig } from '../utils/paymentManagement.js';
+import { getMobileMoneyNetworks, getTenantLimitUpgradeInfo } from '../utils/subscriptionPayments.js';
 
 const r = Router();
 
@@ -46,6 +51,38 @@ r.get('/', async (req, res) => {
 });
 
 r.post('/', requireAdmin, async (req, res) => {
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master');
+  if (tenantId.toLowerCase() !== 'master') {
+    const master = await getMasterConnection();
+    const TenantModel = TenantModelFor(master);
+    const tenant = await TenantModel.findOne({ tenantId }).lean();
+    const defaults = await getTenantLimitDefaults(master);
+    const limits = getEffectiveTenantLimits(tenant, defaults);
+    if (limits.maxBranches) {
+      const usageSummary = await getTenantUsageSummary(master, req.db, tenant, defaults);
+      if ((usageSummary?.usage?.totalBranches || 0) >= limits.maxBranches) {
+        const paymentConfig = await getPaymentManagementConfig(master);
+        tenant._masterConn = master;
+        const upgradeInfo = await getTenantLimitUpgradeInfo(req.db, tenant, usageSummary);
+        return res.status(403).json({
+          error: 'Branch creation limit reached. Contact admin or pay for additional branch slots.',
+          code: 'TENANT_BRANCH_LIMIT_REACHED',
+          resourceType: 'branch',
+          limits: usageSummary.limits,
+          usage: usageSummary.usage,
+          addOnPricing: upgradeInfo.addOnPricing,
+          currencyCode: upgradeInfo.currencyCode,
+          currencySymbol: upgradeInfo.currencySymbol,
+          currencyPosition: upgradeInfo.currencyPosition,
+          billingEmail: upgradeInfo.billingEmail,
+          billingPhone: upgradeInfo.billingPhone,
+          billingAddress: upgradeInfo.billingAddress,
+          mobileMoneyNetworks: getMobileMoneyNetworks(upgradeInfo.billingCountry),
+          enabledGateways: paymentConfig.enabledGateways
+        });
+      }
+    }
+  }
   const b = await Branch.create(req.body);
   res.json(b);
   void provisionBranchProducts(b).catch(() => {});

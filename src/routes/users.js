@@ -7,7 +7,9 @@ import { hashPin } from '../utils/pin.js';
 import { getMasterConnection } from '../config/tenancy.js';
 import Tenant, { modelFor as TenantModelFor } from '../models/Tenant.js';
 import { modelFor as TenantSessionModelFor } from '../models/TenantSession.js';
-import { getEffectiveTenantLimits, getTenantLimitDefaults } from '../utils/tenantLimits.js';
+import { getEffectiveTenantLimits, getTenantLimitDefaults, getTenantUsageSummary } from '../utils/tenantLimits.js';
+import { getPaymentManagementConfig } from '../utils/paymentManagement.js';
+import { getMobileMoneyNetworks, getTenantLimitUpgradeInfo } from '../utils/subscriptionPayments.js';
 
 const r = Router();
 const SUPPORTED_LANGUAGES = new Set(['en', 'tw', 'ga', 'ewe', 'dag', 'fr', 'zh']);
@@ -49,9 +51,27 @@ r.post('/', requireAdmin, async (req, res) => {
     const defaults = await getTenantLimitDefaults(master);
     const limits = getEffectiveTenantLimits(tenant, defaults);
     if (limits.maxUserAccounts) {
-      const totalUsers = await User.countDocuments();
-      if (totalUsers >= limits.maxUserAccounts) {
-        return res.status(403).json({ error: 'User account creation limit reached. Please upgrade package or contact admin for more user account creation.' });
+      const usageSummary = await getTenantUsageSummary(master, req.db, tenant, defaults);
+      if ((usageSummary?.usage?.totalUsers || 0) >= limits.maxUserAccounts) {
+        const paymentConfig = await getPaymentManagementConfig(master);
+        tenant._masterConn = master;
+        const upgradeInfo = await getTenantLimitUpgradeInfo(req.db, tenant, usageSummary);
+        return res.status(403).json({
+          error: 'User account creation limit reached. Contact admin or pay for additional user slots.',
+          code: 'TENANT_USER_LIMIT_REACHED',
+          resourceType: 'user',
+          limits: usageSummary.limits,
+          usage: usageSummary.usage,
+          addOnPricing: upgradeInfo.addOnPricing,
+          currencyCode: upgradeInfo.currencyCode,
+          currencySymbol: upgradeInfo.currencySymbol,
+          currencyPosition: upgradeInfo.currencyPosition,
+          billingEmail: upgradeInfo.billingEmail,
+          billingPhone: upgradeInfo.billingPhone,
+          billingAddress: upgradeInfo.billingAddress,
+          mobileMoneyNetworks: getMobileMoneyNetworks(upgradeInfo.billingCountry),
+          enabledGateways: paymentConfig.enabledGateways
+        });
       }
     }
   }

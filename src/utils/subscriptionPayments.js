@@ -63,6 +63,90 @@ function calculateRenewalAmountFromInfo(info, months) {
   return period ? Number(period.amount || 0) : null;
 }
 
+function normalizeAddonResourceType(value) {
+  return String(value || '').trim().toLowerCase() === 'branch' ? 'branch' : 'user';
+}
+
+function normalizeAddonQuantity(value) {
+  const qty = Math.floor(Number(value || 0));
+  return Number.isFinite(qty) && qty > 0 ? qty : 0;
+}
+
+function getAddonRate(config, resourceType) {
+  const addOns = config?.addOns || {};
+  return resourceType === 'branch'
+    ? Number(addOns.additionalBranchRate || 0)
+    : Number(addOns.additionalUserRate || 0);
+}
+
+function getTenantAddonPricing(config, tenantDoc = {}) {
+  const globalUserRate = Number(config?.addOns?.additionalUserRate || 0);
+  const globalBranchRate = Number(config?.addOns?.additionalBranchRate || 0);
+  const tenantUserRate = Number(tenantDoc?.additionalUserRateOverride);
+  const tenantBranchRate = Number(tenantDoc?.additionalBranchRateOverride);
+  return {
+    additionalUserRate: Number.isFinite(tenantUserRate) && tenantUserRate >= 0 ? tenantUserRate : globalUserRate,
+    additionalBranchRate: Number.isFinite(tenantBranchRate) && tenantBranchRate >= 0 ? tenantBranchRate : globalBranchRate
+  };
+}
+
+function calculateAddonAmount(config, resourceType, quantity) {
+  const rate = getAddonRate(config, resourceType);
+  const qty = normalizeAddonQuantity(quantity);
+  if (!rate || !qty) return null;
+  return Number((rate * qty).toFixed(2));
+}
+
+function resolveLimitUpgradeRedirectUrl(payload = {}) {
+  const explicit = String(payload.returnUrl || '').trim();
+  if (/^https?:\/\//i.test(explicit)) return explicit;
+  return String(process.env.TENANT_LIMIT_PAYMENT_REDIRECT_URL || process.env.RENEWAL_PAYMENT_REDIRECT_URL || '').trim();
+}
+
+function parseAddonTxRef(value) {
+  const parts = String(value || '').split('_');
+  if (parts.length < 7 || parts[0] !== 'limit' || parts[1] !== 'addon') return null;
+  return {
+    tenantId: parts[2] || '',
+    resourceType: normalizeAddonResourceType(parts[3]),
+    quantity: normalizeAddonQuantity(parts[4]),
+    channel: String(parts[5] || 'card'),
+    raw: String(value || '')
+  };
+}
+
+async function getTenantBillingContext(conn, tenantDoc) {
+  const Settings = SettingsModelFor(conn);
+  const settings = await Settings.findOne({ key: 'default' }).lean();
+  const currencies = Array.isArray(settings?.data?.currencies) ? settings.data.currencies : [];
+  const activeCurrencyCode = String(settings?.data?.activeCurrencyCode || settings?.data?.currencyCode || 'GHS');
+  const selected = currencies.find((item) => String(item.code) === activeCurrencyCode) || currencies[0] || null;
+  return {
+    currencyCode: String(selected?.code || activeCurrencyCode || 'GHS'),
+    currencySymbol: String(selected?.symbol || settings?.data?.currencySymbol || ''),
+    currencyPosition: String(selected?.position || settings?.data?.currencyPosition || 'prefix'),
+    billingEmail: String(tenantDoc?.billingEmail || ''),
+    billingPhone: String(tenantDoc?.billingPhone || ''),
+    billingAddress: String(tenantDoc?.billingAddress || ''),
+    billingCountry: normalizeCountryCode(tenantDoc?.billingCountry)
+  };
+}
+
+export async function getTenantLimitUpgradeInfo(conn, tenantDoc, usageSummary = null) {
+  const billing = await getTenantBillingContext(conn, tenantDoc);
+  const masterConn = tenantDoc?._masterConn;
+  const config = masterConn ? await getSubscriptionManagementConfig(masterConn) : { addOns: {} };
+  const addOnPricing = getTenantAddonPricing(config, tenantDoc);
+  return {
+    tenantId: String(tenantDoc?.tenantId || ''),
+    tenantName: String(tenantDoc?.name || ''),
+    ...billing,
+    addOnPricing,
+    usage: usageSummary?.usage || null,
+    limits: usageSummary?.limits || null
+  };
+}
+
 function getPayPalBaseUrl() {
   const explicit = String(process.env.PAYPAL_API_BASE || '').trim();
   if (explicit) return explicit;
@@ -560,4 +644,327 @@ export async function verifyPaystackRenewalPayment(masterConn, tenantConn, tenan
     amount,
     approval: String(data.gateway_response || '')
   };
+}
+
+export async function createDpoLimitUpgradePayment(info, payload = {}) {
+  const companyToken = String(process.env.DPO_COMPANY_TOKEN || '').trim();
+  const serviceType = String(process.env.DPO_SERVICE_TYPE || '').trim();
+  const apiUrl = String(process.env.DPO_API_URL || 'https://secure.3gdirectpay.com/API/v6/').trim();
+  const paymentUrl = String(process.env.DPO_PAYMENT_URL || 'https://secure.3gdirectpay.com/payv2.php').trim();
+  const ptl = String(process.env.DPO_PTL || '15').trim();
+  if (!companyToken || !serviceType) throw new Error('Payment provider is not configured yet');
+  const resourceType = normalizeAddonResourceType(payload.resourceType);
+  const quantity = normalizeAddonQuantity(payload.quantity);
+  const config = { addOns: info?.addOnPricing || {} };
+  const amount = calculateAddonAmount(config, resourceType, quantity);
+  if (!amount) throw new Error(`Additional ${resourceType} payment is not configured yet`);
+  const channel = String(payload.method || 'card').trim().toLowerCase() === 'mobile_money' ? 'mobile_money' : 'card';
+  const txRef = `limit_addon_${info.tenantId}_${resourceType}_${quantity}_${channel}_${Date.now()}`;
+  const redirectUrl = resolveLimitUpgradeRedirectUrl(payload);
+  if (!redirectUrl) throw new Error('Missing tenant limit payment redirect URL');
+  const { firstName, lastName } = splitCustomerName(payload.customerName || info.tenantName || info.tenantId);
+  const requestXml = `<?xml version="1.0" encoding="utf-8"?>
+<API3G>
+  <CompanyToken>${xmlEscape(companyToken)}</CompanyToken>
+  <Request>createToken</Request>
+  <Transaction>
+    <PaymentAmount>${xmlEscape(amount)}</PaymentAmount>
+    <PaymentCurrency>${xmlEscape(info.currencyCode)}</PaymentCurrency>
+    <CompanyRef>${xmlEscape(txRef)}</CompanyRef>
+    <RedirectURL>${xmlEscape(redirectUrl)}</RedirectURL>
+    <BackURL>${xmlEscape(redirectUrl)}</BackURL>
+    <CompanyRefUnique>1</CompanyRefUnique>
+    <PTL>${xmlEscape(ptl)}</PTL>
+  </Transaction>
+  <Services>
+    <Service>
+      <ServiceType>${xmlEscape(serviceType)}</ServiceType>
+      <ServiceDescription>${xmlEscape(`${info.tenantName || info.tenantId} Additional ${resourceType} slot(s) x${quantity}`)}</ServiceDescription>
+      <ServiceDate>${xmlEscape(new Date().toISOString().slice(0, 10))}</ServiceDate>
+    </Service>
+  </Services>
+  <customerFirstName>${xmlEscape(firstName)}</customerFirstName>
+  <customerLastName>${xmlEscape(lastName)}</customerLastName>
+  <customerEmail>${xmlEscape(payload.email || info.billingEmail || 'billing@example.com')}</customerEmail>
+  <customerPhone>${xmlEscape(payload.phone || info.billingPhone || '')}</customerPhone>
+  <customerAddress>${xmlEscape(payload.address || info.billingAddress || '')}</customerAddress>
+  <customerCity>${xmlEscape(info.tenantName || 'City')}</customerCity>
+  <customerCountry>${xmlEscape(info.billingCountry || 'GH')}</customerCountry>
+  <customerZip>00000</customerZip>
+</API3G>`;
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/xml' },
+    body: requestXml
+  });
+  const xml = await response.text();
+  const result = readXmlTag(xml, 'Result');
+  const resultExplanation = readXmlTag(xml, 'ResultExplanation');
+  const transToken = readXmlTag(xml, 'TransToken');
+  if (!response.ok || result !== '000' || !transToken) {
+    throw new Error(resultExplanation || 'Failed to initialize payment');
+  }
+  return {
+    provider: 'dpo_pay',
+    txRef,
+    transactionToken: transToken,
+    checkoutUrl: `${paymentUrl}?ID=${encodeURIComponent(transToken)}`,
+    amount,
+    currencyCode: info.currencyCode,
+    resourceType,
+    quantity
+  };
+}
+
+export async function createPayPalLimitUpgradePayment(info, payload = {}) {
+  const resourceType = normalizeAddonResourceType(payload.resourceType);
+  const quantity = normalizeAddonQuantity(payload.quantity);
+  const config = { addOns: info?.addOnPricing || {} };
+  const amount = calculateAddonAmount(config, resourceType, quantity);
+  if (!amount) throw new Error(`Additional ${resourceType} payment is not configured yet`);
+  const txRef = `limit_addon_${info.tenantId}_${resourceType}_${quantity}_card_${Date.now()}`;
+  const redirectUrl = resolveLimitUpgradeRedirectUrl(payload);
+  if (!redirectUrl) throw new Error('Missing tenant limit payment redirect URL');
+  const accessToken = await getPayPalAccessToken();
+  const response = await fetch(`${getPayPalBaseUrl()}/v2/checkout/orders`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation'
+    },
+    body: JSON.stringify({
+      intent: 'CAPTURE',
+      purchase_units: [{
+        reference_id: txRef,
+        custom_id: txRef,
+        description: `${info.tenantName || info.tenantId} Additional ${resourceType} slot(s) x${quantity}`,
+        amount: {
+          currency_code: info.currencyCode,
+          value: amount.toFixed(2)
+        }
+      }],
+      application_context: {
+        return_url: redirectUrl,
+        cancel_url: redirectUrl,
+        brand_name: info.tenantName || info.tenantId,
+        user_action: 'PAY_NOW'
+      },
+      payer: {
+        name: (() => {
+          const { firstName, lastName } = splitCustomerName(payload.customerName || info.tenantName || info.tenantId);
+          return { given_name: firstName, surname: lastName };
+        })(),
+        email_address: payload.email || info.billingEmail || undefined,
+        address: {
+          address_line_1: payload.address || info.billingAddress || undefined,
+          country_code: info.billingCountry || 'GH'
+        }
+      }
+    })
+  });
+  const json = await response.json().catch(() => ({}));
+  const approveLink = Array.isArray(json?.links) ? json.links.find((item) => item.rel === 'approve') : null;
+  if (!response.ok || !json?.id || !approveLink?.href) {
+    throw new Error(json?.message || json?.details?.[0]?.description || 'Failed to initialize PayPal payment');
+  }
+  return {
+    provider: 'paypal',
+    txRef,
+    orderId: json.id,
+    checkoutUrl: approveLink.href,
+    amount,
+    currencyCode: info.currencyCode,
+    resourceType,
+    quantity
+  };
+}
+
+export async function createPaystackLimitUpgradePayment(info, payload = {}) {
+  const secretKey = String(process.env.PAYSTACK_SECRET_KEY || '').trim();
+  if (!secretKey) throw new Error('Paystack is not configured yet');
+  const resourceType = normalizeAddonResourceType(payload.resourceType);
+  const quantity = normalizeAddonQuantity(payload.quantity);
+  const config = { addOns: info?.addOnPricing || {} };
+  const amount = calculateAddonAmount(config, resourceType, quantity);
+  if (!amount) throw new Error(`Additional ${resourceType} payment is not configured yet`);
+  const method = String(payload.method || 'card').toLowerCase();
+  const channel = method === 'mobile_money' ? 'mobile_money' : 'card';
+  const txRef = `limit_addon_${info.tenantId}_${resourceType}_${quantity}_${channel}_${Date.now()}`;
+  const redirectUrl = resolveLimitUpgradeRedirectUrl(payload);
+  if (!redirectUrl) throw new Error('Missing tenant limit payment redirect URL');
+  const channels = method === 'mobile_money' ? ['mobile_money'] : ['card'];
+  const response = await fetch(`${getPaystackBaseUrl()}/transaction/initialize`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${secretKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      email: payload.email || info.billingEmail || 'billing@example.com',
+      amount: Math.round(amount * 100),
+      currency: info.currencyCode,
+      reference: txRef,
+      callback_url: redirectUrl,
+      channels,
+      metadata: {
+        tenantId: info.tenantId,
+        resourceType,
+        quantity,
+        method,
+        network: String(payload.network || ''),
+        billingPhone: payload.phone || info.billingPhone || '',
+        billingAddress: payload.address || info.billingAddress || ''
+      }
+    })
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok || !json?.status || !json?.data?.authorization_url) {
+    throw new Error(json?.message || 'Failed to initialize Paystack payment');
+  }
+  return {
+    provider: 'paystack',
+    txRef,
+    checkoutUrl: json.data.authorization_url,
+    amount,
+    currencyCode: info.currencyCode,
+    accessCode: json.data.access_code || '',
+    resourceType,
+    quantity
+  };
+}
+
+async function applyTenantLimitUpgrade(masterConn, tenantDoc, payment = {}) {
+  const meta = parseAddonTxRef(payment.txRef);
+  if (!meta?.tenantId || !meta.quantity) throw new Error('Invalid tenant limit payment reference');
+  const config = await getSubscriptionManagementConfig(masterConn);
+  const addOnPricing = getTenantAddonPricing(config, tenantDoc);
+  const effectiveConfig = { addOns: addOnPricing };
+  const unitRate = getAddonRate(effectiveConfig, meta.resourceType);
+  const expectedAmount = calculateAddonAmount(effectiveConfig, meta.resourceType, meta.quantity);
+  if (!expectedAmount || !unitRate) throw new Error(`Additional ${meta.resourceType} payment is not configured yet`);
+  if (Number(payment.amount || 0) < expectedAmount) throw new Error('Payment amount does not match expected tenant limit amount');
+  const incField = meta.resourceType === 'branch' ? 'additionalBranchSlots' : 'additionalUserSlots';
+  const updated = await TenantModelFor(masterConn).findOneAndUpdate(
+    { tenantId: String(tenantDoc?.tenantId || '') },
+    {
+      $inc: { [incField]: meta.quantity },
+      $push: {
+        paymentHistory: {
+          provider: String(payment.provider || ''),
+          method: String(payment.method || ''),
+          channel: String(payment.channel || meta.channel || ''),
+          purpose: 'tenant_limit_upgrade',
+          resourceType: meta.resourceType,
+          quantity: meta.quantity,
+          unitRate,
+          status: 'successful',
+          transactionRef: String(payment.txRef || ''),
+          providerTransactionId: String(payment.providerTransactionId || ''),
+          network: String(payment.network || ''),
+          currencyCode: String(payment.currencyCode || ''),
+          amount: expectedAmount,
+          months: null,
+          createdAt: new Date()
+        }
+      }
+    },
+    { new: true }
+  );
+  return {
+    updated,
+    resourceType: meta.resourceType,
+    quantity: meta.quantity,
+    amount: expectedAmount
+  };
+}
+
+export async function verifyDpoLimitUpgradePayment(masterConn, tenantDoc, transactionToken, txRef) {
+  const companyToken = String(process.env.DPO_COMPANY_TOKEN || '').trim();
+  const apiUrl = String(process.env.DPO_API_URL || 'https://secure.3gdirectpay.com/API/v6/').trim();
+  if (!companyToken) throw new Error('Payment provider is not configured yet');
+  const verifyXml = `<?xml version="1.0" encoding="utf-8"?>
+<API3G>
+  <CompanyToken>${xmlEscape(companyToken)}</CompanyToken>
+  <Request>verifyToken</Request>
+  <TransactionToken>${xmlEscape(transactionToken)}</TransactionToken>
+</API3G>`;
+  const response = await fetch(apiUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/xml' },
+    body: verifyXml
+  });
+  const xml = await response.text();
+  const result = readXmlTag(xml, 'Result');
+  const resultExplanation = readXmlTag(xml, 'ResultExplanation');
+  const companyRef = readXmlTag(xml, 'CompanyRef');
+  const paymentAmount = Number(readXmlTag(xml, 'TransactionAmount') || 0);
+  const paymentCurrency = readXmlTag(xml, 'TransactionCurrency');
+  if (!response.ok || result !== '000') throw new Error(resultExplanation || 'Failed to verify payment');
+  if (String(companyRef || '') !== String(txRef || '')) throw new Error('Payment reference mismatch');
+  return applyTenantLimitUpgrade(masterConn, tenantDoc, {
+    provider: 'dpo_pay',
+    method: 'hosted_checkout',
+    channel: parseAddonTxRef(companyRef)?.channel || '',
+    txRef: companyRef,
+    providerTransactionId: String(transactionToken || ''),
+    network: '',
+    currencyCode: String(paymentCurrency || ''),
+    amount: paymentAmount
+  });
+}
+
+export async function verifyPayPalLimitUpgradePayment(masterConn, tenantDoc, orderId, txRef) {
+  const accessToken = await getPayPalAccessToken();
+  const captureResponse = await fetch(`${getPayPalBaseUrl()}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json'
+    }
+  });
+  const json = await captureResponse.json().catch(() => ({}));
+  if (!captureResponse.ok || String(json?.status || '').toUpperCase() !== 'COMPLETED') {
+    throw new Error(json?.message || json?.details?.[0]?.description || 'Failed to capture PayPal payment');
+  }
+  const purchaseUnit = Array.isArray(json?.purchase_units) ? json.purchase_units[0] : null;
+  const amountValue = Number(purchaseUnit?.payments?.captures?.[0]?.amount?.value || purchaseUnit?.amount?.value || 0);
+  const currencyCode = String(purchaseUnit?.payments?.captures?.[0]?.amount?.currency_code || purchaseUnit?.amount?.currency_code || '');
+  const customId = String(purchaseUnit?.custom_id || purchaseUnit?.reference_id || '');
+  if (customId !== String(txRef || '')) throw new Error('Payment reference mismatch');
+  return applyTenantLimitUpgrade(masterConn, tenantDoc, {
+    provider: 'paypal',
+    method: 'paypal_checkout',
+    channel: parseAddonTxRef(customId)?.channel || 'card',
+    txRef: customId,
+    providerTransactionId: String(orderId || ''),
+    network: '',
+    currencyCode,
+    amount: amountValue
+  });
+}
+
+export async function verifyPaystackLimitUpgradePayment(masterConn, tenantDoc, reference) {
+  const secretKey = String(process.env.PAYSTACK_SECRET_KEY || '').trim();
+  if (!secretKey) throw new Error('Paystack is not configured yet');
+  const response = await fetch(`${getPaystackBaseUrl()}/transaction/verify/${encodeURIComponent(reference)}`, {
+    headers: {
+      Authorization: `Bearer ${secretKey}`
+    }
+  });
+  const json = await response.json().catch(() => ({}));
+  const data = json?.data || {};
+  if (!response.ok || !json?.status || String(data?.status || '').toLowerCase() !== 'success') {
+    throw new Error(json?.message || 'Failed to verify Paystack payment');
+  }
+  return applyTenantLimitUpgrade(masterConn, tenantDoc, {
+    provider: 'paystack',
+    method: String(data.channel || data.metadata?.method || 'hosted_checkout'),
+    channel: parseAddonTxRef(String(data.reference || ''))?.channel || String(data.channel || data.metadata?.method || ''),
+    txRef: String(data.reference || ''),
+    providerTransactionId: String(data.id || ''),
+    network: String(data.metadata?.network || ''),
+    currencyCode: String(data.currency || ''),
+    amount: Number(data.amount || 0) / 100
+  });
 }

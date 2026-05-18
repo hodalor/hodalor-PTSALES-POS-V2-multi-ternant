@@ -47,6 +47,13 @@ function defaultPeriods() {
   ];
 }
 
+function defaultAddOns() {
+  return {
+    additionalUserRate: 0,
+    additionalBranchRate: 0
+  };
+}
+
 function normalizePlan(plan = {}, existingKeys = new Set()) {
   let key = slugifyPlanKey(plan.key || plan.label);
   let suffix = 2;
@@ -71,15 +78,26 @@ function normalizePeriod(period = {}) {
   };
 }
 
+function normalizeAddOns(input = {}) {
+  const additionalUserRate = roundMoney(input.additionalUserRate);
+  const additionalBranchRate = roundMoney(input.additionalBranchRate);
+  return {
+    additionalUserRate: additionalUserRate >= 0 ? additionalUserRate : 0,
+    additionalBranchRate: additionalBranchRate >= 0 ? additionalBranchRate : 0
+  };
+}
+
 export async function getSubscriptionManagementConfig(masterConn) {
   const Settings = SettingsModelFor(masterConn);
   const doc = await Settings.findOne({ key: SUBSCRIPTION_MANAGEMENT_KEY });
   const rawPlans = Array.isArray(doc?.data?.plans) && doc.data.plans.length > 0 ? doc.data.plans : defaultPlans();
   const rawPeriods = Array.isArray(doc?.data?.periods) && doc.data.periods.length > 0 ? doc.data.periods : defaultPeriods();
+  const rawAddOns = doc?.data?.addOns || defaultAddOns();
   const keySet = new Set();
   const plans = rawPlans.map((plan) => normalizePlan(plan, keySet));
   const periods = rawPeriods.map(normalizePeriod).sort((a, b) => a.months - b.months);
-  return { plans, periods };
+  const addOns = normalizeAddOns(rawAddOns);
+  return { plans, periods, addOns };
 }
 
 export async function saveSubscriptionManagementConfig(masterConn, payload = {}) {
@@ -87,6 +105,7 @@ export async function saveSubscriptionManagementConfig(masterConn, payload = {})
   const keySet = new Set();
   const plans = (Array.isArray(payload.plans) ? payload.plans : defaultPlans()).map((plan) => normalizePlan(plan, keySet));
   const periods = (Array.isArray(payload.periods) ? payload.periods : defaultPeriods()).map(normalizePeriod).sort((a, b) => a.months - b.months);
+  const addOns = normalizeAddOns(payload.addOns || defaultAddOns());
   const monthValues = periods.map((period) => Number(period.months));
   if (new Set(monthValues).size !== monthValues.length) {
     throw new Error('Duplicate month rows are not allowed');
@@ -102,10 +121,10 @@ export async function saveSubscriptionManagementConfig(masterConn, payload = {})
 
   await Settings.findOneAndUpdate(
     { key: SUBSCRIPTION_MANAGEMENT_KEY },
-    { key: SUBSCRIPTION_MANAGEMENT_KEY, data: { plans, periods } },
+    { key: SUBSCRIPTION_MANAGEMENT_KEY, data: { plans, periods, addOns } },
     { upsert: true, new: true }
   );
-  return { plans, periods };
+  return { plans, periods, addOns };
 }
 
 export async function resolveSubscriptionPlan(masterConn, planKey) {

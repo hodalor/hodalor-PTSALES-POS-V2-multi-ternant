@@ -7,11 +7,12 @@ import { requireAuth, requireFeature, requireRoleOrPerm, requireSuperAdmin } fro
 import { getMasterConnection, getTenantConnection, getTenantDbName, normalizeTenantId } from '../config/tenancy.js';
 import { hashPin } from '../utils/pin.js';
 import { ALL_FEATURES, featureFlagsFromEnabled, normalizeFeatureList } from '../config/tenantAccess.js';
-import { getTenantLimitDefaults, normalizeLimitDefaults, normalizeLimitValue, saveTenantLimitDefaults } from '../utils/tenantLimits.js';
+import { getEffectiveTenantLimits, getTenantLimitDefaults, getTenantUsageSummary, normalizeLimitDefaults, normalizeLimitValue, saveTenantLimitDefaults } from '../utils/tenantLimits.js';
 import { buildRenewalHistoryEntry, ensureTenantActivationCode, normalizeSubscriptionAmount, refreshTenantActivationCode, syncTenantSubscriptionSnapshot } from '../utils/tenantActivation.js';
 import { getPaymentManagementDashboard, savePaymentManagementConfig } from '../utils/paymentManagement.js';
 import { getSubscriptionManagementConfig, resolveSubscriptionPlan, saveSubscriptionManagementConfig } from '../utils/subscriptionManagement.js';
 import { exportTenantData, importTenantData } from '../utils/tenantDataTransfer.js';
+import { createDpoLimitUpgradePayment, createPayPalLimitUpgradePayment, createPaystackLimitUpgradePayment, getMobileMoneyNetworks, getTenantLimitUpgradeInfo, verifyDpoLimitUpgradePayment, verifyPayPalLimitUpgradePayment, verifyPaystackLimitUpgradePayment } from '../utils/subscriptionPayments.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -88,12 +89,86 @@ r.get('/me', async (req, res) => {
   const master = await getMasterConnection();
   const meta = await ensureTenantActivationCode(master, await Tenant.findOne({ tenantId: tid }));
   if (!meta) return res.json({});
+  const tenantConn = await getTenantConnection(tid);
+  const defaults = await getTenantLimitDefaults(master);
+  const usageSummary = await getTenantUsageSummary(master, tenantConn, meta, defaults);
+  meta._masterConn = master;
+  const upgradeInfo = await getTenantLimitUpgradeInfo(tenantConn, meta, usageSummary);
+  const paymentConfig = await getPaymentManagementConfig(master);
   res.json({
     ...meta.toObject?.() || meta,
+    limits: usageSummary.limits,
+    usage: usageSummary.usage,
+    addOnPricing: upgradeInfo.addOnPricing,
+    enabledGateways: paymentConfig.enabledGateways,
+    mobileMoneyNetworks: getMobileMoneyNetworks(upgradeInfo.billingCountry),
     activationCode: undefined,
     activationCodeIssuedAt: undefined,
     activationCodeExpiresAt: undefined,
     activationLastUsedAt: undefined
+  });
+});
+
+r.post('/start-limit-upgrade-payment', requireRoleOrPerm(['Admin', 'SuperAdmin'], 'view_config'), async (req, res) => {
+  const tid = normalizeTenantId(req.user?.tenantId || req.tenantId || '');
+  if (!tid || tid.toLowerCase() === 'master') return res.status(400).json({ error: 'Tenant payment is only available for tenant databases' });
+  const master = await getMasterConnection();
+  const TenantModel = TenantModelFor(master);
+  const tenant = await TenantModel.findOne({ tenantId: tid });
+  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+  if (tenant.disabled) return res.status(403).json({ error: 'Tenant disabled' });
+  const tenantConn = await getTenantConnection(tid);
+  const defaults = await getTenantLimitDefaults(master);
+  const usageSummary = await getTenantUsageSummary(master, tenantConn, tenant, defaults);
+  tenant._masterConn = master;
+  const info = await getTenantLimitUpgradeInfo(tenantConn, tenant, usageSummary);
+  const provider = String(req.body?.provider || 'paystack').trim().toLowerCase();
+  const paymentConfig = await getPaymentManagementConfig(master);
+  if (!paymentConfig.enabledGateways.includes(provider)) {
+    return res.status(403).json({ error: 'That payment gateway is disabled by superadmin' });
+  }
+  const checkout = provider === 'paypal'
+    ? await createPayPalLimitUpgradePayment(info, req.body || {})
+    : provider === 'paystack'
+      ? await createPaystackLimitUpgradePayment(info, req.body || {})
+      : await createDpoLimitUpgradePayment(info, req.body || {});
+  res.json({
+    ok: true,
+    ...checkout,
+    limits: usageSummary.limits,
+    usage: usageSummary.usage,
+    addOnPricing: info.addOnPricing,
+    mobileMoneyNetworks: getMobileMoneyNetworks(info.billingCountry)
+  });
+});
+
+r.post('/verify-limit-upgrade-payment', requireRoleOrPerm(['Admin', 'SuperAdmin'], 'view_config'), async (req, res) => {
+  const tid = normalizeTenantId(req.user?.tenantId || req.tenantId || '');
+  if (!tid || tid.toLowerCase() === 'master') return res.status(400).json({ error: 'Tenant payment is only available for tenant databases' });
+  const master = await getMasterConnection();
+  const TenantModel = TenantModelFor(master);
+  const tenant = await TenantModel.findOne({ tenantId: tid });
+  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+  const provider = String(req.body?.provider || 'paystack').trim().toLowerCase();
+  const result = provider === 'paypal'
+    ? await verifyPayPalLimitUpgradePayment(master, tenant, String(req.body?.orderId || req.body?.transactionToken || ''), String(req.body?.txRef || ''))
+    : provider === 'paystack'
+      ? await verifyPaystackLimitUpgradePayment(master, tenant, String(req.body?.reference || req.body?.txRef || ''))
+      : await verifyDpoLimitUpgradePayment(master, tenant, String(req.body?.transactionToken || ''), String(req.body?.txRef || ''));
+  const refreshedTenant = result.updated;
+  const tenantConn = await getTenantConnection(tid);
+  const defaults = await getTenantLimitDefaults(master);
+  const usageSummary = await getTenantUsageSummary(master, tenantConn, refreshedTenant, defaults);
+  const limits = getEffectiveTenantLimits(refreshedTenant, defaults);
+  res.json({
+    ok: true,
+    message: `${result.resourceType === 'branch' ? 'Branch' : 'User'} limit increased successfully`,
+    tenant: refreshedTenant,
+    resourceType: result.resourceType,
+    quantity: result.quantity,
+    amount: result.amount,
+    limits,
+    usage: usageSummary.usage
   });
 });
 
@@ -118,15 +193,25 @@ r.get('/', requireSuperAdmin, async (_req, res) => {
   const master = await getMasterConnection();
   const TenantModel = TenantModelFor(master);
   const rows = await TenantModel.find().sort({ createdAt: -1 });
-  const ensured = [];
-  for (const row of rows) ensured.push(await ensureTenantActivationCode(master, row));
-  const plain = ensured.map((row) => {
+  const defaults = await getTenantLimitDefaults(master);
+  const ensured = await Promise.all(rows.map((row) => ensureTenantActivationCode(master, row)));
+  const plain = await Promise.all(ensured.map(async (row) => {
     const item = row?.toObject?.() || row;
+    const tid = String(item?.tenantId || '');
+    let usageSummary = { limits: getEffectiveTenantLimits(item, defaults), usage: null };
+    try {
+      if (tid) {
+        const tenantConn = await getTenantConnection(tid);
+        usageSummary = await getTenantUsageSummary(master, tenantConn, item, defaults);
+      }
+    } catch {}
     return {
       ...item,
-      features: normalizeFeatureList(item?.subscriptionPlan, Array.isArray(item?.features) ? item.features : [])
+      features: normalizeFeatureList(item?.subscriptionPlan, Array.isArray(item?.features) ? item.features : []),
+      limits: usageSummary.limits,
+      usage: usageSummary.usage
     };
-  });
+  }));
   res.json(plain);
 });
 
@@ -220,7 +305,7 @@ r.patch('/limits', requireSuperAdmin, async (req, res) => {
 });
 
 r.post('/', requireSuperAdmin, async (req, res) => {
-  const { tenantId, name, subscriptionPlan, features, adminName, adminPin, clientAppName, billingEmail, billingPhone, billingAddress, billingCountry, logo, themeColor, subscriptionExpiresAt, subscriptionPermanent, subscriptionAmount, maxUserAccountsOverride, maxActiveUsersOverride } = req.body || {};
+  const { tenantId, name, subscriptionPlan, features, adminName, adminPin, clientAppName, billingEmail, billingPhone, billingAddress, billingCountry, logo, themeColor, subscriptionExpiresAt, subscriptionPermanent, subscriptionAmount, maxUserAccountsOverride, maxActiveUsersOverride, maxBranchesOverride, additionalUserRateOverride, additionalBranchRateOverride, additionalUserSlots, additionalBranchSlots } = req.body || {};
   const tid = normalizeTenantId(tenantId);
   if (!tenantId || tid.toLowerCase() === 'master') return res.status(400).json({ error: 'Invalid tenantId' });
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'Tenant name is required' });
@@ -262,7 +347,12 @@ r.post('/', requireSuperAdmin, async (req, res) => {
       actorName: String(req.user?.name || '')
     })],
     maxUserAccountsOverride: normalizeLimitValue(maxUserAccountsOverride),
-    maxActiveUsersOverride: normalizeLimitValue(maxActiveUsersOverride)
+    maxActiveUsersOverride: normalizeLimitValue(maxActiveUsersOverride),
+    maxBranchesOverride: normalizeLimitValue(maxBranchesOverride),
+    additionalUserRateOverride: normalizeSubscriptionAmount(additionalUserRateOverride),
+    additionalBranchRateOverride: normalizeSubscriptionAmount(additionalBranchRateOverride),
+    additionalUserSlots: Math.max(0, normalizeLimitValue(additionalUserSlots) || 0),
+    additionalBranchSlots: Math.max(0, normalizeLimitValue(additionalBranchSlots) || 0)
   });
   const withCode = await ensureTenantActivationCode(master, doc);
   await ensureTenantBootstrap(tid, {
@@ -351,6 +441,21 @@ r.patch('/:tenantId', requireSuperAdmin, async (req, res) => {
         maxActiveUsersOverride: Object.prototype.hasOwnProperty.call(patch, 'maxActiveUsersOverride')
           ? normalizeLimitValue(patch.maxActiveUsersOverride)
           : before.maxActiveUsersOverride,
+        maxBranchesOverride: Object.prototype.hasOwnProperty.call(patch, 'maxBranchesOverride')
+          ? normalizeLimitValue(patch.maxBranchesOverride)
+          : before.maxBranchesOverride,
+        additionalUserRateOverride: Object.prototype.hasOwnProperty.call(patch, 'additionalUserRateOverride')
+          ? normalizeSubscriptionAmount(patch.additionalUserRateOverride)
+          : before.additionalUserRateOverride,
+        additionalBranchRateOverride: Object.prototype.hasOwnProperty.call(patch, 'additionalBranchRateOverride')
+          ? normalizeSubscriptionAmount(patch.additionalBranchRateOverride)
+          : before.additionalBranchRateOverride,
+        additionalUserSlots: Object.prototype.hasOwnProperty.call(patch, 'additionalUserSlots')
+          ? Math.max(0, normalizeLimitValue(patch.additionalUserSlots) || 0)
+          : (before.additionalUserSlots || 0),
+        additionalBranchSlots: Object.prototype.hasOwnProperty.call(patch, 'additionalBranchSlots')
+          ? Math.max(0, normalizeLimitValue(patch.additionalBranchSlots) || 0)
+          : (before.additionalBranchSlots || 0),
         subscriptionExpiresAt: nextExpiry
       },
       ...(renewalHistoryEntry ? { $push: { renewalHistory: renewalHistoryEntry } } : {})
