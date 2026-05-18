@@ -9,7 +9,7 @@ import { hashPin } from '../utils/pin.js';
 import { ALL_FEATURES, featureFlagsFromEnabled, normalizeFeatureList } from '../config/tenantAccess.js';
 import { getEffectiveTenantLimits, getTenantLimitDefaults, getTenantUsageSummary, normalizeLimitDefaults, normalizeLimitValue, saveTenantLimitDefaults } from '../utils/tenantLimits.js';
 import { buildRenewalHistoryEntry, ensureTenantActivationCode, normalizeSubscriptionAmount, refreshTenantActivationCode, syncTenantSubscriptionSnapshot } from '../utils/tenantActivation.js';
-import { getPaymentManagementDashboard, savePaymentManagementConfig } from '../utils/paymentManagement.js';
+import { getPaymentManagementConfig, getPaymentManagementDashboard, savePaymentManagementConfig } from '../utils/paymentManagement.js';
 import { getSubscriptionManagementConfig, resolveSubscriptionPlan, saveSubscriptionManagementConfig } from '../utils/subscriptionManagement.js';
 import { exportTenantData, importTenantData } from '../utils/tenantDataTransfer.js';
 import { createDpoLimitUpgradePayment, createPayPalLimitUpgradePayment, createPaystackLimitUpgradePayment, getMobileMoneyNetworks, getTenantLimitUpgradeInfo, verifyDpoLimitUpgradePayment, verifyPayPalLimitUpgradePayment, verifyPaystackLimitUpgradePayment } from '../utils/subscriptionPayments.js';
