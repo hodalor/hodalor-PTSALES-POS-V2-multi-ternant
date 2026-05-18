@@ -5,7 +5,7 @@ import * as branchesApi from '../api/branches';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useToast } from '../components/ToastProvider';
 import { addAudit } from '../store/auditSlice';
-import { fetchJson, getApiBase, setApiBase } from '../api/client';
+import { clearApiBase, fetchJson, getApiBase, getDefaultApiBase, setApiBase } from '../api/client';
 import * as settingsApi from '../api/settings';
 import * as tenantsApi from '../api/tenants';
 import * as reconciliationAccountsApi from '../api/reconciliationAccounts';
@@ -1308,6 +1308,22 @@ function ConfigSettingsPage() {
                     }}
                   >
                     Save API Base
+                  </button>
+                  <button
+                    className="btn"
+                    type="button"
+                    onClick={() => {
+                      try {
+                        clearApiBase();
+                        const next = getDefaultApiBase();
+                        setApiBaseState(next);
+                        toast.show('API base reset to default', { type: 'success' });
+                      } catch {
+                        toast.show('Failed to reset API base', { type: 'error' });
+                      }
+                    }}
+                  >
+                    Reset API Base
                   </button>
                 </div>
               </div>

@@ -12,6 +12,9 @@ function sanitizeClientErrorMessage(input, fallback = 'Request failed. Please tr
   if (lower.includes('failed to fetch') || lower.includes('load failed') || lower.includes('networkerror')) {
     return 'Unable to reach the server. Please check your internet connection and try again.';
   }
+  if (lower.includes('name_not_resolved') || lower.includes('dns') || lower.includes('quic_protocol_error')) {
+    return 'Unable to reach the server. Please verify the API endpoint and internet connection.';
+  }
   if (
     lower.includes('getaddrinfo') ||
     lower.includes('enotfound') ||
@@ -26,6 +29,22 @@ function sanitizeClientErrorMessage(input, fallback = 'Request failed. Please tr
     return 'Service temporarily unavailable. Please try again shortly.';
   }
   return raw;
+}
+
+export function getDefaultApiBase() {
+  return process.env.REACT_APP_API_URL || 'http://localhost:4000';
+}
+
+export function isLikelyNetworkErrorMessage(input) {
+  const lower = String(input || '').trim().toLowerCase();
+  return (
+    lower.includes('failed to fetch') ||
+    lower.includes('load failed') ||
+    lower.includes('networkerror') ||
+    lower.includes('name_not_resolved') ||
+    lower.includes('dns') ||
+    lower.includes('quic_protocol_error')
+  );
 }
 
 function readJwtPayload(token) {
@@ -43,11 +62,15 @@ function readJwtPayload(token) {
 export function getApiBase() {
   const fromLs = localStorage.getItem(LS_KEY);
   if (fromLs) return fromLs.replace(/\/+$/,'');
-  return process.env.REACT_APP_API_URL || 'http://localhost:4000';
+  return getDefaultApiBase();
 }
 
 export function setApiBase(url) {
   if (url) localStorage.setItem(LS_KEY, url.replace(/\/+$/,''));
+}
+
+export function clearApiBase() {
+  localStorage.removeItem(LS_KEY);
 }
 
 export async function fetchJson(path, opts = {}) {

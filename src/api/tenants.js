@@ -77,7 +77,7 @@ export function updateSubscriptionManagement(payload) {
 }
 
 export function startLimitUpgradePayment(payload) {
-  return fetchJson('/api/tenants/start-limit-upgrade-payment', { method: 'POST', body: JSON.stringify(payload) });
+  return fetchJson('/api/tenants/start-limit-upgrade-payment', { method: 'POST', body: JSON.stringify(payload), timeoutMs: 12000 });
 }
 
 export function verifyLimitUpgradePayment(payload) {

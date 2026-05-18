@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Modal from './Modal';
 import * as tenantsApi from '../api/tenants';
 import { savePendingTenantLimitPayment } from '../utils/tenantLimitPayments';
+import { getApiBase, isLikelyNetworkErrorMessage } from '../api/client';
 
 function formatMoney(amount, currencySymbol = '', currencyCode = '', currencyPosition = 'prefix') {
   const numeric = Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -89,6 +90,9 @@ export default function TenantLimitUpgradeModal({ open, onClose, context, resour
         address,
         returnUrl
       });
+      if (!result?.checkoutUrl) {
+        throw new Error('Payment checkout URL was not returned by the server.');
+      }
       savePendingTenantLimitPayment({
         provider: result?.provider || provider,
         txRef: result?.txRef || '',
@@ -98,7 +102,12 @@ export default function TenantLimitUpgradeModal({ open, onClose, context, resour
       onStarted?.(result);
       window.location.assign(result.checkoutUrl);
     } catch (e) {
-      toast?.show(String(e?.message || 'Failed to start payment'), { type: 'error' });
+      const message = String(e?.message || 'Failed to start payment');
+      if (isLikelyNetworkErrorMessage(message)) {
+        toast?.show(`Cannot reach payment server at ${getApiBase()}. Check API Endpoint in Config and your internet connection.`, { type: 'error' });
+      } else {
+        toast?.show(message, { type: 'error' });
+      }
     } finally {
       setLoading(false);
     }
