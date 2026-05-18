@@ -1,0 +1,145 @@
+import { useMemo, useState } from 'react';
+import Modal from './Modal';
+import * as tenantsApi from '../api/tenants';
+import { savePendingTenantLimitPayment } from '../utils/tenantLimitPayments';
+
+function formatMoney(amount, currencySymbol = '', currencyCode = '', currencyPosition = 'prefix') {
+  const numeric = Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return currencyPosition === 'suffix'
+    ? `${numeric} ${currencySymbol || currencyCode}`.trim()
+    : `${currencySymbol || currencyCode}${numeric}`.trim();
+}
+
+export default function TenantLimitUpgradeModal({ open, onClose, context, resourceType = 'user', toast, onStarted }) {
+  const [provider, setProvider] = useState('paystack');
+  const [method, setMethod] = useState('mobile_money');
+  const [quantity, setQuantity] = useState('1');
+  const [network, setNetwork] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [address, setAddress] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const enabledGateways = Array.isArray(context?.enabledGateways) ? context.enabledGateways : [];
+  const mobileMoneyNetworks = Array.isArray(context?.mobileMoneyNetworks) ? context.mobileMoneyNetworks : [];
+  const resolvedResourceType = String(resourceType || context?.resourceType || 'user').toLowerCase() === 'branch' ? 'branch' : 'user';
+  const unitRate = resolvedResourceType === 'branch'
+    ? Number(context?.addOnPricing?.additionalBranchRate || 0)
+    : Number(context?.addOnPricing?.additionalUserRate || 0);
+  const qty = Math.max(1, Number(quantity || 1));
+  const total = Number((unitRate * qty).toFixed(2));
+  const title = resolvedResourceType === 'branch' ? 'Branch Limit Reached' : 'User Limit Reached';
+  const usageText = useMemo(() => {
+    if (!context?.usage || !context?.limits) return '';
+    const used = resolvedResourceType === 'branch' ? context.usage.totalBranches : context.usage.totalUsers;
+    const limit = resolvedResourceType === 'branch' ? context.limits.maxBranches : context.limits.maxUserAccounts;
+    if (limit == null) return '';
+    return `${used} of ${limit} used`;
+  }, [context, resolvedResourceType]);
+
+  async function startPayment() {
+    if (!unitRate) {
+      toast?.show(`Additional ${resolvedResourceType} payment is not configured yet. Contact admin.`, { type: 'error' });
+      return;
+    }
+    try {
+      setLoading(true);
+      const returnUrl = `${window.location.origin}${window.location.pathname}`;
+      const result = await tenantsApi.startLimitUpgradePayment({
+        provider,
+        method,
+        resourceType: resolvedResourceType,
+        quantity: qty,
+        network,
+        phone,
+        email,
+        address,
+        returnUrl
+      });
+      savePendingTenantLimitPayment({
+        provider: result?.provider || provider,
+        txRef: result?.txRef || '',
+        resourceType: resolvedResourceType,
+        quantity: qty
+      });
+      onStarted?.(result);
+      window.location.assign(result.checkoutUrl);
+    } catch (e) {
+      toast?.show(String(e?.message || 'Failed to start payment'), { type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!open) return null;
+
+  return (
+    <Modal
+      title={title}
+      onClose={() => { if (!loading) onClose?.(); }}
+      variant="light"
+      footer={
+        <>
+          <button className="btn" type="button" onClick={() => onClose?.()} disabled={loading}>Close</button>
+          <button className="btn btn-primary" type="button" onClick={startPayment} disabled={loading || !enabledGateways.length || !unitRate}>
+            {loading ? 'Starting Payment…' : 'Pay Now'}
+          </button>
+        </>
+      }
+    >
+      <div style={{ display: 'grid', gap: 12 }}>
+        <div style={{ color: '#475569' }}>
+          You have reached your {resolvedResourceType} limit. Contact admin or pay now to unlock more {resolvedResourceType === 'branch' ? 'branches' : 'users'} instantly.
+        </div>
+        {usageText ? <div style={{ padding: 10, borderRadius: 8, background: '#f8fafc', color: '#334155' }}>Current usage: {usageText}</div> : null}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <label>
+            Additional {resolvedResourceType === 'branch' ? 'Branches' : 'Users'}
+            <input className="input" type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+          </label>
+          <label>
+            Rate Per {resolvedResourceType === 'branch' ? 'Branch' : 'User'}
+            <input className="input" value={formatMoney(unitRate, context?.currencySymbol, context?.currencyCode, context?.currencyPosition)} readOnly />
+          </label>
+          <label>
+            Payment Provider
+            <select className="input" value={provider} onChange={(e) => setProvider(e.target.value)}>
+              {enabledGateways.map((key) => <option key={key} value={key}>{key}</option>)}
+            </select>
+          </label>
+          <label>
+            Method
+            <select className="input" value={method} onChange={(e) => setMethod(e.target.value)}>
+              <option value="mobile_money">Mobile Money</option>
+              <option value="card">Card</option>
+            </select>
+          </label>
+          <label>
+            Phone
+            <input className="input" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder={context?.billingPhone || ''} />
+          </label>
+          <label>
+            Email
+            <input className="input" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={context?.billingEmail || ''} />
+          </label>
+        </div>
+        {method === 'mobile_money' && mobileMoneyNetworks.length > 0 ? (
+          <label>
+            Mobile Network
+            <select className="input" value={network} onChange={(e) => setNetwork(e.target.value)}>
+              <option value="">Select network</option>
+              {mobileMoneyNetworks.map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+          </label>
+        ) : null}
+        <label>
+          Billing Address
+          <input className="input" value={address} onChange={(e) => setAddress(e.target.value)} placeholder={context?.billingAddress || ''} />
+        </label>
+        <div style={{ padding: 12, borderRadius: 10, background: '#eff6ff', color: '#1e3a8a', fontWeight: 700 }}>
+          Total: {formatMoney(total, context?.currencySymbol, context?.currencyCode, context?.currencyPosition)}
+        </div>
+      </div>
+    </Modal>
+  );
+}

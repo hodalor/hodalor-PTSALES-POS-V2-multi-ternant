@@ -18,7 +18,11 @@ const DEFAULT_SUBSCRIPTION_MANAGEMENT = {
     { months: 3, discountPercent: 0 },
     { months: 6, discountPercent: 0 },
     { months: 12, discountPercent: 0 }
-  ]
+  ],
+  addOns: {
+    additionalUserRate: 0,
+    additionalBranchRate: 0
+  }
 };
 
 function calculateDiscountedAmount(monthlyAmount, months, discountPercent) {
@@ -61,6 +65,13 @@ const EMPTY_FORM = {
   adminPin: '',
   maxUserAccountsOverride: '',
   maxActiveUsersOverride: '',
+  maxBranchesOverride: '',
+  additionalUserRateOverride: '',
+  additionalBranchRateOverride: '',
+  additionalUserSlots: '',
+  additionalBranchSlots: '',
+  usage: null,
+  limits: null,
   features: []
 };
 
@@ -80,9 +91,9 @@ function TenantsPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [userAudit, setUserAudit] = useState({ scannedTenants: 0, duplicateCount: 0, duplicateUserNames: [] });
   const [limitDefaults, setLimitDefaults] = useState({
-    basic: { maxUserAccounts: '', maxActiveUsers: '' },
-    pro: { maxUserAccounts: '', maxActiveUsers: '' },
-    enterprise: { maxUserAccounts: '', maxActiveUsers: '' }
+    basic: { maxUserAccounts: '', maxActiveUsers: '', maxBranches: '' },
+    pro: { maxUserAccounts: '', maxActiveUsers: '', maxBranches: '' },
+    enterprise: { maxUserAccounts: '', maxActiveUsers: '', maxBranches: '' }
   });
   const [paymentManagement, setPaymentManagement] = useState({ gateways: [], enabledGateways: [], paymentHistory: [], summary: { totalCollected: 0, transactionCount: 0, cardCollected: 0, mobileMoneyCollected: 0, gatewayCount: 0 } });
   const [savingPaymentManagement, setSavingPaymentManagement] = useState(false);
@@ -143,6 +154,14 @@ function TenantsPage() {
   const subscriptionCurrencyCode = String(settings?.activeCurrencyCode || settings?.currencyCode || 'GHS');
   const subscriptionCurrencySymbol = String(settings?.currencySymbol || '');
   const subscriptionCurrencyPosition = String(settings?.currencyPosition || 'prefix');
+  const effectiveAdditionalUserRate = form.additionalUserRateOverride === '' || form.additionalUserRateOverride == null
+    ? Number(subscriptionManagement?.addOns?.additionalUserRate || 0)
+    : Number(form.additionalUserRateOverride || 0);
+  const effectiveAdditionalBranchRate = form.additionalBranchRateOverride === '' || form.additionalBranchRateOverride == null
+    ? Number(subscriptionManagement?.addOns?.additionalBranchRate || 0)
+    : Number(form.additionalBranchRateOverride || 0);
+  const additionalUserChargePreview = Number((effectiveAdditionalUserRate * Number(form.additionalUserSlots || 0)).toFixed(2));
+  const additionalBranchChargePreview = Number((effectiveAdditionalBranchRate * Number(form.additionalBranchSlots || 0)).toFixed(2));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -150,9 +169,9 @@ function TenantsPage() {
       const [tenantRows, defaults, paymentData, subscriptionData] = await Promise.all([tenantsApi.list(), tenantsApi.getLimitDefaults(), tenantsApi.getPaymentManagement(), tenantsApi.getSubscriptionManagement()]);
       setRows(tenantRows);
       setLimitDefaults({
-        basic: { maxUserAccounts: defaults?.basic?.maxUserAccounts ?? '', maxActiveUsers: defaults?.basic?.maxActiveUsers ?? '' },
-        pro: { maxUserAccounts: defaults?.pro?.maxUserAccounts ?? '', maxActiveUsers: defaults?.pro?.maxActiveUsers ?? '' },
-        enterprise: { maxUserAccounts: defaults?.enterprise?.maxUserAccounts ?? '', maxActiveUsers: defaults?.enterprise?.maxActiveUsers ?? '' }
+        basic: { maxUserAccounts: defaults?.basic?.maxUserAccounts ?? '', maxActiveUsers: defaults?.basic?.maxActiveUsers ?? '', maxBranches: defaults?.basic?.maxBranches ?? '' },
+        pro: { maxUserAccounts: defaults?.pro?.maxUserAccounts ?? '', maxActiveUsers: defaults?.pro?.maxActiveUsers ?? '', maxBranches: defaults?.pro?.maxBranches ?? '' },
+        enterprise: { maxUserAccounts: defaults?.enterprise?.maxUserAccounts ?? '', maxActiveUsers: defaults?.enterprise?.maxActiveUsers ?? '', maxBranches: defaults?.enterprise?.maxBranches ?? '' }
       });
       setPaymentManagement(paymentData || { gateways: [], enabledGateways: [], paymentHistory: [], summary: { totalCollected: 0, transactionCount: 0, cardCollected: 0, mobileMoneyCollected: 0, gatewayCount: 0 } });
       const nextSubscription = subscriptionData || DEFAULT_SUBSCRIPTION_MANAGEMENT;
@@ -333,6 +352,11 @@ function TenantsPage() {
         adminPin: form.adminPin,
         maxUserAccountsOverride: form.maxUserAccountsOverride === '' ? null : Number(form.maxUserAccountsOverride),
         maxActiveUsersOverride: form.maxActiveUsersOverride === '' ? null : Number(form.maxActiveUsersOverride),
+        maxBranchesOverride: form.maxBranchesOverride === '' ? null : Number(form.maxBranchesOverride),
+        additionalUserRateOverride: form.additionalUserRateOverride === '' ? null : Number(form.additionalUserRateOverride),
+        additionalBranchRateOverride: form.additionalBranchRateOverride === '' ? null : Number(form.additionalBranchRateOverride),
+        additionalUserSlots: form.additionalUserSlots === '' ? 0 : Number(form.additionalUserSlots),
+        additionalBranchSlots: form.additionalBranchSlots === '' ? 0 : Number(form.additionalBranchSlots),
         features: form.features
       };
       if (editing) {
@@ -377,6 +401,13 @@ function TenantsPage() {
       adminPin: '',
       maxUserAccountsOverride: row.maxUserAccountsOverride ?? '',
       maxActiveUsersOverride: row.maxActiveUsersOverride ?? '',
+      maxBranchesOverride: row.maxBranchesOverride ?? '',
+      additionalUserRateOverride: row.additionalUserRateOverride ?? '',
+      additionalBranchRateOverride: row.additionalBranchRateOverride ?? '',
+      additionalUserSlots: row.additionalUserSlots ?? '',
+      additionalBranchSlots: row.additionalBranchSlots ?? '',
+      usage: row.usage || null,
+      limits: row.limits || null,
       features: Array.isArray(row.features) ? row.features : []
     });
     setShowForm(true);
@@ -396,24 +427,27 @@ function TenantsPage() {
       const payload = {
         basic: {
           maxUserAccounts: limitDefaults.basic.maxUserAccounts === '' ? null : Number(limitDefaults.basic.maxUserAccounts),
-          maxActiveUsers: limitDefaults.basic.maxActiveUsers === '' ? null : Number(limitDefaults.basic.maxActiveUsers)
+          maxActiveUsers: limitDefaults.basic.maxActiveUsers === '' ? null : Number(limitDefaults.basic.maxActiveUsers),
+          maxBranches: limitDefaults.basic.maxBranches === '' ? null : Number(limitDefaults.basic.maxBranches)
         },
         pro: {
           maxUserAccounts: limitDefaults.pro.maxUserAccounts === '' ? null : Number(limitDefaults.pro.maxUserAccounts),
-          maxActiveUsers: limitDefaults.pro.maxActiveUsers === '' ? null : Number(limitDefaults.pro.maxActiveUsers)
+          maxActiveUsers: limitDefaults.pro.maxActiveUsers === '' ? null : Number(limitDefaults.pro.maxActiveUsers),
+          maxBranches: limitDefaults.pro.maxBranches === '' ? null : Number(limitDefaults.pro.maxBranches)
         },
         enterprise: {
           maxUserAccounts: limitDefaults.enterprise.maxUserAccounts === '' ? null : Number(limitDefaults.enterprise.maxUserAccounts),
-          maxActiveUsers: limitDefaults.enterprise.maxActiveUsers === '' ? null : Number(limitDefaults.enterprise.maxActiveUsers)
+          maxActiveUsers: limitDefaults.enterprise.maxActiveUsers === '' ? null : Number(limitDefaults.enterprise.maxActiveUsers),
+          maxBranches: limitDefaults.enterprise.maxBranches === '' ? null : Number(limitDefaults.enterprise.maxBranches)
         }
       };
       const saved = await tenantsApi.updateLimitDefaults(payload);
       setLimitDefaults({
-        basic: { maxUserAccounts: saved?.basic?.maxUserAccounts ?? '', maxActiveUsers: saved?.basic?.maxActiveUsers ?? '' },
-        pro: { maxUserAccounts: saved?.pro?.maxUserAccounts ?? '', maxActiveUsers: saved?.pro?.maxActiveUsers ?? '' },
-        enterprise: { maxUserAccounts: saved?.enterprise?.maxUserAccounts ?? '', maxActiveUsers: saved?.enterprise?.maxActiveUsers ?? '' }
+        basic: { maxUserAccounts: saved?.basic?.maxUserAccounts ?? '', maxActiveUsers: saved?.basic?.maxActiveUsers ?? '', maxBranches: saved?.basic?.maxBranches ?? '' },
+        pro: { maxUserAccounts: saved?.pro?.maxUserAccounts ?? '', maxActiveUsers: saved?.pro?.maxActiveUsers ?? '', maxBranches: saved?.pro?.maxBranches ?? '' },
+        enterprise: { maxUserAccounts: saved?.enterprise?.maxUserAccounts ?? '', maxActiveUsers: saved?.enterprise?.maxActiveUsers ?? '', maxBranches: saved?.enterprise?.maxBranches ?? '' }
       });
-      toast.show('Tenant user limits updated', { type: 'success' });
+      toast.show('Tenant limits updated', { type: 'success' });
     } catch (e) {
       toast.show(String(e?.message || 'Failed to save limits'), { type: 'error' });
     } finally {
@@ -609,7 +643,11 @@ function TenantsPage() {
         periods: (subscriptionManagement.periods || []).map((period) => ({
           months: Number(period.months || 0),
           discountPercent: Number(period.discountPercent || 0)
-        }))
+        })),
+        addOns: {
+          additionalUserRate: Number(subscriptionManagement?.addOns?.additionalUserRate || 0),
+          additionalBranchRate: Number(subscriptionManagement?.addOns?.additionalBranchRate || 0)
+        }
       };
       const saved = await tenantsApi.updateSubscriptionManagement(payload);
       setSubscriptionManagement(saved || DEFAULT_SUBSCRIPTION_MANAGEMENT);
@@ -774,7 +812,7 @@ function TenantsPage() {
             </div>
           </div>
           <div className="card">
-            <h2 className="section-title">Default User Limits By Plan</h2>
+            <h2 className="section-title">Default Tenant Limits By Plan</h2>
             <div style={{ color: '#64748b', marginBottom: 12 }}>
               Set general limits for each package. Leave blank for unlimited. Each tenant can still override these values individually.
             </div>
@@ -791,12 +829,32 @@ function TenantsPage() {
                       Max Active Users
                       <input className="input" type="number" min="1" value={limitDefaults[plan]?.maxActiveUsers ?? ''} onChange={(e) => setLimitDefault(plan, 'maxActiveUsers', e.target.value)} placeholder="Unlimited" />
                     </label>
+                    <label>
+                      Max Branches
+                      <input className="input" type="number" min="1" value={limitDefaults[plan]?.maxBranches ?? ''} onChange={(e) => setLimitDefault(plan, 'maxBranches', e.target.value)} placeholder="Unlimited" />
+                    </label>
                   </div>
                 </div>
               ))}
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
               <button className="btn btn-primary" type="button" onClick={saveLimitDefaults} disabled={savingDefaults}>{savingDefaults ? 'Saving…' : 'Save Limit Defaults'}</button>
+            </div>
+          </div>
+          <div className="card">
+            <h2 className="section-title">Self-Service Add-On Rates</h2>
+            <div style={{ color: '#64748b', marginBottom: 12 }}>
+              Set the real-time amount tenants pay for each extra user or branch slot. Paid quantities are added automatically after successful payment.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <label>
+                Rate Per Additional User
+                <input className="input" type="number" min="0" step="0.01" value={subscriptionManagement?.addOns?.additionalUserRate ?? 0} onChange={(e) => setSubscriptionManagement((prev) => ({ ...prev, addOns: { ...(prev.addOns || {}), additionalUserRate: e.target.value } }))} />
+              </label>
+              <label>
+                Rate Per Additional Branch
+                <input className="input" type="number" min="0" step="0.01" value={subscriptionManagement?.addOns?.additionalBranchRate ?? 0} onChange={(e) => setSubscriptionManagement((prev) => ({ ...prev, addOns: { ...(prev.addOns || {}), additionalBranchRate: e.target.value } }))} />
+              </label>
             </div>
           </div>
         </>
@@ -1118,11 +1176,27 @@ function TenantsPage() {
               </label>
             </div>
             <div className="surface-panel">
-              <div style={{ fontWeight: 800, marginBottom: 6 }}>User Limits</div>
+              <div style={{ fontWeight: 800, marginBottom: 6 }}>Tenant Limits</div>
               <div className="section-note" style={{ marginBottom: 10 }}>
-                Leave override fields blank to use the plan default. You can override a tenant regardless of its package.
+                Leave override fields blank to use the plan default. Additional purchased slots stack on top of the chosen base limit.
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {editing ? (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginBottom: 12 }}>
+                  <div className="card stat-card">
+                    <div className="stat-label">Current Users Created</div>
+                    <div className="stat-value">{Number(form?.usage?.totalUsers || 0)}</div>
+                  </div>
+                  <div className="card stat-card">
+                    <div className="stat-label">Current Active Users</div>
+                    <div className="stat-value">{Number(form?.usage?.activeUsers || 0)}</div>
+                  </div>
+                  <div className="card stat-card">
+                    <div className="stat-label">Current Branches Created</div>
+                    <div className="stat-value">{Number(form?.usage?.totalBranches || 0)}</div>
+                  </div>
+                </div>
+              ) : null}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
                 <label>
                   Max User Accounts Override
                   <input className="input" type="number" min="1" value={form.maxUserAccountsOverride} onChange={(e) => setValue('maxUserAccountsOverride', e.target.value)} placeholder="Use plan default" />
@@ -1131,6 +1205,50 @@ function TenantsPage() {
                   Max Active Users Override
                   <input className="input" type="number" min="1" value={form.maxActiveUsersOverride} onChange={(e) => setValue('maxActiveUsersOverride', e.target.value)} placeholder="Use plan default" />
                 </label>
+                <label>
+                  Max Branches Override
+                  <input className="input" type="number" min="1" value={form.maxBranchesOverride} onChange={(e) => setValue('maxBranchesOverride', e.target.value)} placeholder="Use plan default" />
+                </label>
+                <label>
+                  Purchased Additional User Slots
+                  <input className="input" type="number" min="0" value={form.additionalUserSlots} onChange={(e) => setValue('additionalUserSlots', e.target.value)} placeholder="0" />
+                </label>
+                <label>
+                  Purchased Additional Branch Slots
+                  <input className="input" type="number" min="0" value={form.additionalBranchSlots} onChange={(e) => setValue('additionalBranchSlots', e.target.value)} placeholder="0" />
+                </label>
+              </div>
+            </div>
+            <div className="surface-panel">
+              <div style={{ fontWeight: 800, marginBottom: 6 }}>Additional Slot Pricing</div>
+              <div className="section-note" style={{ marginBottom: 10 }}>
+                Set tenant-specific rate per unit for extra users and branches. Leave blank to use the global self-service rate.
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+                <label>
+                  Rate Per Additional User
+                  <input className="input" type="number" min="0" step="0.01" value={form.additionalUserRateOverride} onChange={(e) => setValue('additionalUserRateOverride', e.target.value)} placeholder={String(subscriptionManagement?.addOns?.additionalUserRate ?? 0)} />
+                  <div className="section-note" style={{ marginTop: 4 }}>
+                    Effective rate: {formatSubscriptionMoney(effectiveAdditionalUserRate)}
+                  </div>
+                </label>
+                <label>
+                  Rate Per Additional Branch
+                  <input className="input" type="number" min="0" step="0.01" value={form.additionalBranchRateOverride} onChange={(e) => setValue('additionalBranchRateOverride', e.target.value)} placeholder={String(subscriptionManagement?.addOns?.additionalBranchRate ?? 0)} />
+                  <div className="section-note" style={{ marginTop: 4 }}>
+                    Effective rate: {formatSubscriptionMoney(effectiveAdditionalBranchRate)}
+                  </div>
+                </label>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12, marginTop: 12 }}>
+                <div className="card stat-card">
+                  <div className="stat-label">Additional User Charge Preview</div>
+                  <div className="stat-value" style={{ fontSize: 22 }}>{formatSubscriptionMoney(additionalUserChargePreview)}</div>
+                </div>
+                <div className="card stat-card">
+                  <div className="stat-label">Additional Branch Charge Preview</div>
+                  <div className="stat-value" style={{ fontSize: 22 }}>{formatSubscriptionMoney(additionalBranchChargePreview)}</div>
+                </div>
               </div>
             </div>
             <div className="section-header" style={{ color: '#64748b', fontSize: 13 }}>

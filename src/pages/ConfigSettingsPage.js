@@ -2,19 +2,22 @@ import { useDispatch, useSelector } from 'react-redux';
 import { setAppName, setFooterText, setCurrentBranch, setReceiptHeader, setReceiptFooter, setBusinessPhone, setBusinessWebsite, setBusinessTpin, setReceiptQrBaseUrl, setInvoicePrefix, setNextInvoiceNumber, setWholesaleInvoicePrefix, setNextWholesaleInvoiceNumber, setWarehouseInvoicePrefix, setNextWarehouseInvoiceNumber, setReceiptPrefix, setNextReceiptNumber, setDrawerOpenOnCash, setTaxRate, setCurrencyCode, setCurrencySymbol, setCurrencyPosition, setRefreshIntervalSec, addCurrency, removeCurrency, setActiveCurrency, setLoyaltyEnabled, setLoyaltyEarnAmount, setLoyaltyEarnPoints, setLoyaltyRedeemValue, setLoyaltyMinRedeemPoints, setLoyaltyMaxRedeemPercent, setClientAppName, setClientLogoUrl, setPreferredLanguage, setInvoiceCompanyAddress, setInvoiceFooter, setInvoiceDeclaration, setInvoiceSignatoryLabel, setInvoiceTitle, setInvoiceWordsLabel, setInvoiceGeneratedNote, setInvoiceNumberDigits, setInvoicePaidStampEnabled, setInvoicePaidStampLabel, setInvoicePaidStampThankYou, setInvoicePaidStampShowDate, setInvoicePaidStampColor, setReceiptBrandName, setAllSettings, addSettingsCategory, removeSettingsCategory } from '../store/settingsSlice';
 import { addBranch, removeBranch, setBranches, updateBranch } from '../store/branchesSlice';
 import * as branchesApi from '../api/branches';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useToast } from '../components/ToastProvider';
 import { addAudit } from '../store/auditSlice';
 import { fetchJson, getApiBase, setApiBase } from '../api/client';
 import * as settingsApi from '../api/settings';
+import * as tenantsApi from '../api/tenants';
 import * as reconciliationAccountsApi from '../api/reconciliationAccounts';
 import { formatCurrency } from '../utils/currency';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
+import TenantLimitUpgradeModal from '../components/TenantLimitUpgradeModal';
 import { getBeforeInstallPromptEvent, isInstalled, isRelatedInstalled, checkUpdateAndOpen } from '../pwa/installPrompt';
 import { clearTenantState } from '../store/persist';
 import { CHAT_SOUND_OPTIONS, playChatSound, startOutgoingCallTone, stopIncomingRingtone, unlockChatSound } from '../utils/chatSound';
 import { LANGUAGE_OPTIONS, useAppLanguage } from '../utils/localization';
+import { clearPendingTenantLimitPayment, clearTenantLimitPaymentUrlQuery, getTenantLimitPaymentVerificationPayload } from '../utils/tenantLimitPayments';
 
 function ConfigSettingsPage() {
   const dispatch = useDispatch();
@@ -33,6 +36,8 @@ function ConfigSettingsPage() {
   const [savingCategories, setSavingCategories] = useState(false);
   const [addingBranch, setAddingBranch] = useState(false);
   const [removingBranchId, setRemovingBranchId] = useState('');
+  const [limitUpgradeContext, setLimitUpgradeContext] = useState(null);
+  const [tenantQuota, setTenantQuota] = useState(null);
   const [reconciliationAccounts, setReconciliationAccounts] = useState([]);
   const [loadingReconciliationAccounts, setLoadingReconciliationAccounts] = useState(false);
   const [savingReconciliationAccount, setSavingReconciliationAccount] = useState(false);
@@ -125,6 +130,54 @@ function ConfigSettingsPage() {
     })();
     return () => { alive = false; };
   }, [canManageFinanceAccounts, toast]);
+
+  const loadTenantQuota = useCallback(async () => {
+    const tenantId = String(auth.user?.tenantId || '');
+    if (!auth.isAuthenticated || !tenantId || tenantId.toLowerCase() === 'master') {
+      setTenantQuota(null);
+      return null;
+    }
+    const meta = await tenantsApi.me().catch(() => null);
+    setTenantQuota(meta);
+    return meta;
+  }, [auth.isAuthenticated, auth.user?.tenantId]);
+
+  useEffect(() => {
+    void loadTenantQuota();
+  }, [loadTenantQuota]);
+
+  useEffect(() => {
+    let ignore = false;
+    const payload = getTenantLimitPaymentVerificationPayload(window.location.search);
+    if (!auth.isAuthenticated || !payload) return () => { ignore = true; };
+    (async () => {
+      try {
+        const result = await tenantsApi.verifyLimitUpgradePayment(payload);
+        if (ignore) return;
+        clearPendingTenantLimitPayment();
+        clearTenantLimitPaymentUrlQuery();
+        setLimitUpgradeContext(null);
+        await loadTenantQuota();
+        toast.show(String(result?.message || 'Limit increased successfully'), { type: 'success' });
+      } catch (e) {
+        if (ignore) return;
+        toast.show(String(e?.message || 'Failed to verify limit payment'), { type: 'error' });
+      }
+    })();
+    return () => { ignore = true; };
+  }, [auth.isAuthenticated, loadTenantQuota, toast]);
+
+  const branchQuotaCards = useMemo(() => {
+    const limits = tenantQuota?.limits || {};
+    const totalBranches = branches.length;
+    const maxBranches = limits.maxBranches ?? null;
+    const remainingBranches = maxBranches == null ? 'Unlimited' : Math.max(0, Number(maxBranches) - Number(totalBranches || 0));
+    return [
+      { label: 'Branch Limit', value: maxBranches == null ? 'Unlimited' : maxBranches },
+      { label: 'Branches Used', value: totalBranches },
+      { label: 'Branch Slots Left', value: remainingBranches }
+    ];
+  }, [tenantQuota, branches.length]);
 
   useEffect(() => {
     const unlock = () => {
@@ -447,8 +500,23 @@ function ConfigSettingsPage() {
               syncPending: true
             }));
           })
-          .catch(() => {
+          .catch((e) => {
             dispatch(removeBranch(created.id));
+            if (e?.data?.code === 'TENANT_BRANCH_LIMIT_REACHED') {
+              setLimitUpgradeContext({
+                ...(tenantQuota || {}),
+                ...(e.data || {}),
+                limits: e?.data?.limits || tenantQuota?.limits,
+                usage: e?.data?.usage || tenantQuota?.usage,
+                addOnPricing: e?.data?.addOnPricing || tenantQuota?.addOnPricing,
+                enabledGateways: e?.data?.enabledGateways || tenantQuota?.enabledGateways || [],
+                mobileMoneyNetworks: e?.data?.mobileMoneyNetworks || tenantQuota?.mobileMoneyNetworks || []
+              });
+              if (!tenantQuota?.addOnPricing || !tenantQuota?.enabledGateways?.length) {
+                void loadTenantQuota();
+              }
+              return;
+            }
             toast.show('Failed to create branch on server', { type: 'error' });
           })
           .finally(() => setAddingBranch(false));
@@ -1308,6 +1376,16 @@ function ConfigSettingsPage() {
               Manage tenant locations here. Branch changes save instantly and are available immediately across the app.
             </div>
             <div style={{ display: 'grid', gap: 12 }}>
+            {tenantQuota ? (
+              <div className="stats-grid">
+                {branchQuotaCards.map((item) => (
+                  <div className="card stat-card" key={item.label}>
+                    <div className="stat-label">{item.label}</div>
+                    <div className="stat-value" style={{ fontSize: typeof item.value === 'string' && item.value.length > 10 ? 20 : undefined }}>{item.value}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <div className="stats-grid">
               <div className="card stat-card">
                 <div className="stat-label">Retail Branches</div>
@@ -1357,6 +1435,13 @@ function ConfigSettingsPage() {
           </div>
         </div>
       </div>
+      <TenantLimitUpgradeModal
+        open={!!limitUpgradeContext}
+        onClose={() => setLimitUpgradeContext(null)}
+        context={limitUpgradeContext}
+        resourceType="branch"
+        toast={toast}
+      />
     </div>
   );
 }

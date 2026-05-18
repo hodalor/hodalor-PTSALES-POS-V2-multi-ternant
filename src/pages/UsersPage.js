@@ -6,6 +6,7 @@ import { useToast } from '../components/ToastProvider';
 import { promptDialog } from '../utils/dialogs';
 import * as settingsApi from '../api/settings';
 import * as usersApi from '../api/users';
+import * as tenantsApi from '../api/tenants';
 import { setAllSettings } from '../store/settingsSlice';
 import { setGrants as setAuthGrants } from '../store/authSlice';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
@@ -13,6 +14,8 @@ import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import InlineSpinner from '../components/InlineSpinner';
 import { TENANT_GRANT_CATALOG, TENANT_SIDEBAR_SECTIONS, filterGrantsByTenantFlags } from '../utils/tenantAccess';
 import { isFeatureEnabled } from '../utils/featureFlags';
+import TenantLimitUpgradeModal from '../components/TenantLimitUpgradeModal';
+import { clearPendingTenantLimitPayment, clearTenantLimitPaymentUrlQuery, getTenantLimitPaymentVerificationPayload } from '../utils/tenantLimitPayments';
 
 const ALL_GRANTS = TENANT_GRANT_CATALOG;
 const ALL_GRANTS_KEYS = ALL_GRANTS.map(g => g.key);
@@ -53,6 +56,8 @@ function UsersPage() {
   const [savingCreate, setSavingCreate] = useState(false);
   const [createError, setCreateError] = useState('');
   const [workingUserName, setWorkingUserName] = useState('');
+  const [limitUpgradeContext, setLimitUpgradeContext] = useState(null);
+  const [tenantQuota, setTenantQuota] = useState(null);
   const isSuper = String(auth.role || '').toLowerCase() === 'superadmin';
   const visibleUsers = useMemo(() => (isSuper ? users : users.filter(u => u.role !== 'SuperAdmin')), [isSuper, users]);
   const superAdminsCount = useMemo(() => users.filter(u => u.role === 'SuperAdmin' && u.active !== false).length, [users]);
@@ -76,6 +81,78 @@ function UsersPage() {
     })();
     return () => { alive = false; };
   }, [dispatch, auth.isAuthenticated, auth.user?.tenantId]);
+
+  const loadTenantQuota = useCallback(async () => {
+    const tenantId = String(auth.user?.tenantId || '');
+    if (!auth.isAuthenticated || !tenantId || tenantId.toLowerCase() === 'master') {
+      setTenantQuota(null);
+      return null;
+    }
+    const meta = await tenantsApi.me().catch(() => null);
+    setTenantQuota(meta);
+    return meta;
+  }, [auth.isAuthenticated, auth.user?.tenantId]);
+
+  useEffect(() => {
+    void loadTenantQuota();
+  }, [loadTenantQuota]);
+
+  const openLimitUpgrade = useCallback((payload = {}) => {
+    const meta = tenantQuota || {};
+    setLimitUpgradeContext({
+      ...meta,
+      ...(payload || {}),
+      limits: payload?.limits || meta?.limits,
+      usage: payload?.usage || meta?.usage,
+      addOnPricing: payload?.addOnPricing || meta?.addOnPricing,
+      enabledGateways: payload?.enabledGateways || meta?.enabledGateways || [],
+      mobileMoneyNetworks: payload?.mobileMoneyNetworks || meta?.mobileMoneyNetworks || []
+    });
+    if (!meta?.addOnPricing || !meta?.enabledGateways?.length) {
+      void loadTenantQuota();
+    }
+  }, [loadTenantQuota, tenantQuota]);
+
+  useEffect(() => {
+    let ignore = false;
+    const payload = getTenantLimitPaymentVerificationPayload(window.location.search);
+    if (!auth.isAuthenticated || !payload) return () => { ignore = true; };
+    (async () => {
+      try {
+        const result = await tenantsApi.verifyLimitUpgradePayment(payload);
+        if (ignore) return;
+        clearPendingTenantLimitPayment();
+        clearTenantLimitPaymentUrlQuery();
+        setLimitUpgradeContext(null);
+        setCreateError('');
+        await loadTenantQuota();
+        toast.show(String(result?.message || 'Limit increased successfully'), { type: 'success' });
+      } catch (e) {
+        if (ignore) return;
+        toast.show(String(e?.message || 'Failed to verify limit payment'), { type: 'error' });
+      }
+    })();
+    return () => { ignore = true; };
+  }, [auth.isAuthenticated, loadTenantQuota, toast]);
+
+  const userQuotaCards = useMemo(() => {
+    const limits = tenantQuota?.limits || {};
+    const usage = tenantQuota?.usage || {};
+    const totalUsersUsed = userSummary.total;
+    const maxUserAccounts = limits.maxUserAccounts ?? null;
+    const remainingUsers = maxUserAccounts == null ? 'Unlimited' : Math.max(0, Number(maxUserAccounts) - Number(totalUsersUsed || 0));
+    const maxActiveUsers = limits.maxActiveUsers ?? null;
+    const activeUsersUsed = Number(usage.activeUsers || 0);
+    const remainingActiveUsers = maxActiveUsers == null ? 'Unlimited' : Math.max(0, Number(maxActiveUsers) - activeUsersUsed);
+    return [
+      { label: 'User Limit', value: maxUserAccounts == null ? 'Unlimited' : maxUserAccounts },
+      { label: 'Users Used', value: totalUsersUsed },
+      { label: 'User Slots Left', value: remainingUsers },
+      { label: 'Active User Limit', value: maxActiveUsers == null ? 'Unlimited' : maxActiveUsers },
+      { label: 'Active Users Now', value: activeUsersUsed },
+      { label: 'Active Slots Left', value: remainingActiveUsers }
+    ];
+  }, [tenantQuota, userSummary.total]);
 
   const settings = useSelector(s => s.settings);
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);
@@ -258,6 +335,9 @@ function UsersPage() {
       }
     } catch (e) {
       setCreateError(String(e?.message || 'Failed to save user to server'));
+      if (e?.data?.code === 'TENANT_USER_LIMIT_REACHED') {
+        void openLimitUpgrade(e.data);
+      }
       toast.show(String(e?.message || 'Failed to save user to server'), { type: 'error' });
       return;
     } finally {
@@ -482,6 +562,16 @@ function UsersPage() {
         {isSuper ? <div className="card stat-card"><div className="stat-label">Super Admins</div><div className="stat-value">{visibleSuperAdminsCount}</div></div> : null}
         <div className="card stat-card"><div className="stat-label">Assigned Branches</div><div className="stat-value">{userSummary.branches}</div></div>
       </div>
+      {tenantQuota ? (
+        <div className="stats-grid">
+          {userQuotaCards.map((item) => (
+            <div className="card stat-card" key={item.label}>
+              <div className="stat-label">{item.label}</div>
+              <div className="stat-value" style={{ fontSize: typeof item.value === 'string' && item.value.length > 10 ? 20 : undefined }}>{item.value}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16 }}>
         <div className="card">
           <h2 className="section-title">Create User</h2>
@@ -782,6 +872,13 @@ function UsersPage() {
           </div>
         )}
       </div>
+      <TenantLimitUpgradeModal
+        open={!!limitUpgradeContext}
+        onClose={() => setLimitUpgradeContext(null)}
+        context={limitUpgradeContext}
+        resourceType="user"
+        toast={toast}
+      />
     </div>
   );
 }

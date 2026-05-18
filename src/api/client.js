@@ -102,12 +102,17 @@ export async function fetchJson(path, opts = {}) {
   }
   if (!res.ok) {
     const text = await res.text().catch(() => '');
+    let parsedBody = null;
     let parsedError = '';
     try {
       const obj = JSON.parse(text);
+      parsedBody = obj;
       if (obj && typeof obj === 'object' && obj.error) parsedError = String(obj.error);
     } catch {}
-    throw new Error(sanitizeClientErrorMessage(parsedError || text || `HTTP ${res.status}`, `Request failed (HTTP ${res.status})`));
+    const err = new Error(sanitizeClientErrorMessage(parsedError || text || `HTTP ${res.status}`, `Request failed (HTTP ${res.status})`));
+    err.status = res.status;
+    err.data = parsedBody;
+    throw err;
   }
   const ct = res.headers.get('content-type') || '';
   if (ct.includes('application/json')) return res.json();
