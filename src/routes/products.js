@@ -285,12 +285,15 @@ r.delete('/:id', requireAdmin, async (req, res) => {
   const id = req.params.id;
   const query = productLookupQuery(id);
   const doc = await Product.findOne(query);
+  if (!doc) return res.status(404).json({ error: 'Product not found' });
+  const remark = String(req.body?.remark || '').trim();
+  if (!remark) return res.status(400).json({ error: 'Deletion remark is required' });
   await Product.findOneAndDelete(query);
   res.json({ ok: true });
   void Audit.create({
     actor: (req.user && req.user.name) || 'unknown',
     actionType: 'product_delete',
-    details: { id, name: doc?.name || '', sku: doc?.sku || '' },
+    details: { id, name: doc?.name || '', sku: doc?.sku || '', remark },
     branchId: req.user?.branchId || ''
   }).catch(() => {});
   void ServerLog.create({
@@ -299,7 +302,8 @@ r.delete('/:id', requireAdmin, async (req, res) => {
     route: req.originalUrl || req.url || '',
     method: req.method || 'DELETE',
     status: 200,
-    message: `Product deleted: ${doc?.name || id}`
+    message: `Product deleted: ${doc?.name || id}`,
+    details: { productId: doc?.id || String(doc?._id || id), remark }
   }).catch(() => {});
 });
 
