@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { formatCurrency } from '../utils/currency';
 import { addAudit } from '../store/auditSlice';
 import { useToast } from '../components/ToastProvider';
-import { promptDialog } from '../utils/dialogs';
+import { confirmDialog, promptDialog } from '../utils/dialogs';
 import { productSpec } from '../utils/productSpec';
 import * as productsApi from '../api/products';
 import * as stockApi from '../api/stock';
@@ -995,9 +995,16 @@ function ProductsPage() {
                   {(roleLower === 'admin' || roleLower === 'superadmin') && (
                   <button
                     className="btn btn-compact"
-                    onClick={() => {
+                    onClick={async () => {
                       const localKey = p.id || p._id || p.sku;
                       const serverKey = p._id || p.id;
+                      const ok = await confirmDialog(`Remove product ${p.name || localKey}?`);
+                      if (!ok) return;
+                      const remark = await promptDialog('Enter remark for product deletion (required)');
+                      if (!remark || !String(remark).trim()) {
+                        toast.show(t('Remark is required before deleting a product'), { type: 'error' });
+                        return;
+                      }
                       (async () => {
                         if (!navigator.onLine) {
                           if (!offlineBackupAllowed) {
@@ -1006,7 +1013,7 @@ function ProductsPage() {
                           }
                           dispatch(removeProduct(localKey));
                           try {
-                            await enqueueHttp({ collection: 'products', label: 'Product delete', path: `/api/products/${encodeURIComponent(serverKey || localKey)}`, method: 'DELETE', body: {} });
+                            await enqueueHttp({ collection: 'products', label: 'Product delete', path: `/api/products/${encodeURIComponent(serverKey || localKey)}`, method: 'DELETE', body: { remark: String(remark).trim() } });
                             toast.show(t('Saved offline. Will backup when online.'), { type: 'success' });
                           } catch {
                             toast.show(t('Failed to save offline'), { type: 'error' });
@@ -1014,10 +1021,10 @@ function ProductsPage() {
                           return;
                         }
                         try {
-                          if (serverKey) await productsApi.remove(serverKey);
+                          if (serverKey) await productsApi.remove(serverKey, { remark: String(remark).trim() });
                           dispatch(removeProduct(localKey));
-                        } catch {
-                          toast.show(t('Failed to remove product on server'), { type: 'error' });
+                        } catch (e) {
+                          toast.show(String(e?.message || t('Failed to remove product on server')), { type: 'error' });
                         }
                       })();
                     }}

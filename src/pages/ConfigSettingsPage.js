@@ -1283,50 +1283,52 @@ function ConfigSettingsPage() {
                   Clear Local Data
                 </button>
               </div>
-              <div style={{ marginTop: 12 }}>
-                <h3 className="section-title" style={{ margin: '8px 0' }}>API Endpoint</h3>
-                <label>
-                  Base URL
-                  <input
-                    className="input"
-                    placeholder="http://localhost:4000"
-                    value={apiBase}
-                    onChange={e => setApiBaseState(e.target.value)}
-                    style={{ display: 'block', width: '100%', marginTop: 6 }}
-                  />
-                </label>
-                <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => {
-                      try {
-                        setApiBase(apiBase);
-                        toast.show('API base saved', { type: 'success' });
-                      } catch {
-                        toast.show('Failed to save API base', { type: 'error' });
-                      }
-                    }}
-                  >
-                    Save API Base
-                  </button>
-                  <button
-                    className="btn"
-                    type="button"
-                    onClick={() => {
-                      try {
-                        clearApiBase();
-                        const next = getDefaultApiBase();
-                        setApiBaseState(next);
-                        toast.show('API base reset to default', { type: 'success' });
-                      } catch {
-                        toast.show('Failed to reset API base', { type: 'error' });
-                      }
-                    }}
-                  >
-                    Reset API Base
-                  </button>
+              {isMasterSuperAdmin ? (
+                <div style={{ marginTop: 12 }}>
+                  <h3 className="section-title" style={{ margin: '8px 0' }}>API Endpoint</h3>
+                  <label>
+                    Base URL
+                    <input
+                      className="input"
+                      placeholder="http://localhost:4000"
+                      value={apiBase}
+                      onChange={e => setApiBaseState(e.target.value)}
+                      style={{ display: 'block', width: '100%', marginTop: 6 }}
+                    />
+                  </label>
+                  <div style={{ marginTop: 8, display: 'flex', gap: 8 }}>
+                    <button
+                      className="btn btn-primary"
+                      onClick={() => {
+                        try {
+                          setApiBase(apiBase);
+                          toast.show('API base saved', { type: 'success' });
+                        } catch {
+                          toast.show('Failed to save API base', { type: 'error' });
+                        }
+                      }}
+                    >
+                      Save API Base
+                    </button>
+                    <button
+                      className="btn"
+                      type="button"
+                      onClick={() => {
+                        try {
+                          clearApiBase();
+                          const next = getDefaultApiBase();
+                          setApiBaseState(next);
+                          toast.show('API base reset to default', { type: 'success' });
+                        } catch {
+                          toast.show('Failed to reset API base', { type: 'error' });
+                        }
+                      }}
+                    >
+                      Reset API Base
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </div>
           )}
           <div className="card config-savebar" style={{ display: 'flex', justifyContent: 'flex-end' }}>

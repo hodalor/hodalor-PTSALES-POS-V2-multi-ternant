@@ -16,6 +16,6 @@ export function create(payload) {
 export function update(id, payload) {
   return fetchJson(`/api/products/${id}`, { method: 'PUT', body: JSON.stringify(payload), timeoutMs: 60000 });
 }
-export function remove(id) {
-  return fetchJson(`/api/products/${id}`, { method: 'DELETE' });
+export function remove(id, payload = {}) {
+  return fetchJson(`/api/products/${id}`, { method: 'DELETE', body: JSON.stringify(payload || {}) });
 }

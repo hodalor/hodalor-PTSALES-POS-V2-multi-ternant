@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useSelector } from 'react-redux';
 import Modal from './Modal';
 import * as tenantsApi from '../api/tenants';
 import { savePendingTenantLimitPayment } from '../utils/tenantLimitPayments';
@@ -12,6 +13,7 @@ function formatMoney(amount, currencySymbol = '', currencyCode = '', currencyPos
 }
 
 export default function TenantLimitUpgradeModal({ open, onClose, context, resourceType = 'user', toast, onStarted }) {
+  const auth = useSelector((s) => s.auth);
   const [provider, setProvider] = useState('paystack');
   const [method, setMethod] = useState('card');
   const [quantity, setQuantity] = useState('1');
@@ -23,6 +25,8 @@ export default function TenantLimitUpgradeModal({ open, onClose, context, resour
 
   const enabledGateways = Array.isArray(context?.enabledGateways) ? context.enabledGateways : [];
   const mobileMoneyNetworks = Array.isArray(context?.mobileMoneyNetworks) ? context.mobileMoneyNetworks : [];
+  const roleLower = String(auth?.role || auth?.user?.role || '').toLowerCase();
+  const isMasterSuperAdmin = roleLower === 'superadmin' && String(auth?.user?.tenantId || '').toLowerCase() === 'master';
   const resolvedResourceType = String(resourceType || context?.resourceType || 'user').toLowerCase() === 'branch' ? 'branch' : 'user';
   const unitRate = resolvedResourceType === 'branch'
     ? Number(context?.addOnPricing?.additionalBranchRate || 0)
@@ -104,7 +108,12 @@ export default function TenantLimitUpgradeModal({ open, onClose, context, resour
     } catch (e) {
       const message = String(e?.message || 'Failed to start payment');
       if (isLikelyNetworkErrorMessage(message)) {
-        toast?.show(`Cannot reach payment server at ${getApiBase()}. Check API Endpoint in Config and your internet connection.`, { type: 'error' });
+        toast?.show(
+          isMasterSuperAdmin
+            ? `Cannot reach payment server at ${getApiBase()}. Check API Endpoint in Config and your internet connection.`
+            : 'Cannot reach payment server. Please contact admin or try again later.',
+          { type: 'error' }
+        );
       } else {
         toast?.show(message, { type: 'error' });
       }
