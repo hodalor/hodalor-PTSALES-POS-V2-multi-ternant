@@ -14,7 +14,7 @@ import Modal from '../components/Modal';
 import BarcodeScannerModal from '../components/BarcodeScannerModal';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
-import { getAllowedPriceTiers, getDisplayPrice, getPreferredPriceTier } from '../utils/priceVisibility';
+import { getAllowedPriceTiers, getDisplayPrice, getDisplayPriceRange, getPreferredPriceTier } from '../utils/priceVisibility';
 import { setAllSettings } from '../store/settingsSlice';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { useAppLanguage } from '../utils/localization';
@@ -44,6 +44,7 @@ function createVariantDraft(overrides = {}) {
     label: '',
     sku: '',
     price: '',
+    costPrice: '',
     quantity: '',
     ...overrides
   };
@@ -263,6 +264,7 @@ function ProductsPage() {
       label: v.label,
       sku: v.sku || '',
       price: v.price != null ? String(v.price) : '',
+      costPrice: v.costPrice != null ? String(v.costPrice) : '',
       quantity: String(getVariantQuantityForContext(v, currentBranchId, currentInventoryType) || '')
     })) : [createVariantDraft()]);
   }
@@ -410,7 +412,8 @@ function ProductsPage() {
         const v = variants[i];
         const hasLabel = v.label && v.label.trim();
         const hasPrice = v.price !== '' && v.price != null;
-        const isEmpty = !hasLabel && !v.sku && !hasPrice;
+        const hasCostPrice = v.costPrice !== '' && v.costPrice != null;
+        const isEmpty = !hasLabel && !v.sku && !hasPrice && !hasCostPrice;
         if (isEmpty) continue;
         if (!hasLabel) errors.push(`Variant #${i+1}: Label is required (e.g. Size/Color)`);
     }
@@ -476,6 +479,7 @@ function ProductsPage() {
                     label: v.label.trim(),
                     sku: v.sku?.trim() || '',
                     price: v.price !== '' ? Number(v.price) : undefined,
+                    costPrice: v.costPrice !== '' ? Number(v.costPrice) : undefined,
                     stockByBranch: stockMaps.stockByBranch,
                     wholesaleStockByBranch: stockMaps.wholesaleStockByBranch,
                     warehouseStockByBranch: stockMaps.warehouseStockByBranch
@@ -568,6 +572,7 @@ function ProductsPage() {
               label: v.label.trim(),
               sku: v.sku?.trim() || '',
               price: v.price !== '' ? Number(v.price) : undefined,
+              costPrice: v.costPrice !== '' ? Number(v.costPrice) : undefined,
               stockByBranch: prev?.stockByBranch || {},
               wholesaleStockByBranch: prev?.wholesaleStockByBranch || {},
               warehouseStockByBranch: prev?.warehouseStockByBranch || {}
@@ -793,23 +798,31 @@ function ProductsPage() {
   const productProfit = useMemo(() => {
     const fromTs = Date.now() - 30 * 24 * 3600 * 1000;
     const map = new Map();
+    const productById = new Map(products.map((product) => [String(product.id || ''), product]));
     for (const s of sales) {
       const ts = new Date(s.created_at).getTime();
       if (ts < fromTs) continue;
       if (String(s.branchId || '') !== String(currentBranchId || '')) continue;
       for (const it of s.items || []) {
-        const pid = it.productId || '';
-        const key = `${pid}:${it.variantId || ''}`;
-        if (!map.has(key)) map.set(key, { key, name: it.name || it.sku || '—', units: 0, revenue: 0, cost: 0, profit: 0 });
+        const pid = String(it.productId || '');
+        const variantId = String(it.variantId || '');
+        const key = `${pid}:${variantId}`;
+        if (!map.has(key)) map.set(key, { key, name: it.name || it.sku || '—', units: 0, revenue: 0, cost: 0, profit: 0, marginPct: 0 });
         const row = map.get(key);
         const qty = Number(it.qty) || 0;
         const price = Number(it.price) || 0;
-        const prod = products.find(p => String(p.id) === String(pid));
-        const cp = Number(prod?.costPrice || 0);
+        const product = productById.get(pid);
+        const variant = Array.isArray(product?.variants)
+          ? product.variants.find((entry) => String(entry.id || '') === variantId)
+          : null;
+        const fallbackCost = variant?.costPrice != null ? Number(variant.costPrice || 0) : Number(product?.costPrice || 0);
+        const itemCost = it.costPrice != null ? Number(it.costPrice || 0) : fallbackCost;
+        const unitCost = Number.isFinite(itemCost) ? itemCost : 0;
         row.units += qty;
         row.revenue += qty * price;
-        row.cost += qty * (Number.isFinite(cp) ? cp : 0);
+        row.cost += qty * unitCost;
         row.profit = row.revenue - row.cost;
+        row.marginPct = row.revenue > 0 ? (row.profit / row.revenue) * 100 : 0;
       }
     }
     return Array.from(map.values()).sort((a, b) => b.profit - a.profit).slice(0, 20);
@@ -917,6 +930,7 @@ function ProductsPage() {
                 <th align="left">{t('Units')}</th>
                 <th align="left">{t('Revenue')}</th>
                 <th align="left">{t('Profit')}</th>
+                <th align="left">{t('Margin')}</th>
               </tr>
             </thead>
             <tbody>
@@ -926,9 +940,10 @@ function ProductsPage() {
                   <td>{x.units}</td>
                   <td>{formatCurrency(x.revenue, settings)}</td>
                   <td>{formatCurrency(x.profit, settings)}</td>
+                  <td>{`${Math.round((Number(x.marginPct) || 0) * 100) / 100}%`}</td>
                 </tr>
               ))}
-              {productProfit.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>{t('No sales in range')}</td></tr>}
+              {productProfit.length === 0 && <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>{t('No sales in range')}</td></tr>}
             </tbody>
           </table>
         </div>
@@ -988,7 +1003,15 @@ function ProductsPage() {
                     </div>
                   ) : '-'}
                 </td>
-                <td className="price-cell">{formatCurrency(getDisplayPrice(p, primaryVisibleTier), settings)}</td>
+                <td className="price-cell">
+                  {(() => {
+                    const range = getDisplayPriceRange(p, primaryVisibleTier);
+                    if (!range) return formatCurrency(getDisplayPrice(p, primaryVisibleTier), settings);
+                    return range.isRange
+                      ? `${formatCurrency(range.min, settings)} - ${formatCurrency(range.max, settings)}`
+                      : formatCurrency(range.min, settings);
+                  })()}
+                </td>
                 <td className="category-cell">{p.category || '-'}</td>
                 <td>{p.lowStock ?? 0}</td>
                 <td>
@@ -1542,7 +1565,7 @@ function ProductsPage() {
                         {t('Use variants when one product has different options with their own SKU/price/stock (e.g. colors, sizes, 500mL vs 1L).')}
                       </div>
                       {variants.map((row, idx) => (
-                        <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 140px 140px auto', gap: 8 }}>
+                        <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 140px 140px 140px auto', gap: 8 }}>
                           <input className="input" placeholder={t('Label (e.g. Red / XL / 1L)')} value={row.label} onChange={e => {
                             const v = e.target.value;
                             setVariants(prev => prev.map((r, i) => i === idx ? { ...r, label: v } : r));
@@ -1554,6 +1577,10 @@ function ProductsPage() {
                           <input className="input" type="number" placeholder={t('Price (e.g. 25.00)')} value={row.price} onChange={e => {
                             const v = e.target.value;
                             setVariants(prev => prev.map((r, i) => i === idx ? { ...r, price: v } : r));
+                          }} />
+                          <input className="input" type="number" placeholder={t('Cost Price')} value={row.costPrice} onChange={e => {
+                            const v = e.target.value;
+                            setVariants(prev => prev.map((r, i) => i === idx ? { ...r, costPrice: v } : r));
                           }} />
                           <input className="input" type="number" min="0" placeholder={t(`Qty (${currentBranchLabel})`)} value={row.quantity} onChange={e => {
                             const v = e.target.value;

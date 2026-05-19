@@ -8,7 +8,7 @@ import { formatCurrency } from '../utils/currency';
 import { useToast } from '../components/ToastProvider';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
-import { getAllowedPriceTiers, getDisplayPrice, getPriceTierLabel } from '../utils/priceVisibility';
+import { getAllowedPriceTiers, getDisplayPrice, getDisplayPriceRange, getPriceTierLabel } from '../utils/priceVisibility';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { exportCsv, exportTablePdf } from '../utils/exporters';
 import Modal from '../components/Modal';
@@ -128,6 +128,14 @@ function InventoryPage() {
           : (product.retailPrice != null ? product.retailPrice : product.price || 0)
     );
   }, [viewInventoryType]);
+
+  const formatEntityPriceDisplay = useCallback((entity, tier) => {
+    const range = getDisplayPriceRange(entity, tier);
+    if (!range) return formatCurrency(getDisplayPrice(entity, tier), settings);
+    return range.isRange
+      ? `${formatCurrency(range.min, settings)} - ${formatCurrency(range.max, settings)}`
+      : formatCurrency(range.min, settings);
+  }, [settings]);
 
   const summary = useMemo(() => {
     const stockTotals = rows.map((p) => getStockForProduct(p, branchId));
@@ -483,11 +491,11 @@ function InventoryPage() {
             {rows.map(p => {
               const low = p.lowStock ?? 0;
               const cur = getStockForProduct(p, branchId);
-              const basePrice = viewInventoryType === 'warehouse'
-                ? (p.warehousePrice != null ? p.warehousePrice : 0)
+              const displayTier = viewInventoryType === 'warehouse'
+                ? 'warehouse'
                 : viewInventoryType === 'wholesale'
-                  ? (p.wholesalePrice != null ? p.wholesalePrice : p.price)
-                  : (p.retailPrice != null ? p.retailPrice : p.price);
+                  ? 'wholesale'
+                  : 'retail';
               const hasVariants = Array.isArray(p.variants) && p.variants.length > 0;
               return (
                 <Fragment key={p.id}>
@@ -508,7 +516,7 @@ function InventoryPage() {
                       </div>
                     </td>
                     <td><code style={{ fontSize: 12 }}>{p.sku || '—'}</code></td>
-                    <td>{formatCurrency(basePrice || 0, settings)}</td>
+                    <td>{formatEntityPriceDisplay(p, displayTier)}</td>
                     <td><code style={{ fontSize: 12 }}>{p.barcode || '—'}</code></td>
                     <td onClick={e => e.stopPropagation()}>
                       {hasVariants ? (
@@ -582,7 +590,7 @@ function InventoryPage() {
                 <div><strong>Track Type:</strong> {String(selected.trackType || 'quantity') === 'serialized' ? 'Serialized' : 'Quantity'}</div>
                 <div><strong>Manual Stock Edit:</strong> {String(selected.trackType || 'quantity') === 'serialized' ? 'Disabled for serialized items' : 'Disabled'}</div>
                 {visiblePriceTiers.map(tier => (
-                  <div key={tier}><strong>{getPriceTierLabel(tier)}:</strong> {formatCurrency(getDisplayPrice(selected, tier), settings)}</div>
+                  <div key={tier}><strong>{getPriceTierLabel(tier)}:</strong> {formatEntityPriceDisplay(selected, tier)}</div>
                 ))}
                 <div><strong>Barcode:</strong> <code style={{ fontSize: 12 }}>{selected.barcode || '—'}</code></div>
                 <div><strong>Low Stock:</strong> {selected.lowStock ?? 0}</div>

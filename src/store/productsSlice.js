@@ -37,6 +37,7 @@ function normalizeVariant(v, parent, idx) {
     wholesalePrice: v.wholesalePrice != null ? Number(v.wholesalePrice) : (v.retailPrice != null ? Number(v.retailPrice) : Number(parent.wholesalePrice != null ? parent.wholesalePrice : parent.price || 0)),
     warehousePrice: v.warehousePrice != null ? Number(v.warehousePrice) : 0,
     agentPrice: v.agentPrice != null ? Number(v.agentPrice) : (v.wholesalePrice != null ? Number(v.wholesalePrice) : Number(parent.agentPrice != null ? parent.agentPrice : parent.price || 0)),
+    costPrice: v.costPrice != null ? Number(v.costPrice) : Number(parent.costPrice || 0),
     stockByBranch: v.stockByBranch || {},
     wholesaleStockByBranch: v.wholesaleStockByBranch || {},
     warehouseStockByBranch: v.warehouseStockByBranch || {}

@@ -33,6 +33,25 @@ export function getDisplayPrice(p, tier = 'retail') {
   return Number(p.retailPrice != null ? p.retailPrice : p.price || 0);
 }
 
+export function getDisplayPriceRange(p, tier = 'retail') {
+  if (!p) return null;
+  const variants = Array.isArray(p.variants) ? p.variants : [];
+  if (variants.length === 0) {
+    const value = Number(getDisplayPrice(p, tier) || 0);
+    return { min: value, max: value, isRange: false };
+  }
+  const values = variants
+    .map((variant) => Number(getDisplayPrice({ ...p, ...variant }, tier)))
+    .filter((value) => Number.isFinite(value));
+  if (values.length === 0) {
+    const value = Number(getDisplayPrice(p, tier) || 0);
+    return { min: value, max: value, isRange: false };
+  }
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  return { min, max, isRange: min !== max };
+}
+
 export function getPriceTierLabel(tier) {
   if (tier === 'wholesale') return 'Wholesale Price';
   if (tier === 'warehouse') return 'Warehouse Price';

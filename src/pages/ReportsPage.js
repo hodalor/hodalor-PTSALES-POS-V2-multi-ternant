@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useSelector } from 'react-redux';
 import BranchSelect from '../components/BranchSelect';
 import { exportCsv, exportTablePdf } from '../utils/exporters';
+import { getDisplayPriceRange } from '../utils/priceVisibility';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import { Chart, BarElement, ArcElement, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
 import { useToast } from '../components/ToastProvider';
@@ -465,10 +466,10 @@ function ReportsPage() {
       product: product.name,
       sku: product.sku || '',
       category: product.category || '',
-      retailPrice: Number(product.retailPrice != null ? product.retailPrice : product.price || 0),
-      distributionPrice: Number(product.wholesalePrice != null ? product.wholesalePrice : product.price || 0),
-      warehousePrice: Number(product.warehousePrice != null ? product.warehousePrice : 0),
-      agentPrice: Number(product.agentPrice != null ? product.agentPrice : product.price || 0)
+      retailPrice: formatPriceRangeForExport(getDisplayPriceRange(product, 'retail')),
+      distributionPrice: formatPriceRangeForExport(getDisplayPriceRange(product, 'wholesale')),
+      warehousePrice: formatPriceRangeForExport(getDisplayPriceRange(product, 'warehouse')),
+      agentPrice: formatPriceRangeForExport(getDisplayPriceRange(product, 'agent'))
     }));
     const headers = [
       { key: 'product', label: t('Product') },
@@ -481,6 +482,11 @@ function ReportsPage() {
     ];
     if (type === 'csv') exportCsv('price-list.csv', headers, rows);
     else exportTablePdf(t('Price List'), headers, rows);
+  }
+
+  function formatPriceRangeForExport(range) {
+    if (!range) return 0;
+    return range.isRange ? `${range.min}-${range.max}` : range.min;
   }
 
   return (
