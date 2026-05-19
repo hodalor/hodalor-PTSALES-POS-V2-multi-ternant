@@ -132,6 +132,20 @@ function generateEAN13() {
   return base + ean13CheckDigit(base);
 }
 
+function productRouteErrorMessage(err) {
+  const code = String(err?.code || err?.name || '').trim();
+  if (code === '11000' || code === 'E11000') {
+    const dupField = Object.keys(err?.keyPattern || err?.keyValue || {})[0] || 'record';
+    if (dupField === 'sku') return 'A product with this SKU already exists';
+    return `Duplicate ${dupField} is not allowed`;
+  }
+  if (code === 'ValidationError') {
+    const first = Object.values(err?.errors || {})[0];
+    return String(first?.message || 'Product validation failed');
+  }
+  return String(err?.message || 'Failed to save product');
+}
+
 r.get('/', async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(v => String(v || '').trim()).filter(Boolean);
   const query = ids.length > 0 ? { $or: [{ id: { $in: ids } }, { _id: { $in: ids.filter(v => mongoose.isValidObjectId(v)).map(v => new mongoose.Types.ObjectId(v)) } }] } : {};
@@ -182,50 +196,70 @@ r.get('/', async (req, res) => {
 });
 
 r.post('/', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (req, res) => {
-  const body = normalizePricingPayload(req.body || {});
-  const initialStock = Number(body.initialStock || 0);
-  const initialBranchId = String(body.initialBranchId || '').trim();
-  const initialInventoryType = String(body.initialInventoryType || 'retail').trim().toLowerCase();
-  delete body.initialStock;
-  delete body.initialBranchId;
-  delete body.initialInventoryType;
-  if (!body.barcode) body.barcode = generateEAN13();
-  if (initialBranchId && Number.isFinite(initialStock) && initialStock > 0 && normalizeTrackType(body.trackType) !== 'serialized') {
-    const field = stockFieldForInventoryType(initialInventoryType);
-    body[field] = {
-      ...(body[field] || {}),
-      [initialBranchId]: initialStock
-    };
+  try {
+    const body = normalizePricingPayload(req.body || {});
+    const initialStock = Number(body.initialStock || 0);
+    const initialBranchId = String(body.initialBranchId || '').trim();
+    const initialInventoryType = String(body.initialInventoryType || 'retail').trim().toLowerCase();
+    delete body.initialStock;
+    delete body.initialBranchId;
+    delete body.initialInventoryType;
+    if (!body.barcode) body.barcode = generateEAN13();
+    if (initialBranchId && Number.isFinite(initialStock) && initialStock > 0 && normalizeTrackType(body.trackType) !== 'serialized') {
+      const field = stockFieldForInventoryType(initialInventoryType);
+      body[field] = {
+        ...(body[field] || {}),
+        [initialBranchId]: initialStock
+      };
+    }
+    const p = await Product.create(body);
+    if (!p.id) {
+      p.id = String(p._id);
+      try { await p.save(); } catch {}
+    }
+    res.json(p);
+    void Audit.create({
+      actor: (req.user && req.user.name) || 'unknown',
+      actionType: 'product_create',
+      details: {
+        productId: p.id || String(p._id),
+        name: p.name,
+        sku: p.sku,
+        price: p.price,
+        category: p.category || '',
+        initialStock: initialStock > 0 ? initialStock : 0,
+        initialBranchId: initialBranchId || '',
+        initialInventoryType: initialInventoryType || 'retail'
+      },
+      branchId: req.user?.branchId || ''
+    }).catch(() => {});
+    void ServerLog.create({
+      level: 'info',
+      actor: (req.user && req.user.name) || 'unknown',
+      route: req.originalUrl || req.url || '',
+      method: req.method || 'POST',
+      status: 200,
+      message: `Product created: ${p.name} (${p.sku})`
+    }).catch(() => {});
+  } catch (err) {
+    const message = productRouteErrorMessage(err);
+    const status = String(err?.code || err?.name || '') === 'ValidationError' || String(err?.code || '') === '11000' || String(err?.code || '') === 'E11000' ? 400 : 500;
+    void ServerLog.create({
+      level: 'error',
+      actor: (req.user && req.user.name) || 'unknown',
+      route: req.originalUrl || req.url || '',
+      method: req.method || 'POST',
+      status,
+      message: `Product create failed: ${message}`,
+      errorCode: String(err?.code || err?.name || ''),
+      details: {
+        sku: String(req.body?.sku || ''),
+        name: String(req.body?.name || '')
+      },
+      stack: String(err?.stack || '')
+    }).catch(() => {});
+    return res.status(status).json({ error: message });
   }
-  const p = await Product.create(body);
-  if (!p.id) {
-    p.id = String(p._id);
-    try { await p.save(); } catch {}
-  }
-  res.json(p);
-  void Audit.create({
-    actor: (req.user && req.user.name) || 'unknown',
-    actionType: 'product_create',
-    details: {
-      productId: p.id || String(p._id),
-      name: p.name,
-      sku: p.sku,
-      price: p.price,
-      category: p.category || '',
-      initialStock: initialStock > 0 ? initialStock : 0,
-      initialBranchId: initialBranchId || '',
-      initialInventoryType: initialInventoryType || 'retail'
-    },
-    branchId: req.user?.branchId || ''
-  }).catch(() => {});
-  void ServerLog.create({
-    level: 'info',
-    actor: (req.user && req.user.name) || 'unknown',
-    route: req.originalUrl || req.url || '',
-    method: req.method || 'POST',
-    status: 200,
-    message: `Product created: ${p.name} (${p.sku})`
-  }).catch(() => {});
 });
 
 r.put('/:id', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (req, res) => {
