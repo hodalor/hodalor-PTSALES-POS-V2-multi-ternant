@@ -6,6 +6,7 @@ import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { filterGrantsByFeatureFlags, featureFlagsFromEnabled, TENANT_GRANT_KEYS } from '../config/tenantAccess.js';
 import { modelFor as TenantModelFor } from '../models/Tenant.js';
 import { getMasterConnection } from '../config/tenancy.js';
+import { uploadMediaString } from '../utils/mediaStorage.js';
 
 const r = Router();
 const TENANT_ADMIN_ALLOWED_KEYS = new Set([
@@ -119,6 +120,13 @@ r.get('/', async (req, res) => {
 
 r.put('/', requireAdmin, async (req, res) => {
   const data = { ...(req.body || {}) };
+  if (Object.prototype.hasOwnProperty.call(data, 'clientLogoUrl')) {
+    data.clientLogoUrl = await uploadMediaString(data.clientLogoUrl, {
+      tenantId: String(req.user?.tenantId || req.tenantId || 'master').trim(),
+      folder: 'tenant-logos',
+      originalName: `${req.user?.tenantId || req.tenantId || 'tenant'}-logo`
+    });
+  }
   const role = String(req.user?.role || '').toLowerCase();
   const isMasterSuperAdmin = role === 'superadmin' && String(req.user?.tenantId || req.tenantId || '').toLowerCase() === 'master';
   if (Object.prototype.hasOwnProperty.call(data, 'featureFlags') && !isMasterSuperAdmin) {

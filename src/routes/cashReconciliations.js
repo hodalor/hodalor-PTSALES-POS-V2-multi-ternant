@@ -9,6 +9,7 @@ import { getMasterConnection } from '../config/tenancy.js';
 import { modelFor as TenantModelFor } from '../models/Tenant.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import { createApprovalForReference } from '../utils/approvalWorkflow.js';
+import { uploadMediaString } from '../utils/mediaStorage.js';
 import { canAccessAccount, normalizeBranchIds, resolveAllowedBranchIds } from './reconciliationAccounts.js';
 
 const r = Router();
@@ -67,6 +68,19 @@ async function resolveScope(req) {
     allowedBranchIdSet: new Set(allowedBranchIds),
     allBranchesAllowed
   };
+}
+
+async function uploadAllocationProofs(values = [], req) {
+  const allocations = Array.isArray(values) ? values : [];
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim();
+  return Promise.all(allocations.map(async (item, index) => ({
+    ...(item || {}),
+    proofImage: await uploadMediaString(item?.proofImage, {
+      tenantId,
+      folder: 'cash-reconciliation-proofs',
+      originalName: item?.proofName || `proof-${index + 1}`
+    })
+  })));
 }
 
 async function resolveRequestedBranchIds(req, scope) {
@@ -378,7 +392,8 @@ r.post('/', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['add_finance_rec
       paymentMap.set(paymentMethod, (paymentMap.get(paymentMethod) || 0) + Number(amount || 0));
     });
   });
-  const allocations = (Array.isArray(req.body?.allocations) ? req.body.allocations : []).map((item) => ({
+  const uploadedAllocations = await uploadAllocationProofs(req.body?.allocations, req);
+  const allocations = uploadedAllocations.map((item) => ({
     accountId: normalizeString(item.accountId),
     paymentMethod: normalizeString(item.paymentMethod || 'cash').toLowerCase() || 'cash',
     amount: Number(item.amount || 0),

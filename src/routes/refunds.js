@@ -7,6 +7,7 @@ import { requireAuth, requireRole, requireRoleOrPerm } from '../middleware/auth.
 import mongoose from 'mongoose';
 import { resolveInventoryTypeFromBranch, returnSerializedUnits } from '../utils/productUnits.js';
 import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from '../utils/inventory.js';
+import { uploadMediaArray } from '../utils/mediaStorage.js';
 
 const r = Router();
 
@@ -18,7 +19,15 @@ r.get('/requests', async (req, res) => {
 });
 
 r.post('/requests', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_refunds', 'add_distribution_refunds']), async (req, res) => {
-  const payload = req.body || {};
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim();
+  const payload = {
+    ...(req.body || {}),
+    images: await uploadMediaArray(req.body?.images, (_value, index) => ({
+      tenantId,
+      folder: 'refunds',
+      originalName: `${req.body?.saleId || req.body?.receiptNumber || 'refund'}-${index + 1}`
+    }))
+  };
   const clientId = String(payload.clientId || '').trim();
   if (clientId) {
     const existing = await RefundRequest.findOne({ clientId });

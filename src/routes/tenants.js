@@ -13,6 +13,7 @@ import { getPaymentManagementConfig, getPaymentManagementDashboard, savePaymentM
 import { getSubscriptionManagementConfig, resolveSubscriptionPlan, saveSubscriptionManagementConfig } from '../utils/subscriptionManagement.js';
 import { exportTenantData, importTenantData } from '../utils/tenantDataTransfer.js';
 import { createDpoLimitUpgradePayment, createPayPalLimitUpgradePayment, createPaystackLimitUpgradePayment, getMobileMoneyNetworks, getTenantLimitUpgradeInfo, verifyDpoLimitUpgradePayment, verifyPayPalLimitUpgradePayment, verifyPaystackLimitUpgradePayment } from '../utils/subscriptionPayments.js';
+import { uploadMediaString } from '../utils/mediaStorage.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -81,6 +82,14 @@ async function wipeTenantDb(tenantId) {
     if (!name || name.startsWith('system.')) continue;
     await db.collection(name).deleteMany({});
   }
+}
+
+async function uploadTenantLogo(value, tenantId) {
+  return uploadMediaString(value, {
+    tenantId: String(tenantId || 'master').trim(),
+    folder: 'tenant-logos',
+    originalName: `${tenantId || 'tenant'}-logo`
+  });
 }
 
 r.get('/me', async (req, res) => {
@@ -320,6 +329,7 @@ r.post('/', requireSuperAdmin, async (req, res) => {
     ? normalizeFeatureList(plan, features.map((item) => String(item || '').trim()).filter((item) => ALL_FEATURES.includes(item)))
     : normalizeFeatureList(plan, Array.isArray(planConfig?.features) ? planConfig.features : []);
   await wipeTenantDb(tid);
+  const uploadedLogo = await uploadTenantLogo(logo, tid);
   const doc = await TenantModel.create({
     tenantId: tid,
     name: String(name).trim(),
@@ -331,7 +341,7 @@ r.post('/', requireSuperAdmin, async (req, res) => {
     billingPhone: String(billingPhone || '').trim(),
     billingAddress: String(billingAddress || '').trim(),
     billingCountry: String(billingCountry || 'GH').trim().toUpperCase(),
-    logo: String(logo || ''),
+    logo: String(uploadedLogo || ''),
     themeColor: String(themeColor || ''),
     subscriptionExpiresAt: subscriptionPermanent ? null : (subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null),
     subscriptionPermanent: !!subscriptionPermanent,
@@ -366,7 +376,7 @@ r.post('/', requireSuperAdmin, async (req, res) => {
     billingPhone: String(billingPhone || '').trim(),
     billingAddress: String(billingAddress || '').trim(),
     billingCountry: String(billingCountry || 'GH').trim().toUpperCase(),
-    logo: String(logo || ''),
+    logo: String(uploadedLogo || ''),
     themeColor: String(themeColor || ''),
     subscriptionExpiresAt: subscriptionPermanent ? null : (subscriptionExpiresAt ? new Date(subscriptionExpiresAt) : null),
     subscriptionPermanent: !!subscriptionPermanent,
@@ -382,6 +392,9 @@ r.patch('/:tenantId', requireSuperAdmin, async (req, res) => {
   const before = await TenantModel.findOne({ tenantId: tid });
   if (!before) return res.status(404).json({ error: 'Tenant not found' });
   const patch = req.body || {};
+  const nextLogo = Object.prototype.hasOwnProperty.call(patch, 'logo')
+    ? await uploadTenantLogo(patch.logo, tid)
+    : before.logo;
   const planConfig = await resolveSubscriptionPlan(master, patch.subscriptionPlan || before.subscriptionPlan);
   const plan = String(planConfig?.key || before.subscriptionPlan || 'basic');
   const enabledFeatures = Array.isArray(patch.features)
@@ -431,7 +444,7 @@ r.patch('/:tenantId', requireSuperAdmin, async (req, res) => {
         billingPhone: patch.billingPhone != null ? String(patch.billingPhone || '').trim() : before.billingPhone,
         billingAddress: patch.billingAddress != null ? String(patch.billingAddress || '').trim() : before.billingAddress,
         billingCountry: patch.billingCountry != null ? String(patch.billingCountry || 'GH').trim().toUpperCase() : before.billingCountry,
-        logo: patch.logo != null ? String(patch.logo || '') : before.logo,
+        logo: nextLogo,
         themeColor: patch.themeColor != null ? String(patch.themeColor || '') : before.themeColor,
         subscriptionPermanent: nextPermanent,
         subscriptionAmount: nextAmount,

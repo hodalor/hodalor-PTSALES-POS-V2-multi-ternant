@@ -5,6 +5,7 @@ import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireAdmin, requireRole, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
 import { normalizeTrackType } from '../utils/productUnits.js';
+import { uploadMediaString } from '../utils/mediaStorage.js';
 
 const r = Router();
 
@@ -60,6 +61,7 @@ function normalizePricingPayload(body = {}) {
       const next = { ...(v || {}) };
       const variantBase = toNumberOrZero(next.price != null ? next.price : out.price || 0);
       next.sku = next.sku || '';
+      next.image = String(next.image || '').trim();
       if (hasNumber(next.retailPrice)) next.retailPrice = toNumberOrZero(next.retailPrice);
       else next.retailPrice = variantBase || out.retailPrice || 0;
       if (hasNumber(next.wholesalePrice)) next.wholesalePrice = toNumberOrZero(next.wholesalePrice);
@@ -133,6 +135,33 @@ function preserveVariantInventoryMaps(existingVariants = [], incomingVariants = 
       warehouseStockByBranch: normalizeStockByBranch(current.warehouseStockByBranch)
     };
   });
+}
+
+async function uploadProductMediaPayload(payload = {}, req) {
+  const next = { ...(payload || {}) };
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim();
+  if (Object.prototype.hasOwnProperty.call(next, 'image')) {
+    next.image = await uploadMediaString(next.image, {
+      tenantId,
+      folder: 'products',
+      originalName: next.sku || next.name || 'product-image'
+    });
+  }
+  if (Array.isArray(next.variants)) {
+    next.variants = await Promise.all(next.variants.map(async (variant, index) => {
+      if (!variant || typeof variant !== 'object') return variant;
+      const uploadedImage = await uploadMediaString(variant.image, {
+        tenantId,
+        folder: 'product-variants',
+        originalName: variant.sku || variant.label || `${next.sku || next.name || 'variant'}-${index + 1}`
+      });
+      return {
+        ...variant,
+        image: uploadedImage
+      };
+    }));
+  }
+  return next;
 }
 
 function stockFieldForInventoryType(inventoryType) {
@@ -209,6 +238,7 @@ r.get('/', async (req, res) => {
         id: v.id || v.label || String(idx),
         label: v.label,
         sku: v.sku || '',
+        image: v.image || '',
         price: v.price,
         retailPrice: hasNumber(v.retailPrice) ? toNumberOrZero(v.retailPrice) : (hasNumber(v.price) ? toNumberOrZero(v.price) : obj.retailPrice),
         wholesalePrice: hasNumber(v.wholesalePrice) ? toNumberOrZero(v.wholesalePrice) : (hasNumber(v.retailPrice) ? toNumberOrZero(v.retailPrice) : obj.wholesalePrice),
@@ -227,7 +257,8 @@ r.get('/', async (req, res) => {
 
 r.post('/', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (req, res) => {
   try {
-    const body = normalizePricingPayload(req.body || {});
+    let body = normalizePricingPayload(req.body || {});
+    body = await uploadProductMediaPayload(body, req);
     const initialStock = Number(body.initialStock || 0);
     const initialBranchId = String(body.initialBranchId || '').trim();
     const initialInventoryType = String(body.initialInventoryType || 'retail').trim().toLowerCase();
@@ -312,6 +343,7 @@ r.put('/:id', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (re
     });
   }
   let payload = normalizePricingPayload(req.body || {});
+  payload = await uploadProductMediaPayload(payload, req);
   if (!payload.id && before?.id) {
     payload.id = before.id;
   }

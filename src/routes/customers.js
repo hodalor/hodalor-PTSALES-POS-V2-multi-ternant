@@ -5,6 +5,7 @@ import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireAdmin, requireRole, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
+import { uploadMediaString } from '../utils/mediaStorage.js';
 
 const r = Router();
 
@@ -32,6 +33,26 @@ async function resolveRegistrationBranch(payload = {}, req) {
   };
 }
 
+async function uploadCustomerMediaFields(payload = {}, req) {
+  const next = { ...(payload || {}) };
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim();
+  const fields = [
+    ['photo', 'customer-photo'],
+    ['idFront', 'customer-id-front'],
+    ['idBack', 'customer-id-back'],
+    ['businessCertificate', 'customer-business-certificate']
+  ];
+  for (const [field, fallbackName] of fields) {
+    if (!Object.prototype.hasOwnProperty.call(next, field)) continue;
+    next[field] = await uploadMediaString(next[field], {
+      tenantId,
+      folder: 'customers',
+      originalName: `${next.clientId || next.phone || next.name || fallbackName}-${field}`
+    });
+  }
+  return next;
+}
+
 r.get('/', async (req, res) => {
   const q = String(req.query.q || '').trim();
   const limitRaw = Number(req.query.limit || 1000);
@@ -55,7 +76,7 @@ r.get('/', async (req, res) => {
 });
 
 r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_customers'), async (req, res) => {
-  const payload = req.body || {};
+  const payload = await uploadCustomerMediaFields(req.body || {}, req);
   const name = String(payload.name || '').trim();
   if (!name) return res.status(400).json({ error: 'Name is required' });
   const clientId = String(payload.clientId || '').trim();
@@ -132,7 +153,7 @@ r.put('/:id', requireRoleOrPerm(['Admin','Manager','Cashier'], 'edit_customers')
   or.push({ clientId: id });
   const before = await Customer.findOne({ $or: or });
   if (!before) return res.status(404).json({ error: 'Not found' });
-  const payload = req.body || {};
+  const payload = await uploadCustomerMediaFields(req.body || {}, req);
   const patch = {
     name: payload.name != null ? String(payload.name || '').trim() : undefined,
     phone: payload.phone != null ? String(payload.phone || '').trim() : undefined,

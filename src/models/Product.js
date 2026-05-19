@@ -5,6 +5,7 @@ const VariantSchema = new mongoose.Schema({
   id: { type: String, required: true },
   label: { type: String, required: true },
   sku: { type: String, default: '' },
+  image: { type: String, default: '' },
   price: { type: Number, default: 0 },
   retailPrice: { type: Number, default: 0 },
   wholesalePrice: { type: Number, default: 0 },

@@ -9,6 +9,7 @@ import { parseAuth } from './middleware/auth.js';
 import { tenantContext } from './middleware/tenant.js';
 import ServerLog from './models/ServerLog.js';
 import Settings from './models/Settings.js';
+import { sanitizeMediaForLogs } from './utils/mediaStorage.js';
 
 dotenv.config();
 
@@ -112,7 +113,10 @@ app.use(async (err, req, res, next) => {
       message: err?.message || 'Unhandled error',
       errorCode: code ? String(code) : '',
       errorMeaning: errorMeaning(code),
-      details: { body: req.body, query: req.query },
+      details: {
+        body: sanitizeMediaForLogs(req.body),
+        query: sanitizeMediaForLogs(req.query)
+      },
       stack: err?.stack || ''
     });
   } catch {}
