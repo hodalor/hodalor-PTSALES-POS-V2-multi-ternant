@@ -39,6 +39,41 @@ function stripInventoryMapsForProductUpdate(payload) {
   return next;
 }
 
+function createVariantDraft(overrides = {}) {
+  return {
+    label: '',
+    sku: '',
+    price: '',
+    quantity: '',
+    ...overrides
+  };
+}
+
+function getInventoryStockField(inventoryType) {
+  return inventoryType === 'warehouse'
+    ? 'warehouseStockByBranch'
+    : inventoryType === 'wholesale'
+      ? 'wholesaleStockByBranch'
+      : 'stockByBranch';
+}
+
+function getVariantQuantityForContext(variant, branchId, inventoryType) {
+  const stockField = getInventoryStockField(inventoryType);
+  return Number(variant?.[stockField]?.[branchId] || 0);
+}
+
+function buildVariantStockMaps(quantity, branchId, inventoryType) {
+  const qty = Number(quantity || 0);
+  const next = {
+    stockByBranch: {},
+    wholesaleStockByBranch: {},
+    warehouseStockByBranch: {}
+  };
+  if (!branchId || !Number.isFinite(qty) || qty <= 0) return next;
+  next[getInventoryStockField(inventoryType)] = { [branchId]: qty };
+  return next;
+}
+
 function ProductsPage() {
   const dispatch = useDispatch();
   const products = useSelector(s => s.products.products);
@@ -114,7 +149,7 @@ function ProductsPage() {
   const [shoeSize, setShoeSize] = useState('');
   const [attrs, setAttrs] = useState([{ key: '', value: '' }]);
   const [packs, setPacks] = useState([{ name: '', quantity: '' }]);
-  const [variants, setVariants] = useState([{ label: '', sku: '', price: '' }]);
+  const [variants, setVariants] = useState([createVariantDraft()]);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [pricingOpen, setPricingOpen] = useState(false);
   const [creditOpen, setCreditOpen] = useState(false);
@@ -126,6 +161,7 @@ function ProductsPage() {
   const [minimumCreditPercentage, setMinimumCreditPercentage] = useState('');
   const [trackType, setTrackType] = useState('quantity');
   const [serializedModalProduct, setSerializedModalProduct] = useState(null);
+  const [variantModalProduct, setVariantModalProduct] = useState(null);
   const [serializedEntriesText, setSerializedEntriesText] = useState('');
   const [serializedUnits, setSerializedUnits] = useState([]);
   const [serializedQuery, setSerializedQuery] = useState('');
@@ -138,10 +174,13 @@ function ProductsPage() {
   const [serializedCameraOpen, setSerializedCameraOpen] = useState(false);
   const serializedScanInputRef = useRef(null);
   
-  const [openStockFor, setOpenStockFor] = useState(null);
   const toast = useToast();
   const { t } = useAppLanguage();
   const [saving, setSaving] = useState(false);
+  const hasConfiguredVariants = useMemo(
+    () => (variants || []).some((row) => String(row?.label || '').trim()),
+    [variants]
+  );
 
   const filteredCatalogProducts = useMemo(() => {
     const query = String(catalogQuery || '').trim().toLowerCase();
@@ -166,7 +205,7 @@ function ProductsPage() {
     setSizeLabel(''); setShoeSize('');
     setAttrs([{ key: '', value: '' }]);
     setPacks([{ name: '', quantity: '' }]);
-    setVariants([{ label: '', sku: '', price: '' }]);
+    setVariants([createVariantDraft()]);
     setAdvancedOpen(false);
     setPricingOpen(false);
     setCreditOpen(false);
@@ -219,7 +258,13 @@ function ProductsPage() {
     setVariantsOpen(hasVars);
     setAttrs(hasAttrs ? p.attributes.map(a => ({ key: a.key, value: a.value })) : [{ key: '', value: '' }]);
     setPacks(hasPacks ? p.packs.map(pk => ({ name: pk.name, quantity: String(pk.quantity) })) : [{ name: '', quantity: '' }]);
-    setVariants(hasVars ? p.variants.map(v => ({ id: v.id, label: v.label, sku: v.sku || '', price: v.price != null ? String(v.price) : '' })) : [{ label: '', sku: '', price: '' }]);
+    setVariants(hasVars ? p.variants.map(v => createVariantDraft({
+      id: v.id,
+      label: v.label,
+      sku: v.sku || '',
+      price: v.price != null ? String(v.price) : '',
+      quantity: String(getVariantQuantityForContext(v, currentBranchId, currentInventoryType) || '')
+    })) : [createVariantDraft()]);
   }
 
   function openAdd() {
@@ -374,7 +419,8 @@ function ProductsPage() {
         toast.show(errors[0], { type: 'error' });
         return;
     }
-    if (trackType === 'serialized' && Number(initialStock || 0) > 0) {
+    const variantQuantityTotal = (variants || []).reduce((sum, row) => sum + (Number(row?.quantity || 0) || 0), 0);
+    if (trackType === 'serialized' && (Number(initialStock || 0) > 0 || variantQuantityTotal > 0)) {
         toast.show('Serialized products must be stocked with IMEI/serial units after saving', { type: 'error' });
         return;
     }
@@ -387,7 +433,7 @@ function ProductsPage() {
         let createdOk = false;
         try {
             const cleanAttrs = (attrs || []).filter(a => a.key && a.value).map(a => ({ key: a.key.trim(), value: a.value.trim() }));
-            qty = Number(initialStock) || 0;
+            qty = hasConfiguredVariants ? 0 : (Number(initialStock) || 0);
             const branchStock = currentBranchId && qty > 0
               ? (currentInventoryType === 'warehouse'
                   ? { warehouseStockByBranch: { [currentBranchId]: qty } }
@@ -421,7 +467,20 @@ function ProductsPage() {
                 shoeSize: unitKind === 'shoe' ? shoeSize.trim() : '',
                 attributes: cleanAttrs,
                 packs: (packs || []).filter(p => p.name && Number(p.quantity) > 0).map(p => ({ name: p.name.trim(), quantity: Number(p.quantity) })),
-                variants: (variants || []).filter(v => v.label).map(v => ({ id: crypto.randomUUID(), label: v.label.trim(), sku: v.sku?.trim() || '', price: v.price !== '' ? Number(v.price) : undefined, stockByBranch: {}, wholesaleStockByBranch: {}, warehouseStockByBranch: {} })),
+                variants: (variants || []).filter(v => v.label).map(v => {
+                  const stockMaps = trackType === 'serialized'
+                    ? buildVariantStockMaps(0, '', currentInventoryType)
+                    : buildVariantStockMaps(v.quantity, currentBranchId, currentInventoryType);
+                  return {
+                    id: crypto.randomUUID(),
+                    label: v.label.trim(),
+                    sku: v.sku?.trim() || '',
+                    price: v.price !== '' ? Number(v.price) : undefined,
+                    stockByBranch: stockMaps.stockByBranch,
+                    wholesaleStockByBranch: stockMaps.wholesaleStockByBranch,
+                    warehouseStockByBranch: stockMaps.warehouseStockByBranch
+                  };
+                }),
                 initialStock: qty,
                 initialBranchId: currentBranchId,
                 initialInventoryType: currentInventoryType,
@@ -935,8 +994,7 @@ function ProductsPage() {
                 <td>
                   {Array.isArray(p.variants) && p.variants.length > 0 ? (
                     <button className="btn btn-compact" onClick={() => {
-                      const key = p.id || p._id || p.sku;
-                      setOpenStockFor(o => o === key ? null : key);
+                      setVariantModalProduct(p);
                     }}>{t('Variants')}</button>
                   ) : (
                   <input
@@ -1045,69 +1103,6 @@ function ProductsPage() {
                 </td>
               </tr>
             ))}
-            {filteredCatalogProducts.map(p => (
-              (openStockFor === (p.id || p._id || p.sku) && Array.isArray(p.variants) && p.variants.length > 0) ? (
-                <tr key={`${p.id || p._id || p.sku}-variants`} style={{ background: '#fbfdff' }}>
-                  <td colSpan="11">
-                    <div style={{ display: 'grid', gap: 6, padding: 8 }}>
-                      {p.variants.map(v => (
-                        <div key={v.id} style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 8, alignItems: 'center' }}>
-                          <div><strong>{v.label}</strong> <span style={{ color: '#64748b' }}>{v.sku || ''}</span></div>
-                          <input
-                            className="input"
-                            type="number"
-                            min="0"
-                            value={(currentInventoryType === 'warehouse' ? v.warehouseStockByBranch : currentInventoryType === 'wholesale' ? v.wholesaleStockByBranch : v.stockByBranch)?.[currentBranchId] || 0}
-                            onChange={e => {
-                              if (String(v.trackType || p.trackType || 'quantity') === 'serialized') {
-                                toast.show(t('Serialized stock changes only through IMEI or serial unit actions'), { type: 'warning' });
-                                return;
-                              }
-                              if (!canEditStock) {
-                                toast.show(t('Not authorized to edit stock'), { type: 'error' });
-                                return;
-                              }
-                              const q = Number(e.target.value);
-                              const pid = p.id || p._id || p.sku;
-                              const prev = (currentInventoryType === 'warehouse' ? v.warehouseStockByBranch : currentInventoryType === 'wholesale' ? v.wholesaleStockByBranch : v.stockByBranch)?.[currentBranchId] || 0;
-                              if (!navigator.onLine) {
-                                if (!offlineBackupAllowed) {
-                                  toast.show(t('Offline: connect internet and try again.'), { type: 'error' });
-                                  return;
-                                }
-                                dispatch(setStock({ productId: p.id || p._id || p.sku, variantId: v.id, branchId: currentBranchId, quantity: q, inventoryType: currentInventoryType, syncPending: true }));
-                                enqueueHttp({ collection: 'audits', label: 'Variant stock set', path: '/api/stock/set', method: 'POST', body: { productId: p.id || p._id || p.sku, variantId: v.id, branchId: currentBranchId, quantity: q, actor: auth.user?.name || 'unknown', inventoryType: currentInventoryType } })
-                                  .catch(() => {
-                                    dispatch(setStock({ productId: pid, variantId: v.id, branchId: currentBranchId, quantity: prev, inventoryType: currentInventoryType, syncPending: false }));
-                                    toast.show(t('Failed to save offline'), { type: 'error' });
-                                  });
-                                return;
-                              }
-                              dispatch(setStock({ productId: p.id || p._id || p.sku, variantId: v.id, branchId: currentBranchId, quantity: q, inventoryType: currentInventoryType, syncPending: true }));
-                              stockApi.setStock({
-                                productId: p.id || p._id || p.sku,
-                                variantId: v.id,
-                                branchId: currentBranchId,
-                                quantity: q,
-                                actor: auth.user?.name || 'unknown',
-                                inventoryType: currentInventoryType
-                              }).then(() => {
-                                void refreshAffectedProducts(dispatch, [pid]);
-                              }).catch(() => {
-                                dispatch(setStock({ productId: pid, variantId: v.id, branchId: currentBranchId, quantity: prev, inventoryType: currentInventoryType, syncPending: false }));
-                                toast.show(t('Failed to save variant stock. Check your permission or connection.'), { type: 'error' });
-                              });
-                            }}
-                            style={{ width: 120 }}
-                            disabled={!canEditStock || String(v.trackType || p.trackType || 'quantity') === 'serialized'}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </td>
-                </tr>
-              ) : null
-            ))}
             {filteredCatalogProducts.length === 0 ? (
               <tr>
                 <td colSpan="11" style={{ padding: 12, color: '#64748b' }}>{t('No products match the current search or filter.')}</td>
@@ -1117,6 +1112,98 @@ function ProductsPage() {
         </table>
         </div>
       </div>
+      )}
+      {variantModalProduct && (
+        <Modal
+          title={`${t('Variants')} • ${variantModalProduct.name}`}
+          onClose={() => setVariantModalProduct(null)}
+          footer={<button className="btn" onClick={() => setVariantModalProduct(null)}>{t('Close')}</button>}
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div className="section-note">
+              {t('Update variant stock for the current branch only. Other products and other variants remain unchanged.')}
+            </div>
+            <div style={{ color: '#64748b', fontSize: 13 }}>
+              {t('Branch')}: <strong>{currentBranchLabel}</strong>
+            </div>
+            <div style={{ display: 'grid', gap: 10 }}>
+              {(variantModalProduct.variants || []).map((v) => (
+                <div key={v.id} style={{ display: 'grid', gridTemplateColumns: '2fr 140px', gap: 12, alignItems: 'center' }}>
+                  <div>
+                    <strong>{v.label}</strong> <span style={{ color: '#64748b' }}>{v.sku || ''}</span>
+                  </div>
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    value={(currentInventoryType === 'warehouse' ? v.warehouseStockByBranch : currentInventoryType === 'wholesale' ? v.wholesaleStockByBranch : v.stockByBranch)?.[currentBranchId] || 0}
+                    onChange={e => {
+                      if (String(v.trackType || variantModalProduct.trackType || 'quantity') === 'serialized') {
+                        toast.show(t('Serialized stock changes only through IMEI or serial unit actions'), { type: 'warning' });
+                        return;
+                      }
+                      if (!canEditStock) {
+                        toast.show(t('Not authorized to edit stock'), { type: 'error' });
+                        return;
+                      }
+                      const q = Number(e.target.value);
+                      const pid = variantModalProduct.id || variantModalProduct._id || variantModalProduct.sku;
+                      const prev = (currentInventoryType === 'warehouse' ? v.warehouseStockByBranch : currentInventoryType === 'wholesale' ? v.wholesaleStockByBranch : v.stockByBranch)?.[currentBranchId] || 0;
+                      if (!navigator.onLine) {
+                        if (!offlineBackupAllowed) {
+                          toast.show(t('Offline: connect internet and try again.'), { type: 'error' });
+                          return;
+                        }
+                        dispatch(setStock({ productId: pid, variantId: v.id, branchId: currentBranchId, quantity: q, inventoryType: currentInventoryType, syncPending: true }));
+                        enqueueHttp({ collection: 'audits', label: 'Variant stock set', path: '/api/stock/set', method: 'POST', body: { productId: pid, variantId: v.id, branchId: currentBranchId, quantity: q, actor: auth.user?.name || 'unknown', inventoryType: currentInventoryType } })
+                          .then(() => {
+                            setVariantModalProduct((current) => current ? {
+                              ...current,
+                              variants: (current.variants || []).map((item) => item.id === v.id ? {
+                                ...item,
+                                stockByBranch: currentInventoryType === 'retail' ? { ...(item.stockByBranch || {}), [currentBranchId]: q } : (item.stockByBranch || {}),
+                                wholesaleStockByBranch: currentInventoryType === 'wholesale' ? { ...(item.wholesaleStockByBranch || {}), [currentBranchId]: q } : (item.wholesaleStockByBranch || {}),
+                                warehouseStockByBranch: currentInventoryType === 'warehouse' ? { ...(item.warehouseStockByBranch || {}), [currentBranchId]: q } : (item.warehouseStockByBranch || {})
+                              } : item)
+                            } : current);
+                          })
+                          .catch(() => {
+                            dispatch(setStock({ productId: pid, variantId: v.id, branchId: currentBranchId, quantity: prev, inventoryType: currentInventoryType, syncPending: false }));
+                            toast.show(t('Failed to save offline'), { type: 'error' });
+                          });
+                        return;
+                      }
+                      dispatch(setStock({ productId: pid, variantId: v.id, branchId: currentBranchId, quantity: q, inventoryType: currentInventoryType, syncPending: true }));
+                      stockApi.setStock({
+                        productId: pid,
+                        variantId: v.id,
+                        branchId: currentBranchId,
+                        quantity: q,
+                        actor: auth.user?.name || 'unknown',
+                        inventoryType: currentInventoryType
+                      }).then(() => {
+                        setVariantModalProduct((current) => current ? {
+                          ...current,
+                          variants: (current.variants || []).map((item) => item.id === v.id ? {
+                            ...item,
+                            stockByBranch: currentInventoryType === 'retail' ? { ...(item.stockByBranch || {}), [currentBranchId]: q } : (item.stockByBranch || {}),
+                            wholesaleStockByBranch: currentInventoryType === 'wholesale' ? { ...(item.wholesaleStockByBranch || {}), [currentBranchId]: q } : (item.wholesaleStockByBranch || {}),
+                            warehouseStockByBranch: currentInventoryType === 'warehouse' ? { ...(item.warehouseStockByBranch || {}), [currentBranchId]: q } : (item.warehouseStockByBranch || {})
+                          } : item)
+                        } : current);
+                        void refreshAffectedProducts(dispatch, [pid]);
+                      }).catch(() => {
+                        dispatch(setStock({ productId: pid, variantId: v.id, branchId: currentBranchId, quantity: prev, inventoryType: currentInventoryType, syncPending: false }));
+                        toast.show(t('Failed to save variant stock. Check your permission or connection.'), { type: 'error' });
+                      });
+                    }}
+                    disabled={!canEditStock || String(v.trackType || variantModalProduct.trackType || 'quantity') === 'serialized'}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        </Modal>
       )}
 
       {modalMode !== 'none' && (
@@ -1137,13 +1224,15 @@ function ProductsPage() {
               {modalMode === 'add' ? (
                 <div>
                   <label className="label">{t('Initial Stock')} ({currentBranchLabel})</label>
-                  <input className="input" type="number" min="0" value={initialStock} onChange={e => setInitialStock(Number(e.target.value))} style={{ display: 'block', width: '100%' }} disabled={trackType === 'serialized'} />
+                  <input className="input" type="number" min="0" value={initialStock} onChange={e => setInitialStock(Number(e.target.value))} style={{ display: 'block', width: '100%' }} disabled={trackType === 'serialized' || hasConfiguredVariants} />
+                  {hasConfiguredVariants && <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{t('Variant products use the quantity fields inside each variant row for this branch.')}</div>}
                   {trackType === 'serialized' && <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{t('Serialized products are stocked only through IMEI or serial unit entry.')}</div>}
                 </div>
               ) : (
                 <div>
                   <label className="label">{t('Stock')} ({currentBranchLabel})</label>
-                  <input className="input" type="number" min="0" value={editStockQty} onChange={e => setEditStockQty(Number(e.target.value))} style={{ display: 'block', width: '100%' }} disabled={!canEditStock || trackType === 'serialized'} />
+                  <input className="input" type="number" min="0" value={editStockQty} onChange={e => setEditStockQty(Number(e.target.value))} style={{ display: 'block', width: '100%' }} disabled={!canEditStock || trackType === 'serialized' || hasConfiguredVariants} />
+                  {hasConfiguredVariants && <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{t('Existing variant products keep stock per variant. Update each variant quantity through stock controls only.')}</div>}
                   {trackType === 'serialized' && <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{t('Serialized stock changes only through IMEI or serial unit actions.')}</div>}
                 </div>
               )}
@@ -1453,7 +1542,7 @@ function ProductsPage() {
                         {t('Use variants when one product has different options with their own SKU/price/stock (e.g. colors, sizes, 500mL vs 1L).')}
                       </div>
                       {variants.map((row, idx) => (
-                        <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 140px auto', gap: 8 }}>
+                        <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 140px 140px auto', gap: 8 }}>
                           <input className="input" placeholder={t('Label (e.g. Red / XL / 1L)')} value={row.label} onChange={e => {
                             const v = e.target.value;
                             setVariants(prev => prev.map((r, i) => i === idx ? { ...r, label: v } : r));
@@ -1466,10 +1555,19 @@ function ProductsPage() {
                             const v = e.target.value;
                             setVariants(prev => prev.map((r, i) => i === idx ? { ...r, price: v } : r));
                           }} />
+                          <input className="input" type="number" min="0" placeholder={t(`Qty (${currentBranchLabel})`)} value={row.quantity} onChange={e => {
+                            const v = e.target.value;
+                            setVariants(prev => prev.map((r, i) => i === idx ? { ...r, quantity: v } : r));
+                          }} disabled={trackType === 'serialized' || modalMode === 'edit'} />
                           <button className="btn" onClick={() => setVariants(prev => prev.filter((_, i) => i !== idx))}>{t('Remove')}</button>
                         </div>
                       ))}
-                      <button className="btn" onClick={() => setVariants(prev => [...prev, { label: '', sku: '', price: '' }])}>{t('Add Variant')}</button>
+                      {modalMode === 'edit' ? (
+                        <div className="section-note">
+                          {t('Variant quantities for existing products are managed separately from metadata save so other stock stays untouched.')}
+                        </div>
+                      ) : null}
+                      <button className="btn" onClick={() => setVariants(prev => [...prev, createVariantDraft()])}>{t('Add Variant')}</button>
                     </div>
                   )}
                 </div>

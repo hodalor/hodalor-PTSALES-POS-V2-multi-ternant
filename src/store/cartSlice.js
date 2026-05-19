@@ -14,7 +14,8 @@ const cartSlice = createSlice({
     addItem: {
       reducer(state, action) {
         const existing = state.items.find(i =>
-          i.sku === action.payload.sku
+          String(i.productId || '') === String(action.payload.productId || '')
+          && String(i.variantId || '') === String(action.payload.variantId || '')
           && String(i.priceTier || 'retail') === String(action.payload.priceTier || 'retail')
           && String(i.unitId || '') === String(action.payload.unitId || '')
         );

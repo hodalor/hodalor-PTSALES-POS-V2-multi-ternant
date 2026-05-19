@@ -185,6 +185,8 @@ function PosPage({ mode = 'retail' }) {
             id: `${p.id}:${v.id}`,
             productId: p.id,
             variantId: v.id,
+            variantLabel: v.label || '',
+            productName: p.name,
             trackType: p.trackType,
             name: `${p.name} (${v.label})`,
             brand: getProductBrand(p),
@@ -192,6 +194,7 @@ function PosPage({ mode = 'retail' }) {
             price: prices[selectedPriceTier] ?? prices[getPreferredPriceTier(allowedPriceTiers, initialPriceTier)] ?? prices.retail,
             prices,
             image: p.image,
+            category: p.category || '',
             stockByBranch: isWholesale ? (v.wholesaleStockByBranch || {}) : (v.stockByBranch || {}),
             lowStock: isWholesale ? Number(p.wholesaleLowStock != null ? p.wholesaleLowStock : (p.lowStock || 0)) : Number(p.lowStock || 0),
             attributes: p.attributes,
@@ -717,7 +720,12 @@ function PosPage({ mode = 'retail' }) {
 
   async function addToCart(p) {
     const available = getAvailableStockForBranch(p);
-    const inCart = cart.items.filter(i => i.sku === p.sku).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+    const inCart = cart.items
+      .filter((item) =>
+        String(item.productId || '') === String(p.productId || p.id || '')
+        && String(item.variantId || '') === String(p.variantId || '')
+      )
+      .reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
     if (available - inCart <= 0) {
       toast.show('Out of stock for current branch', { type: 'error' });
       return;
@@ -1004,13 +1012,10 @@ function PosPage({ mode = 'retail' }) {
         saleForUi = { ...sale, id: sale.clientId, invoiceSerial: tmpRef, receiptNumber: tmpRef, branchName };
       }
       const receiptHtml = buildBrandedReceiptHtml({ settings, sale: saleForUi });
-      const skuToRef = new Map();
-      sellables.forEach(p => skuToRef.set(p.sku, { productId: p.productId || p.id, variantId: p.variantId || null }));
-      const affectedProductIds = Array.from(new Set(cart.items.map(i => skuToRef.get(i.sku)?.productId).filter(Boolean)));
+      const affectedProductIds = Array.from(new Set(cart.items.map(i => i.productId).filter(Boolean)));
       cart.items.forEach(i => {
-        const ref = skuToRef.get(i.sku);
-        if (ref) {
-          dispatch(adjustStock({ productId: ref.productId, variantId: ref.variantId, branchId: activeBranchId, inventoryType: isWholesale ? 'wholesale' : 'retail', delta: -i.quantity }));
+        if (i.productId) {
+          dispatch(adjustStock({ productId: i.productId, variantId: i.variantId || null, branchId: activeBranchId, inventoryType: isWholesale ? 'wholesale' : 'retail', delta: -i.quantity }));
         }
       });
       dispatch(recordSale(saleForUi));
@@ -1133,9 +1138,8 @@ function PosPage({ mode = 'retail' }) {
           } catch (err) {
             await releaseSerializedCartItems(cart.items);
             cart.items.forEach(i => {
-              const ref = skuToRef.get(i.sku);
-              if (ref) {
-                dispatch(adjustStock({ productId: ref.productId, variantId: ref.variantId, branchId: activeBranchId, inventoryType: isWholesale ? 'wholesale' : 'retail', delta: i.quantity, syncPending: false }));
+              if (i.productId) {
+                dispatch(adjustStock({ productId: i.productId, variantId: i.variantId || null, branchId: activeBranchId, inventoryType: isWholesale ? 'wholesale' : 'retail', delta: i.quantity, syncPending: false }));
               }
             });
             toast.show(String(e?.message || 'Failed to record sale'), { type: 'error' });
@@ -1417,6 +1421,7 @@ function PosPage({ mode = 'retail' }) {
               <button key={p.id} onClick={() => addToCart(p)} className="product-card">
                 {p.image && <img src={p.image} alt={p.name} className="product-img" />}
                 <div className="product-name">{p.name}</div>
+                {p.variantLabel ? <div className="product-sku" style={{ color: '#64748b' }}>Variant: {p.variantLabel}</div> : null}
                 {p.brand ? <div className="product-sku" style={{ color: '#64748b' }}>{p.brand}</div> : null}
                 {productSpec(p) && <div className="product-sku" style={{ color: '#64748b' }}>{productSpec(p)}</div>}
                 <div className="product-sku">{p.sku}</div>
@@ -1435,6 +1440,7 @@ function PosPage({ mode = 'retail' }) {
                 <div className="meta">
                   <div className="details">
                     <div className="title">{p.name}</div>
+                    {p.variantLabel ? <div className="sku" style={{ color: '#64748b' }}>Variant: {p.variantLabel}</div> : null}
                     {p.brand ? <div className="sku" style={{ color: '#64748b' }}>{p.brand}</div> : null}
                     {productSpec(p) && <div className="sku" style={{ color: '#64748b' }}>{productSpec(p)}</div>}
                     <div className="sku">{p.sku}</div>
