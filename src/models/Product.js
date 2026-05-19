@@ -10,6 +10,7 @@ const VariantSchema = new mongoose.Schema({
   wholesalePrice: { type: Number, default: 0 },
   warehousePrice: { type: Number, default: 0 },
   agentPrice: { type: Number, default: 0 },
+  costPrice: { type: Number, default: 0 },
   stockByBranch: { type: Map, of: Number, default: {} },
   wholesaleStockByBranch: { type: Map, of: Number, default: {} },
   warehouseStockByBranch: { type: Map, of: Number, default: {} }

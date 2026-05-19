@@ -233,7 +233,7 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       setMapQty(target.container, branchId, Math.max(0, prev - it.qty));
       markInventoryModified(target);
       await p.save();
-      const cp = Number(p.costPrice || 0);
+      const cp = variant?.costPrice != null ? Number(variant.costPrice || 0) : Number(p.costPrice || 0);
       if (Number.isFinite(cp) && cp > 0) costTotal += cp * it.qty;
       const itemPrice = resolveTierPrice(variant || p, it.priceTier, it.requestedPrice || p.price || 0);
       finalItems.push({
@@ -245,7 +245,8 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
         name: it.name || (variant?.label ? `${p.name} (${variant.label})` : p.name),
         spec: it.spec || '',
         priceTier: it.priceTier,
-        price: itemPrice
+        price: itemPrice,
+        costPrice: Number.isFinite(cp) ? cp : 0
       });
     }
   } catch (e) {

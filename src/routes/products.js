@@ -68,6 +68,7 @@ function normalizePricingPayload(body = {}) {
       else next.warehousePrice = 0;
       if (hasNumber(next.agentPrice)) next.agentPrice = toNumberOrZero(next.agentPrice);
       else next.agentPrice = next.wholesalePrice || out.agentPrice || 0;
+      next.costPrice = hasNumber(next.costPrice) ? toNumberOrZero(next.costPrice) : toNumberOrZero(out.costPrice || 0);
       next.wholesaleStockByBranch = normalizeStockByBranch(next.wholesaleStockByBranch);
       next.warehouseStockByBranch = normalizeStockByBranch(next.warehouseStockByBranch);
       return next;
@@ -104,6 +105,34 @@ function inventoryMapsAttempted(body) {
     'wholesaleStockByBranch' in variant ||
     'warehouseStockByBranch' in variant
   ));
+}
+
+function preserveVariantInventoryMaps(existingVariants = [], incomingVariants = []) {
+  if (!Array.isArray(incomingVariants)) return incomingVariants;
+  const existing = Array.isArray(existingVariants) ? existingVariants : [];
+  const usedIndexes = new Set();
+  return incomingVariants.map((variant, index) => {
+    if (!variant || typeof variant !== 'object') return variant;
+    const incomingId = String(variant.id || '').trim();
+    const incomingSku = String(variant.sku || '').trim().toLowerCase();
+    const incomingLabel = String(variant.label || '').trim().toLowerCase();
+    let matchIndex = existing.findIndex((entry, idx) => !usedIndexes.has(idx) && String(entry?.id || '').trim() === incomingId && incomingId);
+    if (matchIndex < 0 && incomingSku) {
+      matchIndex = existing.findIndex((entry, idx) => !usedIndexes.has(idx) && String(entry?.sku || '').trim().toLowerCase() === incomingSku);
+    }
+    if (matchIndex < 0 && incomingLabel) {
+      matchIndex = existing.findIndex((entry, idx) => !usedIndexes.has(idx) && String(entry?.label || '').trim().toLowerCase() === incomingLabel);
+    }
+    if (matchIndex < 0) return variant;
+    usedIndexes.add(matchIndex);
+    const current = existing[matchIndex] || {};
+    return {
+      ...variant,
+      stockByBranch: normalizeStockByBranch(current.stockByBranch),
+      wholesaleStockByBranch: normalizeStockByBranch(current.wholesaleStockByBranch),
+      warehouseStockByBranch: normalizeStockByBranch(current.warehouseStockByBranch)
+    };
+  });
 }
 
 function stockFieldForInventoryType(inventoryType) {
@@ -185,6 +214,7 @@ r.get('/', async (req, res) => {
         wholesalePrice: hasNumber(v.wholesalePrice) ? toNumberOrZero(v.wholesalePrice) : (hasNumber(v.retailPrice) ? toNumberOrZero(v.retailPrice) : obj.wholesalePrice),
         warehousePrice: hasNumber(v.warehousePrice) ? toNumberOrZero(v.warehousePrice) : 0,
         agentPrice: hasNumber(v.agentPrice) ? toNumberOrZero(v.agentPrice) : (hasNumber(v.wholesalePrice) ? toNumberOrZero(v.wholesalePrice) : obj.agentPrice),
+        costPrice: hasNumber(v.costPrice) ? toNumberOrZero(v.costPrice) : obj.costPrice,
         stockByBranch: normalizeStockByBranch(v.stockByBranch),
         wholesaleStockByBranch: normalizeStockByBranch(v.wholesaleStockByBranch),
         warehouseStockByBranch: normalizeStockByBranch(v.warehouseStockByBranch)
@@ -286,6 +316,9 @@ r.put('/:id', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (re
     payload.id = before.id;
   }
   payload = stripInventoryMapsFromPayload(payload);
+  if (Array.isArray(payload.variants) && before) {
+    payload.variants = preserveVariantInventoryMaps(before.variants, payload.variants);
+  }
   const p = await Product.findOneAndUpdate(query, payload, { new: true });
   const changed = [];
   Object.keys(payload).forEach(k => {
