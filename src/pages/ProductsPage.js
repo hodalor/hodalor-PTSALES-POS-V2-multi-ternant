@@ -43,6 +43,7 @@ function createVariantDraft(overrides = {}) {
   return {
     label: '',
     sku: '',
+    image: '',
     price: '',
     costPrice: '',
     quantity: '',
@@ -73,6 +74,23 @@ function buildVariantStockMaps(quantity, branchId, inventoryType) {
   if (!branchId || !Number.isFinite(qty) || qty <= 0) return next;
   next[getInventoryStockField(inventoryType)] = { [branchId]: qty };
   return next;
+}
+
+function readImageFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      resolve('');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      reject(new Error('Image is too large (max 2MB)'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Failed to read image'));
+    reader.readAsDataURL(file);
+  });
 }
 
 function ProductsPage() {
@@ -263,6 +281,7 @@ function ProductsPage() {
       id: v.id,
       label: v.label,
       sku: v.sku || '',
+      image: v.image || '',
       price: v.price != null ? String(v.price) : '',
       costPrice: v.costPrice != null ? String(v.costPrice) : '',
       quantity: String(getVariantQuantityForContext(v, currentBranchId, currentInventoryType) || '')
@@ -377,18 +396,30 @@ function ProductsPage() {
     } catch {}
   }
 
-  function onFileChange(e) {
+  async function onFileChange(e) {
     const f = e.target.files?.[0];
     if (!f) { setImagePreview(''); return; }
-    if (f.size > 2 * 1024 * 1024) {
-      toast.show('Image is too large (max 2MB)', { type: 'error' });
+    try {
+      const value = await readImageFileAsDataUrl(f);
+      setImagePreview(value);
+    } catch (err) {
+      toast.show(String(err?.message || 'Failed to load image'), { type: 'error' });
       e.target.value = '';
       setImagePreview('');
+    }
+  }
+
+  async function onVariantFileChange(index, file) {
+    if (!file) {
+      setVariants(prev => prev.map((row, idx) => idx === index ? { ...row, image: '' } : row));
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => setImagePreview(String(reader.result || ''));
-    reader.readAsDataURL(f);
+    try {
+      const value = await readImageFileAsDataUrl(file);
+      setVariants(prev => prev.map((row, idx) => idx === index ? { ...row, image: value } : row));
+    } catch (err) {
+      toast.show(String(err?.message || 'Failed to load variant image'), { type: 'error' });
+    }
   }
 
   async function save() {
@@ -413,7 +444,7 @@ function ProductsPage() {
         const hasLabel = v.label && v.label.trim();
         const hasPrice = v.price !== '' && v.price != null;
         const hasCostPrice = v.costPrice !== '' && v.costPrice != null;
-        const isEmpty = !hasLabel && !v.sku && !hasPrice && !hasCostPrice;
+        const isEmpty = !hasLabel && !v.sku && !v.image && !hasPrice && !hasCostPrice;
         if (isEmpty) continue;
         if (!hasLabel) errors.push(`Variant #${i+1}: Label is required (e.g. Size/Color)`);
     }
@@ -478,6 +509,7 @@ function ProductsPage() {
                     id: crypto.randomUUID(),
                     label: v.label.trim(),
                     sku: v.sku?.trim() || '',
+                    image: v.image || '',
                     price: v.price !== '' ? Number(v.price) : undefined,
                     costPrice: v.costPrice !== '' ? Number(v.costPrice) : undefined,
                     stockByBranch: stockMaps.stockByBranch,
@@ -571,6 +603,7 @@ function ProductsPage() {
               id,
               label: v.label.trim(),
               sku: v.sku?.trim() || '',
+              image: v.image || '',
               price: v.price !== '' ? Number(v.price) : undefined,
               costPrice: v.costPrice !== '' ? Number(v.costPrice) : undefined,
               stockByBranch: prev?.stockByBranch || {},
@@ -1233,6 +1266,8 @@ function ProductsPage() {
         <Modal
           title={modalMode === 'add' ? t('Add Product') : t('Edit Product')}
           onClose={() => { if (!saving) closeModal(); }}
+          panelStyle={{ width: '50vw', maxWidth: '960px' }}
+          bodyStyle={{ overflow: 'auto', maxHeight: 'calc(100vh - 220px)' }}
           footer={
             <>
               <button className="btn" onClick={closeModal} disabled={saving}>{t('Cancel')}</button>
@@ -1243,33 +1278,33 @@ function ProductsPage() {
           }
         >
           <div style={{ display: 'grid', gap: 16 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(220px, 280px))', gap: 16, justifyContent: 'space-between' }}>
               {modalMode === 'add' ? (
                 <div>
                   <label className="label">{t('Initial Stock')} ({currentBranchLabel})</label>
-                  <input className="input" type="number" min="0" value={initialStock} onChange={e => setInitialStock(Number(e.target.value))} style={{ display: 'block', width: '100%' }} disabled={trackType === 'serialized' || hasConfiguredVariants} />
+                  <input className="input" type="number" min="0" value={initialStock} onChange={e => setInitialStock(Number(e.target.value))} style={{ display: 'block', width: '100%', maxWidth: 220 }} disabled={trackType === 'serialized' || hasConfiguredVariants} />
                   {hasConfiguredVariants && <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{t('Variant products use the quantity fields inside each variant row for this branch.')}</div>}
                   {trackType === 'serialized' && <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{t('Serialized products are stocked only through IMEI or serial unit entry.')}</div>}
                 </div>
               ) : (
                 <div>
                   <label className="label">{t('Stock')} ({currentBranchLabel})</label>
-                  <input className="input" type="number" min="0" value={editStockQty} onChange={e => setEditStockQty(Number(e.target.value))} style={{ display: 'block', width: '100%' }} disabled={!canEditStock || trackType === 'serialized' || hasConfiguredVariants} />
+                  <input className="input" type="number" min="0" value={editStockQty} onChange={e => setEditStockQty(Number(e.target.value))} style={{ display: 'block', width: '100%', maxWidth: 220 }} disabled={!canEditStock || trackType === 'serialized' || hasConfiguredVariants} />
                   {hasConfiguredVariants && <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{t('Existing variant products keep stock per variant. Update each variant quantity through stock controls only.')}</div>}
                   {trackType === 'serialized' && <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{t('Serialized stock changes only through IMEI or serial unit actions.')}</div>}
                 </div>
               )}
               <div>
                 <label className="label">{t('Low Stock Alert')}</label>
-                <input className="input" type="number" min="0" value={lowStock} onChange={e => setLowStock(Number(e.target.value))} style={{ display: 'block', width: '100%' }} />
+                <input className="input" type="number" min="0" value={lowStock} onChange={e => setLowStock(Number(e.target.value))} style={{ display: 'block', width: '100%', maxWidth: 220 }} />
               </div>
               <div>
                 <label className="label">{t('Wholesale Low Stock Alert')}</label>
-                <input className="input" type="number" min="0" value={wholesaleLowStock} onChange={e => setWholesaleLowStock(Number(e.target.value))} style={{ display: 'block', width: '100%' }} />
+                <input className="input" type="number" min="0" value={wholesaleLowStock} onChange={e => setWholesaleLowStock(Number(e.target.value))} style={{ display: 'block', width: '100%', maxWidth: 220 }} />
               </div>
               <div>
                 <label className="label">{t('Warehouse Low Stock Alert')}</label>
-                <input className="input" type="number" min="0" value={warehouseLowStock} onChange={e => setWarehouseLowStock(Number(e.target.value))} style={{ display: 'block', width: '100%' }} />
+                <input className="input" type="number" min="0" value={warehouseLowStock} onChange={e => setWarehouseLowStock(Number(e.target.value))} style={{ display: 'block', width: '100%', maxWidth: 220 }} />
               </div>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
@@ -1282,38 +1317,38 @@ function ProductsPage() {
                     <input className="input" placeholder={t('Brand')} value={brand} onChange={e => setBrand(e.target.value)} style={{ display: 'block', width: '100%' }} />
                 </div>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 280px) repeat(2, minmax(180px, 240px))', gap: 16, justifyContent: 'space-between' }}>
                 <div>
                     <label className="label">{t('SKU')}</label>
-                    <input className="input" placeholder={t('SKU')} value={sku} onChange={e => setSku(e.target.value)} style={{ display: 'block', width: '100%' }} />
+                    <input className="input" placeholder={t('SKU')} value={sku} onChange={e => setSku(e.target.value)} style={{ display: 'block', width: '100%', maxWidth: 240 }} />
                 </div>
                 {visiblePriceTiers.includes('retail') && (
                   <div>
                       <label className="label">{t('Retail Price')}</label>
-                      <input className="input" placeholder={t('Retail selling price')} type="number" value={price} onChange={e => setPrice(e.target.value)} style={{ display: 'block', width: '100%' }} />
+                      <input className="input" placeholder={t('Retail selling price')} type="number" value={price} onChange={e => setPrice(e.target.value)} style={{ display: 'block', width: '100%', maxWidth: 220 }} />
                   </div>
                 )}
                 {visiblePriceTiers.includes('wholesale') && (
                   <div>
                       <label className="label">{t('Wholesale Price')}</label>
-                      <input className="input" placeholder={t('Wholesale selling price')} type="number" value={wholesalePrice} onChange={e => setWholesalePrice(e.target.value)} style={{ display: 'block', width: '100%' }} />
+                      <input className="input" placeholder={t('Wholesale selling price')} type="number" value={wholesalePrice} onChange={e => setWholesalePrice(e.target.value)} style={{ display: 'block', width: '100%', maxWidth: 220 }} />
                   </div>
                 )}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(180px, 240px))', gap: 16, justifyContent: 'space-between' }}>
               <div>
                 <label className="label">{t('Warehouse Price')}</label>
-                <input className="input" placeholder={t('Warehouse selling price')} type="number" value={warehousePrice} onChange={e => setWarehousePrice(e.target.value)} style={{ display: 'block', width: '100%' }} />
+                <input className="input" placeholder={t('Warehouse selling price')} type="number" value={warehousePrice} onChange={e => setWarehousePrice(e.target.value)} style={{ display: 'block', width: '100%', maxWidth: 220 }} />
               </div>
               {visiblePriceTiers.includes('agent') && (
                 <div>
                   <label className="label">{t('Agent Price')}</label>
-                  <input className="input" placeholder={t('Agent selling price')} type="number" value={agentPrice} onChange={e => setAgentPrice(e.target.value)} style={{ display: 'block', width: '100%' }} />
+                  <input className="input" placeholder={t('Agent selling price')} type="number" value={agentPrice} onChange={e => setAgentPrice(e.target.value)} style={{ display: 'block', width: '100%', maxWidth: 220 }} />
                 </div>
               )}
               <div>
                 <label className="label">{t('Track Type')}</label>
-                <select className="select" value={trackType} onChange={e => setTrackType(e.target.value)} style={{ display: 'block', width: '100%' }}>
+                <select className="select" value={trackType} onChange={e => setTrackType(e.target.value)} style={{ display: 'block', width: '100%', maxWidth: 220 }}>
                   <option value="quantity">{t('Quantity')}</option>
                   <option value="serialized">{t('Serialized')}</option>
                 </select>
@@ -1564,31 +1599,57 @@ function ProductsPage() {
                       <div className="section-note">
                         {t('Use variants when one product has different options with their own SKU/price/stock (e.g. colors, sizes, 500mL vs 1L).')}
                       </div>
-                      {variants.map((row, idx) => (
-                        <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 140px 140px 140px auto', gap: 8 }}>
-                          <input className="input" placeholder={t('Label (e.g. Red / XL / 1L)')} value={row.label} onChange={e => {
-                            const v = e.target.value;
-                            setVariants(prev => prev.map((r, i) => i === idx ? { ...r, label: v } : r));
-                          }} />
-                          <input className="input" placeholder={t('SKU (e.g. SKU-RED)')} value={row.sku} onChange={e => {
-                            const v = e.target.value;
-                            setVariants(prev => prev.map((r, i) => i === idx ? { ...r, sku: v } : r));
-                          }} />
-                          <input className="input" type="number" placeholder={t('Price (e.g. 25.00)')} value={row.price} onChange={e => {
-                            const v = e.target.value;
-                            setVariants(prev => prev.map((r, i) => i === idx ? { ...r, price: v } : r));
-                          }} />
-                          <input className="input" type="number" placeholder={t('Cost Price')} value={row.costPrice} onChange={e => {
-                            const v = e.target.value;
-                            setVariants(prev => prev.map((r, i) => i === idx ? { ...r, costPrice: v } : r));
-                          }} />
-                          <input className="input" type="number" min="0" placeholder={t(`Qty (${currentBranchLabel})`)} value={row.quantity} onChange={e => {
-                            const v = e.target.value;
-                            setVariants(prev => prev.map((r, i) => i === idx ? { ...r, quantity: v } : r));
-                          }} disabled={trackType === 'serialized' || modalMode === 'edit'} />
-                          <button className="btn" onClick={() => setVariants(prev => prev.filter((_, i) => i !== idx))}>{t('Remove')}</button>
+                      <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
+                        <div style={{ minWidth: 1160, display: 'grid', gap: 8 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '140px minmax(220px, 1.2fr) minmax(220px, 1fr) 170px 170px 170px 110px', gap: 8, color: '#94a3b8', fontSize: 12, fontWeight: 700, padding: '0 4px' }}>
+                            <div>{t('Image')}</div>
+                            <div>{t('Label')}</div>
+                            <div>{t('SKU')}</div>
+                            <div>{t('Price')}</div>
+                            <div>{t('Cost Price')}</div>
+                            <div>{t('Quantity')}</div>
+                            <div>{t('Action')}</div>
+                          </div>
+                          {variants.map((row, idx) => (
+                            <div key={idx} style={{ display: 'grid', gridTemplateColumns: '140px minmax(220px, 1.2fr) minmax(220px, 1fr) 170px 170px 170px 110px', gap: 8, alignItems: 'start', minWidth: 1160 }}>
+                              <div style={{ display: 'grid', gap: 6 }}>
+                                {row.image ? (
+                                  <img src={row.image} alt={row.label || `variant-${idx + 1}`} style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 10, border: '1px solid #334155' }} />
+                                ) : (
+                                  <div className="thumb-placeholder" style={{ width: 88, height: 88, fontSize: 10 }}>---</div>
+                                )}
+                                <input type="file" accept="image/*" onChange={e => { void onVariantFileChange(idx, e.target.files?.[0] || null); }} style={{ width: '100%' }} />
+                                {row.image ? (
+                                  <button className="btn" type="button" onClick={() => setVariants(prev => prev.map((r, i) => i === idx ? { ...r, image: '' } : r))}>
+                                    {t('Clear')}
+                                  </button>
+                                ) : null}
+                              </div>
+                              <input className="input" placeholder={t('Label (e.g. Red / XL / 1L)')} value={row.label} onChange={e => {
+                                const v = e.target.value;
+                                setVariants(prev => prev.map((r, i) => i === idx ? { ...r, label: v } : r));
+                              }} style={{ width: '100%' }} />
+                              <input className="input" placeholder={t('SKU (e.g. SKU-RED)')} value={row.sku} onChange={e => {
+                                const v = e.target.value;
+                                setVariants(prev => prev.map((r, i) => i === idx ? { ...r, sku: v } : r));
+                              }} style={{ width: '100%' }} />
+                              <input className="input" type="number" placeholder={t('Price (e.g. 25.00)')} value={row.price} onChange={e => {
+                                const v = e.target.value;
+                                setVariants(prev => prev.map((r, i) => i === idx ? { ...r, price: v } : r));
+                              }} style={{ width: '100%' }} />
+                              <input className="input" type="number" placeholder={t('Cost Price')} value={row.costPrice} onChange={e => {
+                                const v = e.target.value;
+                                setVariants(prev => prev.map((r, i) => i === idx ? { ...r, costPrice: v } : r));
+                              }} style={{ width: '100%' }} />
+                              <input className="input" type="number" min="0" placeholder={t(`Qty (${currentBranchLabel})`)} value={row.quantity} onChange={e => {
+                                const v = e.target.value;
+                                setVariants(prev => prev.map((r, i) => i === idx ? { ...r, quantity: v } : r));
+                              }} disabled={trackType === 'serialized' || modalMode === 'edit'} style={{ width: '100%' }} />
+                              <button className="btn" onClick={() => setVariants(prev => prev.filter((_, i) => i !== idx))} style={{ minWidth: 96 }}>{t('Remove')}</button>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      </div>
                       {modalMode === 'edit' ? (
                         <div className="section-note">
                           {t('Variant quantities for existing products are managed separately from metadata save so other stock stays untouched.')}

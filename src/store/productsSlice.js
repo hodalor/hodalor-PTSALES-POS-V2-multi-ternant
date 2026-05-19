@@ -32,6 +32,7 @@ function normalizeVariant(v, parent, idx) {
     id: v.id || v.label || String(idx),
     label: v.label,
     sku: v.sku || '',
+    image: v.image || '',
     price: v.price,
     retailPrice: v.retailPrice != null ? Number(v.retailPrice) : (v.price != null ? Number(v.price) : Number(parent.retailPrice != null ? parent.retailPrice : parent.price || 0)),
     wholesalePrice: v.wholesalePrice != null ? Number(v.wholesalePrice) : (v.retailPrice != null ? Number(v.retailPrice) : Number(parent.wholesalePrice != null ? parent.wholesalePrice : parent.price || 0)),

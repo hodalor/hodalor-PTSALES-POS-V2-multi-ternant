@@ -193,7 +193,7 @@ function PosPage({ mode = 'retail' }) {
             sku: v.sku || `${p.sku}-${v.label}`,
             price: prices[selectedPriceTier] ?? prices[getPreferredPriceTier(allowedPriceTiers, initialPriceTier)] ?? prices.retail,
             prices,
-            image: p.image,
+            image: v.image || p.image,
             category: p.category || '',
             stockByBranch: isWholesale ? (v.wholesaleStockByBranch || {}) : (v.stockByBranch || {}),
             lowStock: isWholesale ? Number(p.wholesaleLowStock != null ? p.wholesaleLowStock : (p.lowStock || 0)) : Number(p.lowStock || 0),
