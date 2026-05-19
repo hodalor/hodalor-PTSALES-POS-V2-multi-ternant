@@ -1,6 +1,6 @@
 import dotenv from 'dotenv';
 import { connectMaster, getTenantConnection } from '../src/config/tenancy.js';
-import { isDataUrl, isMediaStorageConfigured, sanitizeMediaForLogs, signMediaUrl, uploadMediaArray, uploadMediaString } from '../src/utils/mediaStorage.js';
+import { isDataUrl, isMediaStorageConfigured, sanitizeMediaForLogs, signMediaUrl, uploadMediaString } from '../src/utils/mediaStorage.js';
 
 dotenv.config();
 
