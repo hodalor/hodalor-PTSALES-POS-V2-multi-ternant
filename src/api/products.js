@@ -11,7 +11,7 @@ export function listByIds(ids = []) {
   return fetchJson(`/api/products?${query.toString()}`);
 }
 export function create(payload) {
-  return fetchJson('/api/products', { method: 'POST', body: JSON.stringify(payload) });
+  return fetchJson('/api/products', { method: 'POST', body: JSON.stringify(payload), timeoutMs: 45000 });
 }
 export function update(id, payload) {
   return fetchJson(`/api/products/${id}`, { method: 'PUT', body: JSON.stringify(payload), timeoutMs: 60000 });

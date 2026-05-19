@@ -382,81 +382,89 @@ function ProductsPage() {
     if (modalMode === 'add') {
         if (!canAddProducts) { toast.show('Not authorized to add products', { type: 'error' }); return; }
         setSaving(true);
-        
-        const cleanAttrs = (attrs || []).filter(a => a.key && a.value).map(a => ({ key: a.key.trim(), value: a.value.trim() }));
-        const qty = Number(initialStock) || 0;
-        const branchStock = currentBranchId && qty > 0
-          ? (currentInventoryType === 'warehouse'
-              ? { warehouseStockByBranch: { [currentBranchId]: qty } }
-              : currentInventoryType === 'wholesale'
-                ? { wholesaleStockByBranch: { [currentBranchId]: qty } }
-                : { stockByBranch: { [currentBranchId]: qty } })
-          : {};
-        const payload = {
-            name: name.trim(),
-            brand: brand.trim(),
-            sku: sku.trim(),
-            trackType,
-            price: Number(price),
-            retailPrice: Number(price),
-            wholesalePrice: Number(wholesalePrice || price || 0),
-            warehousePrice: Number(warehousePrice || 0),
-            agentPrice: Number(agentPrice || warehousePrice || wholesalePrice || price || 0),
-            costPrice: Number(costPrice) || 0,
-            expiryDate: expiryDate ? new Date(expiryDate).toISOString() : null,
-            category,
-            lowStock: Number(lowStock) || 0,
-            wholesaleLowStock: Number(wholesaleLowStock) || 0,
-            warehouseLowStock: Number(warehouseLowStock) || 0,
-            image: imagePreview || null,
-            allowCredit,
-            minimumCreditPercentage: Math.max(0, Number(minimumCreditPercentage) || 0),
-            unitKind,
-            unitValue: unitKind === 'volume' || unitKind === 'mass' || unitKind === 'length' ? Number(unitValue) || null : null,
-            unitSymbol: unitKind === 'volume' || unitKind === 'mass' || unitKind === 'length' ? unitSymbol : '',
-            sizeLabel: unitKind === 'size' ? sizeLabel.trim() : '',
-            shoeSize: unitKind === 'shoe' ? shoeSize.trim() : '',
-            attributes: cleanAttrs,
-            packs: (packs || []).filter(p => p.name && Number(p.quantity) > 0).map(p => ({ name: p.name.trim(), quantity: Number(p.quantity) })),
-            variants: (variants || []).filter(v => v.label).map(v => ({ id: crypto.randomUUID(), label: v.label.trim(), sku: v.sku?.trim() || '', price: v.price !== '' ? Number(v.price) : undefined, stockByBranch: {}, wholesaleStockByBranch: {}, warehouseStockByBranch: {} })),
-            initialStock: qty,
-            initialBranchId: currentBranchId,
-            initialInventoryType: currentInventoryType,
-            ...branchStock
-        };
+        let newId = '';
+        let qty = 0;
+        let createdOk = false;
+        try {
+            const cleanAttrs = (attrs || []).filter(a => a.key && a.value).map(a => ({ key: a.key.trim(), value: a.value.trim() }));
+            qty = Number(initialStock) || 0;
+            const branchStock = currentBranchId && qty > 0
+              ? (currentInventoryType === 'warehouse'
+                  ? { warehouseStockByBranch: { [currentBranchId]: qty } }
+                  : currentInventoryType === 'wholesale'
+                    ? { wholesaleStockByBranch: { [currentBranchId]: qty } }
+                    : { stockByBranch: { [currentBranchId]: qty } })
+              : {};
+            const payload = {
+                name: name.trim(),
+                brand: brand.trim(),
+                sku: sku.trim(),
+                trackType,
+                price: Number(price),
+                retailPrice: Number(price),
+                wholesalePrice: Number(wholesalePrice || price || 0),
+                warehousePrice: Number(warehousePrice || 0),
+                agentPrice: Number(agentPrice || warehousePrice || wholesalePrice || price || 0),
+                costPrice: Number(costPrice) || 0,
+                expiryDate: expiryDate ? new Date(expiryDate).toISOString() : null,
+                category,
+                lowStock: Number(lowStock) || 0,
+                wholesaleLowStock: Number(wholesaleLowStock) || 0,
+                warehouseLowStock: Number(warehouseLowStock) || 0,
+                image: imagePreview || null,
+                allowCredit,
+                minimumCreditPercentage: Math.max(0, Number(minimumCreditPercentage) || 0),
+                unitKind,
+                unitValue: unitKind === 'volume' || unitKind === 'mass' || unitKind === 'length' ? Number(unitValue) || null : null,
+                unitSymbol: unitKind === 'volume' || unitKind === 'mass' || unitKind === 'length' ? unitSymbol : '',
+                sizeLabel: unitKind === 'size' ? sizeLabel.trim() : '',
+                shoeSize: unitKind === 'shoe' ? shoeSize.trim() : '',
+                attributes: cleanAttrs,
+                packs: (packs || []).filter(p => p.name && Number(p.quantity) > 0).map(p => ({ name: p.name.trim(), quantity: Number(p.quantity) })),
+                variants: (variants || []).filter(v => v.label).map(v => ({ id: crypto.randomUUID(), label: v.label.trim(), sku: v.sku?.trim() || '', price: v.price !== '' ? Number(v.price) : undefined, stockByBranch: {}, wholesaleStockByBranch: {}, warehouseStockByBranch: {} })),
+                initialStock: qty,
+                initialBranchId: currentBranchId,
+                initialInventoryType: currentInventoryType,
+                ...branchStock
+            };
 
-        if (!navigator.onLine && !offlineBackupAllowed) {
-            toast.show('Offline: connect internet and try again.', { type: 'error' });
-            setSaving(false); return;
-        }
-
-        const action = dispatch(addProduct({ ...payload, offline: !navigator.onLine }));
-        const newId = action?.payload?.id;
-        const barcode = action?.payload?.barcode;
-        const serverPayload = { id: newId, barcode, ...payload };
-        if (!navigator.onLine) {
-            try {
-                await enqueueHttp({ collection: 'products', label: 'Product', path: '/api/products', method: 'POST', body: serverPayload });
-            } catch {
-                if (newId) dispatch(removeProduct(newId));
-                toast.show('Failed to save offline', { type: 'error' });
-                setSaving(false); return;
+            if (!navigator.onLine && !offlineBackupAllowed) {
+                toast.show('Offline: connect internet and try again.', { type: 'error' });
+                return;
             }
-        } else {
-            try {
-                const created = await productsApi.create(serverPayload);
-                if (created && newId) {
-                    dispatch(updateProduct({ id: newId, ...created, offline: false, syncPending: true }));
-                    dispatch(mergeProducts([created]));
+
+            const action = dispatch(addProduct({ ...payload, offline: !navigator.onLine }));
+            newId = action?.payload?.id || '';
+            const barcode = action?.payload?.barcode;
+            const serverPayload = { id: newId, barcode, ...payload };
+            if (!navigator.onLine) {
+                try {
+                    await enqueueHttp({ collection: 'products', label: 'Product', path: '/api/products', method: 'POST', body: serverPayload });
+                } catch {
+                    if (newId) dispatch(removeProduct(newId));
+                    toast.show('Failed to save offline', { type: 'error' });
+                    return;
                 }
-            } catch (e) {
-                if (newId) dispatch(removeProduct(newId));
-                toast.show(String(e?.message || 'Failed to add product'), { type: 'error' });
-                setSaving(false); return;
+            } else {
+                try {
+                    const created = await productsApi.create(serverPayload);
+                    if (created && newId) {
+                        dispatch(updateProduct({ id: newId, ...created, offline: false, syncPending: true }));
+                        dispatch(mergeProducts([created]));
+                    }
+                } catch (e) {
+                    if (newId) dispatch(removeProduct(newId));
+                    toast.show(String(e?.message || 'Failed to add product'), { type: 'error' });
+                    return;
+                }
             }
+            createdOk = true;
+        } finally {
+            setSaving(false);
         }
-        
-        setSaving(false);
+
+        if (!createdOk) return;
+
         closeModal();
         toast.show(navigator.onLine ? 'Product added' : 'Saved offline. Will backup when online.', { type: 'success' });
 
