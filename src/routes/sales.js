@@ -41,6 +41,49 @@ function productLookupQuery(productId) {
   return { $or: or };
 }
 
+function parseTimestamp(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function canBackdateSales(req) {
+  const role = String(req.user?.role || '').toLowerCase();
+  if (role === 'superadmin' || role === 'admin') return true;
+  const grants = Array.isArray(req.user?.grants) ? req.user.grants : [];
+  return grants.includes('backdate_sales');
+}
+
+function resolveSaleTimestamps(payload = {}, req) {
+  const recordedAt = new Date();
+  const clientId = String(payload.clientId || '').trim();
+  const clientCapturedAt = parseTimestamp(payload.saleCapturedAt)
+    || (clientId.startsWith('offline-sale-') ? parseTimestamp(payload.created_at) : null);
+  const saleCapturedAt = clientCapturedAt || recordedAt;
+  const requestedBackdateAt = parseTimestamp(payload.saleDateTime);
+  if (requestedBackdateAt) {
+    if (!canBackdateSales(req)) {
+      const err = new Error('Not authorized to backdate sales');
+      err.status = 403;
+      throw err;
+    }
+    return {
+      recordedAt,
+      saleCapturedAt,
+      effectiveSaleAt: requestedBackdateAt,
+      isBackdated: Math.abs(requestedBackdateAt.getTime() - saleCapturedAt.getTime()) > 1000,
+      backdatedByName: String(req.user?.name || '').trim()
+    };
+  }
+  return {
+    recordedAt,
+    saleCapturedAt,
+    effectiveSaleAt: saleCapturedAt,
+    isBackdated: false,
+    backdatedByName: ''
+  };
+}
+
 r.get('/', requireRoleOrPerm(['Admin','Manager','Cashier'], ['view_sales','see_sales']), async (req, res) => {
   const role = String(req.user?.role || '').toLowerCase();
   const grants = Array.isArray(req.user?.grants) ? req.user.grants : [];
@@ -80,8 +123,51 @@ r.post('/bulk-delete', async (req, res) => {
   res.json({ ok: true, count: Number(result?.deletedCount || 0) });
 });
 
+r.patch('/:id/date', requireRoleOrPerm(['Admin'], 'backdate_sales'), async (req, res) => {
+  const id = String(req.params.id || '').trim();
+  if (!id) return res.status(400).json({ error: 'Missing sale id' });
+  const nextDate = parseTimestamp(req.body?.saleDateTime || req.body?.created_at);
+  if (!nextDate) return res.status(400).json({ error: 'Invalid sale date/time' });
+  if (nextDate.getTime() > Date.now()) {
+    return res.status(400).json({ error: 'Sale date/time cannot be in the future' });
+  }
+  const query = mongoose.isValidObjectId(id)
+    ? { $or: [{ _id: id }, { clientId: id }] }
+    : { clientId: id };
+  const sale = await Sale.findOne(query);
+  if (!sale) return res.status(404).json({ error: 'Sale not found' });
+  const previousEffectiveDate = sale.created_at || null;
+  sale.created_at = nextDate;
+  sale.isBackdated = !!sale.saleCapturedAt && Math.abs(nextDate.getTime() - new Date(sale.saleCapturedAt).getTime()) > 1000;
+  sale.backdatedByName = String(req.user?.name || '').trim();
+  if (!sale.recordedAt) sale.recordedAt = new Date();
+  if (!sale.saleCapturedAt) sale.saleCapturedAt = sale.recordedAt;
+  await sale.save();
+  await Invoice.updateMany({ saleId: String(sale._id) }, { $set: { date: nextDate } }).catch(() => {});
+  await Audit.create({
+    actor: String(req.user?.name || sale.sellerName || 'unknown').trim() || 'unknown',
+    actionType: 'sale_backdate_edit',
+    details: {
+      saleId: String(sale._id),
+      invoiceSerial: sale.invoiceSerial || '',
+      receiptNumber: sale.receiptNumber || '',
+      previousDate: previousEffectiveDate,
+      effectiveDate: sale.created_at || null
+    },
+    branchId: sale.branchId,
+    ts: new Date()
+  }).catch(() => {});
+  res.json(sale);
+});
+
 r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async (req, res) => {
   const payload = req.body || {};
+  let saleTimes;
+  try {
+    saleTimes = resolveSaleTimestamps(payload, req);
+  } catch (e) {
+    return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to validate sale date/time') });
+  }
   const branchId = String(payload.branchId || '');
   if (!branchId) return res.status(400).json({ error: 'Missing branchId' });
   const items = Array.isArray(payload.items) ? payload.items : [];
@@ -368,7 +454,12 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       profitTotal: Number(profitTotal || 0),
       loyaltyPointsEarned: earned,
       loyaltyPointsRedeemed: redeemed,
-      loyaltyDiscount: loyaltyDiscount
+      loyaltyDiscount: loyaltyDiscount,
+      recordedAt: saleTimes.recordedAt,
+      saleCapturedAt: saleTimes.saleCapturedAt,
+      created_at: saleTimes.effectiveSaleAt,
+      isBackdated: saleTimes.isBackdated,
+      backdatedByName: saleTimes.backdatedByName
     });
     if (touchedSerializedUnits.length > 0) {
       const soldRows = await sellSerializedUnits({
@@ -447,6 +538,9 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
         items: sale.items.map(i => ({ sku: i.sku, qty: i.qty, productId: i.productId || null, variantId: i.variantId || null, priceTier: i.priceTier || defaultPriceTier })),
         invoiceSerial,
         receiptNumber,
+        saleCapturedAt: sale.saleCapturedAt || null,
+        saleEffectiveAt: sale.created_at || null,
+        isBackdated: !!sale.isBackdated,
         inventoryType,
         posType
       },

@@ -1,6 +1,6 @@
 export const TENANT_GRANT_KEYS = [
   'view_dashboard', 'view_dashboard_cashier_assigned', 'view_dashboard_cashier_all', 'view_dashboard_branch_comparison_assigned', 'view_dashboard_branch_comparison_all', 'view_pos', 'view_wholesale_pos', 'view_retail_price', 'view_wholesale_price',
-  'view_agent_price', 'view_sales', 'add_sales', 'view_products', 'view_distribution_products', 'view_warehouse_products', 'add_products', 'edit_products',
+  'view_agent_price', 'view_sales', 'add_sales', 'backdate_sales', 'view_products', 'view_distribution_products', 'view_warehouse_products', 'add_products', 'edit_products',
   'view_inventory', 'edit_inventory', 'view_serialized_inventory', 'view_labels', 'view_purchases',
   'add_purchases', 'add_wholesale_purchases', 'add_warehouse_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'add_wholesale_transfers', 'add_warehouse_transfers',
   'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'add_wholesale_adjustments', 'add_warehouse_adjustments', 'edit_adjustments',
@@ -60,7 +60,7 @@ export const PLAN_FEATURES = {
     'admin.cashDrawer', 'admin.config', 'features.offlineBackup',
     'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
     'grants.view_dashboard', 'grants.view_dashboard_cashier_assigned', 'grants.view_dashboard_cashier_all', 'grants.view_dashboard_branch_comparison_assigned', 'grants.view_dashboard_branch_comparison_all', 'grants.view_pos', 'grants.view_retail_price', 'grants.view_sales',
-    'grants.add_sales', 'grants.view_products', 'grants.add_products', 'grants.edit_products',
+    'grants.add_sales', 'grants.backdate_sales', 'grants.view_products', 'grants.add_products', 'grants.edit_products',
     'grants.view_inventory', 'grants.edit_inventory', 'grants.view_labels', 'grants.view_purchases',
     'grants.add_purchases', 'grants.add_wholesale_purchases', 'grants.add_warehouse_purchases', 'grants.view_suppliers', 'grants.add_suppliers', 'grants.view_customers', 'grants.view_finance_reconciliation', 'grants.add_finance_reconciliation',
     'grants.view_chat', 'grants.send_chat_messages', 'grants.view_pt_ai', 'grants.add_customers', 'grants.view_cashdrawer', 'grants.view_users', 'grants.view_config',

@@ -49,7 +49,11 @@ const SaleSchema = new mongoose.Schema({
   creditDueDate: { type: Date },
   creditAmountPaidNow: { type: Number, default: 0 },
   creditBalance: { type: Number, default: 0 },
-  created_at: { type: Date, default: Date.now }
+  recordedAt: { type: Date, default: Date.now },
+  saleCapturedAt: { type: Date, default: Date.now },
+  created_at: { type: Date, default: Date.now },
+  isBackdated: { type: Boolean, default: false },
+  backdatedByName: { type: String, default: '' }
 }, { timestamps: true });
 
 SaleSchema.index({ created_at: -1 });
