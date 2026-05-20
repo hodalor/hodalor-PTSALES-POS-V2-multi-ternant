@@ -8,6 +8,14 @@ export async function createSale(sale) {
   });
 }
 
+export async function updateSaleDate(id, payload) {
+  return fetchJson(`/api/sales/${encodeURIComponent(String(id || ''))}/date`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload || {}),
+    timeoutMs: 60000
+  });
+}
+
 export function list(params = {}) {
   const qs = new URLSearchParams();
   if (params.branchId) qs.set('branchId', String(params.branchId));

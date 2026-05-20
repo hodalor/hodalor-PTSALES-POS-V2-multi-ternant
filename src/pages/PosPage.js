@@ -33,6 +33,26 @@ function createReservationToken() {
   return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `RES-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+function getLocalSaleDateTimeParts(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  return {
+    date: `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`,
+    time: `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+  };
+}
+
+function buildSaleDateTimeValue(dateValue, timeValue) {
+  const date = String(dateValue || '').trim();
+  const time = String(timeValue || '').trim();
+  if (!date) return new Date();
+  const parsed = new Date(`${date}T${time || '00:00'}`);
+  return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
 function PosPage({ mode = 'retail' }) {
   const dispatch = useDispatch();
   const cart = useSelector(state => state.cart);
@@ -99,6 +119,10 @@ function PosPage({ mode = 'retail' }) {
   const [easyBuyDueDate, setEasyBuyDueDate] = useState('');
   const [taxOverridePct, setTaxOverridePct] = useState('');
   const [taxOverrideRemark, setTaxOverrideRemark] = useState('');
+  const [saleDate, setSaleDate] = useState(() => getLocalSaleDateTimeParts().date);
+  const [saleTime, setSaleTime] = useState(() => getLocalSaleDateTimeParts().time);
+  const [saleDateTimeTouched, setSaleDateTimeTouched] = useState(false);
+  const [saleDateTimeEditing, setSaleDateTimeEditing] = useState(false);
   const [reservationToken, setReservationToken] = useState(() => {
     try {
       return localStorage.getItem(reservationStorageKey) || createReservationToken();
@@ -137,6 +161,18 @@ function PosPage({ mode = 'retail' }) {
     try { return localStorage.getItem('ptSales:heldQuery') || ''; } catch { return ''; }
   });
   const toast = useToast();
+  const canBackdateSales = useMemo(() => (
+    roleLower === 'superadmin' || roleLower === 'admin' || (Array.isArray(auth.grants) && auth.grants.includes('backdate_sales'))
+  ), [auth.grants, roleLower]);
+
+  function resetSaleDateTime() {
+    const next = getLocalSaleDateTimeParts();
+    setSaleDate(next.date);
+    setSaleTime(next.time);
+    setSaleDateTimeTouched(false);
+    setSaleDateTimeEditing(false);
+  }
+
   useEffect(() => {
     if (!isFixedBranchUser) return;
     const current = String(branchId || '').trim();
@@ -799,6 +835,9 @@ function PosPage({ mode = 'retail' }) {
       easyBuyEnabled,
       easyBuyAmountPaidNow,
       easyBuyDueDate,
+      saleDate,
+      saleTime,
+      saleDateTimeTouched,
       selectedPriceTier,
       payments: payments.map(p => ({ type: p.type, amount: p.amount })),
       view
@@ -815,6 +854,7 @@ function PosPage({ mode = 'retail' }) {
     setEasyBuyEnabled(false);
     setEasyBuyAmountPaidNow('');
     setEasyBuyDueDate('');
+    resetSaleDateTime();
     setPayments([{ type: 'cash', amount: '' }]);
     toast.show('Sale held', { type: 'success' });
   }
@@ -836,6 +876,7 @@ function PosPage({ mode = 'retail' }) {
     setEasyBuyEnabled(false);
     setEasyBuyAmountPaidNow('');
     setEasyBuyDueDate('');
+    resetSaleDateTime();
     setPayments([{ type: 'cash', amount: '' }]);
   }
 
@@ -859,6 +900,10 @@ function PosPage({ mode = 'retail' }) {
     setEasyBuyEnabled(!!h.easyBuyEnabled);
     setEasyBuyAmountPaidNow(h.easyBuyAmountPaidNow || '');
     setEasyBuyDueDate(h.easyBuyDueDate || '');
+    setSaleDate(h.saleDate || getLocalSaleDateTimeParts().date);
+    setSaleTime(h.saleTime || getLocalSaleDateTimeParts().time);
+    setSaleDateTimeTouched(!!h.saleDateTimeTouched);
+    setSaleDateTimeEditing(!!h.saleDateTimeTouched);
     setSelectedPriceTier(h.selectedPriceTier || initialPriceTier);
     setPayments(Array.isArray(h.payments) && h.payments.length > 0 ? h.payments.map(p => ({ type: p.type, amount: p.amount })) : [{ type: 'cash', amount: '' }]);
     try { if (h.view) setView(h.view); } catch {}
@@ -947,6 +992,9 @@ function PosPage({ mode = 'retail' }) {
         return;
       }
       const branchName = activeBranch?.name || activeBranchId;
+      const saleCapturedAt = new Date().toISOString();
+      const selectedSaleAt = buildSaleDateTimeValue(saleDate, saleTime).toISOString();
+      const effectiveSaleAt = canBackdateSales && saleDateTimeTouched ? selectedSaleAt : saleCapturedAt;
       const sale = {
       branchId: activeBranchId,
       branchName,
@@ -991,7 +1039,9 @@ function PosPage({ mode = 'retail' }) {
         dueDate: easyBuyDueDate
       } : undefined,
       status: 'completed',
-      created_at: new Date().toISOString(),
+      created_at: effectiveSaleAt,
+      saleCapturedAt,
+      saleDateTime: canBackdateSales && saleDateTimeTouched ? selectedSaleAt : undefined,
       reservationToken
       };
       let saleForUi = null;
@@ -1109,6 +1159,7 @@ function PosPage({ mode = 'retail' }) {
       setEasyBuyEnabled(false);
       setEasyBuyAmountPaidNow('');
       setEasyBuyDueDate('');
+      resetSaleDateTime();
       if (escpos) {
         const text = escposReceipt({
         header: { title: settings.appName, store: settings.receiptHeader, branch: branchName, phone: settings.businessPhone || '', cashier: saleForUi.sellerName, customer: saleForUi.customerName ? `${saleForUi.customerName}${saleForUi.customerCode ? ` (${saleForUi.customerCode})` : ''}` : '', receiptId: saleForUi.id || saleForUi._id, receiptNumber: saleForUi.receiptNumber, invoiceSerial: saleForUi.invoiceSerial },
@@ -1748,6 +1799,31 @@ function PosPage({ mode = 'retail' }) {
               </>
             )}
           </div>
+          {canBackdateSales && (
+            <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                <div style={{ color: '#64748b', fontSize: 12 }}>{t('Sale date/time for reports, refunds, and reconciliation')}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {saleDateTimeTouched && (
+                    <button className="btn" type="button" onClick={resetSaleDateTime}>{t('Use current time')}</button>
+                  )}
+                  <button className="btn" type="button" onClick={() => setSaleDateTimeEditing((prev) => !prev)} title={t('Edit sale date/time')} style={{ padding: '6px 8px' }}>
+                    <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" strokeWidth="2"/><path d="M13 7l4 4" stroke="currentColor" strokeWidth="2"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <label>
+                  <div style={{ marginBottom: 6, color: '#64748b' }}>{t('Sale date')}</div>
+                  <input className="input" type="date" max={getLocalSaleDateTimeParts().date} disabled={!saleDateTimeEditing} value={saleDate} onChange={e => { setSaleDate(e.target.value); setSaleDateTimeTouched(true); }} />
+                </label>
+                <label>
+                  <div style={{ marginBottom: 6, color: '#64748b' }}>{t('Sale time')}</div>
+                  <input className="input" type="time" disabled={!saleDateTimeEditing} value={saleTime} onChange={e => { setSaleTime(e.target.value); setSaleDateTimeTouched(true); }} />
+                </label>
+              </div>
+            </div>
+          )}
           {canOverrideTax && (
             <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

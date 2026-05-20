@@ -11,6 +11,27 @@ import { useToast } from '../components/ToastProvider';
 import InlineSpinner from '../components/InlineSpinner';
 import BranchSelect from '../components/BranchSelect';
 import { getProductBrand } from '../utils/productSearch';
+import Modal from '../components/Modal';
+
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
+function getLocalDateTimeParts(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  return {
+    date: `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`,
+    time: `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
+  };
+}
+
+function buildLocalDateTime(dateValue, timeValue) {
+  const date = String(dateValue || '').trim();
+  const time = String(timeValue || '').trim();
+  if (!date) return null;
+  const parsed = new Date(`${date}T${time || '00:00'}`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
 function SalesPage() {
   const dispatch = useDispatch();
@@ -24,6 +45,7 @@ function SalesPage() {
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
   const canViewRevenue = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_revenue') || grants.includes('view_financials');
   const canViewProfit = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_profit') || grants.includes('view_financials');
+  const canBackdateSales = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('backdate_sales');
   const canViewCashierCompetitionAll = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_dashboard_cashier_all') || grants.includes('view_dashboard_branch_comparison_all');
   const canViewCashierCompetitionAssigned = canViewCashierCompetitionAll || grants.includes('view_dashboard_cashier_assigned') || grants.includes('view_dashboard_branch_comparison_assigned');
   const toast = useToast();
@@ -54,6 +76,10 @@ function SalesPage() {
   const [bulkAction, setBulkAction] = useState('');
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [loadingSales, setLoadingSales] = useState(false);
+  const [editingSale, setEditingSale] = useState(null);
+  const [editingSaleDate, setEditingSaleDate] = useState('');
+  const [editingSaleTime, setEditingSaleTime] = useState('');
+  const [editingSaleSaving, setEditingSaleSaving] = useState(false);
   const productBrandById = useMemo(() => {
     const map = new Map();
     (products || []).forEach((product) => {
@@ -223,6 +249,47 @@ function SalesPage() {
     }
     const html = buildBrandedReceiptHtml({ settings, sale: { ...sale, branchName: branchLabel(sale) } });
     printReceiptHtml(html);
+  }
+
+  function openSaleDateEditor(sale) {
+    const parts = getLocalDateTimeParts(sale?.created_at || new Date());
+    setEditingSale(sale || null);
+    setEditingSaleDate(parts.date);
+    setEditingSaleTime(parts.time);
+  }
+
+  function closeSaleDateEditor() {
+    if (editingSaleSaving) return;
+    setEditingSale(null);
+    setEditingSaleDate('');
+    setEditingSaleTime('');
+  }
+
+  async function saveSaleDateEdit() {
+    if (!editingSale) return;
+    const nextDate = buildLocalDateTime(editingSaleDate, editingSaleTime);
+    if (!nextDate) {
+      toast.show('Enter a valid sale date and time', { type: 'error' });
+      return;
+    }
+    if (nextDate.getTime() > Date.now()) {
+      toast.show('Sale date/time cannot be in the future', { type: 'error' });
+      return;
+    }
+    try {
+      setEditingSaleSaving(true);
+      const saleId = String(editingSale.id || editingSale._id || editingSale.clientId || '');
+      await salesApi.updateSaleDate(saleId, { saleDateTime: nextDate.toISOString() });
+      const branchScope = selectedBranchId ? { branchId: selectedBranchId, limit: 1000 } : { limit: 1000 };
+      const rows = await salesApi.list(branchScope);
+      dispatch(setSales(Array.isArray(rows) ? rows : []));
+      toast.show('Sale date updated', { type: 'success' });
+      closeSaleDateEditor();
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to update sale date'), { type: 'error' });
+    } finally {
+      setEditingSaleSaving(false);
+    }
   }
 
   async function deleteSelectedSales() {
@@ -495,7 +562,16 @@ function SalesPage() {
                   />
                 </td>
               )}
-              <td>{new Date(sale.created_at).toLocaleString()}</td>
+              <td>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>{new Date(sale.created_at).toLocaleString()}</span>
+                  {canBackdateSales && (
+                    <button className="btn" type="button" onClick={() => openSaleDateEditor(sale)} title="Edit sale date/time" style={{ padding: '6px 8px' }}>
+                      <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" strokeWidth="2"/><path d="M13 7l4 4" stroke="currentColor" strokeWidth="2"/></svg>
+                    </button>
+                  )}
+                </div>
+              </td>
               <td>{branchLabel(sale)}</td>
               <td>{String(sale.posType || 'retail') === 'wholesale' ? 'Distribution' : 'Retail'}</td>
               <td>
@@ -538,6 +614,36 @@ function SalesPage() {
         </label>
       </div>
       </>
+      )}
+      {editingSale && (
+        <Modal
+          title="Edit Sale Date"
+          onClose={closeSaleDateEditor}
+          footer={(
+            <>
+              <button className="btn" onClick={closeSaleDateEditor} disabled={editingSaleSaving}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => void saveSaleDateEdit()} disabled={editingSaleSaving} style={{ marginLeft: 8 }}>
+                {editingSaleSaving ? 'Saving...' : 'Save Date'}
+              </button>
+            </>
+          )}
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ color: '#64748b', fontSize: 13 }}>
+              {editingSale.invoiceSerial || editingSale.receiptNumber || editingSale.id || editingSale._id}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <label>
+                <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Sale Date</div>
+                <input className="input" type="date" max={getLocalDateTimeParts().date} value={editingSaleDate} onChange={e => setEditingSaleDate(e.target.value)} />
+              </label>
+              <label>
+                <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Sale Time</div>
+                <input className="input" type="time" value={editingSaleTime} onChange={e => setEditingSaleTime(e.target.value)} />
+              </label>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
