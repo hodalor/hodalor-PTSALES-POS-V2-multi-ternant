@@ -2,7 +2,8 @@ import { Router } from 'express';
 import jwt from 'jsonwebtoken';
 import { randomUUID } from 'crypto';
 import { modelFor as UserModelFor } from '../models/User.js';
-import { verifyPin } from '../utils/pin.js';
+import { modelFor as AuditModelFor } from '../models/Audit.js';
+import { hashPin, verifyPin } from '../utils/pin.js';
 import { requireAuth } from '../middleware/auth.js';
 import { modelFor as SettingsModelFor } from '../models/Settings.js';
 import Tenant from '../models/Tenant.js';
@@ -22,6 +23,13 @@ const SUPPORTED_LANGUAGES = new Set(['en', 'tw', 'ga', 'ewe', 'dag', 'fr', 'zh']
 function normalizeLanguage(value) {
   const next = String(value || '').trim().toLowerCase();
   return SUPPORTED_LANGUAGES.has(next) ? next : '';
+}
+
+function canResetOwnPassword(req) {
+  const role = String(req.user?.role || '').toLowerCase();
+  if (role === 'superadmin' || role === 'admin') return true;
+  const grants = Array.isArray(req.user?.grants) ? req.user.grants : [];
+  return grants.includes('reset_own_password');
 }
 
 async function getTenantMetaCached(tenantId) {
@@ -299,6 +307,7 @@ r.get('/me', requireAuth, async (req, res) => {
 
 r.patch('/me', requireAuth, async (req, res) => {
   const User = UserModelFor(req.db);
+  const Audit = AuditModelFor(req.db);
   const authUser = req.user || {};
   const updates = req.body || {};
   const u = await User.findById(authUser.sub);
@@ -306,7 +315,33 @@ r.patch('/me', requireAuth, async (req, res) => {
   if (Object.prototype.hasOwnProperty.call(updates, 'preferredLanguage')) {
     u.preferredLanguage = normalizeLanguage(updates.preferredLanguage);
   }
+  const wantsPinChange = Object.prototype.hasOwnProperty.call(updates, 'currentPin')
+    || Object.prototype.hasOwnProperty.call(updates, 'newPin')
+    || Object.prototype.hasOwnProperty.call(updates, 'pin');
+  if (wantsPinChange) {
+    if (!canResetOwnPassword(req)) {
+      return res.status(403).json({ error: 'Not allowed to reset your own password' });
+    }
+    const currentPin = String(updates.currentPin || '').trim();
+    const newPin = String(updates.newPin || updates.pin || '').trim();
+    if (!/^\d{4,6}$/.test(newPin)) {
+      return res.status(400).json({ error: 'New password must be 4 to 6 digits' });
+    }
+    const ok = await verifyPin(currentPin, u.pinHash);
+    if (!ok) {
+      return res.status(400).json({ error: 'Current password is incorrect' });
+    }
+    u.pinHash = await hashPin(newPin);
+  }
   await u.save();
+  if (wantsPinChange) {
+    void Audit.create({
+      actor: String(u.name || authUser.name || 'unknown'),
+      actionType: 'user_reset_own_password',
+      details: { userId: String(u._id), name: u.name },
+      branchId: u.branchId || authUser.branchId || ''
+    }).catch(() => {});
+  }
   res.json({
     ok: true,
     user: {
