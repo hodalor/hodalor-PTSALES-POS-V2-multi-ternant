@@ -8,7 +8,10 @@ const TYPO_REPLACEMENTS = [
   [/custmer|customerr/g, 'customer'],
   [/branah|brnach|barch/g, 'branch'],
   [/tranf?er|trasfer/g, 'transfer'],
-  [/supp?l?i?e?r?/g, 'supplier']
+  [/supp?l?i?e?r?/g, 'supplier'],
+  [/passw[o]?r?d?|pasw[o]?r?d?|passwrd|pasword/g, 'password'],
+  [/rese?t|rs?et/g, 'reset'],
+  [/prof[ia]?l?e?/g, 'profile']
 ];
 
 export const PT_AI_TOPICS = [
@@ -281,6 +284,18 @@ export const PT_AI_TOPICS = [
       'Use the Feature Access section to tick the exact permissions the user should have.',
       'Enter Remark (required), then click Add User.',
       'Use Edit on an existing user to change their role, status, branch access, PIN, and grants later.'
+    ]
+  },
+  {
+    id: 'reset-own-password',
+    title: 'How To Reset Your Own Password',
+    keywords: ['reset password', 'how do i reset my password', 'how to reset password', 'password reset', 'change password', 'reset own password', 'profile icon password'],
+    answer: [
+      'Click the profile icon at the top right of the screen.',
+      'In the profile menu, click Change Password or Reset Password.',
+      'Enter your current password, then enter the new password and confirm it.',
+      'Follow the prompt and save the change.',
+      'If you do not see the password reset option in the profile menu, contact your admin because your account may not have that permission yet.'
     ]
   },
   {

@@ -12,6 +12,7 @@ import { refreshAllData } from '../offline/refreshAll';
 import * as authApi from '../api/auth';
 import { resetTenantAppState } from '../store';
 import { useLanguage } from './LanguageProvider';
+import Modal from './Modal';
 
 function Header({ onToggleSidebar }) {
   const auth = useSelector(state => state.auth);
@@ -26,9 +27,15 @@ function Header({ onToggleSidebar }) {
   const { language, setLanguage, options: languageOptions, t } = useLanguage();
   const [syncing, setSyncing] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
+  const [currentPin, setCurrentPin] = useState('');
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
   const profileRef = useRef(null);
   const roleLower = String(auth.role || '').toLowerCase();
   const canChangeBranch = ['admin', 'manager', 'branch manager', 'superadmin'].includes(roleLower);
+  const canResetOwnPassword = ['admin', 'superadmin'].includes(roleLower) || (Array.isArray(auth.grants) && auth.grants.includes('reset_own_password'));
   const expiryTs = settings?.subscriptionExpiresAt ? new Date(settings.subscriptionExpiresAt).getTime() : 0;
   const isPermanent = !!settings?.subscriptionPermanent;
   const isMaster = String(auth.user?.tenantId || '').toLowerCase() === 'master';
@@ -82,6 +89,50 @@ function Header({ onToggleSidebar }) {
     dispatch(resetTenantAppState(tenantId));
     dispatch(logout());
     navigate('/login', { replace: true });
+  }
+
+  function openPasswordModal() {
+    setProfileOpen(false);
+    setCurrentPin('');
+    setNewPin('');
+    setConfirmPin('');
+    setPasswordModalOpen(true);
+  }
+
+  function closePasswordModal() {
+    if (savingPassword) return;
+    setPasswordModalOpen(false);
+    setCurrentPin('');
+    setNewPin('');
+    setConfirmPin('');
+  }
+
+  async function handleChangeOwnPassword() {
+    const current = String(currentPin || '').trim();
+    const next = String(newPin || '').trim();
+    const confirm = String(confirmPin || '').trim();
+    if (!current || !next || !confirm) {
+      toast.show(t('Enter current password and new password'), { type: 'error' });
+      return;
+    }
+    if (!/^\d{4,6}$/.test(next)) {
+      toast.show(t('New password must be 4 to 6 digits'), { type: 'error' });
+      return;
+    }
+    if (next !== confirm) {
+      toast.show(t('New password confirmation does not match'), { type: 'error' });
+      return;
+    }
+    try {
+      setSavingPassword(true);
+      await authApi.updateMe({ currentPin: current, newPin: next });
+      toast.show(t('Your password was updated'), { type: 'success' });
+      closePasswordModal();
+    } catch (e) {
+      toast.show(String(e?.message || t('Failed to update password')), { type: 'error' });
+    } finally {
+      setSavingPassword(false);
+    }
   }
 
   return (
@@ -242,6 +293,11 @@ function Header({ onToggleSidebar }) {
                     <div className="topbar-profile-name">{auth.user?.name || t('Unknown user')}</div>
                     <div className="topbar-profile-role">{auth.role || t('User')}</div>
                   </div>
+                  {canResetOwnPassword ? (
+                    <button className="btn topbar-profile-logout" onClick={openPasswordModal} role="menuitem">
+                      {t('Change Password')}
+                    </button>
+                  ) : null}
                   <button className="btn topbar-profile-logout" onClick={handleLogout} role="menuitem">
                     {t('Logout')}
                   </button>
@@ -253,6 +309,35 @@ function Header({ onToggleSidebar }) {
           <span>{t('Not signed in')}</span>
         )}
       </div>
+      {passwordModalOpen ? (
+        <Modal
+          title={t('Change Password')}
+          onClose={closePasswordModal}
+          footer={(
+            <>
+              <button className="btn" onClick={closePasswordModal} disabled={savingPassword}>{t('Cancel')}</button>
+              <button className="btn btn-primary" onClick={() => void handleChangeOwnPassword()} disabled={savingPassword} style={{ marginLeft: 8 }}>
+                {savingPassword ? t('Saving...') : t('Save Password')}
+              </button>
+            </>
+          )}
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <label>
+              <div style={{ marginBottom: 6, color: '#64748b' }}>{t('Current Password')}</div>
+              <input className="input" type="password" inputMode="numeric" value={currentPin} onChange={(e) => setCurrentPin(e.target.value)} />
+            </label>
+            <label>
+              <div style={{ marginBottom: 6, color: '#64748b' }}>{t('New Password')}</div>
+              <input className="input" type="password" inputMode="numeric" value={newPin} onChange={(e) => setNewPin(e.target.value)} />
+            </label>
+            <label>
+              <div style={{ marginBottom: 6, color: '#64748b' }}>{t('Confirm New Password')}</div>
+              <input className="input" type="password" inputMode="numeric" value={confirmPin} onChange={(e) => setConfirmPin(e.target.value)} />
+            </label>
+          </div>
+        </Modal>
+      ) : null}
     </div>
   );
 }
