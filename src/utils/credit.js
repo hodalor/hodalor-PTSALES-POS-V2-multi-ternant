@@ -14,9 +14,13 @@ export function computeCreditStatus(doc, now = new Date()) {
   const total = Math.max(0, Number(doc?.total_amount || 0));
   const paid = Math.max(0, Number(doc?.amount_paid || 0));
   const balance = Math.max(0, total - paid);
-  const dueAt = doc?.due_date ? new Date(doc.due_date) : now;
-  const overdueDays = balance > 0 && dueAt.getTime() < now.getTime()
-    ? Math.max(0, Math.floor((now.getTime() - dueAt.getTime()) / 86400000))
+  const dueAt = doc?.due_date ? new Date(doc.due_date) : null;
+  const dueIsValid = dueAt instanceof Date && !Number.isNaN(dueAt.getTime());
+  const dueStart = dueIsValid ? new Date(dueAt.getFullYear(), dueAt.getMonth(), dueAt.getDate()) : null;
+  const dueEnd = dueIsValid ? new Date(dueAt.getFullYear(), dueAt.getMonth(), dueAt.getDate(), 23, 59, 59, 999) : null;
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const overdueDays = balance > 0 && dueEnd && now.getTime() > dueEnd.getTime() && dueStart
+    ? Math.max(1, Math.floor((todayStart.getTime() - dueStart.getTime()) / 86400000))
     : 0;
   const penaltyPerDay = Math.max(0, Number(doc?.penalty_per_day || 0));
   const accumulatedPenalty = overdueDays * penaltyPerDay;
