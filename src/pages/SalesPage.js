@@ -296,7 +296,7 @@ function SalesPage() {
     const ids = selectedSaleIds.filter(Boolean);
     if (ids.length === 0) return;
     const { confirmDialog } = await import('../utils/dialogs');
-    const ok = await confirmDialog(`Delete ${ids.length} selected sale record(s)?`);
+    const ok = await confirmDialog(`Delete ${ids.length} selected sale record(s)? They will go to Super Bin without changing stock quantities.`);
     if (!ok) return;
     try {
       setBulkDeleting(true);
@@ -304,7 +304,7 @@ function SalesPage() {
       dispatch(removeSales(ids));
       setSelectedSaleIds([]);
       setBulkAction('');
-      toast.show('Sale records deleted', { type: 'success' });
+      toast.show('Sale records moved to Super Bin', { type: 'success' });
     } catch (e) {
       toast.show(String(e?.message || 'Failed to delete sale records'), { type: 'error' });
     } finally {

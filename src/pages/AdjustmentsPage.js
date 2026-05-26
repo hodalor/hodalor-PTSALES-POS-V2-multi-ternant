@@ -329,7 +329,7 @@ function AdjustmentsPage() {
     const ids = selectedRecordIds.filter(Boolean);
     if (ids.length === 0) return;
     const { confirmDialog } = await import('../utils/dialogs');
-    const ok = await confirmDialog(`Delete ${ids.length} selected adjustment record(s)?`);
+    const ok = await confirmDialog(`Delete ${ids.length} selected adjustment record(s)? They will go to Super Bin.`);
     if (!ok) return;
     try {
       setBulkDeleting(true);
@@ -337,7 +337,7 @@ function AdjustmentsPage() {
       dispatch(removeAuditEntries(ids));
       setSelectedRecordIds([]);
       setBulkAction('');
-      toast.show('Adjustment records deleted', { type: 'success' });
+      toast.show('Adjustment records moved to Super Bin', { type: 'success' });
     } catch (e) {
       toast.show(String(e?.message || 'Failed to delete adjustment records'), { type: 'error' });
     } finally {

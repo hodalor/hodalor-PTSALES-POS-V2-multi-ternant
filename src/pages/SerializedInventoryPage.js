@@ -96,7 +96,7 @@ function SerializedInventoryPage() {
     const ids = selectedIds.filter(Boolean);
     if (ids.length === 0) return;
     const { confirmDialog } = await import('../utils/dialogs');
-    const ok = await confirmDialog(`Delete ${ids.length} selected serialized unit(s)?`);
+    const ok = await confirmDialog(`Delete ${ids.length} selected serialized unit(s)? They will go to Super Bin.`);
     if (!ok) return;
     try {
       setBulkDeleting(true);
@@ -105,7 +105,7 @@ function SerializedInventoryPage() {
       setSelectedIds([]);
       setBulkAction('');
       setTotal(prev => Math.max(0, Number(prev || 0) - ids.length));
-      toast.show('Serialized units deleted', { type: 'success' });
+      toast.show('Serialized units moved to Super Bin', { type: 'success' });
     } catch (e) {
       toast.show(String(e?.message || 'Failed to delete serialized units'), { type: 'error' });
     } finally {

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSelector } from 'react-redux';
 import * as serverLogsApi from '../api/serverLogs';
 import { exportCsv, exportTablePdf } from '../utils/exporters';
+import { confirmDialog } from '../utils/dialogs';
 
 function ServerLogsPage() {
   const [logs, setLogs] = useState([]);
@@ -75,6 +76,8 @@ function ServerLogsPage() {
   async function deleteSelected() {
     const ids = selectedIds.filter(Boolean);
     if (ids.length === 0) return;
+    const ok = await confirmDialog(`Delete ${ids.length} selected server log(s)? They will go to Super Bin.`);
+    if (!ok) return;
     try {
       setBulkDeleting(true);
       await serverLogsApi.removeMany(ids);

@@ -165,14 +165,14 @@ function WarehouseApprovalsPage() {
   }
 
   async function removeRequest(row) {
-    const confirmed = await confirmDialog('Delete this stuck warehouse request?');
+    const confirmed = await confirmDialog('Delete this stuck warehouse request? It will go to Super Bin.');
     if (!confirmed) return;
     setWorkingId(row._id || row.clientId || '');
     try {
       await deleteOperation(row._id || row.clientId);
       setRows(prev => prev.filter(item => String(item._id || item.clientId) !== String(row._id || row.clientId)));
       setSelectedRow(null);
-      toast.show('Warehouse request deleted', { type: 'success' });
+      toast.show('Warehouse request moved to Super Bin', { type: 'success' });
       void load({ force: true });
     } catch (e) {
       toast.show(String(e?.message || 'Failed to delete request'), { type: 'error' });

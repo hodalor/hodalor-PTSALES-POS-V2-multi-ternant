@@ -85,6 +85,7 @@ export const TENANT_GRANT_CATALOG = [
   { key: 'view_users', label: 'Open Users' },
   { key: 'view_config', label: 'Open Config' },
   { key: 'view_audit', label: 'Open Audit Log' },
+  { key: 'view_super_bin', label: 'Open Super Bin' },
   { key: 'export_tenant_data', label: 'Export Tenant Data' },
   { key: 'import_tenant_data', label: 'Import Tenant Data' }
 ];
@@ -98,13 +99,13 @@ export const PLAN_DEFAULT_FEATURES = {
     'modules.dashboard', 'modules.pos', 'modules.invoices', 'modules.sales', 'modules.products',
     'modules.inventory', 'modules.labels', 'modules.purchases', 'modules.finance', 'modules.communication', 'modules.suppliers',
     'modules.customers', 'modules.backup', 'admin.users', 'admin.audit',
-    'admin.cashDrawer', 'admin.config', 'features.offlineBackup',
+    'admin.cashDrawer', 'admin.config', 'admin.superBin', 'features.offlineBackup',
     'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
     'grants.view_dashboard', 'grants.view_dashboard_cashier_assigned', 'grants.view_dashboard_cashier_all', 'grants.view_dashboard_branch_comparison_assigned', 'grants.view_dashboard_branch_comparison_all', 'grants.view_pos', 'grants.view_retail_price', 'grants.view_sales',
     'grants.add_sales', 'grants.backdate_sales', 'grants.reset_own_password', 'grants.view_products', 'grants.view_distribution_products', 'grants.view_warehouse_products', 'grants.add_products', 'grants.edit_products',
     'grants.view_inventory', 'grants.edit_inventory', 'grants.view_labels', 'grants.view_purchases',
     'grants.add_purchases', 'grants.view_suppliers', 'grants.add_suppliers', 'grants.view_customers', 'grants.view_finance_reconciliation', 'grants.add_finance_reconciliation',
-    'grants.view_chat', 'grants.send_chat_messages', 'grants.view_pt_ai', 'grants.add_customers', 'grants.view_cashdrawer', 'grants.view_users', 'grants.view_config',
+    'grants.view_chat', 'grants.send_chat_messages', 'grants.view_pt_ai', 'grants.add_customers', 'grants.view_cashdrawer', 'grants.view_users', 'grants.view_config', 'grants.view_super_bin',
     'grants.export_tenant_data', 'grants.import_tenant_data'
   ],
   pro: [
@@ -114,7 +115,7 @@ export const PLAN_DEFAULT_FEATURES = {
     'modules.creditControl', 'modules.approvalsCenter', 'modules.refunds', 'modules.refundApprovals',
     'modules.expenseApprovals', 'modules.reports', 'modules.backup', 'modules.communication',
     'admin.users', 'admin.manual', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords', 'admin.inventoryConsistency',
-    'admin.cashDrawer', 'admin.config', 'features.offlineBackup',
+    'admin.cashDrawer', 'admin.config', 'admin.superBin', 'features.offlineBackup',
     'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
     ...TENANT_GRANT_CATALOG.map((item) => `grants.${item.key}`).filter((key) => !['grants.approve_credit_director', 'grants.approve_distribution_director', 'grants.approve_warehouse_director'].includes(key))
   ],
@@ -313,6 +314,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
       { label: 'Inventory Consistency', keys: ['admin.inventoryConsistency', 'grants.view_inventory_consistency'] },
       { label: 'Cash Drawer', keys: ['admin.cashDrawer', 'grants.view_cashdrawer'] },
       { label: 'Config', keys: ['admin.config', 'grants.view_config'] },
+      { label: 'Super Bin', keys: ['admin.superBin', 'grants.view_super_bin'] },
       { label: 'GodHand', keys: ['admin.godhand'] },
       { label: 'Docs', keys: ['admin.docs'] }
     ]
@@ -367,6 +369,7 @@ export const TENANT_FEATURE_CATALOG = [
   { key: 'admin.inventoryConsistency', label: 'Inventory Consistency', group: 'Menus / Admin & Control' },
   { key: 'admin.cashDrawer', label: 'Cash Drawer', group: 'Menus / Admin & Control' },
   { key: 'admin.config', label: 'Config', group: 'Menus / Admin & Control' },
+  { key: 'admin.superBin', label: 'Super Bin', group: 'Menus / Admin & Control' },
   { key: 'admin.godhand', label: 'GodHand', group: 'Menus / Admin & Control' },
   { key: 'admin.docs', label: 'Docs', group: 'Menus / Admin & Control' },
 
@@ -384,7 +387,7 @@ export const TENANT_FEATURE_CATALOG = [
       group = 'Permissions / Communication';
     } else if (['view_wholesale_pos', 'view_purchases', 'add_purchases', 'add_wholesale_purchases', 'add_warehouse_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'add_wholesale_transfers', 'add_warehouse_transfers', 'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'add_wholesale_adjustments', 'add_warehouse_adjustments', 'edit_adjustments', 'approve_adjustments', 'view_credit_control', 'approve_credit_director', 'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_distribution_director', 'approve_distribution_manager', 'approve_warehouse_director', 'approve_warehouse_manager', 'view_wholesale_invoices', 'view_warehouse_invoices', 'view_warehouse_approvals'].includes(item.key)) {
       group = 'Permissions / Distribution Actions';
-    } else if (['view_users', 'view_config', 'view_audit', 'view_stock_records', 'view_inventory_consistency', 'view_cashdrawer', 'view_imei_conflicts', 'export_tenant_data', 'import_tenant_data'].includes(item.key)) {
+    } else if (['view_users', 'view_config', 'view_audit', 'view_super_bin', 'view_stock_records', 'view_inventory_consistency', 'view_cashdrawer', 'view_imei_conflicts', 'export_tenant_data', 'import_tenant_data'].includes(item.key)) {
       group = 'Permissions / Admin Actions';
     }
     return { key: `grants.${item.key}`, label: item.label, group };

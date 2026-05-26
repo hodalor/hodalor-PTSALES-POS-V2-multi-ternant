@@ -1022,11 +1022,11 @@ function TenantsPage() {
                     </button>
                     <button className="btn" style={{ color: '#b91c1c' }} onClick={async () => {
                       const { confirmDialog } = await import('../utils/dialogs');
-                      const ok = await confirmDialog(`Delete tenant ${row.name}? This removes the tenant database.`);
+                      const ok = await confirmDialog(`Delete tenant ${row.name}? It will move to Super Bin and can be restored later.`);
                       if (!ok) return;
                       try {
                         await tenantsApi.remove(row.tenantId);
-                        toast.show('Tenant deleted', { type: 'success' });
+                        toast.show('Tenant moved to Super Bin', { type: 'success' });
                         await load();
                       } catch (e) {
                         toast.show(String(e?.message || 'Failed to delete tenant'), { type: 'error' });

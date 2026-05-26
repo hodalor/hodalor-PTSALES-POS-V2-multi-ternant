@@ -476,7 +476,7 @@ function CustomersPage() {
   }
   async function remove(id) {
     if (!canRemoveCustomers) { toast.show('Only Admin can remove customers', { type: 'error' }); return; }
-    const ok = await confirmDialog('Remove this customer?');
+    const ok = await confirmDialog('Remove this customer? The customer will go to Super Bin.');
     if (!ok) return;
     try {
       setRemovingId(String(id));
@@ -508,7 +508,7 @@ function CustomersPage() {
     if (!canRemoveCustomers) { toast.show('Only Admin can remove customers', { type: 'error' }); return; }
     const ids = selectedIds.filter(Boolean);
     if (ids.length === 0) return;
-    const ok = await confirmDialog(`Remove ${ids.length} selected customer(s)?`);
+    const ok = await confirmDialog(`Remove ${ids.length} selected customer(s)? They will go to Super Bin.`);
     if (!ok) return;
     try {
       setBulkDeleting(true);

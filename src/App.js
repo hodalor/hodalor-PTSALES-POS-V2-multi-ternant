@@ -66,6 +66,7 @@ import DocsPage from './pages/DocsPage';
 import StockRecordsPage from './pages/StockRecordsPage';
 import InventoryConsistencyPage from './pages/InventoryConsistencyPage';
 import ServerLogsPage from './pages/ServerLogsPage';
+import SuperBinPage from './pages/SuperBinPage';
 import ExpensesPage from './pages/ExpensesPage';
 import ExpenseApprovalsPage from './pages/ExpenseApprovalsPage';
 import CashReconciliationPage from './pages/CashReconciliationPage';
@@ -746,6 +747,7 @@ function App() {
             <Route path="/stock-records" element={<ProtectedRoute feature="sections.admin" roles={['Admin','SuperAdmin']} grant={['view_stock_records','see_stock_records']}><StockRecordsPage /></ProtectedRoute>} />
             <Route path="/inventory-consistency" element={<ProtectedRoute feature="admin.inventoryConsistency" roles={['Admin','Manager','SuperAdmin']} grant={['view_inventory_consistency','see_inventory_consistency']}><InventoryConsistencyPage /></ProtectedRoute>} />
             <Route path="/users" element={<ProtectedRoute feature="sections.admin" roles={['Admin','SuperAdmin']} grant={['view_users','see_users']}><UsersPage /></ProtectedRoute>} />
+            <Route path="/super-bin" element={<ProtectedRoute feature="admin.superBin" roles={['Admin','SuperAdmin']} grant={['view_super_bin']}><SuperBinPage /></ProtectedRoute>} />
             <Route path="/tenants" element={<ProtectedRoute roles={['SuperAdmin']}><TenantsPage /></ProtectedRoute>} />
             <Route path="/cashdrawer" element={<ProtectedRoute feature="sections.admin" roles={['Admin','Manager','Cashier']} grant={['view_cashdrawer','see_cashdrawer']}><CashDrawerPage /></ProtectedRoute>} />
             <Route path="/config" element={<ProtectedRoute feature="sections.admin" roles={['Admin','Manager']} grant={['view_config','see_config']}><ConfigSettingsPage /></ProtectedRoute>} />

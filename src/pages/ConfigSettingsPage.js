@@ -598,7 +598,7 @@ function ConfigSettingsPage() {
       return;
     }
     const { confirmDialog } = await import('../utils/dialogs');
-    const ok = await confirmDialog(`Remove branch ${b.name}?`);
+    const ok = await confirmDialog(`Remove branch ${b.name}? It will go to Super Bin and stock quantities will stay unchanged.`);
     if (!ok) return;
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) {
@@ -608,7 +608,7 @@ function ConfigSettingsPage() {
       dispatch(removeBranch(b.id));
       try {
         await enqueueHttp({ collection: 'branches', label: 'Branch delete', path: `/api/branches/${encodeURIComponent(b.id)}`, method: 'DELETE', body: {} });
-        toast.show('Saved offline. Will backup when online.', { type: 'success' });
+        toast.show('Saved offline. Branch will move to Super Bin when online.', { type: 'success' });
       } catch {
         toast.show('Failed to save offline', { type: 'error' });
       }
@@ -622,7 +622,7 @@ function ConfigSettingsPage() {
         const fallback = (branches || []).find(branch => String(branch.id || branch._id || '') !== String(b.id));
         dispatch(setCurrentBranch(String(fallback?.id || fallback?._id || '')));
       }
-      toast.show('Branch removed', { type: 'success' });
+      toast.show('Branch moved to Super Bin', { type: 'success' });
     } catch (e) {
       dispatch(addBranch(b));
       toast.show(String(e?.message || 'Failed to remove branch on server'), { type: 'error' });

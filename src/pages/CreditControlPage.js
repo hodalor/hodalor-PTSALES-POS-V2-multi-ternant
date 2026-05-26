@@ -284,7 +284,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
     if (!canDeleteCredit) return;
     const id = String(row?._id || row?.saleId || '');
     if (!id) return;
-    const ok = await confirmDialog('Delete this credit sale record?');
+    const ok = await confirmDialog('Delete this credit sale record? It will go to Super Bin.');
     if (!ok) return;
     setDeletingId(id);
     try {
@@ -298,7 +298,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
         return next;
       });
       setSummary(null);
-      toast.show('Credit sale deleted', { type: 'success' });
+      toast.show('Credit sale moved to Super Bin', { type: 'success' });
       void loadAll();
     } catch (e) {
       toast.show(String(e?.message || 'Failed to delete credit sale'), { type: 'error' });
@@ -311,13 +311,13 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
     if (!canDeleteCredit) return;
     const id = String(row?._id || '');
     if (!id) return;
-    const ok = await confirmDialog('Delete this repayment record?');
+    const ok = await confirmDialog('Delete this repayment record? It will go to Super Bin.');
     if (!ok) return;
     setDeletingId(id);
     try {
       await removeRepayment(id);
       setRepayments(prev => prev.filter(item => String(item._id || '') !== id));
-      toast.show('Repayment deleted', { type: 'success' });
+      toast.show('Repayment moved to Super Bin', { type: 'success' });
       void loadAll();
     } catch (e) {
       toast.show(String(e?.message || 'Failed to delete repayment'), { type: 'error' });
@@ -329,14 +329,14 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   async function deleteSelectedSales() {
     const ids = selectedSaleIds.filter(Boolean);
     if (ids.length === 0) return;
-    const ok = await confirmDialog(`Delete ${ids.length} selected credit sale record(s)?`);
+    const ok = await confirmDialog(`Delete ${ids.length} selected credit sale record(s)? They will go to Super Bin.`);
     if (!ok) return;
     setBulkDeleting(true);
     try {
       const result = await removeManyCreditSales(ids);
       const deletedCount = Number(result?.count || 0);
       if (deletedCount <= 0) {
-        toast.show('No matching credit sale records were deleted', { type: 'error' });
+        toast.show('No matching credit sale records were moved', { type: 'error' });
         return;
       }
       setSales(prev => prev.filter(item => !ids.includes(String(item._id || '')) && !ids.includes(String(item.saleId || ''))));
@@ -347,7 +347,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       });
       setSelectedSaleIds([]);
       setBulkActionSales('');
-      toast.show(`Deleted ${deletedCount} credit sale record(s)`, { type: 'success' });
+      toast.show(`Moved ${deletedCount} credit sale record(s) to Super Bin`, { type: 'success' });
       void loadAll();
     } catch (e) {
       toast.show(String(e?.message || 'Failed to delete selected credit sales'), { type: 'error' });
@@ -359,20 +359,20 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   async function deleteSelectedRepayments() {
     const ids = selectedRepaymentIds.filter(Boolean);
     if (ids.length === 0) return;
-    const ok = await confirmDialog(`Delete ${ids.length} selected repayment record(s)?`);
+    const ok = await confirmDialog(`Delete ${ids.length} selected repayment record(s)? They will go to Super Bin.`);
     if (!ok) return;
     setBulkDeleting(true);
     try {
       const result = await removeManyRepayments(ids);
       const deletedCount = Number(result?.count || 0);
       if (deletedCount <= 0) {
-        toast.show('No matching repayment records were deleted', { type: 'error' });
+        toast.show('No matching repayment records were moved', { type: 'error' });
         return;
       }
       setRepayments(prev => prev.filter(item => !ids.includes(String(item._id || ''))));
       setSelectedRepaymentIds([]);
       setBulkActionRepayments('');
-      toast.show(`Deleted ${deletedCount} repayment record(s)`, { type: 'success' });
+      toast.show(`Moved ${deletedCount} repayment record(s) to Super Bin`, { type: 'success' });
       void loadAll();
     } catch (e) {
       toast.show(String(e?.message || 'Failed to delete selected repayments'), { type: 'error' });

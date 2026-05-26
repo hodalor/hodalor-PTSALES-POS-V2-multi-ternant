@@ -354,7 +354,7 @@ function StockRecordsPage() {
     const ids = selectedRecordIds.filter(Boolean);
     if (ids.length === 0) return;
     const { confirmDialog } = await import('../utils/dialogs');
-    const ok = await confirmDialog(`Delete ${ids.length} selected stock record(s)?`);
+    const ok = await confirmDialog(`Delete ${ids.length} selected stock record(s)? They will go to Super Bin.`);
     if (!ok) return;
     try {
       setBulkDeleting(true);
@@ -362,7 +362,7 @@ function StockRecordsPage() {
       dispatch(removeAuditEntries(ids));
       setSelectedRecordIds([]);
       setBulkAction('');
-      toast.show('Stock records deleted', { type: 'success' });
+      toast.show('Stock records moved to Super Bin', { type: 'success' });
     } catch (e) {
       toast.show(String(e?.message || 'Failed to delete stock records'), { type: 'error' });
     } finally {

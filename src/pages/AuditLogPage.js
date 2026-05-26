@@ -107,7 +107,7 @@ function AuditLogPage() {
     if (!isSuper) return;
     const ids = selectedIds.filter(Boolean);
     if (ids.length === 0) return;
-    const ok = await confirmDialog(`Delete ${ids.length} selected audit record(s)?`);
+    const ok = await confirmDialog(`Delete ${ids.length} selected audit record(s)? They will go to Super Bin.`);
     if (!ok) return;
     try {
       setBulkDeleting(true);
@@ -115,6 +115,7 @@ function AuditLogPage() {
       dispatch(removeAuditEntries(ids));
       setSelectedIds([]);
       setBulkAction('');
+      
     } finally {
       setBulkDeleting(false);
     }

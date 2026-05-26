@@ -376,7 +376,7 @@ function PurchasesPage() {
     const ids = selectedRecordIds.filter(Boolean);
     if (ids.length === 0) return;
     const { confirmDialog } = await import('../utils/dialogs');
-    const ok = await confirmDialog(`Delete ${ids.length} selected purchase record(s)?`);
+    const ok = await confirmDialog(`Delete ${ids.length} selected purchase record(s)? They will go to Super Bin.`);
     if (!ok) return;
     try {
       setBulkDeleting(true);
@@ -384,7 +384,7 @@ function PurchasesPage() {
       dispatch(removeAuditEntries(ids));
       setSelectedRecordIds([]);
       setBulkAction('');
-      toast.show('Purchase records deleted', { type: 'success' });
+      toast.show('Purchase records moved to Super Bin', { type: 'success' });
     } catch (e) {
       toast.show(String(e?.message || 'Failed to delete purchase records'), { type: 'error' });
     } finally {

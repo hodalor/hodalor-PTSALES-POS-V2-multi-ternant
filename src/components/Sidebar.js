@@ -630,6 +630,7 @@ function AdminGroup() {
       grants.includes('view_users') || grants.includes('see_users') ||
       grants.includes('view_config') || grants.includes('see_config') ||
       grants.includes('view_audit') || grants.includes('see_audit') ||
+      grants.includes('view_super_bin') ||
       grants.includes('view_stock_records') || grants.includes('see_stock_records') ||
       grants.includes('view_inventory_consistency') || grants.includes('see_inventory_consistency') ||
       grants.includes('view_cashdrawer') || grants.includes('see_cashdrawer')
@@ -646,6 +647,7 @@ function AdminGroup() {
     isFeatureEnabled(settings, 'admin.inventoryConsistency') ||
     isFeatureEnabled(settings, 'admin.cashDrawer') ||
     isFeatureEnabled(settings, 'admin.config') ||
+    isFeatureEnabled(settings, 'admin.superBin') ||
     isFeatureEnabled(settings, 'admin.godhand')
   );
   if (!allowed || !anyEnabled) return null;
@@ -720,6 +722,12 @@ function AdminGroup() {
           <NavLink to="/config" className="sidebar-link" title={t('Config')}>
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 15.5a3.5 3.5 0 100-7 3.5 3.5 0 000 7z" stroke="currentColor" strokeWidth="2"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06A1.65 1.65 0 0015 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0l-.06-.06A1.65 1.65 0 008.6 19.4a1.65 1.65 0 00-1.82-.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.6 15a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 8.6c.37 0 .73-.13 1.02-.36l.06-.06a2 2 0 012.83 0l.06.06c.29.23.65.36 1.02.36.37 0 .73-.13 1.02-.36l.06-.06a2 2 0 012.83 2.83l-.06.06c-.23.29-.36.65-.36 1.02 0 .37.13.73.36 1.02l.06.06z" stroke="currentColor" strokeWidth="2"/></svg>
             <span className="sidebar-text">{t('Config')}</span>
+          </NavLink>
+          )}
+          {isFeatureEnabled(settings, 'admin.superBin') && ((Array.isArray(grants) && grants.includes('view_super_bin')) || ['Admin','SuperAdmin'].includes(role)) && (
+          <NavLink to="/super-bin" className="sidebar-link" title={t('Super Bin')}>
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 7h14" stroke="currentColor" strokeWidth="2"/><path d="M9 7V5h6v2" stroke="currentColor" strokeWidth="2"/><path d="M7 7l1 12h8l1-12" stroke="currentColor" strokeWidth="2"/><path d="M10 11v5M14 11v5" stroke="currentColor" strokeWidth="2"/></svg>
+            <span className="sidebar-text">{t('Super Bin')}</span>
           </NavLink>
           )}
           {isFeatureEnabled(settings, 'admin.godhand') && role === 'SuperAdmin' && (

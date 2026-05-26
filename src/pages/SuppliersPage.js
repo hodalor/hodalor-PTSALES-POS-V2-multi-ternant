@@ -137,7 +137,7 @@ function SuppliersPage() {
   }
   async function remove(id) {
     if (!canRemoveSuppliers) { toast.show('Only Admin can remove suppliers', { type: 'error' }); return; }
-    const ok = await confirmDialog('Remove this supplier?');
+    const ok = await confirmDialog('Remove this supplier? The supplier will go to Super Bin.');
     if (!ok) return;
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) { toast.show('Offline: connect internet and try again.', { type: 'error' }); return; }
@@ -157,7 +157,7 @@ function SuppliersPage() {
       await suppliersApi.remove(id);
       dispatch(removeSupplier(id));
       dispatch(addAudit({ actor: auth.user?.name || 'unknown', actionType: 'supplier_remove', details: { id } }));
-      toast.show('Supplier removed', { type: 'success' });
+      toast.show('Supplier moved to Super Bin', { type: 'success' });
     } catch (e) {
       toast.show(String(e?.message || 'Failed to remove supplier'), { type: 'error' });
     } finally {

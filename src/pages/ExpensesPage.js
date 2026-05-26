@@ -9,6 +9,7 @@ import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import Modal from '../components/Modal';
 import InlineSpinner from '../components/InlineSpinner';
 import LoadingDots from '../components/LoadingDots';
+import { confirmDialog } from '../utils/dialogs';
 
 function ExpensesPage() {
   const settings = useSelector(s => s.settings);
@@ -124,10 +125,12 @@ function ExpensesPage() {
       return;
     }
     try {
+      const ok = await confirmDialog('Delete this expense? It will go to Super Bin.');
+      if (!ok) return;
       setRemovingId(String(id));
       await expensesApi.remove(id);
       setRows(prev => prev.filter(r => String(r._id || r.id) !== String(id)));
-      toast.show('Expense deleted', { type: 'success' });
+      toast.show('Expense moved to Super Bin', { type: 'success' });
     } catch (e) {
       toast.show(String(e?.message || 'Failed to delete expense'), { type: 'error' });
     } finally {
