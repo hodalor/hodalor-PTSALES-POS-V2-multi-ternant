@@ -545,6 +545,7 @@ function SalesPage() {
             <th align="left">Seller</th>
             <th align="left">Invoice</th>
             <th align="left">Items</th>
+            <th align="left">Customer</th>
             <th align="left">Total</th>
             <th></th>
           </tr>
@@ -582,6 +583,7 @@ function SalesPage() {
               <td>{sale.sellerName || '-'}</td>
               <td>{sale.invoiceSerial || '—'}</td>
               <td>{sale.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}${i.spec ? ' ['+i.spec+']' : ''}x${i.qty}`).join(', ')}</td>
+              <td>{sale.customerName || ''}</td>
               <td><span className="price-accent">{formatCurrency(sale.total, settings)}</span></td>
               <td>
                 <button className="btn btn-primary" onClick={() => reprint(sale, false)} disabled={bulkDeleting && selectedSaleIds.includes(String(sale.id || sale._id || sale.clientId || ''))}>

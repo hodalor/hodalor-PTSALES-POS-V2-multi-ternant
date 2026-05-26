@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from './ToastProvider';
@@ -11,6 +11,7 @@ function NotificationBell() {
   const branches = useSelector(s => s.branches.branches);
   const toast = useToast();
   const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
   const branchName = branches.find(b => b.id === currentBranchId)?.name || currentBranchId;
   const retailLowStock = useMemo(() => {
     return products.filter(p => (p.lowStock ?? 0) > 0 && ((p.stockByBranch?.[currentBranchId] || 0) <= (p.lowStock ?? 0)));
@@ -63,8 +64,22 @@ function NotificationBell() {
       }
     } catch {}
   }, [retailLowStock.length, t, toast, warehouseLowStock.length, wholesaleLowStock.length]);
+  useEffect(() => {
+    if (!open) return undefined;
+    function handlePointerDown(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('touchstart', handlePointerDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('touchstart', handlePointerDown);
+    };
+  }, [open]);
   return (
-    <span style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginRight: 8, verticalAlign: 'middle' }}>
+    <span ref={containerRef} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center', marginRight: 8, verticalAlign: 'middle' }}>
       <button
         className="btn"
         onClick={() => setOpen(v => !v)}

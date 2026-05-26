@@ -9,6 +9,35 @@ import InlineSpinner from '../components/InlineSpinner';
 import BranchSelect from '../components/BranchSelect';
 import LoadingDots from '../components/LoadingDots';
 
+function normalizeCreditSaleRow(row, now = new Date()) {
+  const total = Math.max(0, Number(row?.total_amount || 0));
+  const paid = Math.max(0, Number(row?.amount_paid || 0));
+  const balance = Math.max(0, total - paid);
+  const dueValue = row?.due_date || row?.dueDate || null;
+  const dueAt = dueValue ? new Date(dueValue) : null;
+  const dueIsValid = dueAt instanceof Date && !Number.isNaN(dueAt.getTime());
+  const dueStart = dueIsValid ? new Date(dueAt.getFullYear(), dueAt.getMonth(), dueAt.getDate()) : null;
+  const dueEnd = dueIsValid ? new Date(dueAt.getFullYear(), dueAt.getMonth(), dueAt.getDate(), 23, 59, 59, 999) : null;
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const overdueDays = balance > 0 && dueEnd && now.getTime() > dueEnd.getTime() && dueStart
+    ? Math.max(1, Math.floor((todayStart.getTime() - dueStart.getTime()) / 86400000))
+    : 0;
+  const penaltyPerDay = Math.max(0, Number(row?.penalty_per_day || 0));
+  const accumulatedPenalty = penaltyPerDay > 0
+    ? overdueDays * penaltyPerDay
+    : Math.max(0, Number(row?.accumulated_penalty || 0));
+  let status = 'active';
+  if (balance <= 0) status = 'completed';
+  else if (overdueDays > 0) status = 'overdue';
+  return {
+    ...row,
+    balance,
+    overdue_days: overdueDays,
+    accumulated_penalty: accumulatedPenalty,
+    status
+  };
+}
+
 function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', title = 'Credit Sale Control', description = 'Credit sale balances, overdue tracking, customer rank, and repayment initiation.' }) {
   const settings = useSelector(s => s.settings);
   const saleRows = useSelector(s => s.sales.sales || []);
@@ -173,7 +202,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       if ((primary && deletedSaleKeys.has(primary)) || (alt && deletedSaleKeys.has(alt))) return;
       const key = String(row.saleId || row._id || '');
       if (!key) return;
-      byId.set(key, row);
+      byId.set(key, normalizeCreditSaleRow(row));
     });
     return Array.from(byId.values());
   }, [deletedSaleKeys, fallbackCreditSales, sales]);
@@ -189,6 +218,15 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   const salesById = useMemo(() => new Map(mergedSales.map((row) => [String(row._id || row.saleId || ''), row])), [mergedSales]);
   const shownActiveSales = useMemo(() => branchFilteredSales.filter(row => row.status !== 'completed'), [branchFilteredSales]);
   const overdueSales = useMemo(() => branchFilteredSales.filter(row => row.status === 'overdue'), [branchFilteredSales]);
+  const defaulterRows = useMemo(() => {
+    return overdueSales
+      .slice()
+      .sort((a, b) => {
+        const overdueDiff = Number(b.overdue_days || 0) - Number(a.overdue_days || 0);
+        if (overdueDiff !== 0) return overdueDiff;
+        return Number(b.balance || 0) - Number(a.balance || 0);
+      });
+  }, [overdueSales]);
   const dueTodaySales = useMemo(() => mergedSales.filter(row => {
     if (!row?.due_date || row.status === 'completed') return false;
     const due = new Date(row.due_date);
@@ -456,6 +494,53 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
           <div style={{ color: '#64748b', fontSize: 12 }}>Good {goodClients.length} • Flagged {riskyClients.length}</div>
         </div>
       </div>
+      </div>
+
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <div>
+            <h2 className="section-title" style={{ margin: 0 }}>Defaulters</h2>
+            <div style={{ color: '#64748b', fontSize: 12 }}>
+              Overdue credit sales for the current filters
+            </div>
+          </div>
+          <div style={{ color: '#b91c1c', fontWeight: 700 }}>
+            {defaulterRows.length} overdue account(s)
+          </div>
+        </div>
+        <div style={{ overflowX: 'auto', marginTop: 12 }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th align="left">Customer</th>
+                <th align="left">Business Name</th>
+                <th align="left">Type</th>
+                <th align="left">Balance</th>
+                <th align="left">Penalty</th>
+                <th align="left">Due Date</th>
+                <th align="left">Overdue Days</th>
+              </tr>
+            </thead>
+            <tbody>
+              {defaulterRows.map((row) => (
+                <tr key={`defaulter-${String(row._id || row.saleId || row.clientId || '')}`}>
+                  <td>{getCustomerDetails(row.customer_id).name}</td>
+                  <td>{getCustomerDetails(row.customer_id).businessName}</td>
+                  <td>{String(row.posType || 'retail') === 'wholesale' ? 'Distribution Credit Sale' : 'Retail EasyBuy'}</td>
+                  <td><span className="price-accent">{formatCurrency(Number(row.balance || 0), settings)}</span></td>
+                  <td><span className="price-accent">{formatCurrency(Number(row.accumulated_penalty || 0), settings)}</span></td>
+                  <td>{row.due_date ? new Date(row.due_date).toLocaleDateString() : '—'}</td>
+                  <td style={{ color: '#b91c1c', fontWeight: 700 }}>{Number(row.overdue_days || 0)}</td>
+                </tr>
+              ))}
+              {!loading && defaulterRows.length === 0 && (
+                <tr>
+                  <td colSpan="7" style={{ padding: 12, color: '#64748b' }}>No defaulters for the current filters</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
