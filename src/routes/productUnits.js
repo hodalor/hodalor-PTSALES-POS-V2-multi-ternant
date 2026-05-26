@@ -5,6 +5,7 @@ import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import { createSerializedUnits, listSerializedUnits, releaseSerializedUnits, reserveSerializedUnit, resolveInventoryTypeFromBranch, transferSerializedUnits } from '../utils/productUnits.js';
 import mongoose from 'mongoose';
 import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
+import { archiveLiveDocument } from '../utils/superBin.js';
 
 const r = Router();
 
@@ -133,6 +134,17 @@ r.post('/bulk-delete', async (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : [];
   if (ids.length === 0) return res.json({ ok: true, count: 0 });
   const objectIds = ids.filter(id => mongoose.isValidObjectId(id));
+  const rows = await ProductUnit.find({ _id: { $in: objectIds } }).lean();
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim() || 'master';
+  for (const row of rows) {
+    await archiveLiveDocument({
+      req,
+      tenantId,
+      entityType: 'product_unit',
+      collectionName: 'productunits',
+      doc: row
+    });
+  }
   const result = await ProductUnit.deleteMany({ _id: { $in: objectIds } });
   res.json({ ok: true, count: Number(result?.deletedCount || 0) });
 });

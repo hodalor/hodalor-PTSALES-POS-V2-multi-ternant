@@ -6,6 +6,7 @@ import { requireAuth, requireAdmin, requireRole, requireRoleOrPerm } from '../mi
 import mongoose from 'mongoose';
 import { normalizeTrackType } from '../utils/productUnits.js';
 import { uploadMediaString } from '../utils/mediaStorage.js';
+import { archiveLiveDocument } from '../utils/superBin.js';
 
 const r = Router();
 
@@ -387,7 +388,16 @@ r.delete('/:id', requireAdmin, async (req, res) => {
   if (!doc) return res.status(404).json({ error: 'Product not found' });
   const remark = String(req.body?.remark || '').trim();
   if (!remark) return res.status(400).json({ error: 'Deletion remark is required' });
-  await Product.findOneAndDelete(query);
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim() || 'master';
+  await archiveLiveDocument({
+    req,
+    tenantId,
+    entityType: 'product',
+    collectionName: 'products',
+    doc,
+    remark
+  });
+  await Product.deleteOne({ _id: doc._id });
   res.json({ ok: true });
   void Audit.create({
     actor: (req.user && req.user.name) || 'unknown',

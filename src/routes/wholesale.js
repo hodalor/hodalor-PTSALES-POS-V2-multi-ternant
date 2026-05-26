@@ -4,6 +4,7 @@ import Approval from '../models/Approval.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import { createApprovalForReference } from '../utils/approvalWorkflow.js';
 import mongoose from 'mongoose';
+import { archiveLiveDocument } from '../utils/superBin.js';
 
 const r = Router();
 
@@ -161,7 +162,20 @@ r.delete('/operations/:id', async (req, res) => {
   if (effectiveStatus === 'approved') {
     return res.status(400).json({ error: 'Approved requests cannot be deleted' });
   }
-  if (row) await row.deleteOne();
+  if (row) {
+    const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim() || 'master';
+    await archiveLiveDocument({
+      req,
+      tenantId,
+      entityType: 'wholesale_operation',
+      collectionName: 'wholesaleoperations',
+      doc: row,
+      meta: {
+        relatedApprovals: approval ? [approval.toObject ? approval.toObject() : approval] : []
+      }
+    });
+    await row.deleteOne();
+  }
   if (approval) await Approval.deleteMany({ referenceModel: 'WholesaleOperation', referenceId: String(approval.referenceId || row?._id || rawId) });
   res.json({ ok: true });
 });

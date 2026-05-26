@@ -6,6 +6,7 @@ import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireAdmin, requireRole, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
 import { uploadMediaString } from '../utils/mediaStorage.js';
+import { archiveLiveDocument } from '../utils/superBin.js';
 
 const r = Router();
 
@@ -216,7 +217,15 @@ r.delete('/:id', requireAdmin, async (req, res) => {
   or.push({ clientId: id });
   const doc = await Customer.findOne({ $or: or });
   if (!doc) return res.status(404).json({ error: 'Not found' });
-  await Customer.findOneAndDelete({ $or: or });
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim() || 'master';
+  await archiveLiveDocument({
+    req,
+    tenantId,
+    entityType: 'customer',
+    collectionName: 'customers',
+    doc
+  });
+  await Customer.deleteOne({ _id: doc._id });
   res.json({ ok: true });
   void Audit.create({
     actor: req.user?.name || 'unknown',
@@ -244,7 +253,17 @@ r.post('/bulk-delete', requireAdmin, async (req, res) => {
       ...(objectIds.length > 0 ? [{ _id: { $in: objectIds } }] : [])
     ]
   };
-  const rows = await Customer.find(query, { _id: 1, customerCode: 1, name: 1 }).lean();
+  const rows = await Customer.find(query).lean();
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim() || 'master';
+  for (const row of rows) {
+    await archiveLiveDocument({
+      req,
+      tenantId,
+      entityType: 'customer',
+      collectionName: 'customers',
+      doc: row
+    });
+  }
   const result = await Customer.deleteMany(query);
   void Audit.create({
     actor: req.user?.name || 'unknown',

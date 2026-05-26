@@ -14,6 +14,8 @@ import { getSubscriptionManagementConfig, resolveSubscriptionPlan, saveSubscript
 import { exportTenantData, importTenantData } from '../utils/tenantDataTransfer.js';
 import { createDpoLimitUpgradePayment, createPayPalLimitUpgradePayment, createPaystackLimitUpgradePayment, getMobileMoneyNetworks, getTenantLimitUpgradeInfo, verifyDpoLimitUpgradePayment, verifyPayPalLimitUpgradePayment, verifyPaystackLimitUpgradePayment } from '../utils/subscriptionPayments.js';
 import { uploadMediaString } from '../utils/mediaStorage.js';
+import { modelFor as TenantSessionModelFor } from '../models/TenantSession.js';
+import { archiveLiveDocument } from '../utils/superBin.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -508,9 +510,20 @@ r.delete('/:tenantId', requireSuperAdmin, async (req, res) => {
   const TenantModel = TenantModelFor(master);
   const before = await TenantModel.findOne({ tenantId: tid });
   if (!before) return res.status(404).json({ error: 'Tenant not found' });
+  await archiveLiveDocument({
+    req,
+    tenantId: tid,
+    tenantName: String(before.name || '').trim(),
+    entityType: 'tenant',
+    collectionName: 'tenants',
+    doc: before,
+    meta: {
+      dbName: String(before.dbName || '').trim()
+    }
+  });
   try {
-    const conn = await getTenantConnection(tid);
-    if (conn?.db) await conn.dropDatabase();
+    const TenantSession = TenantSessionModelFor(master);
+    await TenantSession.deleteMany({ tenantId: tid });
   } catch {}
   await TenantModel.deleteOne({ tenantId: tid });
   res.json({ ok: true });

@@ -7,6 +7,7 @@ import Approval from '../models/Approval.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import { createApprovalForReference } from '../utils/approvalWorkflow.js';
 import { refreshCreditSaleStatus, updateCustomerCreditMetrics } from '../utils/credit.js';
+import { archiveLiveDocument } from '../utils/superBin.js';
 
 const r = Router();
 
@@ -80,6 +81,18 @@ r.delete('/repayments/:id', async (req, res) => {
   const query = mongoose.isValidObjectId(id) ? { _id: id } : { clientId: id };
   const row = await CreditRepayment.findOne(query);
   if (!row) return res.status(404).json({ error: 'Not found' });
+  const approvals = await Approval.find({ referenceModel: 'CreditRepayment', referenceId: String(row._id) }).lean();
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim() || 'master';
+  await archiveLiveDocument({
+    req,
+    tenantId,
+    entityType: 'credit_repayment',
+    collectionName: 'creditrepayments',
+    doc: row,
+    meta: {
+      relatedApprovals: approvals
+    }
+  });
   await CreditRepayment.deleteOne({ _id: row._id });
   void Approval.deleteMany({ referenceModel: 'CreditRepayment', referenceId: String(row._id) }).catch(() => {});
   void updateCustomerCreditMetrics(String(row.customerId || '')).catch(() => {});
@@ -98,9 +111,32 @@ r.post('/repayments/bulk-delete', async (req, res) => {
       ...(objectIds.length > 0 ? [{ _id: { $in: objectIds } }] : [])
     ]
   };
-  const rows = await CreditRepayment.find(query, { _id: 1, customerId: 1 }).lean();
+  const rows = await CreditRepayment.find(query).lean();
+  const repaymentIds = rows.map((row) => String(row._id)).filter(Boolean);
+  const approvals = repaymentIds.length > 0
+    ? await Approval.find({ referenceModel: 'CreditRepayment', referenceId: { $in: repaymentIds } }).lean()
+    : [];
+  const approvalsByRepaymentId = new Map();
+  approvals.forEach((row) => {
+    const key = String(row.referenceId || '');
+    if (!approvalsByRepaymentId.has(key)) approvalsByRepaymentId.set(key, []);
+    approvalsByRepaymentId.get(key).push(row);
+  });
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim() || 'master';
+  for (const row of rows) {
+    await archiveLiveDocument({
+      req,
+      tenantId,
+      entityType: 'credit_repayment',
+      collectionName: 'creditrepayments',
+      doc: row,
+      meta: {
+        relatedApprovals: approvalsByRepaymentId.get(String(row._id)) || []
+      }
+    });
+  }
   const result = await CreditRepayment.deleteMany(query);
-  void Approval.deleteMany({ referenceModel: 'CreditRepayment', referenceId: { $in: rows.map(r => String(r._id)) } }).catch(() => {});
+  void Approval.deleteMany({ referenceModel: 'CreditRepayment', referenceId: { $in: repaymentIds } }).catch(() => {});
   const customerIds = Array.from(new Set(rows.map(r => String(r.customerId || '')).filter(Boolean)));
   void Promise.all(customerIds.map(id => updateCustomerCreditMetrics(id))).catch(() => {});
   res.json({ ok: true, count: Number(result?.deletedCount || 0) });
@@ -113,8 +149,23 @@ r.delete('/sales/:id', async (req, res) => {
   const query = mongoose.isValidObjectId(id) ? { _id: id } : { saleId: id };
   const row = await CreditSale.findOne(query);
   if (!row) return res.status(404).json({ error: 'Not found' });
-  const repayments = await CreditRepayment.find({ creditSaleId: String(row._id) }, { _id: 1 }).lean();
+  const repayments = await CreditRepayment.find({ creditSaleId: String(row._id) }).lean();
   const repaymentIds = repayments.map(item => String(item._id));
+  const repaymentApprovals = repaymentIds.length > 0
+    ? await Approval.find({ referenceModel: 'CreditRepayment', referenceId: { $in: repaymentIds } }).lean()
+    : [];
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim() || 'master';
+  await archiveLiveDocument({
+    req,
+    tenantId,
+    entityType: 'credit_sale',
+    collectionName: 'creditsales',
+    doc: row,
+    meta: {
+      relatedRepayments: repayments,
+      relatedRepaymentApprovals: repaymentApprovals
+    }
+  });
   await CreditSale.deleteOne({ _id: row._id });
   if (repaymentIds.length > 0) {
     void CreditRepayment.deleteMany({ _id: { $in: repaymentIds } }).catch(() => {});
@@ -136,10 +187,40 @@ r.post('/sales/bulk-delete', async (req, res) => {
       ...(objectIds.length > 0 ? [{ _id: { $in: objectIds } }] : [])
     ]
   };
-  const rows = await CreditSale.find(salesQuery, { _id: 1, customer_id: 1 }).lean();
+  const rows = await CreditSale.find(salesQuery).lean();
   const saleIds = rows.map(r => String(r._id));
-  const repaymentRows = saleIds.length > 0 ? await CreditRepayment.find({ creditSaleId: { $in: saleIds } }, { _id: 1 }).lean() : [];
+  const repaymentRows = saleIds.length > 0 ? await CreditRepayment.find({ creditSaleId: { $in: saleIds } }).lean() : [];
   const repaymentIds = repaymentRows.map(r => String(r._id));
+  const repaymentApprovals = repaymentIds.length > 0
+    ? await Approval.find({ referenceModel: 'CreditRepayment', referenceId: { $in: repaymentIds } }).lean()
+    : [];
+  const repaymentsBySaleId = new Map();
+  repaymentRows.forEach((row) => {
+    const key = String(row.creditSaleId || '');
+    if (!repaymentsBySaleId.has(key)) repaymentsBySaleId.set(key, []);
+    repaymentsBySaleId.get(key).push(row);
+  });
+  const approvalsByRepaymentId = new Map();
+  repaymentApprovals.forEach((row) => {
+    const key = String(row.referenceId || '');
+    if (!approvalsByRepaymentId.has(key)) approvalsByRepaymentId.set(key, []);
+    approvalsByRepaymentId.get(key).push(row);
+  });
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim() || 'master';
+  for (const row of rows) {
+    const relatedRepayments = repaymentsBySaleId.get(String(row._id)) || [];
+    await archiveLiveDocument({
+      req,
+      tenantId,
+      entityType: 'credit_sale',
+      collectionName: 'creditsales',
+      doc: row,
+      meta: {
+        relatedRepayments,
+        relatedRepaymentApprovals: relatedRepayments.flatMap((item) => approvalsByRepaymentId.get(String(item._id)) || [])
+      }
+    });
+  }
   const result = await CreditSale.deleteMany(salesQuery);
   if (saleIds.length > 0) void CreditRepayment.deleteMany({ creditSaleId: { $in: saleIds } }).catch(() => {});
   if (repaymentIds.length > 0) void Approval.deleteMany({ referenceModel: 'CreditRepayment', referenceId: { $in: repaymentIds } }).catch(() => {});

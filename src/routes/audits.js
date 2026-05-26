@@ -5,6 +5,7 @@ import { requireAuth, requireAdmin, requireRoleOrPerm } from '../middleware/auth
 import mongoose from 'mongoose';
 import { getMasterConnection, getTenantConnection, resolveStoredTenantId } from '../config/tenancy.js';
 import { modelFor as TenantModelFor } from '../models/Tenant.js';
+import { archiveLiveDocument } from '../utils/superBin.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -103,13 +104,23 @@ r.delete('/:id', requireAdmin, async (req, res) => {
   const query = mongoose.isValidObjectId(rawId) ? { _id: rawId } : { id: rawId };
   const master = await getMasterConnection();
   const TenantModel = TenantModelFor(master);
-  const tenants = await TenantModel.find({}, { tenantId: 1 }).lean();
+  const tenants = await TenantModel.find({}, { tenantId: 1, name: 1 }).lean();
   let removed = null;
   for (const tenant of tenants) {
     const conn = await getTenantConnection(tenant.tenantId);
     const AuditModel = conn.models.Audit || conn.model('Audit', Audit.schema);
-    removed = await AuditModel.findOneAndDelete(query);
-    if (removed) break;
+    removed = await AuditModel.findOne(query);
+    if (!removed) continue;
+    await archiveLiveDocument({
+      req,
+      tenantId: tenant.tenantId,
+      tenantName: String(tenant.name || tenant.tenantId || '').trim(),
+      entityType: 'audit',
+      collectionName: 'audits',
+      doc: removed
+    });
+    await AuditModel.deleteOne({ _id: removed._id });
+    break;
   }
   if (!removed) return res.status(404).json({ error: 'Not found' });
   res.json({ ok: true });
@@ -130,11 +141,22 @@ r.post('/bulk-delete', requireAdmin, async (req, res) => {
   };
   const master = await getMasterConnection();
   const TenantModel = TenantModelFor(master);
-  const tenants = await TenantModel.find({}, { tenantId: 1 }).lean();
+  const tenants = await TenantModel.find({}, { tenantId: 1, name: 1 }).lean();
   let count = 0;
   for (const tenant of tenants) {
     const conn = await getTenantConnection(tenant.tenantId);
     const AuditModel = conn.models.Audit || conn.model('Audit', Audit.schema);
+    const rows = await AuditModel.find(query).lean();
+    for (const row of rows) {
+      await archiveLiveDocument({
+        req,
+        tenantId: tenant.tenantId,
+        tenantName: String(tenant.name || tenant.tenantId || '').trim(),
+        entityType: 'audit',
+        collectionName: 'audits',
+        doc: row
+      });
+    }
     const result = await AuditModel.deleteMany(query);
     count += Number(result?.deletedCount || 0);
   }

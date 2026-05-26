@@ -16,6 +16,7 @@ import { makeInventoryLine, withInventoryAudit } from '../utils/inventoryAudit.j
 import { refreshCreditSaleStatus, updateCustomerCreditMetrics } from '../utils/credit.js';
 import { normalizeTrackType, releaseSerializedUnits, sellSerializedUnits } from '../utils/productUnits.js';
 import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
+import { archiveLiveDocument } from '../utils/superBin.js';
 
 const r = Router();
 
@@ -114,12 +115,24 @@ r.post('/bulk-delete', async (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : [];
   if (ids.length === 0) return res.json({ ok: true, count: 0 });
   const objectIds = ids.filter(id => mongoose.isValidObjectId(id));
-  const result = await Sale.deleteMany({
+  const query = {
     $or: [
       { clientId: { $in: ids } },
       ...(objectIds.length > 0 ? [{ _id: { $in: objectIds } }] : [])
     ]
-  });
+  };
+  const rows = await Sale.find(query).lean();
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim() || 'master';
+  for (const row of rows) {
+    await archiveLiveDocument({
+      req,
+      tenantId,
+      entityType: 'sale',
+      collectionName: 'sales',
+      doc: row
+    });
+  }
+  const result = await Sale.deleteMany(query);
   res.json({ ok: true, count: Number(result?.deletedCount || 0) });
 });
 

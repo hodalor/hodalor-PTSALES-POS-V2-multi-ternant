@@ -24,6 +24,7 @@ import productUnits from './productUnits.js';
 import reconciliationAccounts from './reconciliationAccounts.js';
 import cashReconciliations from './cashReconciliations.js';
 import tenants from './tenants.js';
+import superBin from './superBin.js';
 import chatMessages from './chatMessages.js';
 import ptAi from './ptAi.js';
 
@@ -53,6 +54,7 @@ router.use('/product-units', productUnits);
 router.use('/reconciliation-accounts', reconciliationAccounts);
 router.use('/cash-reconciliations', cashReconciliations);
 router.use('/tenants', tenants);
+router.use('/super-bin', superBin);
 router.use('/chat-messages', chatMessages);
 router.use('/pt-ai', ptAi);
 

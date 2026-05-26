@@ -10,6 +10,7 @@ import { modelFor as TenantModelFor } from '../models/Tenant.js';
 import { getEffectiveTenantLimits, getTenantLimitDefaults, getTenantUsageSummary } from '../utils/tenantLimits.js';
 import { getPaymentManagementConfig } from '../utils/paymentManagement.js';
 import { getMobileMoneyNetworks, getTenantLimitUpgradeInfo } from '../utils/subscriptionPayments.js';
+import { archiveLiveDocument } from '../utils/superBin.js';
 
 const r = Router();
 
@@ -32,17 +33,6 @@ async function provisionBranchProducts(branch) {
       }
     }
   );
-}
-
-async function removeBranchProducts(branch) {
-  if (!branch?.id) return;
-  const fields = ['stockByBranch', 'wholesaleStockByBranch', 'warehouseStockByBranch'];
-  const unset = {};
-  fields.forEach(field => {
-    unset[`${field}.${branch.id}`] = 1;
-    unset[`variants.$[].${field}.${branch.id}`] = 1;
-  });
-  await Product.updateMany({}, { $unset: unset });
 }
 
 r.get('/', async (req, res) => {
@@ -143,9 +133,20 @@ r.delete('/:id', requireAdmin, async (req, res) => {
   const query = { $or: [{ id }] };
   if (mongoose.isValidObjectId(id)) query.$or.unshift({ _id: id });
   const b = await Branch.findOne(query);
-  await Branch.findOneAndDelete(query);
+  if (!b) return res.status(404).json({ error: 'Branch not found' });
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim() || 'master';
+  await archiveLiveDocument({
+    req,
+    tenantId,
+    entityType: 'branch',
+    collectionName: 'branches',
+    doc: b,
+    meta: {
+      stockMapsPreserved: true
+    }
+  });
+  await Branch.deleteOne({ _id: b._id });
   res.json({ ok: true });
-  void removeBranchProducts(b).catch(() => {});
   void Audit.create({
     actor: req.user?.name || 'unknown',
     actionType: 'branch_delete',

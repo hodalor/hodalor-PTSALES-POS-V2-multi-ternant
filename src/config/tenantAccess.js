@@ -13,7 +13,7 @@ export const TENANT_GRANT_KEYS = [
   'approve_refunds', 'view_expenses', 'add_expenses', 'approve_expenses', 'view_reports', 'view_revenue', 'view_profit', 'view_financials',
   'view_stock_records', 'view_inventory_consistency', 'view_wholesale_invoices', 'view_warehouse_invoices',
   'view_warehouse_approvals', 'view_imei_conflicts', 'view_cashdrawer', 'view_users',
-  'view_config', 'view_audit', 'export_tenant_data', 'import_tenant_data'
+  'view_config', 'view_audit', 'view_super_bin', 'export_tenant_data', 'import_tenant_data'
 ];
 
 export const GRANT_FEATURE_KEYS = TENANT_GRANT_KEYS.map((key) => `grants.${key}`);
@@ -42,7 +42,7 @@ export const ALL_FEATURES = [
   'modules.creditControl', 'modules.approvalsCenter', 'modules.refunds', 'modules.refundApprovals',
   'modules.expenseApprovals', 'modules.reports', 'modules.backup',
   'admin.users', 'admin.manual', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords', 'admin.inventoryConsistency',
-  'admin.cashDrawer', 'admin.config', 'admin.godhand', 'admin.docs',
+  'admin.cashDrawer', 'admin.config', 'admin.superBin', 'admin.godhand', 'admin.docs',
   'features.offlineBackup',
   'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
   ...GRANT_FEATURE_KEYS
@@ -57,13 +57,13 @@ export const PLAN_FEATURES = {
     'modules.dashboard', 'modules.pos', 'modules.invoices', 'modules.sales', 'modules.products',
     'modules.inventory', 'modules.labels', 'modules.purchases', 'modules.finance', 'modules.communication', 'modules.suppliers',
     'modules.customers', 'modules.backup', 'admin.users', 'admin.audit',
-    'admin.cashDrawer', 'admin.config', 'features.offlineBackup',
+    'admin.cashDrawer', 'admin.config', 'admin.superBin', 'features.offlineBackup',
     'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
     'grants.view_dashboard', 'grants.view_dashboard_cashier_assigned', 'grants.view_dashboard_cashier_all', 'grants.view_dashboard_branch_comparison_assigned', 'grants.view_dashboard_branch_comparison_all', 'grants.view_pos', 'grants.view_retail_price', 'grants.view_sales',
     'grants.add_sales', 'grants.backdate_sales', 'grants.reset_own_password', 'grants.view_products', 'grants.add_products', 'grants.edit_products',
     'grants.view_inventory', 'grants.edit_inventory', 'grants.view_labels', 'grants.view_purchases',
     'grants.add_purchases', 'grants.add_wholesale_purchases', 'grants.add_warehouse_purchases', 'grants.view_suppliers', 'grants.add_suppliers', 'grants.view_customers', 'grants.view_finance_reconciliation', 'grants.add_finance_reconciliation',
-    'grants.view_chat', 'grants.send_chat_messages', 'grants.view_pt_ai', 'grants.add_customers', 'grants.view_cashdrawer', 'grants.view_users', 'grants.view_config',
+    'grants.view_chat', 'grants.send_chat_messages', 'grants.view_pt_ai', 'grants.add_customers', 'grants.view_cashdrawer', 'grants.view_users', 'grants.view_config', 'grants.view_super_bin',
     'grants.export_tenant_data', 'grants.import_tenant_data'
   ],
   pro: [
@@ -82,7 +82,7 @@ export const PLAN_FEATURES = {
     'modules.creditControl', 'modules.approvalsCenter', 'modules.refunds', 'modules.refundApprovals',
     'modules.expenseApprovals', 'modules.reports', 'modules.backup',
     'admin.users', 'admin.manual', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords', 'admin.inventoryConsistency',
-    'admin.cashDrawer', 'admin.config', 'features.offlineBackup',
+    'admin.cashDrawer', 'admin.config', 'admin.superBin', 'features.offlineBackup',
     'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
     ...GRANT_FEATURE_KEYS.filter((key) => !['grants.approve_credit_director', 'grants.approve_distribution_director', 'grants.approve_warehouse_director'].includes(key))
   ],
@@ -99,7 +99,7 @@ const SECTION_FALLBACKS = {
   'sections.finance': ['modules.finance', 'pages.finance.reconciliation', 'grants.view_finance_reconciliation'],
   'sections.communication': ['modules.communication', 'pages.communication.chat', 'pages.communication.askPtAi', 'grants.view_chat', 'grants.send_chat_messages', 'grants.view_pt_ai'],
   'sections.partners': ['modules.suppliers', 'modules.customers'],
-  'sections.admin': ['admin.users', 'admin.config', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords', 'admin.inventoryConsistency', 'admin.cashDrawer', 'admin.manual', 'admin.docs', 'admin.godhand'],
+  'sections.admin': ['admin.users', 'admin.config', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords', 'admin.inventoryConsistency', 'admin.cashDrawer', 'admin.superBin', 'admin.manual', 'admin.docs', 'admin.godhand'],
   'sections.tabsRuntime': ['features.offlineBackup', 'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords']
 };
 

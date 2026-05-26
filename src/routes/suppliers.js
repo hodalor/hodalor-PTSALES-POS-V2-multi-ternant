@@ -4,6 +4,7 @@ import Supplier from '../models/Supplier.js';
 import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireAdmin, requireRole, requireRoleOrPerm } from '../middleware/auth.js';
+import { archiveLiveDocument } from '../utils/superBin.js';
 
 const r = Router();
 
@@ -128,7 +129,16 @@ r.delete('/:id', requireAdmin, async (req, res) => {
   const query = { $or: [{ clientId: id }] };
   if (mongoose.isValidObjectId(id)) query.$or.unshift({ _id: id });
   const doc = await Supplier.findOne(query);
-  await Supplier.findOneAndDelete(query);
+  if (!doc) return res.status(404).json({ error: 'Not found' });
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim() || 'master';
+  await archiveLiveDocument({
+    req,
+    tenantId,
+    entityType: 'supplier',
+    collectionName: 'suppliers',
+    doc
+  });
+  await Supplier.deleteOne({ _id: doc._id });
   res.json({ ok: true });
   void Audit.create({
     actor: req.user?.name || 'unknown',

@@ -5,6 +5,7 @@ import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
+import { archiveLiveDocument } from '../utils/superBin.js';
 
 const r = Router();
 
@@ -182,8 +183,17 @@ r.delete('/:id', requireRoleOrPerm(['Admin','Manager'], 'add_expenses'), async (
   const or = [];
   if (mongoose.isValidObjectId(id)) or.push({ _id: id });
   or.push({ clientId: id });
-  const row = await Expense.findOneAndDelete({ $or: or });
+  const row = await Expense.findOne({ $or: or });
   if (!row) return res.status(404).json({ error: 'Not found' });
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim() || 'master';
+  await archiveLiveDocument({
+    req,
+    tenantId,
+    entityType: 'expense',
+    collectionName: 'expenses',
+    doc: row
+  });
+  await Expense.deleteOne({ _id: row._id });
   res.json({ ok: true });
   void Audit.create({
     actor: req.user?.name || 'unknown',

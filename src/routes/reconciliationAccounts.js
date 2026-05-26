@@ -3,6 +3,7 @@ import Branch from '../models/Branch.js';
 import ReconciliationAccount from '../models/ReconciliationAccount.js';
 import Audit from '../models/Audit.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
+import { archiveLiveDocument } from '../utils/superBin.js';
 
 const r = Router();
 
@@ -117,6 +118,14 @@ r.put('/:id', requireRoleOrPerm(['Admin', 'Manager'], ['manage_finance_accounts'
 r.delete('/:id', requireRoleOrPerm(['Admin', 'Manager'], ['manage_finance_accounts']), async (req, res) => {
   const doc = await ReconciliationAccount.findById(req.params.id);
   if (!doc) return res.status(404).json({ error: 'Account not found' });
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim() || 'master';
+  await archiveLiveDocument({
+    req,
+    tenantId,
+    entityType: 'reconciliation_account',
+    collectionName: 'reconciliationaccounts',
+    doc
+  });
   await ReconciliationAccount.deleteOne({ _id: doc._id });
   await Audit.create({
     actor: req.user?.name || 'unknown',

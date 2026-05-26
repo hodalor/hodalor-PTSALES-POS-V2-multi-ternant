@@ -78,6 +78,7 @@ function featureForApiPath(pathname) {
   if (path.startsWith('/customers')) return 'modules.customers';
   if (path.startsWith('/settings')) return 'admin.config';
   if (path.startsWith('/users')) return 'admin.users';
+  if (path.startsWith('/super-bin')) return 'admin.superBin';
   if (path.startsWith('/server-logs')) return 'admin.serverLogs';
   if (path.startsWith('/audits')) return 'admin.audit';
   if (path.startsWith('/cashsessions')) return 'admin.cashDrawer';

@@ -10,6 +10,7 @@ import { modelFor as TenantSessionModelFor } from '../models/TenantSession.js';
 import { getEffectiveTenantLimits, getTenantLimitDefaults, getTenantUsageSummary } from '../utils/tenantLimits.js';
 import { getPaymentManagementConfig } from '../utils/paymentManagement.js';
 import { getMobileMoneyNetworks, getTenantLimitUpgradeInfo } from '../utils/subscriptionPayments.js';
+import { archiveLiveDocument } from '../utils/superBin.js';
 
 const r = Router();
 const SUPPORTED_LANGUAGES = new Set(['en', 'tw', 'ga', 'ewe', 'dag', 'fr', 'zh']);
@@ -207,6 +208,13 @@ r.delete('/:name', requireAdmin, async (req, res) => {
   const u = await User.findOne({ name });
   if (!u) return res.json({ ok: true });
   const tenantId = String(req.user?.tenantId || req.tenantId || 'master');
+  await archiveLiveDocument({
+    req,
+    tenantId,
+    entityType: 'user',
+    collectionName: 'users',
+    doc: u
+  });
   if (tenantId.toLowerCase() !== 'master') {
     try {
       const master = await getMasterConnection();
