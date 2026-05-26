@@ -496,7 +496,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       </div>
       </div>
 
-      <div className="card">
+      {clientFilter !== 'good' && <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <div>
             <h2 className="section-title" style={{ margin: 0 }}>Defaulters</h2>
@@ -541,7 +541,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
             </tbody>
           </table>
         </div>
-      </div>
+      </div>}
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
         <button className={section === 'clients' ? 'btn btn-primary' : 'btn'} onClick={() => setSection('clients')}>Client Ranking</button>
