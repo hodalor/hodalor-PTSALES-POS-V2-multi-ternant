@@ -190,6 +190,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
       { label: 'Dashboard', keys: ['modules.dashboard', 'grants.view_dashboard'] },
       { label: 'Dashboard Competition Scope', keys: ['modules.dashboard', 'grants.view_dashboard_cashier_assigned', 'grants.view_dashboard_cashier_all', 'grants.view_dashboard_branch_comparison_assigned', 'grants.view_dashboard_branch_comparison_all'] },
       { label: 'Sales', keys: ['modules.sales', 'grants.view_sales', 'grants.add_sales'] },
+      { label: 'Backdate Sales', keys: ['grants.backdate_sales'] },
       { label: 'Invoices', keys: ['modules.invoices'] },
       { label: 'Retail Products', keys: ['modules.products', 'grants.view_products', 'grants.add_products', 'grants.edit_products'] },
       { label: 'Inventory', keys: ['modules.inventory', 'grants.view_inventory', 'grants.edit_inventory'] },
