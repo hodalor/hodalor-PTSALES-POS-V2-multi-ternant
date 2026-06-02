@@ -41,6 +41,41 @@ function endOfLocalDay(value) {
   return dt ? new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 23, 59, 59, 999) : null;
 }
 
+function isDateInRange(value, start = null, end = null) {
+  const dt = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(dt.getTime())) return false;
+  if (start && dt.getTime() < start.getTime()) return false;
+  if (end && dt.getTime() > end.getTime()) return false;
+  return true;
+}
+
+function getDashboardSaleActivityType(sale) {
+  const creditMode = String(sale?.creditMode || '').trim().toLowerCase();
+  const saleType = String(sale?.posType || sale?.inventoryType || 'retail').trim().toLowerCase();
+  if (creditMode === 'retail_easybuy') return 'retail_credit';
+  if (creditMode === 'distribution_credit') return 'wholesale_credit';
+  if (saleType === 'wholesale') return 'wholesale_sales';
+  return 'retail_sales';
+}
+
+function matchesDashboardActivityFilter(sale, filter) {
+  const activityType = getDashboardSaleActivityType(sale);
+  switch (String(filter || 'all').trim().toLowerCase()) {
+    case 'all_sales':
+      return activityType === 'retail_sales' || activityType === 'wholesale_sales';
+    case 'all_credit':
+      return activityType === 'retail_credit' || activityType === 'wholesale_credit';
+    case 'retail_sales':
+    case 'retail_credit':
+    case 'wholesale_sales':
+    case 'wholesale_credit':
+      return activityType === String(filter || '').trim().toLowerCase();
+    case 'all':
+    default:
+      return true;
+  }
+}
+
 function enumerateDateKeys(fromKey, toKey) {
   const start = parseInputDateKey(fromKey);
   const end = parseInputDateKey(toKey);
@@ -99,6 +134,7 @@ function DashboardPage() {
   const [periodMode, setPeriodMode] = useState('range');
   const [dateFrom, setDateFrom] = useState(defaultFromIso);
   const [dateTo, setDateTo] = useState(todayIso);
+  const [activityFilter, setActivityFilter] = useState('all');
   const [customerLeaderboardMode, setCustomerLeaderboardMode] = useState('amount');
   const assignedBranchIds = useMemo(() => {
     const assigned = auth.user?.assignedBranches;
@@ -304,8 +340,14 @@ function DashboardPage() {
     const selectedFrom = periodMode === 'all_time' ? null : startOfLocalDay(dateFrom || defaultFromIso);
     const selectedTo = periodMode === 'all_time' ? null : endOfLocalDay(dateTo || todayIso);
     const branchSales = sales.filter((s) => matchBranch(s.branchId));
-    const sourceSales = branchSales.filter((s) => saleHasActivityInRange(s, selectedFrom, selectedTo));
-    const competitionSales = sales.filter((s) => matchCompetitionBranch(s.branchId) && inRange(s.created_at));
+    const filteredSales = branchSales.filter((s) => matchesDashboardActivityFilter(s, activityFilter));
+    const createdSales = filteredSales.filter((s) => isDateInRange(s.created_at, selectedFrom, selectedTo));
+    const activitySales = filteredSales.filter((s) => saleHasActivityInRange(s, selectedFrom, selectedTo));
+    const competitionSales = sales.filter((s) => (
+      matchCompetitionBranch(s.branchId)
+      && matchesDashboardActivityFilter(s, activityFilter)
+      && (isDateInRange(s.created_at, selectedFrom, selectedTo) || saleHasActivityInRange(s, selectedFrom, selectedTo))
+    ));
     const branchNameById = new Map(branches.map((branch) => [String(branch.id), branch.name || branch.code || branch.id]));
     let todayTotal = 0;
     let todayProfit = 0;
@@ -314,6 +356,10 @@ function DashboardPage() {
     let last30Cost = 0;
     let itemsSold = 0;
     let creditOut = 0;
+    let retailCreditOut = 0;
+    let wholesaleCreditOut = 0;
+    let retailCreditRecovered = 0;
+    let wholesaleCreditRecovered = 0;
     const perDay = {};
     const revenuePerDay = {};
     const perDayPayments = {}; // { 'YYYY-MM-DD': { cash: x, card: y, ... } }
@@ -322,12 +368,25 @@ function DashboardPage() {
     const cashierMap = new Map();
     const customerMap = new Map();
     const productProfit = new Map();
-    for (const sale of sourceSales) {
-      creditOut += Number(sale.outstandingTotal || sale.outstandingBalance || 0);
-      const day = formatLocalDateKey(sale.created_at);
-      if (!day) continue;
+    for (const sale of filteredSales) {
+      const outstandingCredit = Number(sale.outstandingTotal || sale.outstandingBalance || 0);
+      const creditMode = String(sale.creditMode || '').trim().toLowerCase();
+      creditOut += outstandingCredit;
+      if (creditMode === 'retail_easybuy') {
+        retailCreditOut += outstandingCredit;
+      } else if (creditMode === 'distribution_credit') {
+        wholesaleCreditOut += outstandingCredit;
+      }
+    }
+    for (const sale of activitySales) {
       const recognized = getSaleRangeTotals(sale, selectedFrom, selectedTo);
-      perDay[day] = (perDay[day] || 0) + recognized.revenue;
+      if (recognized.revenue <= 0 && recognized.profit <= 0 && recognized.cost <= 0) continue;
+      const creditMode = String(sale.creditMode || '').trim().toLowerCase();
+      if (creditMode === 'retail_easybuy') {
+        retailCreditRecovered += recognized.revenue;
+      } else if (creditMode === 'distribution_credit') {
+        wholesaleCreditRecovered += recognized.revenue;
+      }
       todayTotal += recognized.revenue;
       todayProfit += recognized.profit;
       const customerId = String(sale.customerId || '').trim();
@@ -349,8 +408,31 @@ function DashboardPage() {
           });
         }
         const customerRow = customerMap.get(customerKey);
-        customerRow.sales += 1;
-        customerRow.amount += Number(sale.total || 0);
+        customerRow.amount += recognized.revenue;
+      }
+    }
+    for (const sale of createdSales) {
+      const customerId = String(sale.customerId || '').trim();
+      const customerCode = String(sale.customerCode || '').trim();
+      const customerName = String(sale.customerName || '').trim();
+      const customerLabel = customerName || customerCode || customerId;
+      const normalizedCustomerLabel = customerLabel.toLowerCase();
+      let customerRow = null;
+      if (customerLabel && !['walk-in', 'walk in', '—', '-'].includes(normalizedCustomerLabel)) {
+        const customerKey = customerId || customerCode || normalizedCustomerLabel;
+        if (!customerMap.has(customerKey)) {
+          customerMap.set(customerKey, {
+            key: customerKey,
+            customerId,
+            customerCode,
+            customerName: customerLabel,
+            sales: 0,
+            amount: 0,
+            products: 0
+          });
+        }
+        customerRow = customerMap.get(customerKey);
+        if (customerRow) customerRow.sales += 1;
       }
       for (const it of sale.items) {
         itemsSold += it.qty;
@@ -370,19 +452,10 @@ function DashboardPage() {
         row.revenue += qty * price;
         row.cost += qty * (Number.isFinite(cp) ? cp : 0);
         row.profit = row.revenue - row.cost;
-        const customerId = String(sale.customerId || '').trim();
-        const customerCode = String(sale.customerCode || '').trim();
-        const customerName = String(sale.customerName || '').trim();
-        const customerLabel = customerName || customerCode || customerId;
-        const normalizedCustomerLabel = customerLabel.toLowerCase();
-        if (customerLabel && !['walk-in', 'walk in', '—', '-'].includes(normalizedCustomerLabel)) {
-          const customerKey = customerId || customerCode || normalizedCustomerLabel;
-          const customerRow = customerMap.get(customerKey);
-          if (customerRow) customerRow.products += qty;
-        }
+        if (customerRow) customerRow.products += qty;
       }
     }
-    for (const sale of sourceSales) {
+    for (const sale of activitySales) {
       const timeline = Array.isArray(sale.paymentTimeline) ? sale.paymentTimeline : [];
       timeline.forEach((event) => {
         const paidAt = new Date(event.paidAt || 0);
@@ -390,6 +463,7 @@ function DashboardPage() {
         if (selectedFrom && paidAt.getTime() < selectedFrom.getTime()) return;
         if (selectedTo && paidAt.getTime() > selectedTo.getTime()) return;
         const day = formatLocalDateKey(paidAt);
+        perDay[day] = (perDay[day] || 0) + Number(event.amount || 0);
         const paymentType = String(event.paymentMethod || (event.source === 'credit_repayment' ? 'cash' : 'other')).toLowerCase();
         perDayPayments[day] = perDayPayments[day] || {};
         perDayPayments[day][paymentType] = (perDayPayments[day][paymentType] || 0) + Number(event.amount || 0);
@@ -404,12 +478,7 @@ function DashboardPage() {
     const revenueChartToIso = periodMode === 'all_time'
       ? ''
       : (dateTo || todayIso);
-    const revenueChartSales = branchSales.filter((sale) => {
-      if (periodMode === 'all_time') return true;
-      const key = formatLocalDateKey(sale.created_at);
-      if (!key) return false;
-      return (!revenueChartFromIso || key >= revenueChartFromIso) && (!revenueChartToIso || key <= revenueChartToIso);
-    });
+    const revenueChartSales = filteredSales;
     for (const sale of revenueChartSales) {
       const timeline = Array.isArray(sale.paymentTimeline) ? sale.paymentTimeline : [];
       timeline.forEach((event) => {
@@ -442,20 +511,21 @@ function DashboardPage() {
       }
       const cashierRow = cashierMap.get(cashierKey);
       const totals = getSaleRangeTotals(sale, selectedFrom, selectedTo);
+      if (totals.revenue <= 0 && totals.profit <= 0) continue;
       cashierRow.sales += 1;
       cashierRow.revenue += totals.revenue;
       cashierRow.profit += totals.profit;
     }
-    const filteredDateKeys = sourceSales
+    const filteredDateKeys = createdSales
       .map((sale) => formatLocalDateKey(sale.created_at))
       .filter(Boolean)
       .sort((a, b) => a.localeCompare(b));
     const daysInRange = periodMode === 'all_time'
-      ? Array.from(new Set(filteredDateKeys))
+      ? Array.from(new Set([...filteredDateKeys, ...Object.keys(perDayPayments), ...Object.keys(revenuePerDay)])).sort((a, b) => a.localeCompare(b))
       : enumerateDateKeys(dateFrom || defaultFromIso, dateTo || todayIso);
     const last7 = daysInRange.slice(-7);
     const revenueChartDays = periodMode === 'all_time'
-      ? Array.from(new Set(revenueChartSales.map((sale) => formatLocalDateKey(sale.created_at)).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+      ? Array.from(new Set(Object.keys(revenuePerDay))).sort((a, b) => a.localeCompare(b))
       : enumerateDateKeys(revenueChartFromIso, revenueChartToIso);
     const last30 = daysInRange;
     const lineData = {
@@ -475,7 +545,7 @@ function DashboardPage() {
       }]
     };
     last30Revenue = last30.reduce((s, d) => s + (Number(perDay[d] || 0)), 0);
-    const last30Sales = sourceSales;
+    const last30Sales = activitySales;
     last30Profit = last30Sales.reduce((s, x) => s + getSaleRangeTotals(x, selectedFrom, selectedTo).profit, 0);
     last30Cost = last30Sales.reduce((s, x) => s + getSaleRangeTotals(x, selectedFrom, selectedTo).cost, 0);
     const marginPct = last30Revenue > 0 ? Math.round((last30Profit / last30Revenue) * 10000) / 100 : 0;
@@ -592,8 +662,36 @@ function DashboardPage() {
     const revenueLineTitle = periodMode === 'all_time'
       ? t('Revenue (All Time)')
       : (useRevenueChartDefaultWindow ? t('Revenue (Last 30 Days)') : t('Revenue (Selected Range)'));
-    return { todayTotal, todayProfit, itemsSold, transactionCount: sourceSales.length, creditOut, lineData, paymentBar, doughData, topBar, stackedOptions, lineOptions, barOptions, cashierBar, last30Revenue, last30Profit, last30Cost, marginPct, cashierLeaderboard, customerLeaderboardByAmount, customerLeaderboardByProducts, topProfitProducts, multiBranchCashierView, revenueLineTitle };
-  }, [sales, products, branches, branchId, dateFrom, dateTo, inRange, matchBranch, matchCompetitionBranch, defaultFromIso, defaultRevenueChartFromIso, todayIso, periodMode, canUseScopedDashboardBranches, canViewBranchCompetitionAll, canViewCashierCompetitionAll, t]);
+    return {
+      todayTotal,
+      todayProfit,
+      itemsSold,
+      transactionCount: createdSales.length,
+      creditOut,
+      retailCreditOut,
+      wholesaleCreditOut,
+      retailCreditRecovered,
+      wholesaleCreditRecovered,
+      lineData,
+      paymentBar,
+      doughData,
+      topBar,
+      stackedOptions,
+      lineOptions,
+      barOptions,
+      cashierBar,
+      last30Revenue,
+      last30Profit,
+      last30Cost,
+      marginPct,
+      cashierLeaderboard,
+      customerLeaderboardByAmount,
+      customerLeaderboardByProducts,
+      topProfitProducts,
+      multiBranchCashierView,
+      revenueLineTitle
+    };
+  }, [sales, products, branches, branchId, dateFrom, dateTo, inRange, matchBranch, matchCompetitionBranch, defaultFromIso, defaultRevenueChartFromIso, todayIso, periodMode, activityFilter, canUseScopedDashboardBranches, canViewBranchCompetitionAll, canViewCashierCompetitionAll, t]);
 
   const finance = useMemo(() => {
     const expenseTotal = expenses.reduce((s, x) => s + (Number(x.amount) || 0), 0);
@@ -728,13 +826,17 @@ function DashboardPage() {
     boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.5)'
   });
   const summaryCards = [
-    { key: 'sales', label: t('Collected Revenue (Filtered Range)'), value: maskRevenue(metrics.todayTotal), subtitle: periodMode === 'all_time' ? t('All collected time') : t('Cash received in selected range'), accent: '#2563eb', tint: '#dbeafe', badge: 'RV' },
-    { key: 'profit', label: t('Collected Profit (Filtered Range)'), value: maskProfit(metrics.todayProfit), subtitle: canViewProfit ? t('Recognized from received payments') : t('Profit access masked'), accent: '#7c3aed', tint: '#ede9fe', badge: 'PF' },
-    { key: 'items', label: t('Items Sold'), value: metrics.itemsSold, subtitle: t('Units moved in scope'), accent: '#0f766e', tint: '#ccfbf1', badge: 'IT' },
+    { key: 'sales', label: t('Revenue (Filtered Range)'), value: maskRevenue(metrics.todayTotal), subtitle: periodMode === 'all_time' ? t('Recognized revenue for all time') : t('Recognized revenue in selected range'), accent: '#2563eb', tint: '#dbeafe', badge: 'RV' },
+    { key: 'profit', label: t('Profit (Filtered Range)'), value: maskProfit(metrics.todayProfit), subtitle: canViewProfit ? t('Recognized profit in selected range') : t('Profit access masked'), accent: '#7c3aed', tint: '#ede9fe', badge: 'PF' },
+    { key: 'items', label: t('Items Sold'), value: metrics.itemsSold, subtitle: t('Units from sales created in range'), accent: '#0f766e', tint: '#ccfbf1', badge: 'IT' },
     { key: 'credit_out', label: t('Credit Out'), value: maskRevenue(metrics.creditOut), subtitle: t('Outstanding credit still not collected'), accent: '#b45309', tint: '#ffedd5', badge: 'CR' },
-    { key: 'transactions', label: t('Transactions'), value: metrics.transactionCount, subtitle: t('Completed sales count'), accent: '#f59e0b', tint: '#fef3c7', badge: 'TX' },
+    { key: 'retail_credit_out', label: t('Retail Credit Out'), value: maskRevenue(metrics.retailCreditOut), subtitle: t('Outstanding EasyBuy balance'), accent: '#0ea5e9', tint: '#e0f2fe', badge: 'RE' },
+    { key: 'wholesale_credit_out', label: t('Wholesale Credit Out'), value: maskRevenue(metrics.wholesaleCreditOut), subtitle: t('Outstanding wholesale credit balance'), accent: '#7c2d12', tint: '#ffedd5', badge: 'WC' },
+    { key: 'retail_credit_recovered', label: t('Retail Credit Recovered'), value: maskRevenue(metrics.retailCreditRecovered), subtitle: periodMode === 'all_time' ? t('All recovered EasyBuy amount') : t('Recovered EasyBuy amount in selected range'), accent: '#10b981', tint: '#d1fae5', badge: 'RR' },
+    { key: 'wholesale_credit_recovered', label: t('Wholesale Credit Recovered'), value: maskRevenue(metrics.wholesaleCreditRecovered), subtitle: periodMode === 'all_time' ? t('All recovered wholesale credit amount') : t('Recovered wholesale credit amount in selected range'), accent: '#a855f7', tint: '#f3e8ff', badge: 'WR' },
+    { key: 'transactions', label: t('Sales Count'), value: metrics.transactionCount, subtitle: t('Sales created in selected range'), accent: '#f59e0b', tint: '#fef3c7', badge: 'TX' },
     { key: 'margin', label: t('Margin'), value: maskProfitText(`${metrics.marginPct}%`), subtitle: t('Gross margin percentage'), accent: '#ec4899', tint: '#fce7f3', badge: 'MG' },
-    { key: 'cashflow', label: t('Net Cashflow'), value: maskProfit(finance.net), subtitle: t('Revenue minus expenses'), accent: '#16a34a', tint: '#dcfce7', badge: 'CF' },
+    { key: 'cashflow', label: t('Net Cashflow'), value: maskProfit(finance.net), subtitle: t('Recognized revenue minus expenses'), accent: '#16a34a', tint: '#dcfce7', badge: 'CF' },
     ...(canUseFinanceReconciliation ? [
       { key: 'deposited', label: t('Deposited to Company Account'), value: maskRevenue(financeSummary.depositedAmount), subtitle: financeSummaryLoading ? t('Refreshing finance summary') : t('Approved reconciliations'), accent: '#14b8a6', tint: '#ccfbf1', badge: 'DP', loading: financeSummaryLoading },
       { key: 'awaiting', label: t('Waiting for Deposit'), value: maskRevenue(financeSummary.awaitingAmount), subtitle: financeSummaryLoading ? t('Refreshing finance summary') : t('Backlog days: {count}', { count: financeSummary.backlogDays }), accent: '#ef4444', tint: '#fee2e2', badge: 'WD', loading: financeSummaryLoading }
@@ -817,6 +919,18 @@ function DashboardPage() {
           <label>
             <div style={fieldLabelStyle}>{t('To')}</div>
             <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
+          </label>
+          <label>
+            <div style={fieldLabelStyle}>{t('Activity')}</div>
+            <select className="select" value={activityFilter} onChange={e => setActivityFilter(e.target.value)}>
+              <option value="all">{t('All Sales & Credit')}</option>
+              <option value="all_sales">{t('All Sales')}</option>
+              <option value="all_credit">{t('All Credit')}</option>
+              <option value="retail_sales">{t('Retail Sales')}</option>
+              <option value="retail_credit">{t('Retail Credit')}</option>
+              <option value="wholesale_sales">{t('Wholesale Sales')}</option>
+              <option value="wholesale_credit">{t('Wholesale Credit')}</option>
+            </select>
           </label>
           <label>
             <div style={fieldLabelStyle}>{t('Branch')}</div>
