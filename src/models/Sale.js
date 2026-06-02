@@ -45,6 +45,7 @@ const SaleSchema = new mongoose.Schema({
   invoiceSerial: { type: String },
   receiptNumber: { type: String },
   payment_methods: { type: [PaymentSchema], default: [] },
+  creditMode: { type: String, enum: ['none', 'retail_easybuy', 'distribution_credit'], default: 'none' },
   creditSaleId: { type: String, index: true },
   creditDueDate: { type: Date },
   creditAmountPaidNow: { type: Number, default: 0 },

@@ -5,6 +5,7 @@ const CreditRepaymentSchema = new mongoose.Schema({
   creditSaleId: { type: String, required: true, index: true },
   customerId: { type: String, required: true, index: true },
   amount: { type: Number, required: true, min: 0 },
+  paymentMethod: { type: String, default: 'cash' },
   remark: { type: String, default: '' },
   initiatedByName: { type: String, default: '' },
   initiatedByRole: { type: String, default: '' },

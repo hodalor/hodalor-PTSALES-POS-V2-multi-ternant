@@ -17,6 +17,7 @@ import { refreshCreditSaleStatus, updateCustomerCreditMetrics } from '../utils/c
 import { normalizeTrackType, releaseSerializedUnits, sellSerializedUnits } from '../utils/productUnits.js';
 import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
 import { archiveLiveDocument } from '../utils/superBin.js';
+import { enrichSalesWithAccounting } from '../utils/saleAccounting.js';
 
 const r = Router();
 
@@ -106,7 +107,8 @@ r.get('/', requireRoleOrPerm(['Admin','Manager','Cashier'], ['view_sales','see_s
   }
   const limit = Math.min(2000, Math.max(1, Number(req.query.limit || 500)));
   const rows = await Sale.find(query).sort({ created_at: -1 }).limit(limit).lean();
-  res.json(rows);
+  const enriched = await enrichSalesWithAccounting(rows);
+  res.json(enriched);
 });
 
 r.post('/bulk-delete', async (req, res) => {
@@ -418,6 +420,9 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
     if (creditPayload) {
       if (!customerId || !customerDoc) badRequest('EasyBuy requires a registered customer');
       creditUpfront = Math.max(0, Math.min(revenueTotal, Number(creditPayload.amountPaidNow || 0)));
+      if (Math.abs(paidOutsideCredit - creditUpfront) > 0.005) {
+        badRequest('Credit sale payment methods must match the amount paid now');
+      }
       creditDueDate = creditPayload.dueDate ? new Date(creditPayload.dueDate) : null;
       if (!creditDueDate || Number.isNaN(creditDueDate.getTime())) badRequest('EasyBuy due date is required');
       const globalPercent = Math.max(0, Math.min(100, Number(settingsData.minimumUpfrontPaymentPercent || 0)));
@@ -440,7 +445,6 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       if (maxCreditLimit > 0 && (Number(customerDoc.outstandingBalance || 0) + requestedBalance) > maxCreditLimit) {
         badRequest('Customer exceeds the configured credit limit');
       }
-      payments.push({ type: 'easybuy', amount: requestedBalance });
     }
 
     sale = await Sale.create({
@@ -458,6 +462,9 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       tax,
       total: revenueTotal,
       payment_methods: payments,
+      creditMode: creditPayload
+        ? (posType === 'wholesale' ? 'distribution_credit' : 'retail_easybuy')
+        : 'none',
       invoiceSerial,
       receiptNumber,
       creditDueDate: creditPayload ? creditDueDate : undefined,

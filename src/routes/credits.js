@@ -13,6 +13,15 @@ const r = Router();
 
 r.use(requireAuth);
 
+async function getPendingRepaymentAmount(creditSaleId) {
+  if (!creditSaleId) return 0;
+  const rows = await CreditRepayment.find({
+    creditSaleId: String(creditSaleId),
+    status: { $in: ['pending_director', 'pending_manager'] }
+  }).select('amount').lean();
+  return rows.reduce((sum, row) => sum + Math.max(0, Number(row?.amount || 0)), 0);
+}
+
 r.get('/sales', async (req, res) => {
   const query = {};
   if (req.query.customerId) query.customer_id = String(req.query.customerId);
@@ -48,16 +57,29 @@ r.post('/repayments', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], 'add_sa
   const body = req.body || {};
   const creditSaleId = String(body.creditSaleId || '');
   const amount = Math.max(0, Number(body.amount || 0));
+  const paymentMethod = ['cash', 'card', 'mobile', 'wallet'].includes(String(body.paymentMethod || '').trim().toLowerCase())
+    ? String(body.paymentMethod || '').trim().toLowerCase()
+    : 'cash';
   if (!creditSaleId) return res.status(400).json({ error: 'Missing creditSaleId' });
   if (amount <= 0) return res.status(400).json({ error: 'Amount must be greater than zero' });
   const creditSale = await CreditSale.findById(creditSaleId);
   if (!creditSale) return res.status(404).json({ error: 'Credit sale not found' });
   await refreshCreditSaleStatus(creditSale);
   if (String(creditSale.status || '') === 'completed') return res.status(400).json({ error: 'Credit sale is already completed' });
+  const outstandingAmount = Math.max(0, Number(creditSale.balance || 0) + Number(creditSale.accumulated_penalty || 0));
+  const pendingAmount = await getPendingRepaymentAmount(creditSale._id);
+  const availableAmount = Math.max(0, outstandingAmount - pendingAmount);
+  if (availableAmount <= 0) {
+    return res.status(400).json({ error: 'Outstanding balance is already covered by pending repayments' });
+  }
+  if (amount > availableAmount) {
+    return res.status(400).json({ error: `Repayment amount exceeds remaining payable amount of ${availableAmount.toFixed(2)}` });
+  }
   const repayment = await CreditRepayment.create({
     creditSaleId: String(creditSale._id),
     customerId: String(creditSale.customer_id),
     amount,
+    paymentMethod,
     remark: String(body.remark || ''),
     initiatedByName: req.user?.name || 'unknown',
     initiatedByRole: req.user?.role || '',

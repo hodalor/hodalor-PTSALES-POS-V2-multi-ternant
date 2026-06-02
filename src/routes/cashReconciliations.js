@@ -10,6 +10,7 @@ import { modelFor as TenantModelFor } from '../models/Tenant.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import { createApprovalForReference } from '../utils/approvalWorkflow.js';
 import { uploadMediaString } from '../utils/mediaStorage.js';
+import { listRecognizedSalesTotalsByDay } from '../utils/saleAccounting.js';
 import { canAccessAccount, normalizeBranchIds, resolveAllowedBranchIds } from './reconciliationAccounts.js';
 
 const r = Router();
@@ -97,90 +98,11 @@ async function resolveRequestedBranchIds(req, scope) {
 }
 
 async function listSalesTotalsByDay(branchIds, start, end) {
-  const totals = new Map();
-  const [totalRows, paymentRows] = await Promise.all([
-    Sale.aggregate([
-      { $match: { branchId: { $in: branchIds }, created_at: { $gte: start, $lte: end } } },
-      {
-        $group: {
-          _id: {
-            branchId: '$branchId',
-            day: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } }
-          },
-          total: { $sum: { $ifNull: ['$total', 0] } }
-        }
-      }
-    ]),
-    Sale.aggregate([
-      { $match: { branchId: { $in: branchIds }, created_at: { $gte: start, $lte: end } } },
-      { $unwind: { path: '$payment_methods', preserveNullAndEmptyArrays: false } },
-      {
-        $group: {
-          _id: {
-            branchId: '$branchId',
-            day: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } },
-            paymentMethod: { $toLower: { $ifNull: ['$payment_methods.type', 'other'] } }
-          },
-          amount: { $sum: { $ifNull: ['$payment_methods.amount', 0] } }
-        }
-      }
-    ])
-  ]);
-  totalRows.forEach((row) => {
-    const branchId = normalizeString(row?._id?.branchId);
-    const day = normalizeDateKey(row?._id?.day);
-    if (!branchId || !day) return;
-    totals.set(`${branchId}:${day}`, {
-      branchId,
-      date: day,
-      total: Number(row?.total || 0),
-      paymentBreakdown: {}
-    });
-  });
-  paymentRows.forEach((row) => {
-    const branchId = normalizeString(row?._id?.branchId);
-    const day = normalizeDateKey(row?._id?.day);
-    const paymentMethod = normalizeString(row?._id?.paymentMethod || 'other').toLowerCase() || 'other';
-    if (!branchId || !day) return;
-    const key = `${branchId}:${day}`;
-    if (!totals.has(key)) {
-      totals.set(key, {
-        branchId,
-        date: day,
-        total: 0,
-        paymentBreakdown: {}
-      });
-    }
-    totals.get(key).paymentBreakdown[paymentMethod] = Number(row?.amount || 0);
-  });
-  return totals;
+  return listRecognizedSalesTotalsByDay(branchIds, start, end);
 }
 
 async function listSalesAmountsByDay(branchIds, start, end) {
-  const totals = new Map();
-  const rows = await Sale.aggregate([
-    { $match: { branchId: { $in: branchIds }, created_at: { $gte: start, $lte: end } } },
-    {
-      $group: {
-        _id: {
-          branchId: '$branchId',
-          day: { $dateToString: { format: '%Y-%m-%d', date: '$created_at' } }
-        },
-        total: { $sum: { $ifNull: ['$total', 0] } }
-      }
-    }
-  ]);
-  rows.forEach((row) => {
-    const branchId = normalizeString(row?._id?.branchId);
-    const day = normalizeDateKey(row?._id?.day);
-    if (!branchId || !day) return;
-    totals.set(`${branchId}:${day}`, {
-      branchId,
-      date: day,
-      total: Number(row?.total || 0)
-    });
-  });
-  return totals;
+  return listRecognizedSalesTotalsByDay(branchIds, start, end);
 }
 
 async function loadCoverageSets(branchIds, start, end) {
