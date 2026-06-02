@@ -2,6 +2,45 @@ import { formatCurrency } from './currency';
 import { generateQrSvg } from './qr';
 import { translateDocumentLanguage } from './localization';
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatDateTime(value) {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString();
+}
+
+function paymentMethodLabel(value, t) {
+  const method = String(value || '').trim().toLowerCase();
+  if (method === 'card') return t('Card');
+  if (method === 'mobile') return t('Mobile Money');
+  if (method === 'wallet') return t('Wallet');
+  return t('Cash');
+}
+
+function repaymentStatusLabel(value, t) {
+  const status = String(value || '').trim().toLowerCase();
+  if (status === 'approved') return t('Approved');
+  if (status === 'rejected') return t('Rejected');
+  if (status === 'pending_manager') return t('Pending Manager');
+  return t('Pending Director');
+}
+
+function actorLabel(name, role) {
+  const person = String(name || '').trim();
+  const personRole = String(role || '').trim();
+  if (person && personRole) return `${person} (${personRole})`;
+  return person || personRole || '';
+}
+
 export function printReceiptHtml(html) {
   const w = window.open('', 'PRINT', 'width=400,height=600');
   if (!w) return;
@@ -98,7 +137,10 @@ export function buildBrandedReceiptHtml({ settings, sale }) {
   const easyBuyDueDate = sale?.creditDueDate || sale?.creditSale?.due_date || sale?.creditSale?.dueDate || null;
   const easyBuyPaidNow = Number(sale?.creditAmountPaidNow ?? sale?.creditSale?.amount_paid ?? sale?.creditSale?.amountPaidNow ?? 0);
   const easyBuyBalance = Number(sale?.creditBalance ?? sale?.creditSale?.balance ?? Math.max(0, Number(sale.total || 0) - easyBuyPaidNow));
-  const hasEasyBuy = (sale.payment_methods || []).some(p => String(p.type || '').toLowerCase() === 'easybuy') || !!easyBuyDueDate;
+  const repaymentHistory = Array.isArray(sale?.repaymentHistory) ? sale.repaymentHistory : [];
+  const hasEasyBuy = (sale.payment_methods || []).some(p => String(p.type || '').toLowerCase() === 'easybuy') || !!easyBuyDueDate || repaymentHistory.length > 0;
+  const creditMode = String(sale?.creditMode || '').trim().toLowerCase();
+  const creditLabel = creditMode === 'distribution_credit' ? t('Distribution Credit') : t('EasyBuy');
   const isPaid = paid >= (Number(sale.total) || 0) - 0.005;
   const showPaidStamp = stampEnabled && isPaid;
   const today = new Date(sale.created_at || Date.now()).toLocaleDateString();
@@ -117,6 +159,36 @@ export function buildBrandedReceiptHtml({ settings, sale }) {
     const label = String(p.type || 'cash').toUpperCase();
     return `<div class="sp"><span>${label}</span><span>${formatCurrency(p.amount || 0, settings)}</span></div>`;
   }).join('');
+  const repaymentSection = hasEasyBuy ? `
+    <div class="hr"></div>
+    <div class="title">${t('Credit Ledger').toUpperCase()}</div>
+    <div class="sp"><span>${t('Sale Date').toUpperCase()}</span><span>${escapeHtml(formatDateTime(sale.created_at))}</span></div>
+    <div class="sp"><span>${creditLabel.toUpperCase()} ${t('Total').toUpperCase()}</span><span>${formatCurrency(sale.total || 0, settings)}</span></div>
+    <div class="sp"><span>${creditLabel.toUpperCase()} ${t('Upfront Paid').toUpperCase()}</span><span>${formatCurrency(easyBuyPaidNow, settings)}</span></div>
+    <div class="sp"><span>${creditLabel.toUpperCase()} ${t('Outstanding').toUpperCase()}</span><span>${formatCurrency(easyBuyBalance, settings)}</span></div>
+    ${easyBuyDueDate ? `<div class="sp"><span>${creditLabel.toUpperCase()} ${t('Due Date').toUpperCase()}</span><span>${escapeHtml(new Date(easyBuyDueDate).toLocaleDateString())}</span></div>` : ''}
+    ${repaymentHistory.length > 0 ? repaymentHistory.map((entry, index) => {
+      const initiatedBy = actorLabel(entry?.initiatedByName, entry?.initiatedByRole);
+      const approvedBy = actorLabel(entry?.approvedByName, entry?.approvedByRole);
+      const initiatedAt = formatDateTime(entry?.initiatedAt);
+      const approvedAt = formatDateTime(entry?.approvedAt);
+      const rejectedAt = formatDateTime(entry?.rejectedAt);
+      const remark = String(entry?.remark || '').trim();
+      return `
+        <div class="hr"></div>
+        <div class="title">${t('Repayment').toUpperCase()} ${index + 1}</div>
+        <div class="sp"><span>${t('Amount').toUpperCase()}</span><span>${formatCurrency(entry?.amount || 0, settings)}</span></div>
+        <div class="sp"><span>${t('Method').toUpperCase()}</span><span>${escapeHtml(paymentMethodLabel(entry?.paymentMethod, t).toUpperCase())}</span></div>
+        <div class="sp"><span>${t('Status').toUpperCase()}</span><span>${escapeHtml(repaymentStatusLabel(entry?.status, t).toUpperCase())}</span></div>
+        ${initiatedAt ? `<div class="small">${t('Initiated').toUpperCase()}: ${escapeHtml(initiatedAt)}</div>` : ''}
+        ${initiatedBy ? `<div class="small">${t('Initiated By').toUpperCase()}: ${escapeHtml(initiatedBy)}</div>` : ''}
+        ${approvedAt ? `<div class="small">${t('Approved').toUpperCase()}: ${escapeHtml(approvedAt)}</div>` : ''}
+        ${approvedBy ? `<div class="small">${t('Approved By').toUpperCase()}: ${escapeHtml(approvedBy)}</div>` : ''}
+        ${rejectedAt ? `<div class="small">${t('Rejected').toUpperCase()}: ${escapeHtml(rejectedAt)}</div>` : ''}
+        ${remark ? `<div class="small">${t('Remark').toUpperCase()}: ${escapeHtml(remark)}</div>` : ''}
+      `;
+    }).join('') : `<div class="small muted">${t('No repayments recorded yet')}</div>`}
+  ` : '';
   const base = (settings?.receiptQrBaseUrl && settings.receiptQrBaseUrl.trim()) ? settings.receiptQrBaseUrl.trim().replace(/\/+$/,'') : (typeof window !== 'undefined' ? window.location.origin : '');
   const saleId = sale?.id || sale?._id || '';
   const compact = {
@@ -175,12 +247,13 @@ export function buildBrandedReceiptHtml({ settings, sale }) {
     <div class="hr"></div>
     <div class="title">${t('Payments').toUpperCase()}</div>
     ${payments}
-    ${hasEasyBuy ? `<div class="sp"><span>${t('EasyBuy Paid').toUpperCase()}</span><span>${formatCurrency(easyBuyPaidNow, settings)}</span></div>` : ''}
-    ${hasEasyBuy ? `<div class="sp"><span>${t('EasyBuy Balance').toUpperCase()}</span><span>${formatCurrency(easyBuyBalance, settings)}</span></div>` : ''}
-    ${hasEasyBuy && easyBuyDueDate ? `<div class="sp"><span>${t('EasyBuy Due Date').toUpperCase()}</span><span>${new Date(easyBuyDueDate).toLocaleDateString()}</span></div>` : ''}
+    ${hasEasyBuy ? `<div class="sp"><span>${escapeHtml(`${creditLabel} ${t('Paid')}`.toUpperCase())}</span><span>${formatCurrency(easyBuyPaidNow, settings)}</span></div>` : ''}
+    ${hasEasyBuy ? `<div class="sp"><span>${escapeHtml(`${creditLabel} ${t('Balance')}`.toUpperCase())}</span><span>${formatCurrency(easyBuyBalance, settings)}</span></div>` : ''}
+    ${hasEasyBuy && easyBuyDueDate ? `<div class="sp"><span>${escapeHtml(`${creditLabel} ${t('Due Date')}`.toUpperCase())}</span><span>${escapeHtml(new Date(easyBuyDueDate).toLocaleDateString())}</span></div>` : ''}
     <div class="sp"><span>${t('Rounding').toUpperCase()}</span><span>${formatCurrency(0, settings)}</span></div>
     <div class="sp"><span>${t('Change').toUpperCase()}</span><span>${formatCurrency(change, settings)}</span></div>
     <div class="sp"><span class="muted">${t('Total Items').toUpperCase()}:</span><span class="muted">${qtySum}</span></div>
+    ${repaymentSection}
     <div class="hr"></div>
     <div class="title">${t('Tax Invoice').toUpperCase()}</div>
     <div class="sp"><span>${t('VAT Incl @ {rate}%', { rate })}</span><span></span></div>

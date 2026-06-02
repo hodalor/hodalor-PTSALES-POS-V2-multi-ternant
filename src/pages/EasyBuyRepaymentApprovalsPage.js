@@ -6,10 +6,13 @@ import { useToast } from '../components/ToastProvider';
 import { confirmDialog, promptDialog } from '../utils/dialogs';
 import Modal from '../components/Modal';
 import InlineSpinner from '../components/InlineSpinner';
+import { printCreditReceiptByCreditSaleId } from '../utils/creditReceiptPrint';
 
 function EasyBuyRepaymentApprovalsPage() {
   const toast = useToast();
   const auth = useSelector(s => s.auth);
+  const settings = useSelector(s => s.settings);
+  const branches = useSelector(s => s.branches.branches || []);
   const canDeleteRepayments = String(auth.role || '').toLowerCase() === 'superadmin';
   const [rows, setRows] = useState([]);
   const [status, setStatus] = useState('pending_director');
@@ -43,6 +46,8 @@ function EasyBuyRepaymentApprovalsPage() {
   useEffect(() => { loadRepayments(); }, [loadRepayments]);
 
   async function onApprove(row) {
+    const repayment = repaymentsById[String(row.referenceId)] || null;
+    const shouldPrintAfterApprove = String(row?.status || '').toLowerCase() === 'pending_manager';
     const remark = await promptDialog('Approval remark');
     if (!remark || !String(remark).trim()) return;
     setWorkingId(row._id || '');
@@ -50,6 +55,17 @@ function EasyBuyRepaymentApprovalsPage() {
       await approveApproval(row._id, { remark, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '' });
       setRows(prev => prev.filter(item => String(item._id) !== String(row._id)));
       toast.show('Repayment approval updated', { type: 'success' });
+      if (shouldPrintAfterApprove) {
+        try {
+          await printCreditReceiptByCreditSaleId({
+            creditSaleId: repayment?.creditSaleId,
+            settings,
+            branches
+          });
+        } catch (printError) {
+          toast.show(String(printError?.message || 'Final approval succeeded, but receipt could not open'), { type: 'error' });
+        }
+      }
       void load();
       void loadRepayments();
     } catch (e) {

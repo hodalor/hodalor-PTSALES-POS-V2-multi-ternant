@@ -10,6 +10,7 @@ import { isFeatureEnabled } from '../utils/featureFlags';
 import BranchSelect from '../components/BranchSelect';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
+import { getSaleRangeTotals, saleHasActivityInRange } from '../utils/saleAccounting';
 
 Chart.register(BarElement, LineElement, PointElement, CategoryScale, LinearScale, ArcElement, Tooltip, Legend, Filler);
 
@@ -28,6 +29,16 @@ function parseInputDateKey(value) {
   const [year, month, day] = raw.split('-').map(Number);
   if (!year || !month || !day) return null;
   return new Date(year, month - 1, day, 12, 0, 0, 0);
+}
+
+function startOfLocalDay(value) {
+  const dt = parseInputDateKey(value);
+  return dt ? new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 0, 0, 0, 0) : null;
+}
+
+function endOfLocalDay(value) {
+  const dt = parseInputDateKey(value);
+  return dt ? new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 23, 59, 59, 999) : null;
 }
 
 function enumerateDateKeys(fromKey, toKey) {
@@ -290,8 +301,10 @@ function DashboardPage() {
   };
 
   const metrics = useMemo(() => {
+    const selectedFrom = periodMode === 'all_time' ? null : startOfLocalDay(dateFrom || defaultFromIso);
+    const selectedTo = periodMode === 'all_time' ? null : endOfLocalDay(dateTo || todayIso);
     const branchSales = sales.filter((s) => matchBranch(s.branchId));
-    const sourceSales = branchSales.filter((s) => inRange(s.created_at));
+    const sourceSales = branchSales.filter((s) => saleHasActivityInRange(s, selectedFrom, selectedTo));
     const competitionSales = sales.filter((s) => matchCompetitionBranch(s.branchId) && inRange(s.created_at));
     const branchNameById = new Map(branches.map((branch) => [String(branch.id), branch.name || branch.code || branch.id]));
     let todayTotal = 0;
@@ -300,6 +313,7 @@ function DashboardPage() {
     let last30Profit = 0;
     let last30Cost = 0;
     let itemsSold = 0;
+    let creditOut = 0;
     const perDay = {};
     const revenuePerDay = {};
     const perDayPayments = {}; // { 'YYYY-MM-DD': { cash: x, card: y, ... } }
@@ -309,16 +323,13 @@ function DashboardPage() {
     const customerMap = new Map();
     const productProfit = new Map();
     for (const sale of sourceSales) {
+      creditOut += Number(sale.outstandingTotal || sale.outstandingBalance || 0);
       const day = formatLocalDateKey(sale.created_at);
       if (!day) continue;
-      perDay[day] = (perDay[day] || 0) + sale.total;
-      perDayPayments[day] = perDayPayments[day] || {};
-      (sale.payment_methods || []).forEach(pm => {
-        const paymentType = pm.type || 'other';
-        perDayPayments[day][paymentType] = (perDayPayments[day][paymentType] || 0) + (pm.amount || 0);
-      });
-      todayTotal += sale.total;
-      todayProfit += Number(sale.profitTotal || 0);
+      const recognized = getSaleRangeTotals(sale, selectedFrom, selectedTo);
+      perDay[day] = (perDay[day] || 0) + recognized.revenue;
+      todayTotal += recognized.revenue;
+      todayProfit += recognized.profit;
       const customerId = String(sale.customerId || '').trim();
       const customerCode = String(sale.customerCode || '').trim();
       const customerName = String(sale.customerName || '').trim();
@@ -371,6 +382,19 @@ function DashboardPage() {
         }
       }
     }
+    for (const sale of sourceSales) {
+      const timeline = Array.isArray(sale.paymentTimeline) ? sale.paymentTimeline : [];
+      timeline.forEach((event) => {
+        const paidAt = new Date(event.paidAt || 0);
+        if (Number.isNaN(paidAt.getTime())) return;
+        if (selectedFrom && paidAt.getTime() < selectedFrom.getTime()) return;
+        if (selectedTo && paidAt.getTime() > selectedTo.getTime()) return;
+        const day = formatLocalDateKey(paidAt);
+        const paymentType = String(event.paymentMethod || (event.source === 'credit_repayment' ? 'cash' : 'other')).toLowerCase();
+        perDayPayments[day] = perDayPayments[day] || {};
+        perDayPayments[day][paymentType] = (perDayPayments[day][paymentType] || 0) + Number(event.amount || 0);
+      });
+    }
     const useRevenueChartDefaultWindow = periodMode === 'range'
       && String(dateFrom || '') === String(todayIso || '')
       && String(dateTo || '') === String(todayIso || '');
@@ -387,9 +411,18 @@ function DashboardPage() {
       return (!revenueChartFromIso || key >= revenueChartFromIso) && (!revenueChartToIso || key <= revenueChartToIso);
     });
     for (const sale of revenueChartSales) {
-      const day = formatLocalDateKey(sale.created_at);
-      if (!day) continue;
-      revenuePerDay[day] = (revenuePerDay[day] || 0) + Number(sale.total || 0);
+      const timeline = Array.isArray(sale.paymentTimeline) ? sale.paymentTimeline : [];
+      timeline.forEach((event) => {
+        const paidAt = new Date(event.paidAt || 0);
+        if (Number.isNaN(paidAt.getTime())) return;
+        const key = formatLocalDateKey(paidAt);
+        if (!key) return;
+        if (periodMode !== 'all_time') {
+          if (revenueChartFromIso && key < revenueChartFromIso) return;
+          if (revenueChartToIso && key > revenueChartToIso) return;
+        }
+        revenuePerDay[key] = (revenuePerDay[key] || 0) + Number(event.amount || 0);
+      });
     }
     for (const sale of competitionSales) {
       const seller = sale.sellerName || t('Unknown');
@@ -408,9 +441,10 @@ function DashboardPage() {
         });
       }
       const cashierRow = cashierMap.get(cashierKey);
+      const totals = getSaleRangeTotals(sale, selectedFrom, selectedTo);
       cashierRow.sales += 1;
-      cashierRow.revenue += Number(sale.total || 0);
-      cashierRow.profit += Number(sale.profitTotal || 0);
+      cashierRow.revenue += totals.revenue;
+      cashierRow.profit += totals.profit;
     }
     const filteredDateKeys = sourceSales
       .map((sale) => formatLocalDateKey(sale.created_at))
@@ -442,8 +476,8 @@ function DashboardPage() {
     };
     last30Revenue = last30.reduce((s, d) => s + (Number(perDay[d] || 0)), 0);
     const last30Sales = sourceSales;
-    last30Profit = last30Sales.reduce((s, x) => s + (Number(x.profitTotal) || 0), 0);
-    last30Cost = last30Sales.reduce((s, x) => s + (Number(x.costTotal) || 0), 0);
+    last30Profit = last30Sales.reduce((s, x) => s + getSaleRangeTotals(x, selectedFrom, selectedTo).profit, 0);
+    last30Cost = last30Sales.reduce((s, x) => s + getSaleRangeTotals(x, selectedFrom, selectedTo).cost, 0);
     const marginPct = last30Revenue > 0 ? Math.round((last30Profit / last30Revenue) * 10000) / 100 : 0;
     const paymentTypes = ['cash','card','mobile','wallet','other'];
     const paymentBar = {
@@ -558,7 +592,7 @@ function DashboardPage() {
     const revenueLineTitle = periodMode === 'all_time'
       ? t('Revenue (All Time)')
       : (useRevenueChartDefaultWindow ? t('Revenue (Last 30 Days)') : t('Revenue (Selected Range)'));
-    return { todayTotal, todayProfit, itemsSold, transactionCount: sourceSales.length, lineData, paymentBar, doughData, topBar, stackedOptions, lineOptions, barOptions, cashierBar, last30Revenue, last30Profit, last30Cost, marginPct, cashierLeaderboard, customerLeaderboardByAmount, customerLeaderboardByProducts, topProfitProducts, multiBranchCashierView, revenueLineTitle };
+    return { todayTotal, todayProfit, itemsSold, transactionCount: sourceSales.length, creditOut, lineData, paymentBar, doughData, topBar, stackedOptions, lineOptions, barOptions, cashierBar, last30Revenue, last30Profit, last30Cost, marginPct, cashierLeaderboard, customerLeaderboardByAmount, customerLeaderboardByProducts, topProfitProducts, multiBranchCashierView, revenueLineTitle };
   }, [sales, products, branches, branchId, dateFrom, dateTo, inRange, matchBranch, matchCompetitionBranch, defaultFromIso, defaultRevenueChartFromIso, todayIso, periodMode, canUseScopedDashboardBranches, canViewBranchCompetitionAll, canViewCashierCompetitionAll, t]);
 
   const finance = useMemo(() => {
@@ -694,9 +728,10 @@ function DashboardPage() {
     boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.5)'
   });
   const summaryCards = [
-    { key: 'sales', label: t('Sales (Filtered Range)'), value: maskRevenue(metrics.todayTotal), subtitle: periodMode === 'all_time' ? t('All recorded time') : t('Current selected range'), accent: '#2563eb', tint: '#dbeafe', badge: 'SL' },
-    { key: 'profit', label: t('Profit (Filtered Range)'), value: maskProfit(metrics.todayProfit), subtitle: canViewProfit ? t('Live profit summary') : t('Profit access masked'), accent: '#7c3aed', tint: '#ede9fe', badge: 'PF' },
+    { key: 'sales', label: t('Collected Revenue (Filtered Range)'), value: maskRevenue(metrics.todayTotal), subtitle: periodMode === 'all_time' ? t('All collected time') : t('Cash received in selected range'), accent: '#2563eb', tint: '#dbeafe', badge: 'RV' },
+    { key: 'profit', label: t('Collected Profit (Filtered Range)'), value: maskProfit(metrics.todayProfit), subtitle: canViewProfit ? t('Recognized from received payments') : t('Profit access masked'), accent: '#7c3aed', tint: '#ede9fe', badge: 'PF' },
     { key: 'items', label: t('Items Sold'), value: metrics.itemsSold, subtitle: t('Units moved in scope'), accent: '#0f766e', tint: '#ccfbf1', badge: 'IT' },
+    { key: 'credit_out', label: t('Credit Out'), value: maskRevenue(metrics.creditOut), subtitle: t('Outstanding credit still not collected'), accent: '#b45309', tint: '#ffedd5', badge: 'CR' },
     { key: 'transactions', label: t('Transactions'), value: metrics.transactionCount, subtitle: t('Completed sales count'), accent: '#f59e0b', tint: '#fef3c7', badge: 'TX' },
     { key: 'margin', label: t('Margin'), value: maskProfitText(`${metrics.marginPct}%`), subtitle: t('Gross margin percentage'), accent: '#ec4899', tint: '#fce7f3', badge: 'MG' },
     { key: 'cashflow', label: t('Net Cashflow'), value: maskProfit(finance.net), subtitle: t('Revenue minus expenses'), accent: '#16a34a', tint: '#dcfce7', badge: 'CF' },

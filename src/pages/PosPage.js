@@ -568,6 +568,9 @@ function PosPage({ mode = 'retail' }) {
   const manualDiscount = cart.discount || 0;
   const canOverrideTax = ['Admin','Manager'].includes(auth.role) || String(auth.role || '').toLowerCase() === 'superadmin';
   const taxRate = canOverrideTax && taxOverridePct !== '' ? Math.max(0, Math.min(1, Number(taxOverridePct) / 100)) : Number(settings.taxRate ?? 0);
+  const estimatedCostTotal = cart.items.reduce((sum, item) => {
+    return sum + ((Number(item.costPrice || 0) || 0) * (Number(item.quantity || 0) || 0));
+  }, 0);
   const maxRedeemPct = Math.max(0, Math.min(100, Number(settings.loyaltyMaxRedeemPercent ?? 50)));
   const redeemValue = Number(settings.loyaltyRedeemValue || 0);
   const availablePoints = Math.max(0, Math.floor(Number(selectedCustomer?.loyaltyPoints || 0)));
@@ -945,6 +948,7 @@ function PosPage({ mode = 'retail' }) {
         return;
       }
       if (easyBuyEnabled) {
+        const creditPaymentsTotal = payments.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
         if (!easyBuyAllowed) {
           toast.show(`${creditModeLabel} requires items in cart`, { type: 'error' });
           return;
@@ -963,6 +967,10 @@ function PosPage({ mode = 'retail' }) {
         }
         if ((Number(easyBuyAmountPaidNow || 0) + 0.0001) < Number(easyBuyMinimum || 0)) {
           toast.show(`Minimum upfront payment is ${formatCurrency(easyBuyMinimum, settings)}`, { type: 'error' });
+          return;
+        }
+        if (Math.abs(creditPaymentsTotal - Number(easyBuyAmountPaidNow || 0)) > 0.005) {
+          toast.show(`${creditModeLabel} payment breakdown must equal amount paid now`, { type: 'error' });
           return;
         }
         if (customerMaxCreditLimit > 0 && (customerOutstanding + due) > customerMaxCreditLimit) {
@@ -1029,10 +1037,33 @@ function PosPage({ mode = 'retail' }) {
       discount,
       tax,
       total,
-      payment_methods: easyBuyEnabled ? [{ type: 'easybuy', amount: due }] : payments.map(p => ({ type: p.type, amount: Number(p.amount) || 0 })),
+      payment_methods: payments.map(p => ({ type: p.type, amount: Number(p.amount) || 0 })),
+      creditMode: easyBuyEnabled ? (isWholesale ? 'distribution_credit' : 'retail_easybuy') : 'none',
       creditDueDate: easyBuyEnabled ? easyBuyDueDate : undefined,
       creditAmountPaidNow: easyBuyEnabled ? Number(easyBuyAmountPaidNow || 0) : 0,
       creditBalance: easyBuyEnabled ? due : 0,
+      outstandingBalance: easyBuyEnabled ? due : 0,
+      outstandingTotal: easyBuyEnabled ? due : 0,
+      settlementStatus: easyBuyEnabled && due > 0 ? 'incomplete' : 'completed',
+      paymentTimeline: easyBuyEnabled
+        ? [{
+            source: 'credit_upfront',
+            amount: Number(easyBuyAmountPaidNow || 0),
+            principalAmount: Number(easyBuyAmountPaidNow || 0),
+            penaltyAmount: 0,
+            recognizedCost: total > 0 ? (Number(estimatedCostTotal || 0) * (Number(easyBuyAmountPaidNow || 0) / total)) : 0,
+            recognizedProfit: Number(easyBuyAmountPaidNow || 0) - (total > 0 ? (Number(estimatedCostTotal || 0) * (Number(easyBuyAmountPaidNow || 0) / total)) : 0),
+            paidAt: effectiveSaleAt
+          }]
+        : [{
+            source: 'sale',
+            amount: total,
+            principalAmount: total,
+            penaltyAmount: 0,
+            recognizedCost: Number(estimatedCostTotal || 0),
+            recognizedProfit: Number(total || 0) - Number(estimatedCostTotal || 0),
+            paidAt: effectiveSaleAt
+          }],
       creditSale: easyBuyEnabled ? {
         enabled: true,
         amountPaidNow: Number(easyBuyAmountPaidNow || 0),
@@ -1077,7 +1108,6 @@ function PosPage({ mode = 'retail' }) {
           if (t === 'card') return 'Card';
           if (t === 'mobile' || t === 'momo' || t === 'mobile money') return 'Mobile Money';
           if (t === 'wallet') return 'Wallet';
-          if (t === 'easybuy') return isWholesale ? 'Credit Sale' : 'EasyBuy';
           return t ? (t[0].toUpperCase() + t.slice(1)) : 'Cash';
         })
         .join(', ');
@@ -1166,7 +1196,8 @@ function PosPage({ mode = 'retail' }) {
         items: saleForUi.items,
         totals: { subtotal, discount, tax, total },
         footer: { note: settings.receiptFooter },
-        settings
+        settings,
+        sale: saleForUi
       });
         downloadText('receipt-escpos.txt', (settings.drawerOpenOnCash && payments.some(p => p.type === 'cash')) ? (escposOpenDrawer() + '\n' + text) : text);
       } else {
@@ -1772,7 +1803,23 @@ function PosPage({ mode = 'retail' }) {
                     <input className="input" type="date" value={easyBuyDueDate} onChange={e => setEasyBuyDueDate(e.target.value)} />
                   </label>
                 </div>
-                <div style={{ color: '#64748b' }}>{t('Paid now')}: {formatCurrency(paid, settings)} | {t('Remaining balance')}: {formatCurrency(due, settings)}</div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  <div style={{ color: '#64748b', fontSize: 12 }}>{t('Payment method breakdown must equal the amount paid now')}</div>
+                  {payments.map((p, i) => (
+                    <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <select className="select" value={p.type} onChange={e => updatePayment(i, 'type', e.target.value)} style={{ width: 112, minWidth: 112, flex: '0 0 112px' }}>
+                        <option value="cash">{t('Cash')}</option>
+                        <option value="card">{t('Card')}</option>
+                        <option value="mobile">{t('Mobile')}</option>
+                        <option value="wallet">{t('Wallet')}</option>
+                      </select>
+                      <input className="input" type="number" placeholder={t('amount')} value={p.amount} onChange={e => updatePayment(i, 'amount', e.target.value)} style={{ width: 140, flex: '1 1 160px', minWidth: 0 }} />
+                      {payments.length > 1 && <button className="btn" onClick={() => removePaymentRow(i)}>{t('Remove')}</button>}
+                    </div>
+                  ))}
+                  <button className="btn" onClick={addPaymentRow}>{t('Add Payment')}</button>
+                </div>
+                <div style={{ color: '#64748b' }}>{t('Paid now')}: {formatCurrency(paid, settings)} | {t('Breakdown total')}: {formatCurrency(payments.reduce((sum, row) => sum + (Number(row.amount) || 0), 0), settings)} | {t('Remaining balance')}: {formatCurrency(due, settings)}</div>
               </div>
             ) : (
               <>

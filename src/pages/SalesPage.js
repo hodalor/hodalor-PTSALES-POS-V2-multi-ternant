@@ -12,6 +12,7 @@ import InlineSpinner from '../components/InlineSpinner';
 import BranchSelect from '../components/BranchSelect';
 import { getProductBrand } from '../utils/productSearch';
 import Modal from '../components/Modal';
+import { getCreditModeLabel, getSaleRangeTotals, getSaleSettlementStatus, saleHasActivityInRange } from '../utils/saleAccounting';
 
 function pad2(value) {
   return String(value).padStart(2, '0');
@@ -31,6 +32,18 @@ function buildLocalDateTime(dateValue, timeValue) {
   if (!date) return null;
   const parsed = new Date(`${date}T${time || '00:00'}`);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseRangeStart(value) {
+  if (!value) return null;
+  const dt = new Date(`${value}T00:00:00`);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+function parseRangeEnd(value) {
+  if (!value) return null;
+  const dt = new Date(`${value}T23:59:59.999`);
+  return Number.isNaN(dt.getTime()) ? null : dt;
 }
 
 function SalesPage() {
@@ -71,6 +84,7 @@ function SalesPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [periodMode, setPeriodMode] = useState('range');
+  const [settlementFilter, setSettlementFilter] = useState('all');
   const [selectedBranchId, setSelectedBranchId] = useState('');
   const [selectedSaleIds, setSelectedSaleIds] = useState([]);
   const [bulkAction, setBulkAction] = useState('');
@@ -136,17 +150,14 @@ function SalesPage() {
   }, [canSeeAll, canUseCompetitionScope, competitionAllowedBranchIdSet, effectiveBranchId, sales, selectedBranchId, showAll, tab]);
   const filteredSales = useMemo(() => {
     let list = filteredByBranch;
+    const fromDate = periodMode === 'all_time' ? null : parseRangeStart(dateFrom);
+    const toDate = periodMode === 'all_time' ? null : parseRangeEnd(dateTo);
     if (roleLower === 'cashier' && !canUseCompetitionScope) {
       const me = String(auth.user?.name || '').trim().toLowerCase();
       list = list.filter(s => String(s.sellerName || '').trim().toLowerCase() === me);
     }
-    if (periodMode !== 'all_time' && dateFrom) {
-      const start = new Date(`${dateFrom}T00:00:00`);
-      list = list.filter(s => new Date(s.created_at || s.createdAt || 0) >= start);
-    }
-    if (periodMode !== 'all_time' && dateTo) {
-      const end = new Date(`${dateTo}T23:59:59.999`);
-      list = list.filter(s => new Date(s.created_at || s.createdAt || 0) <= end);
+    if (periodMode !== 'all_time' && (fromDate || toDate)) {
+      list = list.filter((sale) => saleHasActivityInRange(sale, fromDate, toDate));
     }
     if (saleKind === 'retail') {
       list = list.filter(s => String(s.posType || 'retail') === 'retail');
@@ -154,11 +165,16 @@ function SalesPage() {
       list = list.filter(s => String(s.posType || 'retail') === 'wholesale');
     }
     if (creditKind === 'non_credit') {
-      list = list.filter(s => !(Array.isArray(s.payment_methods) && s.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy')));
+      list = list.filter(s => !['retail_easybuy', 'distribution_credit'].includes(String(s.creditMode || '').trim().toLowerCase()));
     } else if (creditKind === 'retail_easybuy') {
-      list = list.filter(s => String(s.posType || 'retail') === 'retail' && Array.isArray(s.payment_methods) && s.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy'));
+      list = list.filter(s => String(s.creditMode || '').trim().toLowerCase() === 'retail_easybuy');
     } else if (creditKind === 'wholesale_credit') {
-      list = list.filter(s => String(s.posType || 'retail') === 'wholesale' && Array.isArray(s.payment_methods) && s.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy'));
+      list = list.filter(s => String(s.creditMode || '').trim().toLowerCase() === 'distribution_credit');
+    }
+    if (settlementFilter === 'incomplete') {
+      list = list.filter((sale) => getSaleSettlementStatus(sale) === 'incomplete');
+    } else if (settlementFilter === 'completed') {
+      list = list.filter((sale) => getSaleSettlementStatus(sale) === 'completed');
     }
     const q = String(searchTerm || '').trim().toLowerCase();
     if (q) {
@@ -186,36 +202,45 @@ function SalesPage() {
       });
     }
     return list;
-  }, [auth.user?.name, branchLabel, canUseCompetitionScope, creditKind, dateFrom, dateTo, filteredByBranch, periodMode, productBrandById, roleLower, saleKind, searchTerm]);
+  }, [auth.user?.name, branchLabel, canUseCompetitionScope, creditKind, dateFrom, dateTo, filteredByBranch, periodMode, productBrandById, roleLower, saleKind, searchTerm, settlementFilter]);
 
   const summary = useMemo(() => {
-    const totalRevenue = filteredSales.reduce((sum, sale) => sum + (Number(sale.total) || 0), 0);
-    const totalProfit = filteredSales.reduce((sum, sale) => sum + (Number(sale.profitTotal) || 0), 0);
+    const fromDate = periodMode === 'all_time' ? null : parseRangeStart(dateFrom);
+    const toDate = periodMode === 'all_time' ? null : parseRangeEnd(dateTo);
+    const totalRevenue = filteredSales.reduce((sum, sale) => sum + getSaleRangeTotals(sale, fromDate, toDate).revenue, 0);
+    const totalProfit = filteredSales.reduce((sum, sale) => sum + getSaleRangeTotals(sale, fromDate, toDate).profit, 0);
     const itemsSold = filteredSales.reduce((sum, sale) => sum + (Array.isArray(sale.items) ? sale.items.reduce((acc, item) => acc + (Number(item.qty) || 0), 0) : 0), 0);
-    const easybuyCount = filteredSales.filter(sale => String(sale.posType || 'retail') === 'retail' && Array.isArray(sale.payment_methods) && sale.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy')).length;
-    const wholesaleCreditCount = filteredSales.filter(sale => String(sale.posType || 'retail') === 'wholesale' && Array.isArray(sale.payment_methods) && sale.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy')).length;
+    const easybuyCount = filteredSales.filter(sale => String(sale.creditMode || '').trim().toLowerCase() === 'retail_easybuy').length;
+    const wholesaleCreditCount = filteredSales.filter(sale => String(sale.creditMode || '').trim().toLowerCase() === 'distribution_credit').length;
+    const incompleteCount = filteredSales.filter((sale) => getSaleSettlementStatus(sale) === 'incomplete').length;
+    const creditOut = filteredSales.reduce((sum, sale) => sum + Number(sale.outstandingTotal || sale.outstandingBalance || 0), 0);
     return {
       totalSales: filteredSales.length,
       totalRevenue,
       totalProfit,
       itemsSold,
       easybuyCount,
-      wholesaleCreditCount
+      wholesaleCreditCount,
+      incompleteCount,
+      creditOut
     };
-  }, [filteredSales]);
+  }, [dateFrom, dateTo, filteredSales, periodMode]);
 
   const leaderboard = useMemo(() => {
+    const fromDate = periodMode === 'all_time' ? null : parseRangeStart(dateFrom);
+    const toDate = periodMode === 'all_time' ? null : parseRangeEnd(dateTo);
     const map = new Map();
     for (const s of filteredSales) {
       const name = s.sellerName || 'Unknown';
       if (!map.has(name)) map.set(name, { seller: name, revenue: 0, profit: 0, sales: 0 });
       const row = map.get(name);
-      row.revenue += Number(s.total) || 0;
-      row.profit += Number(s.profitTotal) || 0;
+      const totals = getSaleRangeTotals(s, fromDate, toDate);
+      row.revenue += totals.revenue;
+      row.profit += totals.profit;
       row.sales += 1;
     }
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
-  }, [filteredSales]);
+  }, [dateFrom, dateTo, filteredSales, periodMode]);
 
   const byId = useMemo(() => {
     const map = new Map();
@@ -224,27 +249,31 @@ function SalesPage() {
   }, [branches]);
 
   const branchComparison = useMemo(() => {
+    const fromDate = periodMode === 'all_time' ? null : parseRangeStart(dateFrom);
+    const toDate = periodMode === 'all_time' ? null : parseRangeEnd(dateTo);
     const map = new Map();
     for (const s of filteredSales) {
       const key = String(s.branchId || '');
       if (!map.has(key)) map.set(key, { branchId: key, name: byId.get(key) || key, revenue: 0, profit: 0, sales: 0 });
       const row = map.get(key);
-      row.revenue += Number(s.total) || 0;
-      row.profit += Number(s.profitTotal) || 0;
+      const totals = getSaleRangeTotals(s, fromDate, toDate);
+      row.revenue += totals.revenue;
+      row.profit += totals.profit;
       row.sales += 1;
     }
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
-  }, [filteredSales, byId]);
+  }, [byId, dateFrom, dateTo, filteredSales, periodMode]);
   function reprint(sale, escpos = false) {
     if (escpos) {
       const text = escposReceipt({
-        header: { title: settings.appName, store: settings.receiptHeader, branch: branchLabel(sale), phone: settings.businessPhone || '', cashier: sale.sellerName, customer: sale.customerName ? `${sale.customerName}${sale.customerCode ? ` (${sale.customerCode})` : ''}` : '', receiptId: sale.id, receiptNumber: sale.receiptNumber, invoiceSerial: sale.invoiceSerial },
+        header: { title: settings.appName, store: settings.receiptHeader, branch: branchLabel(sale), phone: settings.businessPhone || '', cashier: sale.sellerName, customer: sale.customerName ? `${sale.customerName}${sale.customerCode ? ` (${sale.customerCode})` : ''}` : '', receiptId: sale.id || sale._id, receiptNumber: sale.receiptNumber, invoiceSerial: sale.invoiceSerial },
         items: sale.items,
         totals: { subtotal: sale.subtotal, discount: sale.discount, tax: sale.tax, total: sale.total },
         footer: { note: settings.receiptFooter },
-        settings
+        settings,
+        sale: { ...sale, branchName: branchLabel(sale) }
       });
-      downloadText(`receipt-${sale.id}.txt`, text);
+      downloadText(`receipt-${sale.id || sale._id}.txt`, text);
       return;
     }
     const html = buildBrandedReceiptHtml({ settings, sale: { ...sale, branchName: branchLabel(sale) } });
@@ -312,24 +341,34 @@ function SalesPage() {
     }
   }
   function onExportCsv() {
+    const fromDate = periodMode === 'all_time' ? null : parseRangeStart(dateFrom);
+    const toDate = periodMode === 'all_time' ? null : parseRangeEnd(dateTo);
     const headers = [
       { key: 'date', label: 'Date', value: s => new Date(s.created_at).toLocaleString() },
       { key: 'branch', label: 'Branch', value: s => branchLabel(s) },
       { key: 'seller', label: 'Seller', value: s => s.sellerName || '' },
       { key: 'invoice', label: 'Invoice', value: s => s.invoiceSerial || '' },
       { key: 'items', label: 'Items', value: s => s.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}x${i.qty}`).join('; ') },
-      { key: 'total', label: 'Total', value: s => s.total }
+      { key: 'total', label: 'Sale Total', value: s => s.total },
+      { key: 'paid', label: 'Paid In Range', value: s => getSaleRangeTotals(s, fromDate, toDate).revenue },
+      { key: 'remaining', label: 'Remaining', value: s => Number(s.outstandingTotal || s.outstandingBalance || 0) },
+      { key: 'status', label: 'Status', value: s => getSaleSettlementStatus(s) }
     ];
     exportCsv('sales.csv', headers, filteredSales);
   }
   function onExportPdf() {
+    const fromDate = periodMode === 'all_time' ? null : parseRangeStart(dateFrom);
+    const toDate = periodMode === 'all_time' ? null : parseRangeEnd(dateTo);
     const headers = [
       { key: 'date', label: 'Date', value: s => new Date(s.created_at).toLocaleString() },
       { key: 'branch', label: 'Branch', value: s => branchLabel(s) },
       { key: 'seller', label: 'Seller', value: s => s.sellerName || '' },
       { key: 'invoice', label: 'Invoice', value: s => s.invoiceSerial || '' },
       { key: 'items', label: 'Items', value: s => s.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}x${i.qty}`).join('; ') },
-      { key: 'total', label: 'Total', value: s => formatCurrency(s.total, settings) }
+      { key: 'total', label: 'Sale Total', value: s => formatCurrency(s.total, settings) },
+      { key: 'paid', label: 'Paid In Range', value: s => maskRevenue(getSaleRangeTotals(s, fromDate, toDate).revenue) },
+      { key: 'remaining', label: 'Remaining', value: s => maskRevenue(Number(s.outstandingTotal || s.outstandingBalance || 0)) },
+      { key: 'status', label: 'Status', value: s => getSaleSettlementStatus(s) }
     ];
     exportTablePdf('Sales', headers, filteredSales);
   }
@@ -407,12 +446,22 @@ function SalesPage() {
                 <option value="wholesale_credit">Distribution Credit Sale</option>
               </select>
             </label>
+            <label>
+              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Settlement</div>
+              <select className="select" value={settlementFilter} onChange={e => { setSettlementFilter(e.target.value); setPage(1); }}>
+                <option value="all">All Sales</option>
+                <option value="incomplete">Incomplete Sales</option>
+                <option value="completed">Completed Sales</option>
+              </select>
+            </label>
           </div>
           <div className="summary-grid" style={{ marginTop: 12 }}>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Sales Count</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.totalSales}</div></div>
-            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Revenue</div><div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{maskRevenue(summary.totalRevenue)}</div></div>
-            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Profit</div><div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{maskProfit(summary.totalProfit)}</div></div>
+            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Collected Revenue</div><div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{maskRevenue(summary.totalRevenue)}</div></div>
+            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Collected Profit</div><div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{maskProfit(summary.totalProfit)}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Items Sold</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.itemsSold}</div></div>
+            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Credit Out</div><div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{maskRevenue(summary.creditOut)}</div></div>
+            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Incomplete Sales</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.incompleteCount}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Retail EasyBuy</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.easybuyCount}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Distribution Credit</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.wholesaleCreditCount}</div></div>
           </div>
@@ -547,6 +596,9 @@ function SalesPage() {
             <th align="left">Items</th>
             <th align="left">Customer</th>
             <th align="left">Total</th>
+            <th align="left">Paid In Range</th>
+            <th align="left">Remaining</th>
+            <th align="left">Status</th>
             <th></th>
           </tr>
         </thead>
@@ -575,16 +627,27 @@ function SalesPage() {
               </td>
               <td>{branchLabel(sale)}</td>
               <td>{String(sale.posType || 'retail') === 'wholesale' ? 'Distribution' : 'Retail'}</td>
-              <td>
-                {Array.isArray(sale.payment_methods) && sale.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy')
-                  ? (String(sale.posType || 'retail') === 'wholesale' ? 'Credit Sale' : 'EasyBuy')
-                  : 'Non Credit'}
-              </td>
+              <td>{getCreditModeLabel(sale)}</td>
               <td>{sale.sellerName || '-'}</td>
               <td>{sale.invoiceSerial || '—'}</td>
               <td>{sale.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}${i.spec ? ' ['+i.spec+']' : ''}x${i.qty}`).join(', ')}</td>
               <td>{sale.customerName || ''}</td>
               <td><span className="price-accent">{formatCurrency(sale.total, settings)}</span></td>
+              <td><span className="price-accent">{maskRevenue(getSaleRangeTotals(sale, periodMode === 'all_time' ? null : parseRangeStart(dateFrom), periodMode === 'all_time' ? null : parseRangeEnd(dateTo)).revenue)}</span></td>
+              <td><span className="price-accent">{maskRevenue(Number(sale.outstandingTotal || sale.outstandingBalance || 0))}</span></td>
+              <td>
+                <span style={{
+                  display: 'inline-flex',
+                  padding: '4px 10px',
+                  borderRadius: 999,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: getSaleSettlementStatus(sale) === 'incomplete' ? '#b45309' : '#15803d',
+                  background: getSaleSettlementStatus(sale) === 'incomplete' ? '#fef3c7' : '#dcfce7'
+                }}>
+                  {getSaleSettlementStatus(sale) === 'incomplete' ? 'Incomplete' : 'Completed'}
+                </span>
+              </td>
               <td>
                 <button className="btn btn-primary" onClick={() => reprint(sale, false)} disabled={bulkDeleting && selectedSaleIds.includes(String(sale.id || sale._id || sale.clientId || ''))}>
                   <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>

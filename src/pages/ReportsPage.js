@@ -11,6 +11,7 @@ import { formatCurrency } from '../utils/currency';
 import { listOperations } from '../api/wholesale';
 import { isFeatureEnabled } from '../utils/featureFlags';
 import { useAppLanguage } from '../utils/localization';
+import { getSaleRangeTotals, saleHasActivityInRange } from '../utils/saleAccounting';
 
 Chart.register(BarElement, ArcElement, CategoryScale, LinearScale, Tooltip, Legend);
 
@@ -102,6 +103,11 @@ function ReportsPage() {
   }, [branchId, dateFrom, dateTo, inRange, matchBranch]);
 
   const filteredSales = useMemo(() => sales.filter(s => inRange(s.created_at) && matchBranch(s.branchId)), [sales, inRange, matchBranch]);
+  const financeFilteredSales = useMemo(() => {
+    const fromDate = periodMode === 'all_time' ? null : (dateFrom ? new Date(`${dateFrom}T00:00:00`) : null);
+    const toDate = periodMode === 'all_time' ? null : (dateTo ? new Date(`${dateTo}T23:59:59.999`) : null);
+    return sales.filter((sale) => matchBranch(sale.branchId) && saleHasActivityInRange(sale, fromDate, toDate));
+  }, [dateFrom, dateTo, matchBranch, periodMode, sales]);
   const analytics = useMemo(() => {
     const productUnits = {};
     const categoryUnits = {};
@@ -129,9 +135,11 @@ function ReportsPage() {
   }, [filteredSales, products, t]);
 
   const money = useMemo(() => {
-    const revenue = filteredSales.reduce((s, x) => s + (Number(x.total) || 0), 0);
-    const profit = filteredSales.reduce((s, x) => s + (Number(x.profitTotal) || 0), 0);
-    const cost = filteredSales.reduce((s, x) => s + (Number(x.costTotal) || 0), 0);
+    const fromDate = periodMode === 'all_time' ? null : (dateFrom ? new Date(`${dateFrom}T00:00:00`) : null);
+    const toDate = periodMode === 'all_time' ? null : (dateTo ? new Date(`${dateTo}T23:59:59.999`) : null);
+    const revenue = financeFilteredSales.reduce((s, x) => s + getSaleRangeTotals(x, fromDate, toDate).revenue, 0);
+    const profit = financeFilteredSales.reduce((s, x) => s + getSaleRangeTotals(x, fromDate, toDate).profit, 0);
+    const cost = financeFilteredSales.reduce((s, x) => s + getSaleRangeTotals(x, fromDate, toDate).cost, 0);
     const marginPct = revenue > 0 ? Math.round((profit / revenue) * 10000) / 100 : 0;
     const expenseTotal = expenses.reduce((s, x) => s + (Number(x.amount) || 0), 0);
     const net = profit - expenseTotal;
@@ -140,7 +148,7 @@ function ReportsPage() {
     const days = Math.max(1, Math.floor((toTs - fromTs) / (24 * 3600 * 1000)) + 1);
     const projected30 = (net / days) * 30;
     return { revenue, cost, profit, marginPct, expenseTotal, net, days, projected30 };
-  }, [filteredSales, expenses, dateFrom, dateTo]);
+  }, [dateFrom, dateTo, expenses, financeFilteredSales, periodMode]);
 
   const heatmap = useMemo(() => {
     const end = dateTo ? new Date(dateTo) : new Date();
@@ -715,9 +723,9 @@ function ReportsPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
           <div className="card">
             <div style={{ fontWeight: 700, marginBottom: 6 }}>{t('Summary')}</div>
-            <div className="sp"><span className="muted">{t('Revenue')}</span><span className="price-accent">{maskRevenue(money.revenue)}</span></div>
+            <div className="sp"><span className="muted">{t('Collected Revenue')}</span><span className="price-accent">{maskRevenue(money.revenue)}</span></div>
             <div className="sp"><span className="muted">{t('COGS')}</span><span className="price-accent">{maskProfit(money.cost)}</span></div>
-            <div className="sp"><span className="muted">{t('Profit')}</span><span className="price-accent">{maskProfit(money.profit)}</span></div>
+            <div className="sp"><span className="muted">{t('Collected Profit')}</span><span className="price-accent">{maskProfit(money.profit)}</span></div>
             <div className="sp"><span className="muted">{t('Margin')}</span><span>{maskProfitText(`${money.marginPct}%`)}</span></div>
             <div className="sp"><span className="muted">{t('Expenses')}</span><span className="price-accent">{maskProfit(money.expenseTotal)}</span></div>
             <div className="sp"><strong>{t('Net')}</strong><strong className="price-accent">{maskProfit(money.net)}</strong></div>

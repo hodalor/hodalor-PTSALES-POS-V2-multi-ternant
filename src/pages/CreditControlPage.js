@@ -290,15 +290,33 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   }, [branchFilteredSales, shownRepayments, shownActiveSales.length, overdueSales.length, dueTodaySales.length]);
 
   async function startRepayment(row) {
+    const outstandingAmount = Math.max(0, Number(row?.balance || 0) + Number(row?.accumulated_penalty || 0));
+    const pendingAmount = repayments
+      .filter((item) => String(item?.creditSaleId || '') === String(row?._id || ''))
+      .filter((item) => ['pending_director', 'pending_manager'].includes(String(item?.status || '').toLowerCase()))
+      .reduce((sum, item) => sum + Math.max(0, Number(item?.amount || 0)), 0);
+    const availableAmount = Math.max(0, outstandingAmount - pendingAmount);
+    if (availableAmount <= 0) {
+      toast.show('This balance is already covered by pending repayments', { type: 'error' });
+      return;
+    }
     const amount = await promptDialog('Repayment amount');
     if (!amount || Number(amount) <= 0) {
       toast.show('Enter a valid repayment amount', { type: 'error' });
       return;
     }
+    if (Number(amount) > availableAmount) {
+      toast.show(`Repayment cannot exceed the remaining payable amount of ${formatCurrency(availableAmount, settings)}`, { type: 'error' });
+      return;
+    }
     const remark = await promptDialog('Repayment remark');
+    const paymentMethodRaw = await promptDialog('Payment method: cash, card, mobile, or wallet', 'cash');
+    const paymentMethod = ['cash', 'card', 'mobile', 'wallet'].includes(String(paymentMethodRaw || '').trim().toLowerCase())
+      ? String(paymentMethodRaw || '').trim().toLowerCase()
+      : 'cash';
     setWorkingId(row._id || '');
     try {
-      const payload = { creditSaleId: row._id, amount: Number(amount), remark: String(remark || '') };
+      const payload = { creditSaleId: row._id, amount: Number(amount), paymentMethod, remark: String(remark || '') };
       if (!navigator.onLine && offlineBackupAllowed) {
         await enqueueHttp({ collection: 'creditrepayments', label: 'Credit repayment', path: '/api/credits/repayments', method: 'POST', body: payload });
         toast.show('Repayment saved offline. It will sync when online.', { type: 'success' });
@@ -496,7 +514,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       </div>
       </div>
 
-      {clientFilter !== 'good' && <div className="card">
+      {clientFilter !== 'good' && section !== 'repayments' && section !== 'sales' && <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <div>
             <h2 className="section-title" style={{ margin: 0 }}>Defaulters</h2>
