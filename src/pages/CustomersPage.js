@@ -1,5 +1,5 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { addCustomer, setCustomers, updateCustomer, removeCustomer } from '../store/customersSlice';
 import { addAudit } from '../store/auditSlice';
 import { useToast } from '../components/ToastProvider';
@@ -14,6 +14,7 @@ import InlineSpinner from '../components/InlineSpinner';
 import { Bar } from 'react-chartjs-2';
 import { Chart, BarElement, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
 import LoadingDots from '../components/LoadingDots';
+import { getCreditModeLabel, getSaleSettlementStatus } from '../utils/saleAccounting';
 
 Chart.register(BarElement, CategoryScale, LinearScale, Tooltip, Legend);
 
@@ -41,6 +42,7 @@ function CustomersPage() {
   const [modalMode, setModalMode] = useState('view'); // view, create
   const [selectedId, setSelectedId] = useState(null);
   const [selectedTab, setSelectedTab] = useState('profile'); // profile, history
+  const [expandedHistorySaleId, setExpandedHistorySaleId] = useState('');
   const [savingCreate, setSavingCreate] = useState(false);
   const [savingUpdate, setSavingUpdate] = useState(false);
   const [removingId, setRemovingId] = useState('');
@@ -57,6 +59,14 @@ function CustomersPage() {
     if (!modalOpen) return;
     if (selectedTab === 'history' && !purchaseHistoryEnabled) setSelectedTab('profile');
   }, [modalOpen, selectedTab, purchaseHistoryEnabled]);
+
+  useEffect(() => {
+    if (selectedTab !== 'history') setExpandedHistorySaleId('');
+  }, [selectedTab]);
+
+  useEffect(() => {
+    setExpandedHistorySaleId('');
+  }, [selectedId, modalOpen]);
   const [createForm, setCreateForm] = useState({
     name: '',
     phone: '',
@@ -249,10 +259,48 @@ function CustomersPage() {
     const sc = String(selected.customerCode || '');
     return sales.filter(s => String(s.customerId || '') === sid || (sc && String(s.customerCode || '') === sc));
   }, [sales, selected]);
+  const customerSaleHistory = useMemo(() => history.map((sale) => {
+    const repaymentHistory = Array.isArray(sale.repaymentHistory) ? sale.repaymentHistory : [];
+    const repaymentById = new Map(repaymentHistory.map((entry) => [String(entry?.repaymentId || ''), entry]));
+    const paymentTimeline = Array.isArray(sale.paymentTimeline) ? sale.paymentTimeline : [];
+    const paymentRecords = paymentTimeline.map((event, index) => {
+      const source = String(event?.source || 'sale').trim().toLowerCase();
+      const repaymentEntry = repaymentById.get(String(event?.repaymentId || '')) || null;
+      const label = source === 'credit_upfront'
+        ? 'Initial Credit Payment'
+        : source === 'credit_repayment'
+          ? 'Credit Repayment'
+          : 'Sale Payment';
+      return {
+        id: String(event?.repaymentId || `${sale.id || sale._id}-payment-${index}`),
+        label,
+        amount: Number(event?.amount || 0) || 0,
+        paidAt: event?.paidAt || sale.created_at,
+        paymentMethod: String(repaymentEntry?.paymentMethod || event?.paymentMethod || '').trim(),
+        status: repaymentEntry ? String(repaymentEntry?.status || '').trim().toLowerCase() : 'approved',
+        initiatedAt: repaymentEntry?.initiatedAt || null,
+        initiatedByName: repaymentEntry?.initiatedByName || '',
+        initiatedByRole: repaymentEntry?.initiatedByRole || '',
+        approvedAt: repaymentEntry?.approvedAt || event?.paidAt || null,
+        approvedByName: repaymentEntry?.approvedByName || '',
+        approvedByRole: repaymentEntry?.approvedByRole || '',
+        remark: String(repaymentEntry?.remark || event?.note || '').trim()
+      };
+    });
+    return {
+      ...sale,
+      repaymentHistory,
+      paymentRecords,
+      repaymentTotal: repaymentHistory
+        .filter((entry) => String(entry?.status || '').toLowerCase() === 'approved')
+        .reduce((sum, entry) => sum + (Number(entry?.amount || 0) || 0), 0)
+    };
+  }), [history]);
   const paymentSummary = useMemo(() => {
     if (!selected) return { paidCount: 0, creditCount: 0, paidTotal: 0, creditTotal: 0 };
-    return history.reduce((acc, sale) => {
-      const hasCredit = Array.isArray(sale.payment_methods) && sale.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy');
+    return customerSaleHistory.reduce((acc, sale) => {
+      const hasCredit = String(sale.creditMode || '').trim().toLowerCase() !== 'non_credit'
+        || (Array.isArray(sale.payment_methods) && sale.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy'));
       const total = Number(sale.total || 0);
       if (hasCredit) {
         acc.creditCount += 1;
@@ -263,7 +311,7 @@ function CustomersPage() {
       }
       return acc;
     }, { paidCount: 0, creditCount: 0, paidTotal: 0, creditTotal: 0 });
-  }, [history, selected]);
+  }, [customerSaleHistory, selected]);
 
   const activeProfile = useMemo(() => {
     return modalMode === 'create' ? createForm : editForm;
@@ -944,6 +992,7 @@ function CustomersPage() {
             <table className="table">
               <thead>
                 <tr>
+                  <th align="left" style={{ width: 32 }}></th>
                   <th align="left">Date</th>
                   <th align="left">Invoice</th>
                   <th align="left">Payment Type</th>
@@ -952,17 +1001,87 @@ function CustomersPage() {
                 </tr>
               </thead>
               <tbody>
-                {history.map(s => (
-                  <tr key={s.id || s._id}>
-                    <td>{new Date(s.created_at).toLocaleString()}</td>
-                    <td>{s.invoiceSerial || '—'}</td>
-                    <td>{Array.isArray(s.payment_methods) && s.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy') ? 'Credit' : 'Paid'}</td>
-                    <td>{(s.items || []).map(i => `${i.name}x${i.qty}`).join(', ')}</td>
-                    <td>{formatCurrency(Number(s.total) || 0, settings)}</td>
-                  </tr>
+                {customerSaleHistory.map(s => (
+                  <Fragment key={s.id || s._id}>
+                    <tr
+                      key={s.id || s._id}
+                      onClick={() => setExpandedHistorySaleId((prev) => (prev === String(s.id || s._id) ? '' : String(s.id || s._id)))}
+                      style={{ cursor: 'pointer', background: expandedHistorySaleId === String(s.id || s._id) ? '#f0fdf4' : undefined }}
+                    >
+                      <td>
+                        <span
+                          aria-hidden="true"
+                          style={{
+                            display: 'inline-block',
+                            color: '#16a34a',
+                            fontSize: 14,
+                            fontWeight: 900,
+                            transform: expandedHistorySaleId === String(s.id || s._id) ? 'rotate(90deg)' : 'rotate(0deg)',
+                            transition: 'transform 0.15s ease'
+                          }}
+                        >
+                          >
+                        </span>
+                      </td>
+                      <td>{new Date(s.created_at).toLocaleString()}</td>
+                      <td>{s.invoiceSerial || '—'}</td>
+                      <td>
+                        <div style={{ fontWeight: 700 }}>{String(s.creditMode || '').trim().toLowerCase() !== 'non_credit' ? getCreditModeLabel(s) : 'Paid'}</div>
+                        <div style={{ color: '#64748b', fontSize: 12 }}>{getSaleSettlementStatus(s) === 'completed' ? 'Completed' : 'Incomplete'}</div>
+                      </td>
+                      <td>{(s.items || []).map(i => `${i.name}x${i.qty}`).join(', ')}</td>
+                      <td>
+                        <div style={{ fontWeight: 700 }}>{formatCurrency(Number(s.total) || 0, settings)}</div>
+                        {String(s.creditMode || '').trim().toLowerCase() !== 'non_credit' && (
+                          <div style={{ color: '#64748b', fontSize: 12 }}>
+                            Paid: {formatCurrency(Number(s.amountPaidToDate || 0), settings)} | Balance: {formatCurrency(Number(s.outstandingTotal || s.outstandingBalance || 0), settings)}
+                          </div>
+                        )}
+                        <div style={{ color: '#16a34a', fontSize: 12, fontWeight: 700, marginTop: 4 }}>
+                          {expandedHistorySaleId === String(s.id || s._id) ? 'Click to hide details' : 'Click to view details'}
+                        </div>
+                      </td>
+                    </tr>
+                    {expandedHistorySaleId === String(s.id || s._id) && (
+                      <tr>
+                        <td colSpan="6" style={{ background: '#f8fafc', padding: 12 }}>
+                          <div style={{ fontWeight: 800, color: '#0f172a', marginBottom: 8 }}>Payment Records</div>
+                          {Array.isArray(s.paymentRecords) && s.paymentRecords.length > 0 ? (
+                            <div style={{ display: 'grid', gap: 8 }}>
+                              {s.paymentRecords.map((entry, index) => (
+                                <div key={entry.id || `${s.id || s._id}-payment-record-${index}`} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: '#fff' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+                                    <strong style={{ color: '#0f172a' }}>
+                                      {entry.label}: {formatCurrency(Number(entry.amount || 0), settings)}
+                                    </strong>
+                                    <span style={{ color: '#64748b', fontSize: 12 }}>
+                                      {(String(entry.status || 'approved').replace(/_/g, ' ') || 'approved').toUpperCase()}
+                                      {entry.paymentMethod ? ` • ${String(entry.paymentMethod || '').toUpperCase()}` : ''}
+                                    </span>
+                                  </div>
+                                  <div style={{ marginTop: 6, color: '#475569', fontSize: 12 }}>
+                                    Paid: {entry.paidAt ? new Date(entry.paidAt).toLocaleString() : '—'}
+                                  </div>
+                                  {entry.initiatedAt && <div style={{ marginTop: 4, color: '#475569', fontSize: 12 }}>
+                                    Initiated: {new Date(entry.initiatedAt).toLocaleString()} {entry.initiatedByName ? `by ${entry.initiatedByName}${entry.initiatedByRole ? ` (${entry.initiatedByRole})` : ''}` : ''}
+                                  </div>}
+                                  {(entry.approvedAt || entry.approvedByName) && <div style={{ marginTop: 4, color: '#475569', fontSize: 12 }}>
+                                    Approved: {entry.approvedAt ? new Date(entry.approvedAt).toLocaleString() : '—'} {entry.approvedByName ? `by ${entry.approvedByName}${entry.approvedByRole ? ` (${entry.approvedByRole})` : ''}` : ''}
+                                  </div>}
+                                  {entry.remark && <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>Remark: {entry.remark}</div>}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div style={{ color: '#64748b', fontSize: 13 }}>No payment records for this sale.</div>
+                          )}
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
-                {history.length === 0 && (
-                  <tr><td colSpan="5" style={{ padding: 12, color: '#94a3b8' }}>No purchases</td></tr>
+                {customerSaleHistory.length === 0 && (
+                  <tr><td colSpan="6" style={{ padding: 12, color: '#94a3b8' }}>No purchases</td></tr>
                 )}
               </tbody>
             </table>

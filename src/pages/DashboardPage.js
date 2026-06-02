@@ -135,6 +135,7 @@ function DashboardPage() {
   const [dateFrom, setDateFrom] = useState(defaultFromIso);
   const [dateTo, setDateTo] = useState(todayIso);
   const [activityFilter, setActivityFilter] = useState('all');
+  const [showMoreSummaryCards, setShowMoreSummaryCards] = useState(false);
   const [customerLeaderboardMode, setCustomerLeaderboardMode] = useState('amount');
   const assignedBranchIds = useMemo(() => {
     const assigned = auth.user?.assignedBranches;
@@ -358,6 +359,7 @@ function DashboardPage() {
     let creditOut = 0;
     let retailCreditOut = 0;
     let wholesaleCreditOut = 0;
+    let totalCreditRecovered = 0;
     let retailCreditRecovered = 0;
     let wholesaleCreditRecovered = 0;
     const perDay = {};
@@ -384,8 +386,10 @@ function DashboardPage() {
       const creditMode = String(sale.creditMode || '').trim().toLowerCase();
       if (creditMode === 'retail_easybuy') {
         retailCreditRecovered += recognized.revenue;
+        totalCreditRecovered += recognized.revenue;
       } else if (creditMode === 'distribution_credit') {
         wholesaleCreditRecovered += recognized.revenue;
+        totalCreditRecovered += recognized.revenue;
       }
       todayTotal += recognized.revenue;
       todayProfit += recognized.profit;
@@ -670,6 +674,7 @@ function DashboardPage() {
       creditOut,
       retailCreditOut,
       wholesaleCreditOut,
+      totalCreditRecovered,
       retailCreditRecovered,
       wholesaleCreditRecovered,
       lineData,
@@ -826,22 +831,23 @@ function DashboardPage() {
     boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.5)'
   });
   const summaryCards = [
-    { key: 'sales', label: t('Revenue (Filtered Range)'), value: maskRevenue(metrics.todayTotal), subtitle: periodMode === 'all_time' ? t('Recognized revenue for all time') : t('Recognized revenue in selected range'), accent: '#2563eb', tint: '#dbeafe', badge: 'RV' },
-    { key: 'profit', label: t('Profit (Filtered Range)'), value: maskProfit(metrics.todayProfit), subtitle: canViewProfit ? t('Recognized profit in selected range') : t('Profit access masked'), accent: '#7c3aed', tint: '#ede9fe', badge: 'PF' },
-    { key: 'items', label: t('Items Sold'), value: metrics.itemsSold, subtitle: t('Units from sales created in range'), accent: '#0f766e', tint: '#ccfbf1', badge: 'IT' },
-    { key: 'credit_out', label: t('Credit Out'), value: maskRevenue(metrics.creditOut), subtitle: t('Outstanding credit still not collected'), accent: '#b45309', tint: '#ffedd5', badge: 'CR' },
-    { key: 'retail_credit_out', label: t('Retail Credit Out'), value: maskRevenue(metrics.retailCreditOut), subtitle: t('Outstanding EasyBuy balance'), accent: '#0ea5e9', tint: '#e0f2fe', badge: 'RE' },
-    { key: 'wholesale_credit_out', label: t('Wholesale Credit Out'), value: maskRevenue(metrics.wholesaleCreditOut), subtitle: t('Outstanding wholesale credit balance'), accent: '#7c2d12', tint: '#ffedd5', badge: 'WC' },
-    { key: 'retail_credit_recovered', label: t('Retail Credit Recovered'), value: maskRevenue(metrics.retailCreditRecovered), subtitle: periodMode === 'all_time' ? t('All recovered EasyBuy amount') : t('Recovered EasyBuy amount in selected range'), accent: '#10b981', tint: '#d1fae5', badge: 'RR' },
-    { key: 'wholesale_credit_recovered', label: t('Wholesale Credit Recovered'), value: maskRevenue(metrics.wholesaleCreditRecovered), subtitle: periodMode === 'all_time' ? t('All recovered wholesale credit amount') : t('Recovered wholesale credit amount in selected range'), accent: '#a855f7', tint: '#f3e8ff', badge: 'WR' },
+    { key: 'sales', label: t('Total Sales (Repayment + Actual Sales)'), value: maskRevenue(metrics.todayTotal), subtitle: periodMode === 'all_time' ? t('Recognized sales and repayments for all time') : t('Recognized sales and repayments in selected range'), accent: '#2563eb', tint: '#dbeafe', badge: 'RV', primary: true },
+    { key: 'profit', label: t('Total Profit (Repayment Profit + Actual Sales Profit)'), value: maskProfit(metrics.todayProfit), subtitle: canViewProfit ? t('Recognized profit for sales and repayments') : t('Profit access masked'), accent: '#7c3aed', tint: '#ede9fe', badge: 'PF', primary: true },
+    { key: 'items', label: t('Items Sold'), value: metrics.itemsSold, subtitle: t('Units from sales created in range'), accent: '#0f766e', tint: '#ccfbf1', badge: 'IT', primary: true },
+    { key: 'credit_out', label: t('Total Credit Sales'), value: maskRevenue(metrics.creditOut), subtitle: t('Outstanding balance across all credit sales'), accent: '#b45309', tint: '#ffedd5', badge: 'CR', primary: true },
+    { key: 'total_credit_recovered', label: t('Total Credit Recovered'), value: maskRevenue(metrics.totalCreditRecovered), subtitle: periodMode === 'all_time' ? t('All credit repayments received') : t('Credit repayments received in selected range'), accent: '#10b981', tint: '#d1fae5', badge: 'TR', primary: true },
+    { key: 'awaiting', label: t('Pending Deposit'), value: maskRevenue(financeSummary.awaitingAmount), subtitle: financeSummaryLoading ? t('Refreshing finance summary') : t('Money waiting to be deposited'), accent: '#ef4444', tint: '#fee2e2', badge: 'PD', loading: financeSummaryLoading, primary: canUseFinanceReconciliation, hidden: !canUseFinanceReconciliation },
+    { key: 'cashflow', label: t('Cash Available'), value: maskProfit(finance.net), subtitle: t('Recognized revenue minus expenses'), accent: '#16a34a', tint: '#dcfce7', badge: 'CF' },
+    { key: 'deposited', label: t('Money Deposited'), value: maskRevenue(financeSummary.depositedAmount), subtitle: financeSummaryLoading ? t('Refreshing finance summary') : t('Approved reconciliations'), accent: '#14b8a6', tint: '#ccfbf1', badge: 'MD', loading: financeSummaryLoading, hidden: !canUseFinanceReconciliation },
+    { key: 'retail_credit_out', label: t('Retail Credit Sales'), value: maskRevenue(metrics.retailCreditOut), subtitle: t('Outstanding retail credit balance'), accent: '#0ea5e9', tint: '#e0f2fe', badge: 'RE' },
+    { key: 'wholesale_credit_out', label: t('Wholesale Credit Sales'), value: maskRevenue(metrics.wholesaleCreditOut), subtitle: t('Outstanding wholesale credit balance'), accent: '#7c2d12', tint: '#ffedd5', badge: 'WC' },
+    { key: 'retail_credit_recovered', label: t('Retail Credit Repayment'), value: maskRevenue(metrics.retailCreditRecovered), subtitle: periodMode === 'all_time' ? t('All retail credit repayments received') : t('Retail credit repayments in selected range'), accent: '#22c55e', tint: '#dcfce7', badge: 'RR' },
+    { key: 'wholesale_credit_recovered', label: t('Wholesale Credit Repayment'), value: maskRevenue(metrics.wholesaleCreditRecovered), subtitle: periodMode === 'all_time' ? t('All wholesale credit repayments received') : t('Wholesale credit repayments in selected range'), accent: '#a855f7', tint: '#f3e8ff', badge: 'WR' },
     { key: 'transactions', label: t('Sales Count'), value: metrics.transactionCount, subtitle: t('Sales created in selected range'), accent: '#f59e0b', tint: '#fef3c7', badge: 'TX' },
-    { key: 'margin', label: t('Margin'), value: maskProfitText(`${metrics.marginPct}%`), subtitle: t('Gross margin percentage'), accent: '#ec4899', tint: '#fce7f3', badge: 'MG' },
-    { key: 'cashflow', label: t('Net Cashflow'), value: maskProfit(finance.net), subtitle: t('Recognized revenue minus expenses'), accent: '#16a34a', tint: '#dcfce7', badge: 'CF' },
-    ...(canUseFinanceReconciliation ? [
-      { key: 'deposited', label: t('Deposited to Company Account'), value: maskRevenue(financeSummary.depositedAmount), subtitle: financeSummaryLoading ? t('Refreshing finance summary') : t('Approved reconciliations'), accent: '#14b8a6', tint: '#ccfbf1', badge: 'DP', loading: financeSummaryLoading },
-      { key: 'awaiting', label: t('Waiting for Deposit'), value: maskRevenue(financeSummary.awaitingAmount), subtitle: financeSummaryLoading ? t('Refreshing finance summary') : t('Backlog days: {count}', { count: financeSummary.backlogDays }), accent: '#ef4444', tint: '#fee2e2', badge: 'WD', loading: financeSummaryLoading }
-    ] : [])
-  ];
+    { key: 'margin', label: t('Margin'), value: maskProfitText(`${metrics.marginPct}%`), subtitle: t('Gross margin percentage'), accent: '#ec4899', tint: '#fce7f3', badge: 'MG' }
+  ].filter((card) => !card.hidden);
+  const primarySummaryCards = summaryCards.filter((card) => card.primary);
+  const secondarySummaryCards = summaryCards.filter((card) => !card.primary);
   const sectionCardStyle = {
     background: '#fff',
     padding: 14,
@@ -944,8 +950,8 @@ function DashboardPage() {
           </label>
         </div>
       </div>
-      <div className="summary-grid" style={{ marginBottom: 12, gap: 12 }}>
-        {summaryCards.map((card) => (
+      <div className="summary-grid" style={{ marginBottom: 6, gap: 12 }}>
+        {primarySummaryCards.map((card) => (
           <div key={card.key} style={summaryCardStyle}>
             <div style={summaryCardAccentStyle(card.accent)} />
             <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
@@ -964,6 +970,43 @@ function DashboardPage() {
           </div>
         ))}
       </div>
+      {secondarySummaryCards.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setShowMoreSummaryCards((prev) => !prev)}
+            style={{ fontSize: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 8 }}
+          >
+            <span style={{ width: 18, height: 18, borderRadius: 999, display: 'inline-grid', placeItems: 'center', background: '#e2e8f0', color: '#0f172a', fontSize: 12, fontWeight: 800 }}>
+              {showMoreSummaryCards ? '-' : '+'}
+            </span>
+            {showMoreSummaryCards ? t('Hide More Summary Cards') : t('Show More Summary Cards')}
+          </button>
+        </div>
+      )}
+      {showMoreSummaryCards && secondarySummaryCards.length > 0 && (
+        <div className="summary-grid" style={{ marginBottom: 12, gap: 12 }}>
+          {secondarySummaryCards.map((card) => (
+            <div key={card.key} style={summaryCardStyle}>
+              <div style={summaryCardAccentStyle(card.accent)} />
+              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: '#64748b', fontSize: 11, lineHeight: 1.25, fontWeight: 700 }}>{card.label}</div>
+                  <div style={{ fontSize: 22, lineHeight: 1.1, fontWeight: 800, color: '#0f172a', marginTop: 6 }}>
+                    {card.loading ? (
+                      <LoadingDots label={t('Loading finance summary')} />
+                    ) : card.value}
+                  </div>
+                  <div style={{ marginTop: 6, color: '#64748b', fontSize: 11, lineHeight: 1.3 }}>{card.subtitle}</div>
+                </div>
+                <div style={summaryCardBadgeStyle(card.accent, card.tint)}>{card.badge}</div>
+              </div>
+              <div style={{ marginTop: 10, height: 4, borderRadius: 999, background: `linear-gradient(90deg, ${card.accent} 0%, ${card.accent}99 72%, rgba(255,255,255,0) 100%)` }} />
+            </div>
+          ))}
+        </div>
+      )}
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, alignItems: 'start' }}>
         <div style={sectionCardStyle}>
           <h2 style={sectionTitleStyle}>{metrics.revenueLineTitle}</h2>
