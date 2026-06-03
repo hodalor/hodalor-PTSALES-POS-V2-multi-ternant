@@ -77,6 +77,7 @@ function SalesPage() {
   const [showAll, setShowAll] = useState(false);
   const [saleKind, setSaleKind] = useState('all'); // all, retail, wholesale
   const [creditKind, setCreditKind] = useState('all'); // all, non_credit, retail_easybuy, wholesale_credit
+  const [creditPackageFilter, setCreditPackageFilter] = useState('all');
   const [tab, setTab] = useState('sales'); // sales, leaderboard, branches
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -171,6 +172,11 @@ function SalesPage() {
     } else if (creditKind === 'wholesale_credit') {
       list = list.filter(s => String(s.creditMode || '').trim().toLowerCase() === 'distribution_credit');
     }
+    if (creditPackageFilter === 'non_credit') {
+      list = list.filter((sale) => !String(sale.creditPackageName || '').trim());
+    } else if (creditPackageFilter !== 'all') {
+      list = list.filter((sale) => String(sale.creditPackageName || '').trim() === creditPackageFilter);
+    }
     if (settlementFilter === 'incomplete') {
       list = list.filter((sale) => getSaleSettlementStatus(sale) === 'incomplete');
     } else if (settlementFilter === 'completed') {
@@ -202,7 +208,15 @@ function SalesPage() {
       });
     }
     return list;
-  }, [auth.user?.name, branchLabel, canUseCompetitionScope, creditKind, dateFrom, dateTo, filteredByBranch, periodMode, productBrandById, roleLower, saleKind, searchTerm, settlementFilter]);
+  }, [auth.user?.name, branchLabel, canUseCompetitionScope, creditKind, creditPackageFilter, dateFrom, dateTo, filteredByBranch, periodMode, productBrandById, roleLower, saleKind, searchTerm, settlementFilter]);
+
+  const creditPackageOptions = useMemo(() => {
+    return Array.from(new Set(
+      (sales || [])
+        .map((sale) => String(sale.creditPackageName || '').trim())
+        .filter(Boolean)
+    )).sort((a, b) => a.localeCompare(b));
+  }, [sales]);
 
   const summary = useMemo(() => {
     const fromDate = periodMode === 'all_time' ? null : parseRangeStart(dateFrom);
@@ -444,6 +458,14 @@ function SalesPage() {
                 <option value="non_credit">Non Credit</option>
                 <option value="retail_easybuy">Retail EasyBuy</option>
                 <option value="wholesale_credit">Distribution Credit Sale</option>
+              </select>
+            </label>
+            <label>
+              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Credit Package</div>
+              <select className="select" value={creditPackageFilter} onChange={e => { setCreditPackageFilter(e.target.value); setPage(1); }}>
+                <option value="all">All Packages</option>
+                <option value="non_credit">Non Credit</option>
+                {creditPackageOptions.map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
             </label>
             <label>

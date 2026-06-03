@@ -10,7 +10,7 @@ import { isFeatureEnabled } from '../utils/featureFlags';
 import BranchSelect from '../components/BranchSelect';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
-import { getSaleRangeTotals, saleHasActivityInRange } from '../utils/saleAccounting';
+import { getSaleActivityType, getSaleRangeTotals, saleHasActivityInRange } from '../utils/saleAccounting';
 
 Chart.register(BarElement, LineElement, PointElement, CategoryScale, LinearScale, ArcElement, Tooltip, Legend, Filler);
 
@@ -50,12 +50,7 @@ function isDateInRange(value, start = null, end = null) {
 }
 
 function getDashboardSaleActivityType(sale) {
-  const creditMode = String(sale?.creditMode || '').trim().toLowerCase();
-  const saleType = String(sale?.posType || sale?.inventoryType || 'retail').trim().toLowerCase();
-  if (creditMode === 'retail_easybuy') return 'retail_credit';
-  if (creditMode === 'distribution_credit') return 'wholesale_credit';
-  if (saleType === 'wholesale') return 'wholesale_sales';
-  return 'retail_sales';
+  return getSaleActivityType(sale);
 }
 
 function matchesDashboardActivityFilter(sale, filter) {
@@ -176,6 +171,13 @@ function DashboardPage() {
   }, [branchId, canSelectAllDashboardBranches, defaultDashboardBranchId, settings.currentBranchId]);
   const dashboardScopeModeRef = useRef('');
   const dashboardBranchInitRef = useRef(false);
+  const financeSummaryCacheRef = useRef(new Map());
+  const financeSummaryRequestKey = useMemo(() => JSON.stringify({
+    branchId: financeSummaryBranchId || '',
+    periodMode,
+    from: periodMode === 'all_time' ? '' : (dateFrom || defaultFromIso),
+    to: periodMode === 'all_time' ? '' : (dateTo || todayIso)
+  }), [dateFrom, dateTo, defaultFromIso, financeSummaryBranchId, periodMode, todayIso]);
 
   useEffect(() => {
     const nextScopeMode = isPrivilegedDashboardViewer
@@ -248,35 +250,51 @@ function DashboardPage() {
 
   useEffect(() => {
     let alive = true;
+    let loadingTimer = null;
     (async () => {
       if (!canUseFinanceReconciliation) {
         if (alive) setFinanceSummaryLoading(false);
         if (alive) setFinanceSummary({ depositedAmount: 0, awaitingAmount: 0, pendingApprovalAmount: 0, backlogDays: 0 });
         return;
       }
+      const cached = financeSummaryCacheRef.current.get(financeSummaryRequestKey);
+      if (cached && alive) {
+        setFinanceSummary(cached);
+        setFinanceSummaryLoading(false);
+      } else {
+        loadingTimer = setTimeout(() => {
+          if (alive) setFinanceSummaryLoading(true);
+        }, 180);
+      }
       try {
-        if (alive) setFinanceSummaryLoading(true);
         const data = await getCashReconciliationSummary({
           branchId: financeSummaryBranchId || undefined,
           from: periodMode === 'all_time' ? undefined : (dateFrom || defaultFromIso),
           to: periodMode === 'all_time' ? undefined : (dateTo || todayIso)
         });
         if (!alive) return;
-        setFinanceSummary({
+        const nextSummary = {
           depositedAmount: Number(data?.depositedAmount || 0),
           awaitingAmount: Number(data?.awaitingAmount || 0),
           pendingApprovalAmount: Number(data?.pendingApprovalAmount || 0),
           backlogDays: Number(data?.backlogDays || 0)
-        });
+        };
+        financeSummaryCacheRef.current.set(financeSummaryRequestKey, nextSummary);
+        setFinanceSummary(nextSummary);
         setFinanceSummaryLoading(false);
       } catch {
         if (!alive) return;
         setFinanceSummaryLoading(false);
-        setFinanceSummary({ depositedAmount: 0, awaitingAmount: 0, pendingApprovalAmount: 0, backlogDays: 0 });
+        if (!cached) {
+          setFinanceSummary({ depositedAmount: 0, awaitingAmount: 0, pendingApprovalAmount: 0, backlogDays: 0 });
+        }
       }
     })();
-    return () => { alive = false; };
-  }, [canUseFinanceReconciliation, dateFrom, dateTo, defaultFromIso, financeSummaryBranchId, periodMode, todayIso]);
+    return () => {
+      alive = false;
+      if (loadingTimer) clearTimeout(loadingTimer);
+    };
+  }, [canUseFinanceReconciliation, dateFrom, dateTo, defaultFromIso, financeSummaryBranchId, financeSummaryRequestKey, periodMode, todayIso]);
 
   useEffect(() => {
     let alive = true;

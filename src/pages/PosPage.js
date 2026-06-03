@@ -53,6 +53,23 @@ function buildSaleDateTimeValue(dateValue, timeValue) {
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
+function buildCreditUpfrontTimeline(total, costTotal, upfrontAmount, paidAt) {
+  const totalAmount = Math.max(0, Number(total || 0));
+  const totalCost = Math.max(0, Number(costTotal || 0));
+  const upfront = Math.max(0, Math.min(totalAmount, Number(upfrontAmount || 0)));
+  const recognizedCost = Math.min(totalCost, upfront);
+  const recognizedProfit = Math.max(0, upfront - totalCost);
+  return [{
+    source: 'credit_upfront',
+    amount: upfront,
+    principalAmount: upfront,
+    penaltyAmount: 0,
+    recognizedCost,
+    recognizedProfit,
+    paidAt
+  }];
+}
+
 function PosPage({ mode = 'retail' }) {
   const dispatch = useDispatch();
   const cart = useSelector(state => state.cart);
@@ -117,6 +134,7 @@ function PosPage({ mode = 'retail' }) {
   const [easyBuyEnabled, setEasyBuyEnabled] = useState(false);
   const [easyBuyAmountPaidNow, setEasyBuyAmountPaidNow] = useState('');
   const [easyBuyDueDate, setEasyBuyDueDate] = useState('');
+  const [selectedCreditPackageName, setSelectedCreditPackageName] = useState('');
   const [taxOverridePct, setTaxOverridePct] = useState('');
   const [taxOverrideRemark, setTaxOverrideRemark] = useState('');
   const [saleDate, setSaleDate] = useState(() => getLocalSaleDateTimeParts().date);
@@ -596,6 +614,22 @@ function PosPage({ mode = 'retail' }) {
   const customerOutstanding = Number(selectedCustomer?.outstandingBalance || 0);
   const customerMaxCreditLimit = Number(selectedCustomer?.maxCreditLimit || settings.maxCreditLimitPerCustomer || 0);
   const customerCreditScore = Number(selectedCustomer?.creditScore || 0);
+  const creditPackageOptions = useMemo(() => {
+    const configured = Array.isArray(settings.creditPackages) ? settings.creditPackages : [];
+    const defaultLabel = isWholesale ? 'Credit Sale' : 'EasyBuy';
+    return Array.from(new Set([defaultLabel, ...configured.map((item) => String(item || '').trim()).filter(Boolean)]));
+  }, [isWholesale, settings.creditPackages]);
+  const activeCreditPackageName = useMemo(() => {
+    const selected = String(selectedCreditPackageName || '').trim();
+    if (selected) return selected;
+    return creditPackageOptions[0] || (isWholesale ? 'Credit Sale' : 'EasyBuy');
+  }, [creditPackageOptions, isWholesale, selectedCreditPackageName]);
+
+  useEffect(() => {
+    if (selectedCreditPackageName && !creditPackageOptions.includes(selectedCreditPackageName)) {
+      setSelectedCreditPackageName('');
+    }
+  }, [creditPackageOptions, selectedCreditPackageName]);
 
   async function loadSerializedUnits(product, search = '', pageValue = 1, pageSizeValue = serializedUnitsPageSize) {
     if (!product) return;
@@ -838,6 +872,7 @@ function PosPage({ mode = 'retail' }) {
       easyBuyEnabled,
       easyBuyAmountPaidNow,
       easyBuyDueDate,
+      selectedCreditPackageName: activeCreditPackageName,
       saleDate,
       saleTime,
       saleDateTimeTouched,
@@ -857,6 +892,8 @@ function PosPage({ mode = 'retail' }) {
     setEasyBuyEnabled(false);
     setEasyBuyAmountPaidNow('');
     setEasyBuyDueDate('');
+    setSelectedCreditPackageName('');
+    resetSaleDateTime();
     resetSaleDateTime();
     setPayments([{ type: 'cash', amount: '' }]);
     toast.show('Sale held', { type: 'success' });
@@ -903,6 +940,7 @@ function PosPage({ mode = 'retail' }) {
     setEasyBuyEnabled(!!h.easyBuyEnabled);
     setEasyBuyAmountPaidNow(h.easyBuyAmountPaidNow || '');
     setEasyBuyDueDate(h.easyBuyDueDate || '');
+    setSelectedCreditPackageName(h.selectedCreditPackageName || '');
     setSaleDate(h.saleDate || getLocalSaleDateTimeParts().date);
     setSaleTime(h.saleTime || getLocalSaleDateTimeParts().time);
     setSaleDateTimeTouched(!!h.saleDateTimeTouched);
@@ -949,6 +987,7 @@ function PosPage({ mode = 'retail' }) {
       }
       if (easyBuyEnabled) {
         const creditPaymentsTotal = payments.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
+        const creditPaidNow = Math.max(0, Number(easyBuyAmountPaidNow || 0));
         if (!easyBuyAllowed) {
           toast.show(`${creditModeLabel} requires items in cart`, { type: 'error' });
           return;
@@ -963,6 +1002,10 @@ function PosPage({ mode = 'retail' }) {
         }
         if (!easyBuyDueDate) {
           toast.show(`Select a due date for ${creditModeLabel}`, { type: 'error' });
+          return;
+        }
+        if (creditPaidNow >= (Number(total || 0) - 0.005)) {
+          toast.show(`${creditModeLabel} is selected but amount paid now covers the full sale. Please check again and use a normal sale if the customer is paying in full.`, { type: 'error' });
           return;
         }
         if ((Number(easyBuyAmountPaidNow || 0) + 0.0001) < Number(easyBuyMinimum || 0)) {
@@ -1003,6 +1046,7 @@ function PosPage({ mode = 'retail' }) {
       const saleCapturedAt = new Date().toISOString();
       const selectedSaleAt = buildSaleDateTimeValue(saleDate, saleTime).toISOString();
       const effectiveSaleAt = canBackdateSales && saleDateTimeTouched ? selectedSaleAt : saleCapturedAt;
+      const creditPackageName = easyBuyEnabled ? activeCreditPackageName : '';
       const sale = {
       branchId: activeBranchId,
       branchName,
@@ -1039,6 +1083,8 @@ function PosPage({ mode = 'retail' }) {
       total,
       payment_methods: payments.map(p => ({ type: p.type, amount: Number(p.amount) || 0 })),
       creditMode: easyBuyEnabled ? (isWholesale ? 'distribution_credit' : 'retail_easybuy') : 'none',
+      creditPackageId: easyBuyEnabled ? creditPackageName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : '',
+      creditPackageName,
       creditDueDate: easyBuyEnabled ? easyBuyDueDate : undefined,
       creditAmountPaidNow: easyBuyEnabled ? Number(easyBuyAmountPaidNow || 0) : 0,
       creditBalance: easyBuyEnabled ? due : 0,
@@ -1046,15 +1092,7 @@ function PosPage({ mode = 'retail' }) {
       outstandingTotal: easyBuyEnabled ? due : 0,
       settlementStatus: easyBuyEnabled && due > 0 ? 'incomplete' : 'completed',
       paymentTimeline: easyBuyEnabled
-        ? [{
-            source: 'credit_upfront',
-            amount: Number(easyBuyAmountPaidNow || 0),
-            principalAmount: Number(easyBuyAmountPaidNow || 0),
-            penaltyAmount: 0,
-            recognizedCost: total > 0 ? (Number(estimatedCostTotal || 0) * (Number(easyBuyAmountPaidNow || 0) / total)) : 0,
-            recognizedProfit: Number(easyBuyAmountPaidNow || 0) - (total > 0 ? (Number(estimatedCostTotal || 0) * (Number(easyBuyAmountPaidNow || 0) / total)) : 0),
-            paidAt: effectiveSaleAt
-          }]
+        ? buildCreditUpfrontTimeline(total, estimatedCostTotal, easyBuyAmountPaidNow, effectiveSaleAt)
         : [{
             source: 'sale',
             amount: total,
@@ -1067,7 +1105,9 @@ function PosPage({ mode = 'retail' }) {
       creditSale: easyBuyEnabled ? {
         enabled: true,
         amountPaidNow: Number(easyBuyAmountPaidNow || 0),
-        dueDate: easyBuyDueDate
+        dueDate: easyBuyDueDate,
+        creditPackageId: creditPackageName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
+        creditPackageName
       } : undefined,
       status: 'completed',
       created_at: effectiveSaleAt,
@@ -1803,6 +1843,14 @@ function PosPage({ mode = 'retail' }) {
                     <input className="input" type="date" value={easyBuyDueDate} onChange={e => setEasyBuyDueDate(e.target.value)} />
                   </label>
                 </div>
+                <label>
+                  <div style={{ marginBottom: 6, color: '#64748b' }}>{t('Credit package')}</div>
+                  <select className="select" value={activeCreditPackageName} onChange={e => setSelectedCreditPackageName(e.target.value)}>
+                    {creditPackageOptions.map((item) => (
+                      <option key={item} value={item}>{item}</option>
+                    ))}
+                  </select>
+                </label>
                 <div style={{ display: 'grid', gap: 6 }}>
                   <div style={{ color: '#64748b', fontSize: 12 }}>{t('Payment method breakdown must equal the amount paid now')}</div>
                   {payments.map((p, i) => (

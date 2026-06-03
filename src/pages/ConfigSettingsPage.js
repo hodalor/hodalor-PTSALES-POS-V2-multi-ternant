@@ -31,9 +31,11 @@ function ConfigSettingsPage() {
   const [newCurSymbol, setNewCurSymbol] = useState('');
   const [newCurPos, setNewCurPos] = useState('prefix');
   const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCreditPackageName, setNewCreditPackageName] = useState('');
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsSavedPulse, setSettingsSavedPulse] = useState(false);
   const [savingCategories, setSavingCategories] = useState(false);
+  const [savingCreditPackages, setSavingCreditPackages] = useState(false);
   const [addingBranch, setAddingBranch] = useState(false);
   const [removingBranchId, setRemovingBranchId] = useState('');
   const [limitUpgradeContext, setLimitUpgradeContext] = useState(null);
@@ -99,6 +101,7 @@ function ConfigSettingsPage() {
     'subscriptionPaymentUnavailableMessage',
     'currentBranchId',
     'categories',
+    'creditPackages',
     'userGrants'
   ]));
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);
@@ -271,6 +274,57 @@ function ConfigSettingsPage() {
     await persistCategories(nextCategories, existing, 'Category removed');
   }
 
+  async function persistCreditPackages(nextPackages, rollbackPackages, successMessage) {
+    try {
+      setSavingCreditPackages(true);
+      if (!navigator.onLine) {
+        if (!offlineBackupAllowed) {
+          dispatch(setAllSettings({ ...(settings || {}), creditPackages: rollbackPackages }));
+          toast.show('Offline: connect internet and try again.', { type: 'error' });
+          return false;
+        }
+        await enqueueHttp({ collection: 'settings', label: 'Credit package settings', path: '/api/settings', method: 'PUT', body: { creditPackages: nextPackages } });
+        initialSettingsRef.current = { ...(initialSettingsRef.current || {}), creditPackages: nextPackages };
+        initialSettingsCapturedRef.current = true;
+        toast.show('Credit packages saved offline. Will backup when online.', { type: 'success' });
+        return true;
+      }
+      await settingsApi.save({ creditPackages: nextPackages });
+      initialSettingsRef.current = { ...(initialSettingsRef.current || {}), creditPackages: nextPackages };
+      initialSettingsCapturedRef.current = true;
+      toast.show(successMessage, { type: 'success' });
+      return true;
+    } catch (e) {
+      dispatch(setAllSettings({ ...(settings || {}), creditPackages: rollbackPackages }));
+      toast.show(String(e?.message || 'Failed to save credit packages'), { type: 'error' });
+      return false;
+    } finally {
+      setSavingCreditPackages(false);
+    }
+  }
+
+  async function addCreditPackage() {
+    const value = String(newCreditPackageName || '').trim();
+    if (!value || savingCreditPackages) return;
+    const existing = Array.isArray(settings.creditPackages) ? settings.creditPackages : [];
+    if (existing.some(item => String(item).toLowerCase() === value.toLowerCase())) {
+      toast.show('Credit package already exists', { type: 'error' });
+      return;
+    }
+    const nextPackages = [...existing, value];
+    dispatch(setAllSettings({ ...(settings || {}), creditPackages: nextPackages }));
+    setNewCreditPackageName('');
+    await persistCreditPackages(nextPackages, existing, 'Credit package added');
+  }
+
+  async function removeCreditPackage(packageName) {
+    if (savingCreditPackages) return;
+    const existing = Array.isArray(settings.creditPackages) ? settings.creditPackages : [];
+    const nextPackages = existing.filter(item => String(item).toLowerCase() !== String(packageName || '').toLowerCase());
+    dispatch(setAllSettings({ ...(settings || {}), creditPackages: nextPackages }));
+    await persistCreditPackages(nextPackages, existing, 'Credit package removed');
+  }
+
   function renderCategoriesCard() {
     return (
       <div className="card" style={{ alignSelf: 'start', padding: 20 }}>
@@ -300,6 +354,40 @@ function ConfigSettingsPage() {
         </div>
         <div style={{ color: '#64748b', fontSize: 12, marginTop: 12 }}>
           Categories saved here are available in the product creation form for this tenant.
+        </div>
+      </div>
+    );
+  }
+
+  function renderCreditPackagesCard() {
+    return (
+      <div className="card" style={{ alignSelf: 'start', padding: 20 }}>
+        <h3 className="section-title" style={{ margin: 0, fontSize: 24, fontWeight: 800 }}>Credit Packages</h3>
+        <div style={{ color: '#64748b', fontSize: 13, marginTop: 12, marginBottom: 16 }}>
+          Add the credit package names you want cashiers to choose from during credit checkout. The selected package is saved on the sale and printed on receipts.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, marginBottom: 18 }}>
+          <input className="input" placeholder="New credit package" value={newCreditPackageName} onChange={e => setNewCreditPackageName(e.target.value)} style={{ width: '100%', minHeight: 48 }} disabled={savingCreditPackages} />
+          <button className="btn btn-primary" type="button" onClick={addCreditPackage} style={{ minWidth: 92, minHeight: 48 }} disabled={savingCreditPackages}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              {savingCreditPackages && <Spinner />}
+              {savingCreditPackages ? 'Saving…' : 'Add'}
+            </span>
+          </button>
+        </div>
+        <div style={{ display: 'grid', gap: 0 }}>
+          {(settings.creditPackages || []).map((creditPackage) => (
+            <div key={creditPackage} style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 12, padding: '12px 0', borderBottom: '1px solid #e2e8f0' }}>
+              <div style={{ fontSize: 18, color: '#0f172a' }}>{creditPackage}</div>
+              <button className="btn" type="button" onClick={() => removeCreditPackage(creditPackage)} style={{ minWidth: 96, borderRadius: 14, padding: '10px 14px' }} disabled={savingCreditPackages}>Remove</button>
+            </div>
+          ))}
+          {(!settings.creditPackages || settings.creditPackages.length === 0) && (
+            <div style={{ color: '#64748b', padding: '8px 0' }}>No credit packages added yet.</div>
+          )}
+        </div>
+        <div style={{ color: '#64748b', fontSize: 12, marginTop: 12 }}>
+          Keep the names short so they fit well on receipts, sales records, and credit control filters.
         </div>
       </div>
     );
@@ -1401,6 +1489,7 @@ function ConfigSettingsPage() {
         </div>
         <div className="config-column" style={{ display: 'grid', gap: 16, alignContent: 'start', alignItems: 'start' }}>
           {renderCategoriesCard()}
+          {renderCreditPackagesCard()}
           {renderFinanceAccountsCard()}
           <div className="card config-panel" style={{ alignSelf: 'start', width: '100%' }}>
             <h2 className="section-title" style={{ marginBottom: 6, fontSize: 24, fontWeight: 800 }}>Branches</h2>

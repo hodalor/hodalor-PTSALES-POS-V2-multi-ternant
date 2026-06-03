@@ -38,6 +38,12 @@ function normalizeCreditSaleRow(row, now = new Date()) {
   };
 }
 
+function getCreditPackageLabel(row) {
+  const packageName = String(row?.creditPackageName || '').trim();
+  if (packageName) return packageName;
+  return String(row?.posType || 'retail') === 'wholesale' ? 'Distribution Credit Sale' : 'Retail EasyBuy';
+}
+
 function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', title = 'Credit Sale Control', description = 'Credit sale balances, overdue tracking, customer rank, and repayment initiation.' }) {
   const settings = useSelector(s => s.settings);
   const saleRows = useSelector(s => s.sales.sales || []);
@@ -64,6 +70,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [deletedSaleKeys, setDeletedSaleKeys] = useState(() => new Set());
   const [sourceFilter, setSourceFilter] = useState('all');
+  const [creditPackageFilter, setCreditPackageFilter] = useState('all');
   const [branchFilter, setBranchFilter] = useState('');
   const todayIso = new Date().toISOString().slice(0, 10);
   const defaultFromIso = new Date(Date.now() - 29 * 24 * 3600 * 1000).toISOString().slice(0, 10);
@@ -180,6 +187,8 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
         amount_paid: Number(row.creditAmountPaidNow || row.creditSale?.amount_paid || 0),
         balance: Number(row.creditBalance || row.creditSale?.balance || Math.max(0, Number(row.total || 0) - Number(row.creditAmountPaidNow || 0))),
         accumulated_penalty: Number(row.creditSale?.accumulated_penalty || 0),
+        creditPackageId: row.creditPackageId || row.creditSale?.creditPackageId || '',
+        creditPackageName: row.creditPackageName || row.creditSale?.creditPackageName || '',
         due_date: row.creditDueDate || row.creditSale?.due_date || row.creditSale?.dueDate || null,
         createdAt: row.created_at || row.createdAt || row.creditSale?.createdAt || null,
         overdue_days: Number(row.creditSale?.overdue_days || 0),
@@ -207,8 +216,13 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
     return Array.from(byId.values());
   }, [deletedSaleKeys, fallbackCreditSales, sales]);
   const filteredSales = useMemo(() => (
-    sourceFilter === 'all' ? mergedSales : mergedSales.filter((row) => String(row.posType || 'retail') === sourceFilter)
-  ), [mergedSales, sourceFilter]);
+    (sourceFilter === 'all' ? mergedSales : mergedSales.filter((row) => String(row.posType || 'retail') === sourceFilter))
+      .filter((row) => creditPackageFilter === 'all' ? true : getCreditPackageLabel(row) === creditPackageFilter)
+  ), [mergedSales, sourceFilter, creditPackageFilter]);
+  const branchScopedSales = useMemo(() => filteredSales.filter((row) => {
+    if (branchFilter && String(row.branchId || '') !== String(branchFilter)) return false;
+    return true;
+  }), [filteredSales, branchFilter]);
   const branchFilteredSales = useMemo(() => filteredSales.filter((row) => {
     if (branchFilter && String(row.branchId || '') !== String(branchFilter)) return false;
     const dateValue = row.createdAt || row.created_at || row.saleDate || row.due_date;
@@ -218,6 +232,8 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   const salesById = useMemo(() => new Map(mergedSales.map((row) => [String(row._id || row.saleId || ''), row])), [mergedSales]);
   const shownActiveSales = useMemo(() => branchFilteredSales.filter(row => row.status !== 'completed'), [branchFilteredSales]);
   const overdueSales = useMemo(() => branchFilteredSales.filter(row => row.status === 'overdue'), [branchFilteredSales]);
+  const currentActiveSales = useMemo(() => branchScopedSales.filter((row) => row.status !== 'completed'), [branchScopedSales]);
+  const currentOverdueSales = useMemo(() => branchScopedSales.filter((row) => row.status === 'overdue'), [branchScopedSales]);
   const defaulterRows = useMemo(() => {
     return overdueSales
       .slice()
@@ -241,12 +257,25 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
     return repayments.filter((row) => {
       const sale = salesById.get(String(row.creditSaleId || ''));
       if (sourceFilter !== 'all' && String(sale?.posType || 'retail') !== sourceFilter) return false;
+      if (creditPackageFilter !== 'all' && getCreditPackageLabel(sale) !== creditPackageFilter) return false;
       if (branchFilter && String(sale?.branchId || '') !== String(branchFilter)) return false;
       const dateValue = row.createdAt || row.created_at || row.paymentDate || row.date;
       if (dateValue && !inRange(dateValue)) return false;
       return true;
     });
-  }, [repayments, salesById, sourceFilter, branchFilter, inRange]);
+  }, [repayments, salesById, sourceFilter, creditPackageFilter, branchFilter, inRange]);
+  const currentPendingRepayments = useMemo(() => {
+    return repayments.filter((row) => {
+      const sale = salesById.get(String(row.creditSaleId || ''));
+      if (sourceFilter !== 'all' && String(sale?.posType || 'retail') !== sourceFilter) return false;
+      if (creditPackageFilter !== 'all' && getCreditPackageLabel(sale) !== creditPackageFilter) return false;
+      if (branchFilter && String(sale?.branchId || '') !== String(branchFilter)) return false;
+      return row.status !== 'approved' && row.status !== 'rejected';
+    });
+  }, [repayments, salesById, sourceFilter, creditPackageFilter, branchFilter]);
+  const creditPackageOptions = useMemo(() => (
+    Array.from(new Set(mergedSales.map((row) => getCreditPackageLabel(row)).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+  ), [mergedSales]);
   const filteredActiveSales = useMemo(() => {
     const q = String(salesSearch || '').trim().toLowerCase();
     if (!q) return shownActiveSales;
@@ -275,19 +304,18 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
     ].join(' ').toLowerCase().includes(q));
   }, [getCustomerSearchText, repaymentsSearch, shownRepayments]);
   const creditSummary = useMemo(() => {
-    const easybuyRows = branchFilteredSales.filter((row) => String(row.posType || 'retail') === 'retail');
-    const wholesaleRows = branchFilteredSales.filter((row) => String(row.posType || 'retail') === 'wholesale');
-    const pendingRepayments = shownRepayments.filter((row) => row.status !== 'approved' && row.status !== 'rejected');
+    const easybuyRows = currentActiveSales.filter((row) => String(row.posType || 'retail') === 'retail');
+    const wholesaleRows = currentActiveSales.filter((row) => String(row.posType || 'retail') === 'wholesale');
     return {
-      activeCount: shownActiveSales.length,
-      overdueCount: overdueSales.length,
+      activeCount: currentActiveSales.length,
+      overdueCount: currentOverdueSales.length,
       dueTodayCount: dueTodaySales.length,
       easybuyOutstanding: easybuyRows.reduce((sum, row) => sum + (Number(row.balance || 0) + Number(row.accumulated_penalty || 0)), 0),
       wholesaleOutstanding: wholesaleRows.reduce((sum, row) => sum + (Number(row.balance || 0) + Number(row.accumulated_penalty || 0)), 0),
-      pendingRepaymentAmount: pendingRepayments.reduce((sum, row) => sum + (Number(row.amount || row.repayment_amount || 0) || 0), 0),
-      pendingRepaymentCount: pendingRepayments.length
+      pendingRepaymentAmount: currentPendingRepayments.reduce((sum, row) => sum + (Number(row.amount || row.repayment_amount || 0) || 0), 0),
+      pendingRepaymentCount: currentPendingRepayments.length
     };
-  }, [branchFilteredSales, shownRepayments, shownActiveSales.length, overdueSales.length, dueTodaySales.length]);
+  }, [currentActiveSales, currentOverdueSales, currentPendingRepayments, dueTodaySales.length]);
 
   async function startRepayment(row) {
     const outstandingAmount = Math.max(0, Number(row?.balance || 0) + Number(row?.accumulated_penalty || 0));
@@ -483,6 +511,15 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
               <option value="wholesale">Distribution Credit Sale</option>
             </select>
           </label>
+          <label>
+            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Credit Package</div>
+            <select className="select" value={creditPackageFilter} onChange={e => setCreditPackageFilter(e.target.value)}>
+              <option value="all">All Packages</option>
+              {creditPackageOptions.map((item) => (
+                <option key={item} value={item}>{item}</option>
+              ))}
+            </select>
+          </label>
         </div>
         <div className="summary-grid">
         <div>
@@ -545,7 +582,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                 <tr key={`defaulter-${String(row._id || row.saleId || row.clientId || '')}`}>
                   <td>{getCustomerDetails(row.customer_id).name}</td>
                   <td>{getCustomerDetails(row.customer_id).businessName}</td>
-                  <td>{String(row.posType || 'retail') === 'wholesale' ? 'Distribution Credit Sale' : 'Retail EasyBuy'}</td>
+                  <td>{getCreditPackageLabel(row)}</td>
                   <td><span className="price-accent">{formatCurrency(Number(row.balance || 0), settings)}</span></td>
                   <td><span className="price-accent">{formatCurrency(Number(row.accumulated_penalty || 0), settings)}</span></td>
                   <td>{row.createdAt || row.created_at || row.saleDate ? new Date(row.createdAt || row.created_at || row.saleDate).toLocaleDateString() : '—'}</td>
@@ -673,7 +710,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
               value={salesSearch}
               onChange={e => setSalesSearch(e.target.value)}
             />
-            <div style={{ color: '#64748b', fontSize: 12 }}>Filtered by {branchFilter ? 'selected branch' : 'all branches'} and {sourceFilter === 'all' ? 'all sources' : sourceFilter === 'retail' ? 'Retail EasyBuy' : 'Distribution Credit Sale'}</div>
+            <div style={{ color: '#64748b', fontSize: 12 }}>Filtered by {branchFilter ? 'selected branch' : 'all branches'}, {sourceFilter === 'all' ? 'all sources' : sourceFilter === 'retail' ? 'Retail EasyBuy' : 'Distribution Credit Sale'}, and {creditPackageFilter === 'all' ? 'all credit packages' : creditPackageFilter}</div>
           </div>
         </div>
         {canDeleteCredit && (
@@ -734,7 +771,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                 )}
                 <td>{getCustomerDetails(row.customer_id).name}</td>
                 <td>{getCustomerDetails(row.customer_id).businessName}</td>
-                <td>{String(row.posType || 'retail') === 'wholesale' ? 'Distribution Credit Sale' : 'Retail EasyBuy'}</td>
+                <td>{getCreditPackageLabel(row)}</td>
                 <td>{Array.isArray(row.items) ? row.items.map(item => `${item.name} × ${item.qty}`).join(', ') : '—'}</td>
                 <td><span className="price-accent">{formatCurrency(Number(row.total_amount || 0), settings)}</span></td>
                 <td><span className="price-accent">{formatCurrency(Number(row.amount_paid || 0), settings)}</span></td>
@@ -776,7 +813,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
               value={repaymentsSearch}
               onChange={e => setRepaymentsSearch(e.target.value)}
             />
-            <div style={{ color: '#64748b', fontSize: 12 }}>Filtered by {branchFilter ? 'selected branch' : 'all branches'} and {sourceFilter === 'all' ? 'all sources' : sourceFilter === 'retail' ? 'Retail EasyBuy' : 'Distribution Credit Sale'}</div>
+            <div style={{ color: '#64748b', fontSize: 12 }}>Filtered by {branchFilter ? 'selected branch' : 'all branches'}, {sourceFilter === 'all' ? 'all sources' : sourceFilter === 'retail' ? 'Retail EasyBuy' : 'Distribution Credit Sale'}, and {creditPackageFilter === 'all' ? 'all credit packages' : creditPackageFilter}</div>
           </div>
         </div>
         {canDeleteCredit && (

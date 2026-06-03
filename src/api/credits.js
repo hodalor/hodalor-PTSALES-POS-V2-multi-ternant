@@ -4,6 +4,9 @@ export function listCreditSales(params = {}) {
   const query = new URLSearchParams();
   if (params.customerId) query.set('customerId', String(params.customerId));
   if (params.status) query.set('status', String(params.status));
+  if (params.branchId) query.set('branchId', String(params.branchId));
+  if (params.posType) query.set('posType', String(params.posType));
+  if (params.creditPackageName) query.set('creditPackageName', String(params.creditPackageName));
   const qs = query.toString() ? `?${query.toString()}` : '';
   return fetchJson(`/api/credits/sales${qs}`, { timeoutMs: 60000 });
 }

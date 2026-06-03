@@ -41,6 +41,13 @@ function actorLabel(name, role) {
   return person || personRole || '';
 }
 
+function getReceiptCreditLabel(sale, t) {
+  const packageName = String(sale?.creditPackageName || sale?.creditSale?.creditPackageName || '').trim();
+  if (packageName) return packageName;
+  const creditMode = String(sale?.creditMode || '').trim().toLowerCase();
+  return creditMode === 'distribution_credit' ? t('Distribution Credit') : t('EasyBuy');
+}
+
 export function printReceiptHtml(html) {
   const w = window.open('', 'PRINT', 'width=400,height=600');
   if (!w) return;
@@ -139,8 +146,7 @@ export function buildBrandedReceiptHtml({ settings, sale }) {
   const easyBuyBalance = Number(sale?.creditBalance ?? sale?.creditSale?.balance ?? Math.max(0, Number(sale.total || 0) - easyBuyPaidNow));
   const repaymentHistory = Array.isArray(sale?.repaymentHistory) ? sale.repaymentHistory : [];
   const hasEasyBuy = (sale.payment_methods || []).some(p => String(p.type || '').toLowerCase() === 'easybuy') || !!easyBuyDueDate || repaymentHistory.length > 0;
-  const creditMode = String(sale?.creditMode || '').trim().toLowerCase();
-  const creditLabel = creditMode === 'distribution_credit' ? t('Distribution Credit') : t('EasyBuy');
+  const creditLabel = getReceiptCreditLabel(sale, t);
   const isPaid = paid >= (Number(sale.total) || 0) - 0.005;
   const showPaidStamp = stampEnabled && isPaid;
   const today = new Date(sale.created_at || Date.now()).toLocaleDateString();

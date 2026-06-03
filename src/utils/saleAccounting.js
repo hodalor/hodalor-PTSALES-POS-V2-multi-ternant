@@ -9,11 +9,21 @@ function toDate(value) {
 }
 
 export function isCreditSale(sale) {
-  return String(sale?.creditMode || 'none') !== 'none'
+  const creditMode = String(sale?.creditMode || 'none').trim().toLowerCase();
+  return (creditMode && creditMode !== 'none' && creditMode !== 'non_credit')
     || !!String(sale?.creditSaleId || '').trim()
     || toNumber(sale?.creditBalance) > 0
     || toNumber(sale?.outstandingBalance) > 0
     || !!sale?.creditDueDate;
+}
+
+export function getSaleActivityType(sale) {
+  const saleType = String(sale?.posType || sale?.inventoryType || 'retail').trim().toLowerCase();
+  const creditMode = String(sale?.creditMode || '').trim().toLowerCase();
+  if (creditMode === 'retail_easybuy') return 'retail_credit';
+  if (creditMode === 'distribution_credit') return 'wholesale_credit';
+  if (isCreditSale(sale)) return saleType === 'wholesale' ? 'wholesale_credit' : 'retail_credit';
+  return saleType === 'wholesale' ? 'wholesale_sales' : 'retail_sales';
 }
 
 export function getSaleSettlementStatus(sale) {
@@ -23,6 +33,8 @@ export function getSaleSettlementStatus(sale) {
 }
 
 export function getCreditModeLabel(sale) {
+  const packageName = String(sale?.creditPackageName || sale?.creditSale?.creditPackageName || '').trim();
+  if (packageName) return packageName;
   const mode = String(sale?.creditMode || '').trim().toLowerCase();
   if (mode === 'retail_easybuy') return 'EasyBuy';
   if (mode === 'distribution_credit') return 'Credit Sale';

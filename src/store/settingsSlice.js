@@ -59,6 +59,7 @@ const initialState = {
   featureFlags: {},
   hydrated: false,
   categories: [],
+  creditPackages: [],
   loyaltyEnabled: false,
   loyaltyEarnAmount: 0,
   loyaltyEarnPoints: 0,
@@ -127,6 +128,8 @@ const settingsSlice = createSlice({
         state.currencySymbol = String(state.currencySymbol || initialState.currencySymbol);
         state.currencyPosition = String(state.currencyPosition || initialState.currencyPosition) === 'suffix' ? 'suffix' : 'prefix';
       }
+      state.categories = Array.isArray(state.categories) ? Array.from(new Set(state.categories.map(x => String(x || '').trim()).filter(Boolean))) : [];
+      state.creditPackages = Array.isArray(state.creditPackages) ? Array.from(new Set(state.creditPackages.map(x => String(x || '').trim()).filter(Boolean))) : [];
     },
     setReceiptBrandName(state, action) {
       state.receiptBrandName = String(action.payload || '');

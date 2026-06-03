@@ -30,11 +30,17 @@ function actorLabel(name, role) {
   return person || personRole || '';
 }
 
+function getReceiptCreditLabel(sale) {
+  const packageName = String(sale?.creditPackageName || sale?.creditSale?.creditPackageName || '').trim();
+  if (packageName) return packageName.toUpperCase();
+  const creditMode = String(sale?.creditMode || '').trim().toLowerCase();
+  return creditMode === 'distribution_credit' ? 'DISTRIBUTION CREDIT' : 'EASYBUY';
+}
+
 export function escposReceipt({ header, items, totals, footer, settings, sale }) {
   const lines = [];
   const repaymentHistory = Array.isArray(sale?.repaymentHistory) ? sale.repaymentHistory : [];
-  const creditMode = String(sale?.creditMode || '').trim().toLowerCase();
-  const creditLabel = creditMode === 'distribution_credit' ? 'DISTRIBUTION CREDIT' : 'EASYBUY';
+  const creditLabel = getReceiptCreditLabel(sale);
   const creditPaid = Number(sale?.creditAmountPaidNow ?? sale?.creditSale?.amount_paid ?? sale?.creditSale?.amountPaidNow ?? 0);
   const creditBalance = Number(sale?.creditBalance ?? sale?.creditSale?.balance ?? Math.max(0, Number(sale?.total || totals?.total || 0) - creditPaid));
   const creditDueDate = sale?.creditDueDate || sale?.creditSale?.due_date || sale?.creditSale?.dueDate || null;
