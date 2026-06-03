@@ -535,6 +535,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                 <th align="left">Type</th>
                 <th align="left">Balance</th>
                 <th align="left">Penalty</th>
+                <th align="left">Sale Date</th>
                 <th align="left">Due Date</th>
                 <th align="left">Overdue Days</th>
               </tr>
@@ -547,13 +548,14 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                   <td>{String(row.posType || 'retail') === 'wholesale' ? 'Distribution Credit Sale' : 'Retail EasyBuy'}</td>
                   <td><span className="price-accent">{formatCurrency(Number(row.balance || 0), settings)}</span></td>
                   <td><span className="price-accent">{formatCurrency(Number(row.accumulated_penalty || 0), settings)}</span></td>
+                  <td>{row.createdAt || row.created_at || row.saleDate ? new Date(row.createdAt || row.created_at || row.saleDate).toLocaleDateString() : '—'}</td>
                   <td>{row.due_date ? new Date(row.due_date).toLocaleDateString() : '—'}</td>
                   <td style={{ color: '#b91c1c', fontWeight: 700 }}>{Number(row.overdue_days || 0)}</td>
                 </tr>
               ))}
               {!loading && defaulterRows.length === 0 && (
                 <tr>
-                  <td colSpan="7" style={{ padding: 12, color: '#64748b' }}>No defaulters for the current filters</td>
+                  <td colSpan="8" style={{ padding: 12, color: '#64748b' }}>No defaulters for the current filters</td>
                 </tr>
               )}
             </tbody>
@@ -710,6 +712,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
               <th align="left">Paid</th>
               <th align="left">Balance</th>
               <th align="left">Penalty</th>
+              <th align="left">Sale Date</th>
               <th align="left">Due Date</th>
               <th align="left">Status</th>
               <th align="left"></th>
@@ -737,6 +740,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                 <td><span className="price-accent">{formatCurrency(Number(row.amount_paid || 0), settings)}</span></td>
                 <td><span className="price-accent">{formatCurrency(Number(row.balance || 0), settings)}</span></td>
                 <td><span className="price-accent">{formatCurrency(Number(row.accumulated_penalty || 0), settings)}</span></td>
+                <td>{row.createdAt || row.created_at || row.saleDate ? new Date(row.createdAt || row.created_at || row.saleDate).toLocaleDateString() : '—'}</td>
                 <td>{row.due_date ? new Date(row.due_date).toLocaleDateString() : '—'} {row.status === 'overdue' ? `• ${row.overdue_days || 0} day(s)` : ''}</td>
                 <td>
                   <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, background: row.status === 'overdue' ? '#fee2e2' : row.status === 'active' ? '#fef3c7' : '#dcfce7', color: row.status === 'overdue' ? '#b91c1c' : row.status === 'active' ? '#92400e' : '#166534', fontWeight: 700, fontSize: 12 }}>
@@ -756,7 +760,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                 )}
               </tr>
             ))}
-            {!loading && filteredActiveSales.length === 0 && <tr><td colSpan={canDeleteCredit ? 13 : 11} style={{ padding: 12, color: '#64748b' }}>No active credit sales</td></tr>}
+            {!loading && filteredActiveSales.length === 0 && <tr><td colSpan={canDeleteCredit ? 14 : 12} style={{ padding: 12, color: '#64748b' }}>No active credit sales</td></tr>}
           </tbody>
         </table>
         </div>

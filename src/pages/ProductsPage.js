@@ -184,6 +184,7 @@ function ProductsPage() {
   const [serializedEntriesText, setSerializedEntriesText] = useState('');
   const [serializedUnits, setSerializedUnits] = useState([]);
   const [serializedQuery, setSerializedQuery] = useState('');
+  const [serializedVariantId, setSerializedVariantId] = useState('');
   const [loadingSerialized, setLoadingSerialized] = useState(false);
   const [serializedPage, setSerializedPage] = useState(1);
   const [serializedPageSize, setSerializedPageSize] = useState(25);
@@ -200,6 +201,15 @@ function ProductsPage() {
     () => (variants || []).some((row) => String(row?.label || '').trim()),
     [variants]
   );
+  const serializedVariantOptions = useMemo(() => (
+    Array.isArray(serializedModalProduct?.variants)
+      ? serializedModalProduct.variants
+        .filter((variant) => String(variant?.id || '').trim() && String(variant?.label || '').trim())
+        .map((variant) => ({ id: String(variant.id), label: String(variant.label || variant.sku || variant.id) }))
+      : []
+  ), [serializedModalProduct]);
+  const serializedVariantRequired = serializedVariantOptions.length > 0;
+  const serializedVariantReady = !serializedVariantRequired || Boolean(String(serializedVariantId || '').trim());
 
   const filteredCatalogProducts = useMemo(() => {
     const query = String(catalogQuery || '').trim().toLowerCase();
@@ -310,13 +320,23 @@ function ProductsPage() {
     setSerializedModalProduct(product);
     setSerializedEntriesText('');
     setSerializedQuery('');
+    setSerializedVariantId('');
     setSerializedScanInput('');
     setSerializedPage(1);
     setSerializedPageSize(25);
-    await loadSerializedUnitsPage(product, '', 1, 25);
+    await loadSerializedUnitsPage(product, '', 1, 25, '');
   }
 
-  async function loadSerializedUnitsPage(product, queryValue = serializedQuery, pageValue = serializedPage, pageSizeValue = serializedPageSize) {
+  async function loadSerializedUnitsPage(product, queryValue = serializedQuery, pageValue = serializedPage, pageSizeValue = serializedPageSize, variantIdValue = serializedVariantId) {
+    const variantOptions = Array.isArray(product?.variants)
+      ? product.variants.filter((variant) => String(variant?.id || '').trim() && String(variant?.label || '').trim())
+      : [];
+    const effectiveVariantId = String(variantIdValue || '').trim();
+    if (variantOptions.length > 0 && !effectiveVariantId) {
+      setSerializedUnits([]);
+      setSerializedTotal(0);
+      return;
+    }
     setLoadingSerialized(true);
     try {
       const inventoryType = String(currentBranch?.branchType || 'retail').toLowerCase() === 'warehouse'
@@ -326,6 +346,7 @@ function ProductsPage() {
           : 'retail';
       const result = await productUnitsApi.listProductUnits({
         productId: product?.id || product?._id || '',
+        variantId: effectiveVariantId,
         branchId: currentBranchId,
         inventoryType,
         query: queryValue,
@@ -363,11 +384,12 @@ function ProductsPage() {
       });
       await productUnitsApi.bulkCreateProductUnits({
         productId: serializedModalProduct.id || serializedModalProduct._id,
+        variantId: serializedVariantId || '',
         branchId: currentBranchId,
         inventoryType,
         entries
       });
-      await loadSerializedUnitsPage(serializedModalProduct, serializedQuery, serializedPage, serializedPageSize);
+      await loadSerializedUnitsPage(serializedModalProduct, serializedQuery, serializedPage, serializedPageSize, serializedVariantId);
       setSerializedEntriesText('');
       setSerializedScanInput('');
       toast.show('Serialized units added', { type: 'success' });
@@ -1678,7 +1700,7 @@ function ProductsPage() {
           footer={(
             <>
               <button className="btn" onClick={() => setSerializedModalProduct(null)} disabled={loadingSerialized}>{t('Close')}</button>
-              <button className="btn btn-primary" onClick={saveSerializedEntries} disabled={loadingSerialized}>
+              <button className="btn btn-primary" onClick={saveSerializedEntries} disabled={loadingSerialized || !serializedVariantReady}>
                 {loadingSerialized ? t('Saving…') : t('Add Units')}
               </button>
             </>
@@ -1686,13 +1708,39 @@ function ProductsPage() {
         >
           <div style={{ display: 'grid', gap: 12 }}>
             <div className="section-note">
-              {t('Enter one IMEI or serial per line. You can also use IMEI,SerialNumber on the same line.')}
+              {serializedVariantRequired
+                ? t('Select the exact variant first so new IMEI or serial units update only that variant stock.')
+                : t('Enter one IMEI or serial per line. You can also use IMEI,SerialNumber on the same line.')}
             </div>
+            {serializedVariantRequired && (
+              <label>
+                <div className="field-label">{t('Variant')}</div>
+                <select
+                  className="select"
+                  value={serializedVariantId}
+                  onChange={async (e) => {
+                    const value = String(e.target.value || '');
+                    setSerializedVariantId(value);
+                    setSerializedEntriesText('');
+                    setSerializedScanInput('');
+                    setSerializedQuery('');
+                    setSerializedPage(1);
+                    if (!serializedModalProduct) return;
+                    try { await loadSerializedUnitsPage(serializedModalProduct, '', 1, serializedPageSize, value); } catch {}
+                  }}
+                >
+                  <option value="">{t('Select Variant')}</option>
+                  {serializedVariantOptions.map((variant) => (
+                    <option key={variant.id} value={variant.id}>{variant.label}</option>
+                  ))}
+                </select>
+              </label>
+            )}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button className={serializedBatchMode ? 'btn btn-primary' : 'btn'} onClick={() => { setSerializedBatchMode(v => !v); setTimeout(() => { try { serializedScanInputRef.current?.focus(); } catch {} }, 0); }}>
+              <button className={serializedBatchMode ? 'btn btn-primary' : 'btn'} onClick={() => { setSerializedBatchMode(v => !v); setTimeout(() => { try { serializedScanInputRef.current?.focus(); } catch {} }, 0); }} disabled={!serializedVariantReady}>
                 {serializedBatchMode ? t('Batch Mode On') : t('Batch Mode Off')}
               </button>
-              <button className="btn" onClick={() => setSerializedCameraOpen(true)}>
+              <button className="btn" onClick={() => setSerializedCameraOpen(true)} disabled={!serializedVariantReady}>
                 {t('Camera Scan')}
               </button>
             </div>
@@ -1702,6 +1750,7 @@ function ProductsPage() {
               autoFocus
               placeholder={t('Scan IMEI barcode or type and press Enter')}
               value={serializedScanInput}
+              disabled={!serializedVariantReady}
               onChange={e => setSerializedScanInput(e.target.value)}
               onKeyDown={e => {
                 if (e.key === 'Enter') {
@@ -1711,13 +1760,13 @@ function ProductsPage() {
               }}
               style={{ color: '#111827', background: '#ffffff' }}
             />
-            <textarea className="input" rows={8} value={serializedEntriesText} onChange={e => setSerializedEntriesText(e.target.value)} placeholder={'IMEI123456789\nSN-0001\nIMEI987654321,SN-0002'} style={{ color: '#111827', background: '#ffffff' }} />
-            <input className="input" placeholder={t('Search existing units')} value={serializedQuery} onChange={async e => {
+            <textarea className="input" rows={8} value={serializedEntriesText} disabled={!serializedVariantReady} onChange={e => setSerializedEntriesText(e.target.value)} placeholder={'IMEI123456789\nSN-0001\nIMEI987654321,SN-0002'} style={{ color: '#111827', background: '#ffffff' }} />
+            <input className="input" placeholder={serializedVariantRequired && !serializedVariantReady ? t('Select a variant to view existing units') : t('Search existing units')} value={serializedQuery} disabled={!serializedVariantReady} onChange={async e => {
               const value = e.target.value;
               setSerializedQuery(value);
               if (!serializedModalProduct) return;
               setSerializedPage(1);
-              try { await loadSerializedUnitsPage(serializedModalProduct, value, 1, serializedPageSize); } catch {}
+              try { await loadSerializedUnitsPage(serializedModalProduct, value, 1, serializedPageSize, serializedVariantId); } catch {}
             }} style={{ color: '#111827', background: '#ffffff' }} />
             <div style={{ overflowX: 'auto', maxHeight: 360 }}>
               <table className="table">
@@ -1736,19 +1785,20 @@ function ProductsPage() {
                       <td style={{ color: '#111827' }}>{unit.status}</td>
                     </tr>
                   ))}
-                  {!loadingSerialized && serializedUnits.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>{t('No serialized units found for this branch')}</td></tr>}
+                  {!loadingSerialized && !serializedVariantReady && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>{t('Select a variant to add or view serialized units for this product')}</td></tr>}
+                  {!loadingSerialized && serializedVariantReady && serializedUnits.length === 0 && <tr><td colSpan="3" style={{ padding: 12, color: '#64748b' }}>{t('No serialized units found for this branch')}</td></tr>}
                 </tbody>
               </table>
             </div>
             <div className="pagination-row">
               <div className="pagination-controls">
-                <button className="btn" onClick={() => { const next = Math.max(1, serializedPage - 1); setSerializedPage(next); loadSerializedUnitsPage(serializedModalProduct, serializedQuery, next, serializedPageSize); }} disabled={serializedPage <= 1 || loadingSerialized}>{t('Prev')}</button>
+                <button className="btn" onClick={() => { const next = Math.max(1, serializedPage - 1); setSerializedPage(next); loadSerializedUnitsPage(serializedModalProduct, serializedQuery, next, serializedPageSize, serializedVariantId); }} disabled={serializedPage <= 1 || loadingSerialized || !serializedVariantReady}>{t('Prev')}</button>
                 <span className="table-meta" style={{ color: '#111827' }}>{t('Page')} {serializedPage} {t('of')} {Math.max(1, Math.ceil(serializedTotal / serializedPageSize))}</span>
-                <button className="btn" onClick={() => { const next = Math.min(Math.max(1, Math.ceil(serializedTotal / serializedPageSize)), serializedPage + 1); setSerializedPage(next); loadSerializedUnitsPage(serializedModalProduct, serializedQuery, next, serializedPageSize); }} disabled={serializedPage >= Math.max(1, Math.ceil(serializedTotal / serializedPageSize)) || loadingSerialized}>{t('Next')}</button>
+                <button className="btn" onClick={() => { const next = Math.min(Math.max(1, Math.ceil(serializedTotal / serializedPageSize)), serializedPage + 1); setSerializedPage(next); loadSerializedUnitsPage(serializedModalProduct, serializedQuery, next, serializedPageSize, serializedVariantId); }} disabled={serializedPage >= Math.max(1, Math.ceil(serializedTotal / serializedPageSize)) || loadingSerialized || !serializedVariantReady}>{t('Next')}</button>
               </div>
               <label style={{ color: '#111827' }}>
                 <span className="field-label" style={{ marginBottom: 0, marginRight: 6, color: '#111827' }}>{t('Rows')}</span>
-                <select className="select" value={serializedPageSize} onChange={e => { const nextSize = Number(e.target.value); setSerializedPageSize(nextSize); setSerializedPage(1); loadSerializedUnitsPage(serializedModalProduct, serializedQuery, 1, nextSize); }} style={{ color: '#111827', background: '#ffffff' }}>
+                <select className="select" value={serializedPageSize} onChange={e => { const nextSize = Number(e.target.value); setSerializedPageSize(nextSize); setSerializedPage(1); loadSerializedUnitsPage(serializedModalProduct, serializedQuery, 1, nextSize, serializedVariantId); }} disabled={!serializedVariantReady} style={{ color: '#111827', background: '#ffffff' }}>
                   <option value={10}>10</option>
                   <option value={25}>25</option>
                   <option value={50}>50</option>
