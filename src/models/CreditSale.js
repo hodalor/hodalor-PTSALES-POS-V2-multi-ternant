@@ -24,6 +24,8 @@ const CreditSaleSchema = new mongoose.Schema({
   branchId: { type: String, default: '' },
   posType: { type: String, enum: ['retail', 'wholesale'], default: 'retail' },
   inventoryType: { type: String, enum: ['retail', 'wholesale'], default: 'retail' },
+  creditPackageId: { type: String, default: '' },
+  creditPackageName: { type: String, default: '' },
   items: { type: [CreditSaleItemSchema], default: [] },
   total_amount: { type: Number, default: 0 },
   amount_paid: { type: Number, default: 0 },

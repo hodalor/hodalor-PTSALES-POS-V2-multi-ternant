@@ -26,6 +26,9 @@ r.get('/sales', async (req, res) => {
   const query = {};
   if (req.query.customerId) query.customer_id = String(req.query.customerId);
   if (req.query.status) query.status = String(req.query.status);
+  if (req.query.branchId) query.branchId = String(req.query.branchId);
+  if (req.query.posType) query.posType = String(req.query.posType);
+  if (req.query.creditPackageName) query.creditPackageName = String(req.query.creditPackageName);
   const rows = await CreditSale.find(query).sort({ createdAt: -1 }).limit(500).lean();
   res.json(rows);
 });

@@ -24,10 +24,33 @@ function normalizeDateKey(value = '') {
   return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : '';
 }
 
-function dateKeyFromIso(value) {
+function formatLocalDateKey(value) {
   const dt = new Date(value);
   if (Number.isNaN(dt.getTime())) return '';
-  return dt.toISOString().slice(0, 10);
+  const year = dt.getFullYear();
+  const month = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function parseDateKey(value = '') {
+  const normalized = normalizeDateKey(value);
+  if (!normalized) return null;
+  const [year, month, day] = normalized.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(year, month - 1, day, 12, 0, 0, 0);
+}
+
+function startOfLocalDay(value) {
+  const dt = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(dt.getTime())) return null;
+  return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 0, 0, 0, 0);
+}
+
+function endOfLocalDay(value) {
+  const dt = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(dt.getTime())) return null;
+  return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 23, 59, 59, 999);
 }
 
 function uniqueDateKeys(values = []) {
@@ -36,15 +59,12 @@ function uniqueDateKeys(values = []) {
 
 function buildRange(from, to, fallbackDays = 90) {
   const today = new Date();
-  const start = normalizeDateKey(from) ? new Date(`${normalizeDateKey(from)}T00:00:00.000Z`) : new Date(today.getTime() - fallbackDays * 24 * 3600 * 1000);
-  const end = normalizeDateKey(to) ? new Date(`${normalizeDateKey(to)}T23:59:59.999Z`) : new Date(`${today.toISOString().slice(0, 10)}T23:59:59.999Z`);
+  const fallbackStart = new Date(today.getTime() - fallbackDays * 24 * 3600 * 1000);
+  const parsedFrom = parseDateKey(from);
+  const parsedTo = parseDateKey(to);
+  const start = parsedFrom ? startOfLocalDay(parsedFrom) : startOfLocalDay(fallbackStart);
+  const end = parsedTo ? endOfLocalDay(parsedTo) : endOfLocalDay(today);
   return { start, end };
-}
-
-function startOfUtcDay(value) {
-  const dt = new Date(value);
-  if (Number.isNaN(dt.getTime())) return null;
-  return new Date(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth(), dt.getUTCDate(), 0, 0, 0, 0));
 }
 
 function minDate(a, b) {
@@ -106,8 +126,8 @@ async function listSalesAmountsByDay(branchIds, start, end) {
 }
 
 async function loadCoverageSets(branchIds, start, end) {
-  const startKey = start.toISOString().slice(0, 10);
-  const endKey = end.toISOString().slice(0, 10);
+  const startKey = formatLocalDateKey(start);
+  const endKey = formatLocalDateKey(end);
   const rows = await CashReconciliation.aggregate([
     {
       $match: {
@@ -153,7 +173,7 @@ async function resolveTenantCreatedStart(req) {
     const master = await getMasterConnection();
     const TenantModel = TenantModelFor(master);
     const tenant = await TenantModel.findOne({ tenantId }, { createdAt: 1 }).lean();
-    return startOfUtcDay(tenant?.createdAt) || null;
+    return startOfLocalDay(tenant?.createdAt) || null;
   } catch {
     return null;
   }
@@ -164,7 +184,7 @@ async function resolveEarliestSaleStart(branchIds) {
   const row = await Sale.findOne({
     branchId: { $in: branchIds }
   }).sort({ created_at: 1 }).select({ created_at: 1 }).lean();
-  return startOfUtcDay(row?.created_at) || null;
+  return startOfLocalDay(row?.created_at) || null;
 }
 
 r.use(requireAuth);
@@ -177,10 +197,10 @@ r.get('/backlog', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_fina
     resolveEarliestSaleStart(branchIds)
   ]);
   const end = normalizeDateKey(req.query.to)
-    ? new Date(`${normalizeDateKey(req.query.to)}T23:59:59.999Z`)
-    : new Date(`${new Date().toISOString().slice(0, 10)}T23:59:59.999Z`);
+    ? endOfLocalDay(parseDateKey(req.query.to))
+    : endOfLocalDay(new Date());
   const explicitFrom = normalizeDateKey(req.query.from)
-    ? new Date(`${normalizeDateKey(req.query.from)}T00:00:00.000Z`)
+    ? startOfLocalDay(parseDateKey(req.query.from))
     : null;
   const start = explicitFrom || minDate(tenantCreatedStart, earliestSaleStart) || buildRange(undefined, req.query.to, 120).start;
   const [totals, coverage, branchNames] = await Promise.all([
@@ -288,8 +308,8 @@ r.post('/', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['add_finance_rec
   const selectedDates = uniqueDateKeys(req.body?.selectedDates);
   if (selectedDates.length === 0) return res.status(400).json({ error: 'Select at least one sales day to reconcile' });
   const range = {
-    start: new Date(`${selectedDates[0]}T00:00:00.000Z`),
-    end: new Date(`${selectedDates[selectedDates.length - 1]}T23:59:59.999Z`)
+    start: startOfLocalDay(parseDateKey(selectedDates[0])),
+    end: endOfLocalDay(parseDateKey(selectedDates[selectedDates.length - 1]))
   };
   const [totals, coverage, accounts, branches] = await Promise.all([
     listSalesTotalsByDay([branchId], range.start, range.end),

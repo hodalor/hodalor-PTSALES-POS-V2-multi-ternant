@@ -16,6 +16,15 @@ function toDate(value) {
   return Number.isNaN(dt.getTime()) ? null : dt;
 }
 
+function formatLocalDateKey(value) {
+  const dt = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(dt.getTime())) return '';
+  const year = dt.getFullYear();
+  const month = String(dt.getMonth() + 1).padStart(2, '0');
+  const day = String(dt.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 function eventWithinRange(event, start, end) {
   const paidAt = toDate(event?.paidAt);
   if (!paidAt) return false;
@@ -52,23 +61,33 @@ function buildReceiptRepaymentHistory(repayments = []) {
 }
 
 export function isCreditSaleRecord(sale) {
+  const creditMode = String(sale?.creditMode || '').trim().toLowerCase();
   return !!(
     toId(sale?.creditSaleId)
-    || toId(sale?.creditMode)
+    || (creditMode && creditMode !== 'none' && creditMode !== 'non_credit')
     || toDate(sale?.creditDueDate)
     || toNumber(sale?.creditBalance) > 0
     || toNumber(sale?.creditAmountPaidNow) > 0
   );
 }
 
+function resolveCreditMode(sale, creditSale = null) {
+  const explicitMode = String(sale?.creditMode || '').trim().toLowerCase();
+  if (explicitMode === 'retail_easybuy' || explicitMode === 'distribution_credit') return explicitMode;
+  if (creditSale || isCreditSaleRecord(sale)) {
+    return String(sale?.posType || sale?.inventoryType || 'retail').trim().toLowerCase() === 'wholesale'
+      ? 'distribution_credit'
+      : 'retail_easybuy';
+  }
+  return 'non_credit';
+}
+
 export function buildSalePaymentTimeline(sale, creditSale = null, repayments = []) {
   const total = Math.max(0, toNumber(sale?.total));
   const costTotal = Math.max(0, toNumber(sale?.costTotal));
-  const creditMode = isCreditSaleRecord(sale)
-    ? (String(sale?.posType || 'retail') === 'wholesale' ? 'distribution_credit' : 'retail_easybuy')
-    : 'non_credit';
+  const creditMode = resolveCreditMode(sale, creditSale);
   const events = [];
-  if (!isCreditSaleRecord(sale)) {
+  if (creditMode === 'non_credit') {
     if (total > 0) {
       events.push({
         source: 'sale',
@@ -85,15 +104,16 @@ export function buildSalePaymentTimeline(sale, creditSale = null, repayments = [
   }
   const upfront = Math.max(0, Math.min(total, toNumber(sale?.creditAmountPaidNow)));
   let principalRecognized = upfront;
-  let costRecognized = total > 0 ? (costTotal * (principalRecognized / total)) : 0;
+  let costRecognized = Math.min(costTotal, principalRecognized);
   if (upfront > 0) {
+    const principalProfit = Math.max(0, principalRecognized - costTotal);
     events.push({
       source: 'credit_upfront',
       amount: upfront,
       principalAmount: upfront,
       penaltyAmount: 0,
       recognizedCost: costRecognized,
-      recognizedProfit: upfront - costRecognized,
+      recognizedProfit: principalProfit,
       paidAt: toDate(sale?.created_at) || toDate(sale?.saleCapturedAt) || toDate(sale?.recordedAt) || new Date(),
       note: `${creditMode} upfront payment`
     });
@@ -106,16 +126,18 @@ export function buildSalePaymentTimeline(sale, creditSale = null, repayments = [
     const principalRoom = Math.max(0, total - principalRecognized);
     const principalAmount = Math.min(amount, principalRoom);
     const penaltyAmount = Math.max(0, amount - principalAmount);
+    const principalRecognizedBefore = principalRecognized;
     const nextPrincipalRecognized = Math.min(total, principalRecognized + principalAmount);
-    const nextCostRecognized = total > 0 ? (costTotal * (nextPrincipalRecognized / total)) : 0;
+    const nextCostRecognized = Math.min(costTotal, nextPrincipalRecognized);
     const deltaCost = Math.max(0, nextCostRecognized - costRecognized);
+    const recognizedPrincipalProfit = Math.max(0, nextPrincipalRecognized - costTotal) - Math.max(0, principalRecognizedBefore - costTotal);
     events.push({
       source: 'credit_repayment',
       amount,
       principalAmount,
       penaltyAmount,
       recognizedCost: deltaCost,
-      recognizedProfit: amount - deltaCost,
+      recognizedProfit: Math.max(0, recognizedPrincipalProfit) + penaltyAmount,
       paidAt: toDate(repayment?.approvedAt || repayment?.createdAt || repayment?.updatedAt) || new Date(),
       note: String(repayment?.remark || '').trim(),
       paymentMethod: String(repayment?.paymentMethod || 'cash').trim().toLowerCase() || 'cash',
@@ -138,7 +160,7 @@ export function buildSaleAccountingSnapshot(sale, creditSale = null, repayments 
   const isCredit = isCreditSaleRecord(sale);
   const settlementStatus = !isCredit || (outstandingBalance <= 0 && outstandingPenalty <= 0) ? 'completed' : 'incomplete';
   return {
-    creditMode: isCredit ? (String(sale?.posType || 'retail') === 'wholesale' ? 'distribution_credit' : 'retail_easybuy') : 'non_credit',
+    creditMode: resolveCreditMode(sale, creditSale),
     settlementStatus,
     amountPaidToDate,
     outstandingBalance,
@@ -200,7 +222,7 @@ export function buildRecognizedDayTotals(rows = [], start, end) {
       if (!eventWithinRange(event, start, end)) return;
       const paidAt = toDate(event?.paidAt);
       if (!paidAt) return;
-      const day = paidAt.toISOString().slice(0, 10);
+      const day = formatLocalDateKey(paidAt);
       const branchId = toId(sale?.branchId);
       if (!branchId || !day) return;
       const key = `${branchId}:${day}`;

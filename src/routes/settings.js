@@ -44,7 +44,8 @@ const TENANT_ADMIN_ALLOWED_KEYS = new Set([
   'themeColor',
   'subscriptionPaymentUnavailableMessage',
   'currentBranchId',
-  'categories'
+  'categories',
+  'creditPackages'
 ]);
 
 function normalizeSettingsData(input = {}) {
@@ -76,6 +77,12 @@ function normalizeSettingsData(input = {}) {
   if (!String(next.chatNotificationSound || '').trim()) next.chatNotificationSound = 'bright';
   if (!String(next.callNotificationSound || '').trim()) next.callNotificationSound = 'bright';
   if (!String(next.webRtcIceServers || '').trim()) next.webRtcIceServers = 'stun:stun.l.google.com:19302';
+  next.categories = Array.isArray(next.categories)
+    ? Array.from(new Set(next.categories.map((value) => String(value || '').trim()).filter(Boolean)))
+    : [];
+  next.creditPackages = Array.isArray(next.creditPackages)
+    ? Array.from(new Set(next.creditPackages.map((value) => String(value || '').trim()).filter(Boolean)))
+    : [];
   return next;
 }
 

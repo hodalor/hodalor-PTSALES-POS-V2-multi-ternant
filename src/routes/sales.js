@@ -447,6 +447,11 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       }
     }
 
+    const defaultCreditPackageName = posType === 'wholesale' ? 'Credit Sale' : 'EasyBuy';
+    const creditPackageId = creditPayload ? String(payload.creditPackageId || '').trim() : '';
+    const creditPackageName = creditPayload
+      ? (String(payload.creditPackageName || '').trim() || defaultCreditPackageName)
+      : '';
     sale = await Sale.create({
       ...payload,
       posType,
@@ -465,6 +470,8 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       creditMode: creditPayload
         ? (posType === 'wholesale' ? 'distribution_credit' : 'retail_easybuy')
         : 'none',
+      creditPackageId,
+      creditPackageName,
       invoiceSerial,
       receiptNumber,
       creditDueDate: creditPayload ? creditDueDate : undefined,
@@ -506,6 +513,8 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
         branchId,
         posType,
         inventoryType,
+        creditPackageId,
+        creditPackageName,
         items: finalItems.map(item => ({
           productId: item.productId,
           variantId: item.variantId || '',
