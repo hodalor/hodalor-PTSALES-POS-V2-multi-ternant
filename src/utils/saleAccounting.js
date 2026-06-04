@@ -46,6 +46,21 @@ export function getSalePaymentTimeline(sale) {
   const timeline = Array.isArray(sale?.paymentTimeline) ? sale.paymentTimeline : [];
   if (timeline.length > 0) return timeline;
   const paidAt = toDate(sale?.created_at) || new Date();
+  if (isCreditSale(sale)) {
+    const total = Math.max(0, toNumber(sale?.total));
+    const upfront = Math.max(0, Math.min(total, toNumber(sale?.creditAmountPaidNow)));
+    const costTotal = Math.max(0, toNumber(sale?.costTotal));
+    if (upfront <= 0) return [];
+    return [{
+      source: 'credit_upfront',
+      amount: upfront,
+      principalAmount: upfront,
+      penaltyAmount: 0,
+      recognizedCost: Math.min(costTotal, upfront),
+      recognizedProfit: Math.max(0, upfront - costTotal),
+      paidAt
+    }];
+  }
   return [{
     source: 'sale',
     amount: toNumber(sale?.total),

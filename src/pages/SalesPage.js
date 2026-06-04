@@ -364,7 +364,7 @@ function SalesPage() {
       { key: 'invoice', label: 'Invoice', value: s => s.invoiceSerial || '' },
       { key: 'items', label: 'Items', value: s => s.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}x${i.qty}`).join('; ') },
       { key: 'total', label: 'Sale Total', value: s => s.total },
-      { key: 'paid', label: 'Paid In Range', value: s => getSaleRangeTotals(s, fromDate, toDate).revenue },
+      { key: 'paid', label: 'Collected In Period', value: s => getSaleRangeTotals(s, fromDate, toDate).revenue },
       { key: 'remaining', label: 'Remaining', value: s => Number(s.outstandingTotal || s.outstandingBalance || 0) },
       { key: 'status', label: 'Status', value: s => getSaleSettlementStatus(s) }
     ];
@@ -380,7 +380,7 @@ function SalesPage() {
       { key: 'invoice', label: 'Invoice', value: s => s.invoiceSerial || '' },
       { key: 'items', label: 'Items', value: s => s.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}x${i.qty}`).join('; ') },
       { key: 'total', label: 'Sale Total', value: s => formatCurrency(s.total, settings) },
-      { key: 'paid', label: 'Paid In Range', value: s => maskRevenue(getSaleRangeTotals(s, fromDate, toDate).revenue) },
+      { key: 'paid', label: 'Collected In Period', value: s => maskRevenue(getSaleRangeTotals(s, fromDate, toDate).revenue) },
       { key: 'remaining', label: 'Remaining', value: s => maskRevenue(Number(s.outstandingTotal || s.outstandingBalance || 0)) },
       { key: 'status', label: 'Status', value: s => getSaleSettlementStatus(s) }
     ];
@@ -618,7 +618,7 @@ function SalesPage() {
             <th align="left">Items</th>
             <th align="left">Customer</th>
             <th align="left">Total</th>
-            <th align="left">Paid In Range</th>
+            <th align="left">Collected In Period</th>
             <th align="left">Remaining</th>
             <th align="left">Status</th>
             <th></th>
