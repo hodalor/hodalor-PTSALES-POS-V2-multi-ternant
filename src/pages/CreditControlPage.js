@@ -234,6 +234,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   const overdueSales = useMemo(() => branchFilteredSales.filter(row => row.status === 'overdue'), [branchFilteredSales]);
   const currentActiveSales = useMemo(() => branchScopedSales.filter((row) => row.status !== 'completed'), [branchScopedSales]);
   const currentOverdueSales = useMemo(() => branchScopedSales.filter((row) => row.status === 'overdue'), [branchScopedSales]);
+  const currentPendingAmountRows = useMemo(() => branchScopedSales.filter((row) => row.status !== 'completed' && row.status !== 'overdue'), [branchScopedSales]);
   const defaulterRows = useMemo(() => {
     return overdueSales
       .slice()
@@ -312,10 +313,12 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       dueTodayCount: dueTodaySales.length,
       easybuyOutstanding: easybuyRows.reduce((sum, row) => sum + (Number(row.balance || 0) + Number(row.accumulated_penalty || 0)), 0),
       wholesaleOutstanding: wholesaleRows.reduce((sum, row) => sum + (Number(row.balance || 0) + Number(row.accumulated_penalty || 0)), 0),
+      pendingAmount: currentPendingAmountRows.reduce((sum, row) => sum + Math.max(0, Number(row.balance || 0)), 0),
+      pendingAmountCount: currentPendingAmountRows.length,
       pendingRepaymentAmount: currentPendingRepayments.reduce((sum, row) => sum + (Number(row.amount || row.repayment_amount || 0) || 0), 0),
       pendingRepaymentCount: currentPendingRepayments.length
     };
-  }, [currentActiveSales, currentOverdueSales, currentPendingRepayments, dueTodaySales.length]);
+  }, [currentActiveSales, currentOverdueSales, currentPendingAmountRows, currentPendingRepayments, dueTodaySales.length]);
 
   async function startRepayment(row) {
     const outstandingAmount = Math.max(0, Number(row?.balance || 0) + Number(row?.accumulated_penalty || 0));
@@ -539,9 +542,9 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
           <div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(creditSummary.wholesaleOutstanding, settings)}</div>
         </div>
         <div>
-          <div style={{ color: '#64748b', fontSize: 12 }}>Pending Repayments</div>
-          <div style={{ fontSize: 28, fontWeight: 800 }}>{creditSummary.pendingRepaymentCount}</div>
-          <div className="price-accent" style={{ fontSize: 12 }}>{formatCurrency(creditSummary.pendingRepaymentAmount, settings)}</div>
+          <div style={{ color: '#64748b', fontSize: 12 }}>Pending Amount</div>
+          <div style={{ fontSize: 28, fontWeight: 800 }}>{creditSummary.pendingAmountCount}</div>
+          <div className="price-accent" style={{ fontSize: 12 }}>{formatCurrency(creditSummary.pendingAmount, settings)}</div>
         </div>
         <div>
           <div style={{ color: '#64748b', fontSize: 12 }}>Due Today</div>

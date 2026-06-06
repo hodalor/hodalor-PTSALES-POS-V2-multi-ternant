@@ -23,6 +23,25 @@ function formatLocalDateKey(value) {
   return `${year}-${month}-${day}`;
 }
 
+function normalizePaymentType(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return 'other';
+  if (['cash'].includes(raw)) return 'cash';
+  if (['card', 'pos'].includes(raw)) return 'card';
+  if (['mobile', 'momo', 'mobile_money', 'mobile money', 'momopay'].includes(raw)) return 'mobile';
+  if (['wallet'].includes(raw)) return 'wallet';
+  return 'other';
+}
+
+function addPaymentBreakdown(target, day, paymentType, amount) {
+  if (!day) return;
+  const value = Number(amount || 0);
+  if (value <= 0) return;
+  const type = normalizePaymentType(paymentType);
+  target[day] = target[day] || {};
+  target[day][type] = (target[day][type] || 0) + value;
+}
+
 function parseInputDateKey(value) {
   const raw = String(value || '').trim();
   if (!raw) return null;
@@ -479,17 +498,32 @@ function DashboardPage() {
     }
     for (const sale of activitySales) {
       const timeline = Array.isArray(sale.paymentTimeline) ? sale.paymentTimeline : [];
+      const salePaidAt = new Date(sale.created_at || sale.saleCapturedAt || sale.recordedAt || 0);
+      const saleDay = Number.isNaN(salePaidAt.getTime()) ? '' : formatLocalDateKey(salePaidAt);
+      const saleDayInRange = saleDay && (!selectedFrom || salePaidAt.getTime() >= selectedFrom.getTime()) && (!selectedTo || salePaidAt.getTime() <= selectedTo.getTime());
+      const recordedMethods = Array.isArray(sale.payment_methods) ? sale.payment_methods : [];
+      let saleDayAmountCaptured = 0;
       timeline.forEach((event) => {
         const paidAt = new Date(event.paidAt || 0);
         if (Number.isNaN(paidAt.getTime())) return;
         if (selectedFrom && paidAt.getTime() < selectedFrom.getTime()) return;
         if (selectedTo && paidAt.getTime() > selectedTo.getTime()) return;
         const day = formatLocalDateKey(paidAt);
-        perDay[day] = (perDay[day] || 0) + Number(event.amount || 0);
-        const paymentType = String(event.paymentMethod || (event.source === 'credit_repayment' ? 'cash' : 'other')).toLowerCase();
-        perDayPayments[day] = perDayPayments[day] || {};
-        perDayPayments[day][paymentType] = (perDayPayments[day][paymentType] || 0) + Number(event.amount || 0);
+        const eventAmount = Number(event.amount || 0);
+        perDay[day] = (perDay[day] || 0) + eventAmount;
+        if (event.source === 'credit_repayment') {
+          addPaymentBreakdown(perDayPayments, day, event.paymentMethod || 'cash', eventAmount);
+          return;
+        }
+        if (day === saleDay) saleDayAmountCaptured += eventAmount;
       });
+      if (saleDayInRange) {
+        if (recordedMethods.length > 0) {
+          recordedMethods.forEach((methodRow) => addPaymentBreakdown(perDayPayments, saleDay, methodRow?.type, methodRow?.amount));
+        } else if (saleDayAmountCaptured > 0) {
+          addPaymentBreakdown(perDayPayments, saleDay, 'other', saleDayAmountCaptured);
+        }
+      }
     }
     const useRevenueChartDefaultWindow = periodMode === 'range'
       && String(dateFrom || '') === String(todayIso || '')
@@ -577,7 +611,7 @@ function DashboardPage() {
       datasets: paymentTypes.map((paymentType, idx) => ({
         label: t(paymentType.charAt(0).toUpperCase() + paymentType.slice(1)),
         data: last7.map(d => +(perDayPayments[d]?.[paymentType] || 0).toFixed(2)),
-        backgroundColor: ['#2563eb','#14b8a6','#8b5cf6','#f59e0b','#94a3b8'][idx],
+        backgroundColor: ['#2563eb','#14b8a6','#facc15','#8b5cf6','#94a3b8'][idx],
         borderRadius: 8,
         maxBarThickness: 26
       }))
