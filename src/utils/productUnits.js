@@ -70,6 +70,23 @@ export async function assertSerializedProduct(productId) {
   return product;
 }
 
+function assertVariantAssignment(product, variantId = '') {
+  const variants = Array.isArray(product?.variants) ? product.variants : [];
+  if (variants.length === 0) return;
+  const normalizedVariantId = String(variantId || '').trim();
+  if (!normalizedVariantId) {
+    const err = new Error('Select a variant before adding serialized units');
+    err.status = 400;
+    throw err;
+  }
+  const match = variants.find((variant) => String(variant?.id || '') === normalizedVariantId);
+  if (!match) {
+    const err = new Error('Selected variant was not found for this product');
+    err.status = 400;
+    throw err;
+  }
+}
+
 export async function ensureUniqueUnitCodes(entries = []) {
   const seenImei = new Set();
   const seenSerial = new Set();
@@ -94,6 +111,7 @@ export async function ensureUniqueUnitCodes(entries = []) {
   const imeis = entries.map(entry => entry.imei).filter(Boolean);
   const serials = entries.map(entry => entry.serialNumber).filter(Boolean);
   const existing = await ProductUnit.find({
+    status: { $ne: 'adjusted_out' },
     $or: [
       ...(imeis.length > 0 ? [{ imei: { $in: imeis } }] : []),
       ...(serials.length > 0 ? [{ serialNumber: { $in: serials } }] : [])
@@ -105,6 +123,38 @@ export async function ensureUniqueUnitCodes(entries = []) {
     err.status = 400;
     throw err;
   }
+}
+
+export async function reviveAdjustedOutUnits({ productId, variantId = '', branchId, inventoryType = 'retail', entries = [] }) {
+  const normalizedType = normalizeInventoryType(inventoryType);
+  const remaining = [];
+  const revived = [];
+  for (const entry of (Array.isArray(entries) ? entries : [])) {
+    const match = await ProductUnit.findOne({
+      status: 'adjusted_out',
+      $or: [
+        ...(entry?.imei ? [{ imei: String(entry.imei) }] : []),
+        ...(entry?.serialNumber ? [{ serialNumber: String(entry.serialNumber) }] : [])
+      ]
+    }).sort({ updatedAt: -1, createdAt: -1 });
+    if (!match) {
+      remaining.push(entry);
+      continue;
+    }
+    match.productId = String(productId);
+    match.variantId = String(variantId || '');
+    match.branchId = String(branchId);
+    match.inventoryType = normalizedType;
+    match.status = 'in_stock';
+    match.reservationToken = '';
+    match.reservedAt = null;
+    match.soldAt = null;
+    match.soldSaleId = '';
+    match.lastReturnAt = new Date();
+    await match.save();
+    revived.push(match);
+  }
+  return { revived, remaining };
 }
 
 export async function incrementSerializedStock(product, branchId, inventoryType, variantId, delta) {
@@ -122,6 +172,7 @@ export async function incrementSerializedStock(product, branchId, inventoryType,
 
 export async function createSerializedUnits({ productId, variantId = '', branchId, inventoryType = 'retail', entries = [] }) {
   const product = await assertSerializedProduct(productId);
+  assertVariantAssignment(product, variantId);
   const normalizedEntries = normalizeSerializedEntries(entries);
   if (normalizedEntries.length === 0) {
     const err = new Error('Serialized products require IMEI or serial numbers');
@@ -129,7 +180,14 @@ export async function createSerializedUnits({ productId, variantId = '', branchI
     throw err;
   }
   await ensureUniqueUnitCodes(normalizedEntries);
-  const created = await ProductUnit.insertMany(normalizedEntries.map(entry => ({
+  const { revived, remaining } = await reviveAdjustedOutUnits({
+    productId: String(product.id || product._id),
+    variantId,
+    branchId,
+    inventoryType,
+    entries: normalizedEntries
+  });
+  const created = await ProductUnit.insertMany(remaining.map(entry => ({
     productId: String(product.id || product._id),
     variantId: String(variantId || ''),
     imei: entry.imei,
@@ -138,8 +196,9 @@ export async function createSerializedUnits({ productId, variantId = '', branchI
     branchId: String(branchId),
     status: 'in_stock'
   })));
-  await incrementSerializedStock(product, String(branchId), normalizeInventoryType(inventoryType), String(variantId || ''), created.length);
-  return { product, created };
+  const totalDelta = revived.length + created.length;
+  await incrementSerializedStock(product, String(branchId), normalizeInventoryType(inventoryType), String(variantId || ''), totalDelta);
+  return { product, created: [...revived, ...created] };
 }
 
 export async function reserveSerializedUnit({ code, unitId = '', productId = '', variantId = '', branchId, inventoryType = 'retail', reservationToken }) {
@@ -258,25 +317,33 @@ export async function listSerializedUnits({ productId = '', variantId = '', bran
   ]);
   const productIds = Array.from(new Set(rows.map((row) => String(row.productId || '')).filter(Boolean)));
   const products = productIds.length > 0
-    ? await Product.find({ id: { $in: productIds } }, { id: 1, name: 1, sku: 1, brand: 1, attributes: 1 }).lean()
+    ? await Product.find({ id: { $in: productIds } }, { id: 1, name: 1, sku: 1, brand: 1, attributes: 1, variants: 1 }).lean()
     : [];
   const productMap = new Map(products.map((row) => {
     const attrs = Array.isArray(row.attributes) ? row.attributes : [];
     const attrBrand = attrs.find((attr) => String(attr?.key || '').trim().toLowerCase() === 'brand' && String(attr?.value || '').trim());
+    const variants = Array.isArray(row.variants) ? row.variants : [];
     return [String(row.id || row._id || ''), {
       name: row.name || '',
       sku: row.sku || '',
-      brand: String(row.brand || attrBrand?.value || '').trim()
+      brand: String(row.brand || attrBrand?.value || '').trim(),
+      hasVariants: variants.length > 0,
+      variantLabels: new Map(variants.map((variant) => [String(variant?.id || ''), String(variant?.label || '')]))
     }];
   }));
   return {
     rows: rows.map((row) => {
       const product = productMap.get(String(row.productId || '')) || {};
+      const variantIdText = String(row.variantId || '').trim();
+      const variantLabel = variantIdText
+        ? (product.variantLabels?.get?.(variantIdText) || variantIdText)
+        : (product.hasVariants ? 'Unassigned Variant' : '');
       return {
         ...row,
         productName: product.name || '',
         productSku: product.sku || '',
-        productBrand: product.brand || ''
+        productBrand: product.brand || '',
+        variantLabel
       };
     }),
     total
