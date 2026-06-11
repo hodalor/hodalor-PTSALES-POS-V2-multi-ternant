@@ -474,10 +474,11 @@ function PosPage({ mode = 'retail' }) {
   }
 
   function getSerializedVisibleStockForBranch(p) {
-    const branchStock = Number(getAvailableStockForBranch(p) || 0);
-    if (branchStock > 0) return branchStock;
     const key = `${String(p.productId || p.id || '')}:${String(p.variantId || '')}`;
-    return Number(serializedStockCountMap.get(key) || 0);
+    if (serializedStockCountMap.has(key)) {
+      return Number(serializedStockCountMap.get(key) || 0);
+    }
+    return Number(getAvailableStockForBranch(p) || 0);
   }
 
   function visibleStockForProduct(p) {
@@ -668,13 +669,6 @@ function PosPage({ mode = 'retail' }) {
       if (requestId !== serializedLoadSeqRef.current || !sameProduct) return;
       setSerializedUnits(Array.isArray(result?.rows) ? result.rows : []);
       setSerializedUnitsTotal(Number(result?.total || 0));
-      dispatch(setStock({
-        productId: product.productId || product.id,
-        variantId: product.variantId || null,
-        branchId: activeBranchId,
-        inventoryType: isWholesale ? 'wholesale' : 'retail',
-        quantity: Number(result?.total || 0)
-      }));
     } catch (e) {
       if (requestId !== serializedLoadSeqRef.current) return;
       toast.show(String(e?.message || 'Failed to load serialized units'), { type: 'error' });
