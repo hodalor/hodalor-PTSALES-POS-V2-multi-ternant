@@ -17,7 +17,7 @@ function SerializedInventoryPage() {
   const canRestoreUnits = ['superadmin', 'admin', 'manager', 'inventory staff'].includes(roleLower);
   const [productId, setProductId] = useState('');
   const [branchId, setBranchId] = useState('');
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState('in_stock');
   const [inventoryType, setInventoryType] = useState('');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
@@ -138,7 +138,7 @@ function SerializedInventoryPage() {
     <div className="page-shell">
       <div className="card">
         <h1 style={{ margin: 0 }}>Serialized Inventory</h1>
-        <div className="page-subtitle-compact">Search unit-level stock by branch, status, inventory type, IMEI, or serial number.</div>
+        <div className="page-subtitle-compact">Search unit-level stock by branch, status, inventory type, IMEI, or serial number. The default view shows active in-stock units.</div>
       </div>
       <div className="stats-grid">
         <div className="card stat-card"><div className="stat-label">Total Units</div><div className="stat-value">{summary.totalUnits}</div></div>
@@ -217,6 +217,7 @@ function SerializedInventoryPage() {
                   </th>
                 )}
                 <th align="left">Product</th>
+                <th align="left">Variant</th>
                 <th align="left">IMEI</th>
                 <th align="left">Serial</th>
                 <th align="left">Branch</th>
@@ -240,6 +241,7 @@ function SerializedInventoryPage() {
                     </td>
                   )}
                   <td>{row.productBrand ? `${row.productName || productNameById.get(String(row.productId)) || row.productId} (${row.productBrand})` : (row.productName || productNameById.get(String(row.productId)) || row.productId)}</td>
+                  <td>{row.variantLabel || '—'}</td>
                   <td>{row.imei || '—'}</td>
                   <td>{row.serialNumber || '—'}</td>
                   <td>{branchNameById.get(String(row.branchId)) || row.branchId}</td>
@@ -260,8 +262,8 @@ function SerializedInventoryPage() {
                   )}
                 </tr>
               ))}
-              {!loading && rows.length === 0 && <tr><td colSpan={(canDeleteUnits ? 1 : 0) + 7 + (canRestoreUnits ? 1 : 0)} style={{ padding: 12, color: '#64748b' }}>No serialized units found</td></tr>}
-              {loading && <tr><td colSpan={(canDeleteUnits ? 1 : 0) + 7 + (canRestoreUnits ? 1 : 0)} style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading serialized inventory" /></td></tr>}
+              {!loading && rows.length === 0 && <tr><td colSpan={(canDeleteUnits ? 1 : 0) + 8 + (canRestoreUnits ? 1 : 0)} style={{ padding: 12, color: '#64748b' }}>No serialized units found</td></tr>}
+              {loading && <tr><td colSpan={(canDeleteUnits ? 1 : 0) + 8 + (canRestoreUnits ? 1 : 0)} style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading serialized inventory" /></td></tr>}
             </tbody>
           </table>
         </div>

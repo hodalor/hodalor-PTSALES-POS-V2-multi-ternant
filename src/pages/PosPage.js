@@ -668,9 +668,6 @@ function PosPage({ mode = 'retail' }) {
       if (requestId !== serializedLoadSeqRef.current || !sameProduct) return;
       setSerializedUnits(Array.isArray(result?.rows) ? result.rows : []);
       setSerializedUnitsTotal(Number(result?.total || 0));
-      // #region debug-point B:serialized-load
-      fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"variant-stock-sync",runId:"post-fix",hypothesisId:"B",location:"frontend/src/pages/PosPage.js:loadSerializedUnits",msg:"[DEBUG] POS serialized units loaded",data:{productId:String(product?.productId||product?.id||""),variantId:String(product?.variantId||""),branchId:String(activeBranchId||""),inventoryType:isWholesale?"wholesale":"retail",resultTotal:Number(result?.total||0),rowCount:Array.isArray(result?.rows)?result.rows.length:0},ts:Date.now()})}).catch(()=>{});
-      // #endregion
       dispatch(setStock({
         productId: product.productId || product.id,
         variantId: product.variantId || null,
@@ -805,9 +802,6 @@ function PosPage({ mode = 'retail' }) {
         && String(item.variantId || '') === String(p.variantId || '')
       )
       .reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
-    // #region debug-point A:pos-add-to-cart
-    fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"variant-stock-sync",runId:"post-fix",hypothesisId:"A",location:"frontend/src/pages/PosPage.js:addToCart",msg:"[DEBUG] POS addToCart stock decision",data:{productId:String(p?.productId||p?.id||""),variantId:String(p?.variantId||""),trackType:String(p?.trackType||"quantity"),branchId:String(activeBranchId||stockBranchId||""),inventoryType:isWholesale?"wholesale":"retail",numericAvailable:Number(available||0),visibleAvailable:Number(visible||0),serializedVisible:Number(serializedVisible||0),decisionAvailable:Number(decisionAvailable||0),inCart:Number(inCart||0),stockByBranch:p?.stockByBranch||{}},ts:Date.now()})}).catch(()=>{});
-    // #endregion
     if (decisionAvailable - inCart <= 0) {
       toast.show('Out of stock for current branch', { type: 'error' });
       return;

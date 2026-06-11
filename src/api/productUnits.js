@@ -4,21 +4,80 @@ const CACHE_KEY = 'ptsales:serialized-units-cache:v1';
 const REQUEST_CACHE_TTL_MS = 4000;
 const listRequestCache = new Map();
 
-function readCache() {
+function readCacheData() {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
     const parsed = raw ? JSON.parse(raw) : null;
-    const rows = Array.isArray(parsed?.rows) ? parsed.rows : [];
-    return rows;
+    return {
+      rows: Array.isArray(parsed?.rows) ? parsed.rows : [],
+      scopes: parsed && typeof parsed.scopes === 'object' && parsed.scopes ? parsed.scopes : {}
+    };
   } catch {
-    return [];
+    return { rows: [], scopes: {} };
   }
 }
 
-function writeCache(rows) {
+function readCache() {
+  return readCacheData().rows;
+}
+
+function readScopeCache() {
+  return readCacheData().scopes;
+}
+
+function writeCache(rows, scopes = readScopeCache()) {
   try {
-    localStorage.setItem(CACHE_KEY, JSON.stringify({ rows: rows.slice(-5000) }));
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ rows: rows.slice(-5000), scopes }));
   } catch {}
+}
+
+function getScopeKey(params = {}) {
+  return JSON.stringify({
+    productId: String(params.productId || ''),
+    variantId: String(params.variantId || ''),
+    branchId: String(params.branchId || ''),
+    inventoryType: String(params.inventoryType || ''),
+    status: String(params.status || '')
+  });
+}
+
+function hasExactScopeCache(params = {}) {
+  return !!readScopeCache()?.[getScopeKey(params)];
+}
+
+function rowMatchesScope(row, params = {}) {
+  if (params.productId && String(row.productId || '') !== String(params.productId)) return false;
+  if (params.variantId && String(row.variantId || '') !== String(params.variantId)) return false;
+  if (params.branchId && String(row.branchId || '') !== String(params.branchId)) return false;
+  if (params.inventoryType && String(row.inventoryType || '') !== String(params.inventoryType)) return false;
+  if (params.status === 'available') {
+    const status = String(row.status || '');
+    const reservationToken = String(params.reservationToken || '');
+    return status === 'in_stock' || (status === 'reserved' && reservationToken && String(row.reservationToken || '') === reservationToken);
+  }
+  if (params.status && String(row.status || '') !== String(params.status)) return false;
+  return true;
+}
+
+function shouldReconcileScope(params = {}, total = 0) {
+  const page = Math.max(1, Number(params.page || 1));
+  const pageSize = Math.max(1, Number(params.pageSize || 30));
+  if (page !== 1) return false;
+  if (String(params.query || '').trim()) return false;
+  return Math.max(0, Number(total || 0)) <= pageSize;
+}
+
+function reconcileScopeRows(params = {}, nextRows = [], total = 0) {
+  if (!shouldReconcileScope(params, total)) return readCache();
+  const liveIds = new Set((Array.isArray(nextRows) ? nextRows : []).map(row => String(row?._id || '')).filter(Boolean));
+  const filteredRows = readCache().filter(row => !rowMatchesScope(row, params) || liveIds.has(String(row?._id || '')));
+  const scopes = readScopeCache();
+  scopes[getScopeKey(params)] = {
+    ts: Date.now(),
+    total: Math.max(0, Number(total || 0))
+  };
+  writeCache(filteredRows, scopes);
+  return filteredRows;
 }
 
 function findCachedByCode(code = '', params = {}) {
@@ -103,7 +162,7 @@ export function getCachedProductUnitCount(params = {}) {
   });
   return {
     count: rows.length,
-    hasCache: baseRows.length > 0
+    hasCache: baseRows.length > 0 || hasExactScopeCache(params)
   };
 }
 
@@ -124,7 +183,19 @@ export function getEffectiveCachedProductUnitCount(params = {}) {
   });
   return {
     count: rows.length,
-    hasCache: baseRows.length > 0
+    hasCache: baseRows.length > 0 || hasExactScopeCache({
+      productId: params.productId,
+      variantId: params.variantId,
+      branchId: params.branchId,
+      inventoryType: params.inventoryType,
+      status: 'available'
+    }) || hasExactScopeCache({
+      productId: params.productId,
+      variantId: params.variantId,
+      branchId: params.branchId,
+      inventoryType: params.inventoryType,
+      status: 'in_stock'
+    })
   };
 }
 
@@ -189,6 +260,7 @@ export function listProductUnits(params = {}) {
   if (cached?.promise) return cached.promise;
   const promise = fetchJson(`/api/product-units${qs}`, { timeoutMs: 60000 }).then(result => {
     mergeRows(result?.rows || []);
+    reconcileScopeRows(params, result?.rows || [], Number(result?.total || 0));
     const rows = overlayRows(result?.rows || [], params);
     const data = { ...result, rows, total: params.status ? rows.length : Number(result?.total || rows.length) };
     listRequestCache.set(qs, { data, expiresAt: Date.now() + REQUEST_CACHE_TTL_MS });

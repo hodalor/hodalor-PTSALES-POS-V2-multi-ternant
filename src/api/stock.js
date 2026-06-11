@@ -13,9 +13,6 @@ export function transfer(payload) {
   return fetchJson('/api/stock/transfer', { method: 'POST', body: JSON.stringify(payload) });
 }
 export function setStock(payload) {
-  // #region debug-point C:stock-set-request
-  fetch("http://127.0.0.1:7777/event",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({sessionId:"variant-stock-sync",runId:"pre-fix",hypothesisId:"C",location:"frontend/src/api/stock.js:setStock",msg:"[DEBUG] stock.setStock request",data:{productId:String(payload?.productId||""),variantId:String(payload?.variantId||""),branchId:String(payload?.branchId||""),inventoryType:String(payload?.inventoryType||"retail"),quantity:Number(payload?.quantity||0)},ts:Date.now()})}).catch(()=>{});
-  // #endregion
   return fetchJson('/api/stock/set', { method: 'POST', body: JSON.stringify(payload) });
 }
 
