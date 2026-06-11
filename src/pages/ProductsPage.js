@@ -64,6 +64,17 @@ function getVariantQuantityForContext(variant, branchId, inventoryType) {
   return Number(variant?.[stockField]?.[branchId] || 0);
 }
 
+function getSerializedCachedUnitsCount(productId, variantId, branchId, inventoryType) {
+  const cached = productUnitsApi.getCachedProductUnitCount({
+    productId,
+    variantId,
+    branchId,
+    inventoryType,
+    status: 'in_stock'
+  });
+  return cached?.hasCache ? Number(cached.count || 0) : null;
+}
+
 function buildVariantStockMaps(quantity, branchId, inventoryType) {
   const qty = Number(quantity || 0);
   const next = {
@@ -211,6 +222,20 @@ function ProductsPage() {
   const serializedVariantRequired = serializedVariantOptions.length > 0;
   const serializedVariantReady = !serializedVariantRequired || Boolean(String(serializedVariantId || '').trim());
 
+  function getDisplayStockValue(product, variant = null, branchId = currentBranchId, inventoryType = currentInventoryType) {
+    const stockField = getInventoryStockField(inventoryType);
+    const entity = variant || product;
+    const numeric = Number(entity?.[stockField]?.[branchId] || 0);
+    if (String(product?.trackType || 'quantity') !== 'serialized') return numeric;
+    const cached = getSerializedCachedUnitsCount(
+      String(product?.id || product?._id || ''),
+      String(variant?.id || ''),
+      String(branchId || ''),
+      inventoryType
+    );
+    return cached == null ? numeric : cached;
+  }
+
   const filteredCatalogProducts = useMemo(() => {
     const query = String(catalogQuery || '').trim().toLowerCase();
     return products.filter((p) => {
@@ -355,6 +380,14 @@ function ProductsPage() {
       });
       setSerializedUnits(Array.isArray(result?.rows) ? result.rows : []);
       setSerializedTotal(Number(result?.total || 0));
+      dispatch(setStock({
+        productId: product?.id || product?._id || '',
+        variantId: effectiveVariantId || undefined,
+        branchId: currentBranchId,
+        quantity: Number(result?.total || 0),
+        inventoryType,
+        syncPending: false
+      }));
     } catch (e) {
       toast.show(String(e?.message || 'Failed to load serialized units'), { type: 'error' });
       setSerializedUnits([]);
@@ -1079,7 +1112,7 @@ function ProductsPage() {
                     className="input stock-input"
                     type="number"
                     min="0"
-                    value={(currentInventoryType === 'warehouse' ? p.warehouseStockByBranch : currentInventoryType === 'wholesale' ? p.wholesaleStockByBranch : p.stockByBranch)?.[currentBranchId] || 0}
+                    value={getDisplayStockValue(p, null, currentBranchId, currentInventoryType)}
                     onChange={e => {
                       if (String(p.trackType || 'quantity') === 'serialized') {
                         toast.show(t('Serialized stock changes only through IMEI or serial unit actions'), { type: 'warning' });
@@ -1214,7 +1247,7 @@ function ProductsPage() {
                     className="input"
                     type="number"
                     min="0"
-                    value={(currentInventoryType === 'warehouse' ? v.warehouseStockByBranch : currentInventoryType === 'wholesale' ? v.wholesaleStockByBranch : v.stockByBranch)?.[currentBranchId] || 0}
+                    value={getDisplayStockValue(variantModalProduct, v, currentBranchId, currentInventoryType)}
                     onChange={e => {
                       if (String(v.trackType || variantModalProduct.trackType || 'quantity') === 'serialized') {
                         toast.show(t('Serialized stock changes only through IMEI or serial unit actions'), { type: 'warning' });

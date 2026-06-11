@@ -4,6 +4,7 @@ import { setStock } from '../store/productsSlice';
 import { addAudit } from '../store/auditSlice';
 import BranchSelect from '../components/BranchSelect';
 import * as stockApi from '../api/stock';
+import * as productUnitsApi from '../api/productUnits';
 import { formatCurrency } from '../utils/currency';
 import { useToast } from '../components/ToastProvider';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
@@ -33,6 +34,17 @@ function normalizeInventoryType(value = 'retail') {
   if (kind === 'warehouse') return 'warehouse';
   if (kind === 'wholesale') return 'wholesale';
   return 'retail';
+}
+
+function getSerializedCachedUnitsCount(productId, variantId, branchId, inventoryType) {
+  const cached = productUnitsApi.getCachedProductUnitCount({
+    productId,
+    variantId,
+    branchId,
+    inventoryType,
+    status: 'in_stock'
+  });
+  return cached?.hasCache ? Number(cached.count || 0) : null;
 }
 
 function InventoryPage() {
@@ -116,7 +128,10 @@ function InventoryPage() {
 
   const getStockForProduct = useCallback((product, targetBranchId = branchId) => {
     if (!targetBranchId || String(targetBranchId) === 'all') return getTotalStock(product, viewInventoryType);
-    return getBranchStock(product, targetBranchId, viewInventoryType);
+    const numeric = getBranchStock(product, targetBranchId, viewInventoryType);
+    if (String(product?.trackType || 'quantity') !== 'serialized') return numeric;
+    const cached = getSerializedCachedUnitsCount(String(product?.id || product?._id || ''), '', String(targetBranchId || ''), viewInventoryType);
+    return cached == null ? numeric : cached;
   }, [branchId, viewInventoryType]);
 
   const getSalePrice = useCallback((product) => {
@@ -159,7 +174,13 @@ function InventoryPage() {
 
   const getEntityStock = useCallback((entity, targetBranchId = branchId) => {
     if (!targetBranchId || String(targetBranchId) === 'all') return getTotalStock(entity, viewInventoryType);
-    return getBranchStock(entity, targetBranchId, viewInventoryType);
+    const numeric = getBranchStock(entity, targetBranchId, viewInventoryType);
+    const parentProductId = entity?.productId || entity?.id || entity?._id || '';
+    const variantId = entity?.productId ? (entity?.id || entity?.variantId || '') : '';
+    const trackType = String(entity?.trackType || entity?.parentTrackType || 'quantity');
+    if (trackType !== 'serialized') return numeric;
+    const cached = getSerializedCachedUnitsCount(String(parentProductId || ''), String(variantId || ''), String(targetBranchId || ''), viewInventoryType);
+    return cached == null ? numeric : cached;
   }, [branchId, viewInventoryType]);
 
   const getEntitySalePrice = useCallback((entity, parent = null) => {
@@ -197,7 +218,7 @@ function InventoryPage() {
         variant: variant.label || '',
         sku: variant.sku || product.sku || '',
         barcode: variant.barcode || product.barcode || '',
-        stock: getEntityStock(variant, branchId),
+        stock: getEntityStock({ ...variant, productId: product.id || product._id || '', variantId: variant.id || '', parentTrackType: product.trackType }, branchId),
         salePrice: getEntitySalePrice(variant, product)
       }));
       return [productRow, ...variantRows];
@@ -552,7 +573,7 @@ function InventoryPage() {
                                 className="input"
                                 type="number"
                                 min="0"
-                                value={(viewInventoryType === 'wholesale' ? (v.wholesaleStockByBranch || {})[branchId] : viewInventoryType === 'warehouse' ? (v.warehouseStockByBranch || {})[branchId] : (v.stockByBranch || {})[branchId]) || 0}
+                                value={getEntityStock({ ...v, productId: p.id || p._id || '', variantId: v.id || '', parentTrackType: p.trackType }, branchId)}
                                 onChange={e => setStockWithAudit(p, v.id, branchId, Number(e.target.value))}
                                 style={{ width: 120 }}
                                 disabled
@@ -620,7 +641,7 @@ function InventoryPage() {
                                 className="input"
                                 type="number"
                                 min="0"
-                                value={selected.stockByBranch?.[b.id] || 0}
+                                value={String(selected.trackType || 'quantity') === 'serialized' ? (getSerializedCachedUnitsCount(String(selected.id || selected._id || ''), '', String(b.id || ''), 'retail') ?? Number(selected.stockByBranch?.[b.id] || 0)) : (selected.stockByBranch?.[b.id] || 0)}
                                 onChange={e => setStockWithAudit(selected, null, b.id, Number(e.target.value))}
                                 style={{ width: '100%' }}
                                 disabled
@@ -632,7 +653,7 @@ function InventoryPage() {
                                 className="input"
                                 type="number"
                                 min="0"
-                                value={selected.wholesaleStockByBranch?.[b.id] || 0}
+                                value={String(selected.trackType || 'quantity') === 'serialized' ? (getSerializedCachedUnitsCount(String(selected.id || selected._id || ''), '', String(b.id || ''), 'wholesale') ?? Number(selected.wholesaleStockByBranch?.[b.id] || 0)) : (selected.wholesaleStockByBranch?.[b.id] || 0)}
                                 onChange={e => setStockWithAudit(selected, null, b.id, Number(e.target.value))}
                                 style={{ width: '100%' }}
                                 disabled
@@ -644,7 +665,7 @@ function InventoryPage() {
                                 className="input"
                                 type="number"
                                 min="0"
-                                value={selected.warehouseStockByBranch?.[b.id] || 0}
+                                value={String(selected.trackType || 'quantity') === 'serialized' ? (getSerializedCachedUnitsCount(String(selected.id || selected._id || ''), '', String(b.id || ''), 'warehouse') ?? Number(selected.warehouseStockByBranch?.[b.id] || 0)) : (selected.warehouseStockByBranch?.[b.id] || 0)}
                                 onChange={e => setStockWithAudit(selected, null, b.id, Number(e.target.value))}
                                 style={{ width: '100%' }}
                                 disabled
@@ -673,7 +694,7 @@ function InventoryPage() {
                             className="input"
                             type="number"
                             min="0"
-                            value={v.stockByBranch?.[branchId] || 0}
+                            value={getEntityStock({ ...v, productId: selected.id || selected._id || '', variantId: v.id || '', parentTrackType: selected.trackType, stockByBranch: v.stockByBranch, wholesaleStockByBranch: v.wholesaleStockByBranch, warehouseStockByBranch: v.warehouseStockByBranch }, branchId)}
                             onChange={e => setStockWithAudit(selected, v.id, branchId, Number(e.target.value))}
                             style={{ width: 100 }}
                             disabled
@@ -691,7 +712,7 @@ function InventoryPage() {
                             className="input"
                             type="number"
                             min="0"
-                            value={v.warehouseStockByBranch?.[branchId] || 0}
+                            value={getEntityStock({ ...v, productId: selected.id || selected._id || '', variantId: v.id || '', parentTrackType: selected.trackType, stockByBranch: v.stockByBranch, wholesaleStockByBranch: v.wholesaleStockByBranch, warehouseStockByBranch: v.warehouseStockByBranch }, branchId)}
                             onChange={e => setStockWithAudit(selected, v.id, branchId, Number(e.target.value))}
                             style={{ width: 100 }}
                             disabled
