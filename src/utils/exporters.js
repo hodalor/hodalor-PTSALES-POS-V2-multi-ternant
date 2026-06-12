@@ -57,8 +57,12 @@ export function exportTablePdf(title, headers, rows, options = {}) {
   const t = translateDocumentLanguage;
   const letterhead = options?.letterhead || null;
   const meta = Array.isArray(options?.meta) ? options.meta.filter((item) => item && (item.label || item.value)) : [];
+  const orientation = String(options?.orientation || 'portrait').toLowerCase() === 'landscape' ? 'landscape' : 'portrait';
+  const getRowClass = typeof options?.getRowClass === 'function' ? options.getRowClass : null;
+  const extraStyles = String(options?.extraStyles || '');
   const styles = `
     <style>
+      @page { size: ${orientation}; }
       body { font-family: Arial, sans-serif; padding: 16px; color: #0f172a; }
       h1 { margin: 0 0 12px; font-size: 18px; }
       .letterhead { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 8px; }
@@ -72,6 +76,9 @@ export function exportTablePdf(title, headers, rows, options = {}) {
       table { width: 100%; border-collapse: collapse; font-size: 12px; }
       th, td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; vertical-align: top; }
       th { background: #f8fafc; }
+      .row-sale td { font-weight: 700; background: #f8fafc; }
+      .row-payment td { font-weight: 400; background: #ffffff; }
+      ${extraStyles}
     </style>`;
   const letterheadHtml = letterhead ? `
       <div class="letterhead">
@@ -90,11 +97,12 @@ export function exportTablePdf(title, headers, rows, options = {}) {
       </div>` : (letterhead ? `<div class="letterhead-sep"></div>` : '');
   const head = `<tr>${headers.map(h => `<th>${escapeHtml(h.label)}</th>`).join('')}</tr>`;
   const body = rows.map(r => {
+    const rowClass = getRowClass ? String(getRowClass(r) || '').trim() : '';
     const tds = headers.map(h => {
       const val = typeof h.value === 'function' ? h.value(r) : r[h.key];
-      return `<td>${escapeHtml(String(val ?? ''))}</td>`;
+      return `<td>${escapeHtml(String(val ?? '')).replace(/\n/g, '<br />')}</td>`;
     }).join('');
-    return `<tr>${tds}</tr>`;
+    return `<tr${rowClass ? ` class="${escapeHtml(rowClass)}"` : ''}>${tds}</tr>`;
   }).join('');
   const html = `
     <!DOCTYPE html>

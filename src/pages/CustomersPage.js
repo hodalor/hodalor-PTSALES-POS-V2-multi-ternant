@@ -18,6 +18,14 @@ import { getCreditModeLabel, getSaleSettlementStatus } from '../utils/saleAccoun
 
 Chart.register(BarElement, CategoryScale, LinearScale, Tooltip, Legend);
 
+function sortByLatestDate(rows = [], picker) {
+  return [...rows].sort((a, b) => {
+    const aTs = new Date(typeof picker === 'function' ? picker(a) : a?.created_at || a?.createdAt || 0).getTime();
+    const bTs = new Date(typeof picker === 'function' ? picker(b) : b?.created_at || b?.createdAt || 0).getTime();
+    return (Number.isNaN(bTs) ? 0 : bTs) - (Number.isNaN(aTs) ? 0 : aTs);
+  });
+}
+
 function CustomersPage() {
   const customers = useSelector(s => s.customers.customers);
   const sales = useSelector(s => s.sales.sales);
@@ -257,13 +265,16 @@ function CustomersPage() {
     if (!selected) return [];
     const sid = String(selected.id);
     const sc = String(selected.customerCode || '');
-    return sales.filter(s => String(s.customerId || '') === sid || (sc && String(s.customerCode || '') === sc));
+    return sortByLatestDate(
+      sales.filter(s => String(s.customerId || '') === sid || (sc && String(s.customerCode || '') === sc)),
+      (sale) => sale?.created_at || sale?.createdAt || sale?.date
+    );
   }, [sales, selected]);
   const customerSaleHistory = useMemo(() => history.map((sale) => {
     const repaymentHistory = Array.isArray(sale.repaymentHistory) ? sale.repaymentHistory : [];
     const repaymentById = new Map(repaymentHistory.map((entry) => [String(entry?.repaymentId || ''), entry]));
     const paymentTimeline = Array.isArray(sale.paymentTimeline) ? sale.paymentTimeline : [];
-    const paymentRecords = paymentTimeline.map((event, index) => {
+    const paymentRecords = sortByLatestDate(paymentTimeline.map((event, index) => {
       const source = String(event?.source || 'sale').trim().toLowerCase();
       const repaymentEntry = repaymentById.get(String(event?.repaymentId || '')) || null;
       const label = source === 'credit_upfront'
@@ -286,7 +297,7 @@ function CustomersPage() {
         approvedByRole: repaymentEntry?.approvedByRole || '',
         remark: String(repaymentEntry?.remark || event?.note || '').trim()
       };
-    });
+    }), (entry) => entry?.paidAt || entry?.approvedAt || entry?.initiatedAt);
     return {
       ...sale,
       repaymentHistory,

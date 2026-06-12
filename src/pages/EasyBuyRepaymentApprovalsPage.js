@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { approveApproval, listApprovals, rejectApproval } from '../api/approvals';
-import { listRepayments, removeRepayment } from '../api/credits';
+import { listCreditCustomers, listCreditSales, listRepayments, removeRepayment } from '../api/credits';
 import { useToast } from '../components/ToastProvider';
 import { confirmDialog, promptDialog } from '../utils/dialogs';
 import Modal from '../components/Modal';
 import InlineSpinner from '../components/InlineSpinner';
 import { printCreditReceiptByCreditSaleId } from '../utils/creditReceiptPrint';
+
+function sortByCreatedDesc(rows = []) {
+  return [...rows].sort((a, b) => {
+    const aTs = new Date(a?.createdAt || a?.created_at || 0).getTime();
+    const bTs = new Date(b?.createdAt || b?.created_at || 0).getTime();
+    return (Number.isNaN(bTs) ? 0 : bTs) - (Number.isNaN(aTs) ? 0 : aTs);
+  });
+}
 
 function EasyBuyRepaymentApprovalsPage() {
   const toast = useToast();
@@ -19,14 +27,24 @@ function EasyBuyRepaymentApprovalsPage() {
   const [loading, setLoading] = useState(false);
   const [workingId, setWorkingId] = useState('');
   const [repaymentsById, setRepaymentsById] = useState({});
+  const [creditSalesById, setCreditSalesById] = useState({});
+  const [customersById, setCustomersById] = useState({});
   const [selectedRow, setSelectedRow] = useState(null);
   const [deletingId, setDeletingId] = useState('');
 
   const loadRepayments = useCallback(async () => {
     try {
-      const repayments = await listRepayments({});
+      const [repayments, creditSales, customers] = await Promise.all([
+        listRepayments({}),
+        listCreditSales(),
+        listCreditCustomers()
+      ]);
       const map = Object.fromEntries((Array.isArray(repayments) ? repayments : []).map(row => [String(row._id), row]));
+      const salesMap = Object.fromEntries((Array.isArray(creditSales) ? creditSales : []).map(row => [String(row._id || row.saleId || ''), row]));
+      const customerMap = Object.fromEntries((Array.isArray(customers) ? customers : []).map(row => [String(row._id || row.id || ''), row]));
       setRepaymentsById(map);
+      setCreditSalesById(salesMap);
+      setCustomersById(customerMap);
     } catch {}
   }, []);
 
@@ -34,7 +52,7 @@ function EasyBuyRepaymentApprovalsPage() {
     setLoading(true);
     try {
       const data = await listApprovals(status === 'all' ? { actionType: 'credit_repayment' } : { actionType: 'credit_repayment', status });
-      setRows(Array.isArray(data) ? data : []);
+      setRows(sortByCreatedDesc(Array.isArray(data) ? data : []));
     } catch (e) {
       toast.show(String(e?.message || 'Failed to load repayment approvals'), { type: 'error' });
     } finally {
@@ -152,6 +170,7 @@ function EasyBuyRepaymentApprovalsPage() {
                 <th align="left">Status</th>
                 <th align="left">Amount</th>
                 <th align="left">Remark</th>
+                <th align="left">Customer</th>
                 <th align="left">Initiated By</th>
                 <th align="left">Created</th>
                 <th align="left"></th>
@@ -161,12 +180,15 @@ function EasyBuyRepaymentApprovalsPage() {
             <tbody>
               {rows.map(row => {
                 const repayment = repaymentsById[String(row.referenceId)] || null;
+                const creditSale = creditSalesById[String(repayment?.creditSaleId || '')] || null;
+                const customer = customersById[String(repayment?.customerId || creditSale?.customer_id || '')] || null;
                 return (
                 <tr key={row._id} onClick={() => setSelectedRow(row)} style={{ cursor: 'pointer', opacity: deletingId === String(row.referenceId || '') ? 0.55 : 1 }}>
                   <td>{row.actionType}</td>
                   <td>{row.status}</td>
                   <td>{repayment ? `K${Number(repayment.amount || 0).toFixed(2)}` : '—'}</td>
                   <td>{repayment?.remark || row.managerRemark || row.directorRemark || '—'}</td>
+                  <td>{customer?.name || '—'} {customer?.businessName ? `• ${customer.businessName}` : ''}</td>
                   <td>{row.initiatedByName || '—'} {row.initiatedByRole ? `(${row.initiatedByRole})` : ''}</td>
                   <td>{row.createdAt ? new Date(row.createdAt).toLocaleString() : '—'}</td>
                   <td>
@@ -189,7 +211,7 @@ function EasyBuyRepaymentApprovalsPage() {
                   )}
                 </tr>
               )})}
-              {!loading && rows.length === 0 && <tr><td colSpan={canDeleteRepayments ? 8 : 7} style={{ padding: 12, color: '#64748b' }}>No repayment approvals found</td></tr>}
+              {!loading && rows.length === 0 && <tr><td colSpan={canDeleteRepayments ? 9 : 8} style={{ padding: 12, color: '#64748b' }}>No repayment approvals found</td></tr>}
             </tbody>
           </table>
         </div>
@@ -206,6 +228,8 @@ function EasyBuyRepaymentApprovalsPage() {
               return (
                 <>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+                    <div><strong>Customer:</strong> <span style={{ color: '#111827' }}>{customersById[String(repayment?.customerId || creditSalesById[String(repayment?.creditSaleId || '')]?.customer_id || '')]?.name || '—'}</span></div>
+                    <div><strong>Business Name:</strong> <span style={{ color: '#111827' }}>{customersById[String(repayment?.customerId || creditSalesById[String(repayment?.creditSaleId || '')]?.customer_id || '')]?.businessName || '—'}</span></div>
                     <div><strong>Status:</strong> <span style={{ color: '#111827' }}>{selectedRow.status}</span></div>
                     <div><strong>Amount:</strong> <span style={{ color: '#111827' }}>{repayment ? `K${Number(repayment.amount || 0).toFixed(2)}` : '—'}</span></div>
                     <div><strong>Initiator:</strong> <span style={{ color: '#111827' }}>{selectedRow.initiatedByName || '—'} {selectedRow.initiatedByRole ? `(${selectedRow.initiatedByRole})` : ''}</span></div>

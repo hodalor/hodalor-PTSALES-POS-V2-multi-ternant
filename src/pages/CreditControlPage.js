@@ -8,6 +8,8 @@ import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import InlineSpinner from '../components/InlineSpinner';
 import BranchSelect from '../components/BranchSelect';
 import LoadingDots from '../components/LoadingDots';
+import Modal from '../components/Modal';
+import { exportCsv, exportTablePdf } from '../utils/exporters';
 
 function normalizeCreditSaleRow(row, now = new Date()) {
   const total = Math.max(0, Number(row?.total_amount || 0));
@@ -44,12 +46,58 @@ function getCreditPackageLabel(row) {
   return String(row?.posType || 'retail') === 'wholesale' ? 'Distribution Credit Sale' : 'Retail EasyBuy';
 }
 
+function sortByLatest(rows = [], picker) {
+  return [...rows].sort((a, b) => {
+    const aTs = new Date(typeof picker === 'function' ? picker(a) : a?.createdAt || a?.created_at || 0).getTime();
+    const bTs = new Date(typeof picker === 'function' ? picker(b) : b?.createdAt || b?.created_at || 0).getTime();
+    return (Number.isNaN(bTs) ? 0 : bTs) - (Number.isNaN(aTs) ? 0 : aTs);
+  });
+}
+
+function isCreditSaleRecord(row) {
+  const creditMode = String(row?.creditMode || '').trim().toLowerCase();
+  return (creditMode && creditMode !== 'none' && creditMode !== 'non_credit')
+    || !!String(row?.creditSaleId || '').trim()
+    || !!row?.creditDueDate
+    || !!(Array.isArray(row?.payment_methods) && row.payment_methods.some((item) => String(item?.type || '').trim().toLowerCase() === 'easybuy'));
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatExportDateTime(value) {
+  if (!value) return '—';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
+}
+
+function formatPaymentRecordSummary(entry, settings) {
+  const parts = [
+    `${entry.label || 'Payment'} - ${formatCurrency(Number(entry.amount || 0), settings)}`,
+    `Paid: ${formatExportDateTime(entry.paidAt)}`,
+    `Status: ${String(entry.status || 'approved').replace(/_/g, ' ')}`,
+    entry.paymentMethod ? `Method: ${String(entry.paymentMethod || '').toUpperCase()}` : '',
+    entry.initiatedAt ? `Initiated: ${formatExportDateTime(entry.initiatedAt)}${entry.initiatedByName ? ` by ${entry.initiatedByName}${entry.initiatedByRole ? ` (${entry.initiatedByRole})` : ''}` : ''}` : '',
+    (entry.approvedAt || entry.approvedByName) ? `Approved: ${formatExportDateTime(entry.approvedAt)}${entry.approvedByName ? ` by ${entry.approvedByName}${entry.approvedByRole ? ` (${entry.approvedByRole})` : ''}` : ''}` : '',
+    entry.remark ? `Remark: ${entry.remark}` : ''
+  ].filter(Boolean);
+  return parts.join('\n');
+}
+
 function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', title = 'Credit Sale Control', description = 'Credit sale balances, overdue tracking, customer rank, and repayment initiation.' }) {
   const settings = useSelector(s => s.settings);
   const saleRows = useSelector(s => s.sales.sales || []);
+  const branches = useSelector(s => s.branches.branches || []);
+  const auth = useSelector(s => s.auth);
   const toast = useToast();
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);
-  const roleLower = String(useSelector(s => s.auth.role || '') || '').toLowerCase();
+  const roleLower = String(auth.role || '').toLowerCase();
   const canDeleteCredit = roleLower === 'superadmin';
   const [customers, setCustomers] = useState([]);
   const [sales, setSales] = useState([]);
@@ -72,11 +120,16 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   const [sourceFilter, setSourceFilter] = useState('all');
   const [creditPackageFilter, setCreditPackageFilter] = useState('all');
   const [branchFilter, setBranchFilter] = useState('');
+  const currentBranchId = useSelector(s => s.settings.currentBranchId);
   const todayIso = new Date().toISOString().slice(0, 10);
   const defaultFromIso = new Date(Date.now() - 29 * 24 * 3600 * 1000).toISOString().slice(0, 10);
   const [periodMode, setPeriodMode] = useState('range');
   const [dateFrom, setDateFrom] = useState(defaultFromIso);
   const [dateTo, setDateTo] = useState(todayIso);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportCustomerId, setExportCustomerId] = useState('');
+  const [exportTypeFilter, setExportTypeFilter] = useState('all');
+  const [exportSelectedSaleIds, setExportSelectedSaleIds] = useState([]);
 
   useEffect(() => {
     setSection(initialSection);
@@ -126,6 +179,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
     customers.forEach(row => map.set(String(row._id || row.id), row));
     return map;
   }, [customers]);
+  const branchNameById = useMemo(() => new Map((Array.isArray(branches) ? branches : []).map((row) => [String(row.id || ''), row.name || row.code || row.id || ''])), [branches]);
   const getCustomerDetails = useCallback((customerId) => {
     const row = customerMap.get(String(customerId || ''));
     return {
@@ -279,8 +333,9 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   ), [mergedSales]);
   const filteredActiveSales = useMemo(() => {
     const q = String(salesSearch || '').trim().toLowerCase();
-    if (!q) return shownActiveSales;
-    return shownActiveSales.filter((row) => {
+    const baseRows = sortByLatest(shownActiveSales, (row) => row?.createdAt || row?.created_at || row?.saleDate || row?.due_date);
+    if (!q) return baseRows;
+    return baseRows.filter((row) => {
       const itemText = Array.isArray(row.items)
         ? row.items.map((item) => `${item?.name || ''} ${item?.sku || ''}`).join(' ')
         : '';
@@ -296,8 +351,9 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   }, [getCustomerSearchText, salesSearch, shownActiveSales]);
   const filteredRepayments = useMemo(() => {
     const q = String(repaymentsSearch || '').trim().toLowerCase();
-    if (!q) return shownRepayments;
-    return shownRepayments.filter((row) => [
+    const baseRows = sortByLatest(shownRepayments, (row) => row?.createdAt || row?.created_at || row?.paymentDate || row?.date);
+    if (!q) return baseRows;
+    return baseRows.filter((row) => [
       getCustomerSearchText(row.customerId),
       row.status,
       row.remark,
@@ -319,6 +375,193 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       pendingRepaymentCount: currentPendingRepayments.length
     };
   }, [currentActiveSales, currentOverdueSales, currentPendingAmountRows, currentPendingRepayments, dueTodaySales.length]);
+
+  const exportCustomer = useMemo(() => (
+    customers.find((row) => String(row._id || row.id || '') === String(exportCustomerId || '')) || null
+  ), [customers, exportCustomerId]);
+  const exportSales = useMemo(() => {
+    if (!exportCustomer) return [];
+    const customerId = String(exportCustomer._id || exportCustomer.id || '');
+    const customerCode = String(exportCustomer.customerCode || '');
+    return sortByLatest(
+      saleRows.filter((row) => {
+        const matchesCustomer = String(row.customerId || '') === customerId || (customerCode && String(row.customerCode || '') === customerCode);
+        if (!matchesCustomer) return false;
+        if (exportTypeFilter === 'credit_only') return isCreditSaleRecord(row);
+        if (exportTypeFilter === 'paid_only') return !isCreditSaleRecord(row);
+        return true;
+      }).map((sale) => {
+        const repaymentHistory = Array.isArray(sale.repaymentHistory) ? sale.repaymentHistory : [];
+        const repaymentById = new Map(repaymentHistory.map((entry) => [String(entry?.repaymentId || ''), entry]));
+        const paymentTimeline = Array.isArray(sale.paymentTimeline) ? sale.paymentTimeline : [];
+        const paymentRecords = sortByLatest(paymentTimeline.map((event, index) => {
+          const source = String(event?.source || 'sale').trim().toLowerCase();
+          const repaymentEntry = repaymentById.get(String(event?.repaymentId || '')) || null;
+          return {
+            id: String(event?.repaymentId || `${sale.id || sale._id}-payment-record-${index}`),
+            label: source === 'credit_upfront'
+              ? 'Initial Credit Payment'
+              : source === 'credit_repayment'
+                ? 'Credit Repayment'
+                : 'Sale Payment',
+            amount: Number(event?.amount || 0) || 0,
+            paidAt: event?.paidAt || sale.created_at || sale.createdAt || null,
+            paymentMethod: String(repaymentEntry?.paymentMethod || event?.paymentMethod || '').trim(),
+            status: repaymentEntry ? String(repaymentEntry?.status || '').trim().toLowerCase() : 'approved',
+            initiatedAt: repaymentEntry?.initiatedAt || null,
+            initiatedByName: repaymentEntry?.initiatedByName || '',
+            initiatedByRole: repaymentEntry?.initiatedByRole || '',
+            approvedAt: repaymentEntry?.approvedAt || event?.paidAt || null,
+            approvedByName: repaymentEntry?.approvedByName || '',
+            approvedByRole: repaymentEntry?.approvedByRole || '',
+            remark: String(repaymentEntry?.remark || event?.note || '').trim()
+          };
+        }), (entry) => entry?.paidAt || entry?.approvedAt || entry?.initiatedAt);
+        return {
+          ...sale,
+          exportSaleId: String(sale.id || sale._id || ''),
+          paymentTypeLabel: isCreditSaleRecord(sale) ? getCreditPackageLabel(sale) : 'Paid Sale',
+          paymentRecords
+        };
+      }),
+      (sale) => sale?.created_at || sale?.createdAt || sale?.date
+    );
+  }, [exportCustomer, exportTypeFilter, saleRows]);
+
+  useEffect(() => {
+    setExportSelectedSaleIds(exportSales.map((row) => String(row.exportSaleId || '')).filter(Boolean));
+  }, [exportSales]);
+
+  function openExportModal() {
+    setExportCustomerId(selectedCustomerId || '');
+    setExportTypeFilter('all');
+    setExportOpen(true);
+  }
+
+  function runRepaymentExport(format = 'pdf') {
+    if (!exportCustomer) {
+      toast.show('Select a customer to export', { type: 'error' });
+      return;
+    }
+    const selectedRows = exportSales.filter((row) => exportSelectedSaleIds.includes(String(row.exportSaleId || '')));
+    if (selectedRows.length === 0) {
+      toast.show('Select at least one purchase history row to export', { type: 'error' });
+      return;
+    }
+    const generatedAt = new Date().toLocaleString();
+    const safeCustomerName = String(exportCustomer.name || 'customer').trim().replace(/[^\w.-]+/g, '_');
+    const transactionTypeLabel = exportTypeFilter === 'credit_only'
+      ? 'Credit Sales Only'
+      : exportTypeFilter === 'paid_only'
+        ? 'Paid Sales Only'
+        : 'All Transactions';
+    if (format === 'csv') {
+      const csvRows = selectedRows.flatMap((sale) => {
+        const base = {
+          customerName: exportCustomer.name || '—',
+          businessName: exportCustomer.businessName || '—',
+          saleDate: formatExportDateTime(sale.created_at || sale.createdAt),
+          invoice: sale.invoiceSerial || sale.exportSaleId || '—',
+          transactionType: sale.paymentTypeLabel || '—',
+          branch: branchNameById.get(String(sale.branchId || '')) || sale.branchId || '—',
+          items: Array.isArray(sale.items) ? sale.items.map((item) => `${item?.name || 'Item'} x ${Number(item?.qty || 0)}`).join(', ') : '—',
+          saleTotal: formatCurrency(Number(sale.total || 0), settings)
+        };
+        if (!Array.isArray(sale.paymentRecords) || sale.paymentRecords.length === 0) {
+          return [{ ...base, paymentLabel: '—', paymentAmount: '—', paymentDate: '—', paymentStatus: '—', paymentMethod: '—', initiated: '—', approved: '—', remark: '—' }];
+        }
+        return sale.paymentRecords.map((entry) => ({
+          ...base,
+          paymentLabel: entry.label || 'Payment',
+          paymentAmount: formatCurrency(Number(entry.amount || 0), settings),
+          paymentDate: formatExportDateTime(entry.paidAt),
+          paymentStatus: String(entry.status || 'approved').replace(/_/g, ' '),
+          paymentMethod: entry.paymentMethod ? String(entry.paymentMethod || '').toUpperCase() : '—',
+          initiated: entry.initiatedAt ? `${formatExportDateTime(entry.initiatedAt)}${entry.initiatedByName ? ` by ${entry.initiatedByName}${entry.initiatedByRole ? ` (${entry.initiatedByRole})` : ''}` : ''}` : '—',
+          approved: (entry.approvedAt || entry.approvedByName) ? `${formatExportDateTime(entry.approvedAt)}${entry.approvedByName ? ` by ${entry.approvedByName}${entry.approvedByRole ? ` (${entry.approvedByRole})` : ''}` : ''}` : '—',
+          remark: entry.remark || '—'
+        }));
+      });
+      exportCsv(`purchase-history-${safeCustomerName}.csv`, [
+        { key: 'customerName', label: 'Customer' },
+        { key: 'businessName', label: 'Business Name' },
+        { key: 'saleDate', label: 'Sale Date' },
+        { key: 'invoice', label: 'Invoice' },
+        { key: 'transactionType', label: 'Transaction Type' },
+        { key: 'branch', label: 'Branch' },
+        { key: 'items', label: 'Items' },
+        { key: 'saleTotal', label: 'Sale Total' },
+        { key: 'paymentLabel', label: 'Payment Record' },
+        { key: 'paymentAmount', label: 'Payment Amount' },
+        { key: 'paymentDate', label: 'Paid At' },
+        { key: 'paymentStatus', label: 'Payment Status' },
+        { key: 'paymentMethod', label: 'Method' },
+        { key: 'initiated', label: 'Initiated' },
+        { key: 'approved', label: 'Approved' },
+        { key: 'remark', label: 'Remark' }
+      ], csvRows);
+      setExportOpen(false);
+      return;
+    }
+    const pdfRows = selectedRows.flatMap((sale) => {
+      const paymentRecords = Array.isArray(sale.paymentRecords) ? sale.paymentRecords : [];
+      const totalPaid = paymentRecords.reduce((sum, entry) => sum + Math.max(0, Number(entry?.amount || 0)), 0);
+      const saleDetails = [
+        `Date: ${formatExportDateTime(sale.created_at || sale.createdAt)}`,
+        `Invoice: ${sale.invoiceSerial || sale.exportSaleId || '—'}`,
+        `Type: ${sale.paymentTypeLabel || '—'}`,
+        `Branch: ${branchNameById.get(String(sale.branchId || '')) || sale.branchId || '—'}`
+      ].join('\n');
+      const itemSummary = Array.isArray(sale.items) ? sale.items.map((item) => `${item?.name || 'Item'} x ${Number(item?.qty || 0)}`).join(', ') : '—';
+      const rows = [{
+        rowType: 'sale',
+        saleDetails,
+        items: itemSummary || '—',
+        saleTotal: formatCurrency(Number(sale.total || 0), settings),
+        totalPaid: formatCurrency(totalPaid, settings),
+        paymentDetails: paymentRecords.length > 0 ? `${paymentRecords.length} payment record(s)` : 'No payment records'
+      }];
+      paymentRecords.forEach((entry, index) => {
+        rows.push({
+          rowType: 'payment',
+          saleDetails: index === 0 ? 'Payment Records' : '',
+          items: '',
+          saleTotal: '',
+          totalPaid: '',
+          paymentDetails: formatPaymentRecordSummary(entry, settings)
+        });
+      });
+      return rows;
+    });
+    const exportBranchId = branchFilter || currentBranchId || '';
+    const exportBranchName = branchNameById.get(String(exportBranchId || '')) || (branchFilter ? branchFilter : 'All Branches');
+    exportTablePdf(`Customer Purchase History - ${exportCustomer.name || 'Customer'}`, [
+      { key: 'saleDetails', label: 'Sale Details' },
+      { key: 'items', label: 'Items' },
+      { key: 'saleTotal', label: 'Sale Total' },
+      { key: 'totalPaid', label: 'Total Paid' },
+      { key: 'paymentDetails', label: 'Payment Records' }
+    ], pdfRows, {
+      letterhead: {
+        logoUrl: settings?.clientLogoUrl || '/clientlogo512.png',
+        companyName: settings?.receiptBrandName || settings?.clientAppName || settings?.appName || 'ptSales POS',
+        branch: exportBranchName,
+        phone: settings?.businessPhone || '',
+        address: settings?.invoiceCompanyAddress || ''
+      },
+      meta: [
+        { label: 'Exported At', value: generatedAt },
+        { label: 'Generated By', value: auth.user?.name || 'unknown' },
+        { label: 'Customer', value: exportCustomer.name || '—' },
+        { label: 'Business Name', value: exportCustomer.businessName || '—' },
+        { label: 'Transaction Type', value: transactionTypeLabel },
+        { label: 'Selected Sales', value: String(selectedRows.length) }
+      ],
+      orientation: 'landscape',
+      getRowClass: (row) => row?.rowType === 'sale' ? 'row-sale' : 'row-payment'
+    });
+    setExportOpen(false);
+  }
 
   async function startRepayment(row) {
     const outstandingAmount = Math.max(0, Number(row?.balance || 0) + Number(row?.accumulated_penalty || 0));
@@ -808,8 +1051,16 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
 
       {section === 'repayments' && <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
-          <h2 className="section-title" style={{ margin: 0 }}>Repayment History</h2>
-          <div style={{ display: 'grid', gap: 8, minWidth: 320, maxWidth: 420, width: '100%' }}>
+          <div>
+            <h2 className="section-title" style={{ margin: 0 }}>Repayment History</h2>
+            <div style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+              Latest repayment transactions appear first.
+            </div>
+          </div>
+          <div style={{ display: 'grid', gap: 8, minWidth: 320, maxWidth: 520, width: '100%' }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              <button className="btn" onClick={openExportModal}>Export Purchase History</button>
+            </div>
             <input
               className="input"
               placeholder="Search customer, business name, phone or code"
@@ -892,6 +1143,107 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
         </table>
         </div>
       </div>}
+      {exportOpen && (
+        <Modal
+          title="Export Customer Purchase History"
+          onClose={() => setExportOpen(false)}
+          footer={
+            <>
+              <button className="btn" onClick={() => setExportOpen(false)}>Cancel</button>
+              <button className="btn" onClick={() => runRepaymentExport('csv')}>Export CSV</button>
+              <button className="btn btn-primary" onClick={() => runRepaymentExport('pdf')}>Export PDF</button>
+            </>
+          }
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+              <label>
+                <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Customer</div>
+                <select className="select" value={exportCustomerId} onChange={e => setExportCustomerId(e.target.value)}>
+                  <option value="">Select customer</option>
+                  {[...customers].sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''))).map((row) => (
+                    <option key={String(row._id || row.id || '')} value={String(row._id || row.id || '')}>
+                      {row.name}{row.businessName ? ` - ${row.businessName}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Transaction Type</div>
+                <select className="select" value={exportTypeFilter} onChange={e => setExportTypeFilter(e.target.value)}>
+                  <option value="all">All Transactions</option>
+                  <option value="paid_only">Paid Sales Only</option>
+                  <option value="credit_only">Credit Sales Only</option>
+                </select>
+              </label>
+            </div>
+            {exportCustomer && (
+              <div style={{ color: '#64748b', fontSize: 12 }}>
+                Exporting for <strong style={{ color: '#0f172a' }}>{exportCustomer.name}</strong>
+                {exportCustomer.businessName ? ` • ${exportCustomer.businessName}` : ''}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <button
+                className="btn"
+                onClick={() => setExportSelectedSaleIds(exportSales.map((row) => String(row.exportSaleId || '')).filter(Boolean))}
+                disabled={exportSales.length === 0}
+              >
+                Select All
+              </button>
+              <button className="btn" onClick={() => setExportSelectedSaleIds([])} disabled={exportSelectedSaleIds.length === 0}>Clear</button>
+              <div style={{ color: '#64748b', fontSize: 12 }}>
+                {exportSelectedSaleIds.length} selected of {exportSales.length}
+              </div>
+            </div>
+            <div style={{ maxHeight: 420, overflow: 'auto', border: '1px solid #e2e8f0', borderRadius: 12 }}>
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th align="left">
+                      <input
+                        type="checkbox"
+                        checked={exportSales.length > 0 && exportSales.every((row) => exportSelectedSaleIds.includes(String(row.exportSaleId || '')))}
+                        onChange={e => setExportSelectedSaleIds(e.target.checked ? exportSales.map((row) => String(row.exportSaleId || '')).filter(Boolean) : [])}
+                      />
+                    </th>
+                    <th align="left">Date</th>
+                    <th align="left">Invoice</th>
+                    <th align="left">Type</th>
+                    <th align="left">Items</th>
+                    <th align="left">Total</th>
+                    <th align="left">Payments</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {exportSales.map((sale) => (
+                    <tr key={String(sale.exportSaleId || '')}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={exportSelectedSaleIds.includes(String(sale.exportSaleId || ''))}
+                          onChange={e => setExportSelectedSaleIds((prev) => e.target.checked
+                            ? [...new Set([...prev, String(sale.exportSaleId || '')])]
+                            : prev.filter((id) => id !== String(sale.exportSaleId || '')))}
+                        />
+                      </td>
+                      <td>{sale.created_at || sale.createdAt ? new Date(sale.created_at || sale.createdAt).toLocaleString() : '—'}</td>
+                      <td>{sale.invoiceSerial || sale.exportSaleId || '—'}</td>
+                      <td>{sale.paymentTypeLabel}</td>
+                      <td>{Array.isArray(sale.items) ? sale.items.map((item) => `${item?.name || 'Item'} x ${Number(item?.qty || 0)}`).join(', ') : '—'}</td>
+                      <td>{formatCurrency(Number(sale.total || 0), settings)}</td>
+                      <td>{Array.isArray(sale.paymentRecords) ? sale.paymentRecords.length : 0}</td>
+                    </tr>
+                  ))}
+                  {exportSales.length === 0 && (
+                    <tr><td colSpan="7" style={{ padding: 12, color: '#64748b' }}>No purchase history found for the selected customer and transaction type.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
