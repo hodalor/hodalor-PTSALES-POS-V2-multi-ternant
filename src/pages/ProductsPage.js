@@ -509,7 +509,10 @@ function ProductsPage() {
         return;
     }
     const variantQuantityTotal = (variants || []).reduce((sum, row) => sum + (Number(row?.quantity || 0) || 0), 0);
-    if (trackType === 'serialized' && (Number(initialStock || 0) > 0 || variantQuantityTotal > 0)) {
+    const isAddSerializedWithManualQty = modalMode === 'add'
+      && trackType === 'serialized'
+      && (Number(initialStock || 0) > 0 || variantQuantityTotal > 0);
+    if (isAddSerializedWithManualQty) {
         toast.show('Serialized products must be stocked with IMEI/serial units after saving', { type: 'error' });
         return;
     }
@@ -1403,7 +1406,14 @@ function ProductsPage() {
               )}
               <div>
                 <label className="label">{t('Track Type')}</label>
-                <select className="select" value={trackType} onChange={e => setTrackType(e.target.value)} style={{ display: 'block', width: '100%', maxWidth: 220 }}>
+                <select className="select" value={trackType} onChange={e => {
+                  const nextType = e.target.value;
+                  setTrackType(nextType);
+                  if (nextType === 'serialized' && modalMode === 'add') {
+                    setInitialStock(0);
+                    setVariants((prev) => prev.map((row) => ({ ...row, quantity: '' })));
+                  }
+                }} style={{ display: 'block', width: '100%', maxWidth: 220 }}>
                   <option value="quantity">{t('Quantity')}</option>
                   <option value="serialized">{t('Serialized')}</option>
                 </select>
