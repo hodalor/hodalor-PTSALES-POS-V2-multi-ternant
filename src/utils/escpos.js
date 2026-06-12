@@ -1,10 +1,8 @@
 import { formatCurrency } from './currency';
+import { formatDateTime as formatSharedDateTime } from './dateFormat';
 // Very simple ESC/POS generator helpers (text only)
 function formatDateTime(value) {
-  if (!value) return '';
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString();
+  return formatSharedDateTime(value, '');
 }
 
 function paymentMethodLabel(value) {

@@ -381,6 +381,20 @@ function DashboardPage() {
     const filteredSales = branchSales.filter((s) => matchesDashboardActivityFilter(s, activityFilter));
     const createdSales = filteredSales.filter((s) => isDateInRange(s.created_at, selectedFrom, selectedTo));
     const activitySales = filteredSales.filter((s) => saleHasActivityInRange(s, selectedFrom, selectedTo));
+    const productById = new Map();
+    const categoryBySku = new Map();
+    products.forEach((product) => {
+      const productId = String(product?.id || product?._id || '');
+      if (productId) productById.set(productId, product);
+      const productCategory = String(product?.category || '').trim();
+      const productSku = String(product?.sku || '').trim();
+      if (productSku && productCategory) categoryBySku.set(productSku, productCategory);
+      (Array.isArray(product?.variants) ? product.variants : []).forEach((variant) => {
+        const variantSku = String(variant?.sku || '').trim();
+        const inheritedCategory = String(variant?.category || productCategory || '').trim();
+        if (variantSku && inheritedCategory) categoryBySku.set(variantSku, inheritedCategory);
+      });
+    });
     const competitionSales = sales.filter((s) => (
       matchCompetitionBranch(s.branchId)
       && matchesDashboardActivityFilter(s, activityFilter)
@@ -477,8 +491,8 @@ function DashboardPage() {
       }
       for (const it of sale.items) {
         itemsSold += it.qty;
-        const prod = products.find(p => p.sku === it.sku);
-        const cat = prod?.category || t('Uncategorized');
+        const prod = productById.get(String(it.productId || '')) || products.find((p) => p.sku === it.sku);
+        const cat = String(prod?.category || categoryBySku.get(String(it.sku || '').trim()) || '').trim() || t('Uncategorized');
         categoryTotals[cat] = (categoryTotals[cat] || 0) + it.qty;
         productUnits[it.sku] = (productUnits[it.sku] || 0) + it.qty;
 

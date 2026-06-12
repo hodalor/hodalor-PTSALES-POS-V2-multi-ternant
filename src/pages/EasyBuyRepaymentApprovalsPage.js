@@ -7,6 +7,8 @@ import { confirmDialog, promptDialog } from '../utils/dialogs';
 import Modal from '../components/Modal';
 import InlineSpinner from '../components/InlineSpinner';
 import { printCreditReceiptByCreditSaleId } from '../utils/creditReceiptPrint';
+import { formatDateTime } from '../utils/dateFormat';
+import { formatCurrency } from '../utils/currency';
 
 function sortByCreatedDesc(rows = []) {
   return [...rows].sort((a, b) => {
@@ -186,11 +188,11 @@ function EasyBuyRepaymentApprovalsPage() {
                 <tr key={row._id} onClick={() => setSelectedRow(row)} style={{ cursor: 'pointer', opacity: deletingId === String(row.referenceId || '') ? 0.55 : 1 }}>
                   <td>{row.actionType}</td>
                   <td>{row.status}</td>
-                  <td>{repayment ? `K${Number(repayment.amount || 0).toFixed(2)}` : '—'}</td>
+                  <td>{repayment ? formatCurrency(Number(repayment.amount || 0), settings) : '—'}</td>
                   <td>{repayment?.remark || row.managerRemark || row.directorRemark || '—'}</td>
                   <td>{customer?.name || '—'} {customer?.businessName ? `• ${customer.businessName}` : ''}</td>
                   <td>{row.initiatedByName || '—'} {row.initiatedByRole ? `(${row.initiatedByRole})` : ''}</td>
-                  <td>{row.createdAt ? new Date(row.createdAt).toLocaleString() : '—'}</td>
+                  <td>{formatDateTime(row.createdAt)}</td>
                   <td>
                     {(row.status === 'pending_director' || row.status === 'pending_manager') ? (
                       <>
@@ -231,9 +233,9 @@ function EasyBuyRepaymentApprovalsPage() {
                     <div><strong>Customer:</strong> <span style={{ color: '#111827' }}>{customersById[String(repayment?.customerId || creditSalesById[String(repayment?.creditSaleId || '')]?.customer_id || '')]?.name || '—'}</span></div>
                     <div><strong>Business Name:</strong> <span style={{ color: '#111827' }}>{customersById[String(repayment?.customerId || creditSalesById[String(repayment?.creditSaleId || '')]?.customer_id || '')]?.businessName || '—'}</span></div>
                     <div><strong>Status:</strong> <span style={{ color: '#111827' }}>{selectedRow.status}</span></div>
-                    <div><strong>Amount:</strong> <span style={{ color: '#111827' }}>{repayment ? `K${Number(repayment.amount || 0).toFixed(2)}` : '—'}</span></div>
+                    <div><strong>Amount:</strong> <span style={{ color: '#111827' }}>{repayment ? formatCurrency(Number(repayment.amount || 0), settings) : '—'}</span></div>
                     <div><strong>Initiator:</strong> <span style={{ color: '#111827' }}>{selectedRow.initiatedByName || '—'} {selectedRow.initiatedByRole ? `(${selectedRow.initiatedByRole})` : ''}</span></div>
-                    <div><strong>Created:</strong> <span style={{ color: '#111827' }}>{selectedRow.createdAt ? new Date(selectedRow.createdAt).toLocaleString() : '—'}</span></div>
+                    <div><strong>Created:</strong> <span style={{ color: '#111827' }}>{formatDateTime(selectedRow.createdAt)}</span></div>
                   </div>
                   <div><strong>Remark:</strong> <span style={{ color: '#111827' }}>{repayment?.remark || '—'}</span></div>
                   <div><strong>Credit Sale ID:</strong> <span style={{ color: '#111827' }}>{repayment?.creditSaleId || '—'}</span></div>

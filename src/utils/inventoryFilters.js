@@ -1,4 +1,5 @@
 import { productSpec } from './productSpec';
+import { formatDateTime as formatSharedDateTime } from './dateFormat';
 
 export function normalizeFilterText(value) {
   return String(value || '').trim().toLowerCase();
@@ -47,10 +48,7 @@ export function matchesDateField(row, field, from, to) {
 }
 
 export function formatDateTime(value, fallback = '—') {
-  if (!value) return fallback;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return fallback;
-  return date.toLocaleString();
+  return formatSharedDateTime(value, fallback);
 }
 
 export function getItemSearchValues(row = {}, products = []) {

@@ -13,6 +13,7 @@ import BranchSelect from '../components/BranchSelect';
 import { getProductBrand } from '../utils/productSearch';
 import Modal from '../components/Modal';
 import { getCreditModeLabel, getSaleRangeTotals, getSaleSettlementStatus, saleHasActivityInRange } from '../utils/saleAccounting';
+import { formatDateTime } from '../utils/dateFormat';
 
 function pad2(value) {
   return String(value).padStart(2, '0');
@@ -358,7 +359,7 @@ function SalesPage() {
     const fromDate = periodMode === 'all_time' ? null : parseRangeStart(dateFrom);
     const toDate = periodMode === 'all_time' ? null : parseRangeEnd(dateTo);
     const headers = [
-      { key: 'date', label: 'Date', value: s => new Date(s.created_at).toLocaleString() },
+      { key: 'date', label: 'Date', value: s => formatDateTime(s.created_at) },
       { key: 'branch', label: 'Branch', value: s => branchLabel(s) },
       { key: 'seller', label: 'Seller', value: s => s.sellerName || '' },
       { key: 'invoice', label: 'Invoice', value: s => s.invoiceSerial || '' },
@@ -374,7 +375,7 @@ function SalesPage() {
     const fromDate = periodMode === 'all_time' ? null : parseRangeStart(dateFrom);
     const toDate = periodMode === 'all_time' ? null : parseRangeEnd(dateTo);
     const headers = [
-      { key: 'date', label: 'Date', value: s => new Date(s.created_at).toLocaleString() },
+      { key: 'date', label: 'Date', value: s => formatDateTime(s.created_at) },
       { key: 'branch', label: 'Branch', value: s => branchLabel(s) },
       { key: 'seller', label: 'Seller', value: s => s.sellerName || '' },
       { key: 'invoice', label: 'Invoice', value: s => s.invoiceSerial || '' },
@@ -639,7 +640,7 @@ function SalesPage() {
               )}
               <td>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span>{new Date(sale.created_at).toLocaleString()}</span>
+                  <span>{formatDateTime(sale.created_at)}</span>
                   {canBackdateSales && (
                     <button className="btn" type="button" onClick={() => openSaleDateEditor(sale)} title="Edit sale date/time" style={{ padding: '6px 8px' }}>
                       <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" strokeWidth="2"/><path d="M13 7l4 4" stroke="currentColor" strokeWidth="2"/></svg>

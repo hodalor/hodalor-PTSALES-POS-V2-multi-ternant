@@ -1,6 +1,7 @@
 import { formatCurrency } from './currency';
 import { generateQrSvg } from './qr';
 import { translateDocumentLanguage } from './localization';
+import { formatDateTime as formatSharedDateTime } from './dateFormat';
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -12,10 +13,7 @@ function escapeHtml(value) {
 }
 
 function formatDateTime(value) {
-  if (!value) return '';
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  return date.toLocaleString();
+  return formatSharedDateTime(value, '');
 }
 
 function paymentMethodLabel(value, t) {

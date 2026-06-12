@@ -15,6 +15,7 @@ import { Bar } from 'react-chartjs-2';
 import { Chart, BarElement, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
 import LoadingDots from '../components/LoadingDots';
 import { getCreditModeLabel, getSaleSettlementStatus } from '../utils/saleAccounting';
+import { formatDateTime } from '../utils/dateFormat';
 
 Chart.register(BarElement, CategoryScale, LinearScale, Tooltip, Legend);
 
@@ -1034,7 +1035,7 @@ function CustomersPage() {
                           >
                         </span>
                       </td>
-                      <td>{new Date(s.created_at).toLocaleString()}</td>
+                      <td>{formatDateTime(s.created_at)}</td>
                       <td>{s.invoiceSerial || '—'}</td>
                       <td>
                         <div style={{ fontWeight: 700 }}>{String(s.creditMode || '').trim().toLowerCase() !== 'non_credit' ? getCreditModeLabel(s) : 'Paid'}</div>
@@ -1071,13 +1072,13 @@ function CustomersPage() {
                                     </span>
                                   </div>
                                   <div style={{ marginTop: 6, color: '#475569', fontSize: 12 }}>
-                                    Paid: {entry.paidAt ? new Date(entry.paidAt).toLocaleString() : '—'}
+                                    Paid: {formatDateTime(entry.paidAt)}
                                   </div>
                                   {entry.initiatedAt && <div style={{ marginTop: 4, color: '#475569', fontSize: 12 }}>
-                                    Initiated: {new Date(entry.initiatedAt).toLocaleString()} {entry.initiatedByName ? `by ${entry.initiatedByName}${entry.initiatedByRole ? ` (${entry.initiatedByRole})` : ''}` : ''}
+                                    Initiated: {formatDateTime(entry.initiatedAt)} {entry.initiatedByName ? `by ${entry.initiatedByName}${entry.initiatedByRole ? ` (${entry.initiatedByRole})` : ''}` : ''}
                                   </div>}
                                   {(entry.approvedAt || entry.approvedByName) && <div style={{ marginTop: 4, color: '#475569', fontSize: 12 }}>
-                                    Approved: {entry.approvedAt ? new Date(entry.approvedAt).toLocaleString() : '—'} {entry.approvedByName ? `by ${entry.approvedByName}${entry.approvedByRole ? ` (${entry.approvedByRole})` : ''}` : ''}
+                                    Approved: {formatDateTime(entry.approvedAt)} {entry.approvedByName ? `by ${entry.approvedByName}${entry.approvedByRole ? ` (${entry.approvedByRole})` : ''}` : ''}
                                   </div>}
                                   {entry.remark && <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>Remark: {entry.remark}</div>}
                                 </div>

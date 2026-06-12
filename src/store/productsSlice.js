@@ -31,6 +31,7 @@ function normalizeVariant(v, parent, idx) {
   return {
     id: v.id || v.label || String(idx),
     label: v.label,
+    category: v.category || parent.category || '',
     sku: v.sku || '',
     image: v.image || '',
     price: v.price,

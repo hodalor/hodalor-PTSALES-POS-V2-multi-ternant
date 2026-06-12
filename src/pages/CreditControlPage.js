@@ -10,6 +10,7 @@ import BranchSelect from '../components/BranchSelect';
 import LoadingDots from '../components/LoadingDots';
 import Modal from '../components/Modal';
 import { exportCsv, exportTablePdf } from '../utils/exporters';
+import { formatDate, formatDateTime } from '../utils/dateFormat';
 
 function normalizeCreditSaleRow(row, now = new Date()) {
   const total = Math.max(0, Number(row?.total_amount || 0));
@@ -71,20 +72,14 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
-function formatExportDateTime(value) {
-  if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
-}
-
 function formatPaymentRecordSummary(entry, settings) {
   const parts = [
     `${entry.label || 'Payment'} - ${formatCurrency(Number(entry.amount || 0), settings)}`,
-    `Paid: ${formatExportDateTime(entry.paidAt)}`,
+    `Paid: ${formatDateTime(entry.paidAt)}`,
     `Status: ${String(entry.status || 'approved').replace(/_/g, ' ')}`,
     entry.paymentMethod ? `Method: ${String(entry.paymentMethod || '').toUpperCase()}` : '',
-    entry.initiatedAt ? `Initiated: ${formatExportDateTime(entry.initiatedAt)}${entry.initiatedByName ? ` by ${entry.initiatedByName}${entry.initiatedByRole ? ` (${entry.initiatedByRole})` : ''}` : ''}` : '',
-    (entry.approvedAt || entry.approvedByName) ? `Approved: ${formatExportDateTime(entry.approvedAt)}${entry.approvedByName ? ` by ${entry.approvedByName}${entry.approvedByRole ? ` (${entry.approvedByRole})` : ''}` : ''}` : '',
+    entry.initiatedAt ? `Initiated: ${formatDateTime(entry.initiatedAt)}${entry.initiatedByName ? ` by ${entry.initiatedByName}${entry.initiatedByRole ? ` (${entry.initiatedByRole})` : ''}` : ''}` : '',
+    (entry.approvedAt || entry.approvedByName) ? `Approved: ${formatDateTime(entry.approvedAt)}${entry.approvedByName ? ` by ${entry.approvedByName}${entry.approvedByRole ? ` (${entry.approvedByRole})` : ''}` : ''}` : '',
     entry.remark ? `Remark: ${entry.remark}` : ''
   ].filter(Boolean);
   return parts.join('\n');
@@ -448,7 +443,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       toast.show('Select at least one purchase history row to export', { type: 'error' });
       return;
     }
-    const generatedAt = new Date().toLocaleString();
+    const generatedAt = formatDateTime(new Date());
     const safeCustomerName = String(exportCustomer.name || 'customer').trim().replace(/[^\w.-]+/g, '_');
     const transactionTypeLabel = exportTypeFilter === 'credit_only'
       ? 'Credit Sales Only'
@@ -460,7 +455,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
         const base = {
           customerName: exportCustomer.name || '—',
           businessName: exportCustomer.businessName || '—',
-          saleDate: formatExportDateTime(sale.created_at || sale.createdAt),
+          saleDate: formatDateTime(sale.created_at || sale.createdAt),
           invoice: sale.invoiceSerial || sale.exportSaleId || '—',
           transactionType: sale.paymentTypeLabel || '—',
           branch: branchNameById.get(String(sale.branchId || '')) || sale.branchId || '—',
@@ -474,11 +469,11 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
           ...base,
           paymentLabel: entry.label || 'Payment',
           paymentAmount: formatCurrency(Number(entry.amount || 0), settings),
-          paymentDate: formatExportDateTime(entry.paidAt),
+          paymentDate: formatDateTime(entry.paidAt),
           paymentStatus: String(entry.status || 'approved').replace(/_/g, ' '),
           paymentMethod: entry.paymentMethod ? String(entry.paymentMethod || '').toUpperCase() : '—',
-          initiated: entry.initiatedAt ? `${formatExportDateTime(entry.initiatedAt)}${entry.initiatedByName ? ` by ${entry.initiatedByName}${entry.initiatedByRole ? ` (${entry.initiatedByRole})` : ''}` : ''}` : '—',
-          approved: (entry.approvedAt || entry.approvedByName) ? `${formatExportDateTime(entry.approvedAt)}${entry.approvedByName ? ` by ${entry.approvedByName}${entry.approvedByRole ? ` (${entry.approvedByRole})` : ''}` : ''}` : '—',
+          initiated: entry.initiatedAt ? `${formatDateTime(entry.initiatedAt)}${entry.initiatedByName ? ` by ${entry.initiatedByName}${entry.initiatedByRole ? ` (${entry.initiatedByRole})` : ''}` : ''}` : '—',
+          approved: (entry.approvedAt || entry.approvedByName) ? `${formatDateTime(entry.approvedAt)}${entry.approvedByName ? ` by ${entry.approvedByName}${entry.approvedByRole ? ` (${entry.approvedByRole})` : ''}` : ''}` : '—',
           remark: entry.remark || '—'
         }));
       });
@@ -507,7 +502,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       const paymentRecords = Array.isArray(sale.paymentRecords) ? sale.paymentRecords : [];
       const totalPaid = paymentRecords.reduce((sum, entry) => sum + Math.max(0, Number(entry?.amount || 0)), 0);
       const saleDetails = [
-        `Date: ${formatExportDateTime(sale.created_at || sale.createdAt)}`,
+        `Date: ${formatDateTime(sale.created_at || sale.createdAt)}`,
         `Invoice: ${sale.invoiceSerial || sale.exportSaleId || '—'}`,
         `Type: ${sale.paymentTypeLabel || '—'}`,
         `Branch: ${branchNameById.get(String(sale.branchId || '')) || sale.branchId || '—'}`
@@ -831,8 +826,8 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                   <td>{getCreditPackageLabel(row)}</td>
                   <td><span className="price-accent">{formatCurrency(Number(row.balance || 0), settings)}</span></td>
                   <td><span className="price-accent">{formatCurrency(Number(row.accumulated_penalty || 0), settings)}</span></td>
-                  <td>{row.createdAt || row.created_at || row.saleDate ? new Date(row.createdAt || row.created_at || row.saleDate).toLocaleDateString() : '—'}</td>
-                  <td>{row.due_date ? new Date(row.due_date).toLocaleDateString() : '—'}</td>
+                <td>{formatDate(row.createdAt || row.created_at || row.saleDate)}</td>
+                <td>{formatDate(row.due_date)}</td>
                   <td style={{ color: '#b91c1c', fontWeight: 700 }}>{Number(row.overdue_days || 0)}</td>
                 </tr>
               ))}
@@ -1023,8 +1018,8 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                 <td><span className="price-accent">{formatCurrency(Number(row.amount_paid || 0), settings)}</span></td>
                 <td><span className="price-accent">{formatCurrency(Number(row.balance || 0), settings)}</span></td>
                 <td><span className="price-accent">{formatCurrency(Number(row.accumulated_penalty || 0), settings)}</span></td>
-                <td>{row.createdAt || row.created_at || row.saleDate ? new Date(row.createdAt || row.created_at || row.saleDate).toLocaleDateString() : '—'}</td>
-                <td>{row.due_date ? new Date(row.due_date).toLocaleDateString() : '—'} {row.status === 'overdue' ? `• ${row.overdue_days || 0} day(s)` : ''}</td>
+                <td>{formatDate(row.createdAt || row.created_at || row.saleDate)}</td>
+                <td>{formatDate(row.due_date)} {row.status === 'overdue' ? `• ${row.overdue_days || 0} day(s)` : ''}</td>
                 <td>
                   <span style={{ display: 'inline-flex', padding: '2px 8px', borderRadius: 999, background: row.status === 'overdue' ? '#fee2e2' : row.status === 'active' ? '#fef3c7' : '#dcfce7', color: row.status === 'overdue' ? '#b91c1c' : row.status === 'active' ? '#92400e' : '#166534', fontWeight: 700, fontSize: 12 }}>
                     {row.status}
@@ -1125,7 +1120,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                 <td><span className="price-accent">{formatCurrency(Number(row.amount || 0), settings)}</span></td>
                 <td>{row.status}</td>
                 <td>{row.remark || '—'}</td>
-                <td>{row.createdAt ? new Date(row.createdAt).toLocaleString() : '—'}</td>
+                <td>{formatDateTime(row.createdAt)}</td>
                 {canDeleteCredit && (
                   <td>
                     <button className="btn" onClick={() => void deleteRepaymentRow(row)} disabled={deletingId === String(row._id || '')}>
@@ -1227,7 +1222,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
                             : prev.filter((id) => id !== String(sale.exportSaleId || '')))}
                         />
                       </td>
-                      <td>{sale.created_at || sale.createdAt ? new Date(sale.created_at || sale.createdAt).toLocaleString() : '—'}</td>
+                      <td>{formatDateTime(sale.created_at || sale.createdAt)}</td>
                       <td>{sale.invoiceSerial || sale.exportSaleId || '—'}</td>
                       <td>{sale.paymentTypeLabel}</td>
                       <td>{Array.isArray(sale.items) ? sale.items.map((item) => `${item?.name || 'Item'} x ${Number(item?.qty || 0)}`).join(', ') : '—'}</td>
