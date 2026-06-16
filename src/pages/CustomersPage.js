@@ -87,6 +87,8 @@ function CustomersPage() {
     idFront: '',
     idBack: '',
     businessCertificate: '',
+    contract: '',
+    signedContract: '',
     address: '',
     registrationBranchId: '',
     registrationBranchName: '',
@@ -111,6 +113,8 @@ function CustomersPage() {
     idFront: '',
     idBack: '',
     businessCertificate: '',
+    contract: '',
+    signedContract: '',
     address: '',
     registrationBranchId: '',
     registrationBranchName: '',
@@ -349,8 +353,32 @@ function CustomersPage() {
     { key: 'photo', label: 'Photo', value: activeProfile.photo || '' },
     { key: 'idFront', label: 'ID Front', value: activeProfile.idFront || '' },
     { key: 'idBack', label: 'ID Back', value: activeProfile.idBack || '' },
-    { key: 'businessCertificate', label: 'Business Certificate', value: activeProfile.businessCertificate || '' }
+    { key: 'businessCertificate', label: 'Business Certificate', value: activeProfile.businessCertificate || '' },
+    { key: 'contract', label: 'Contract', value: activeProfile.contract || '' },
+    { key: 'signedContract', label: 'Signed Contract', value: activeProfile.signedContract || '' }
   ]).filter((item) => item.value), [activeProfile]);
+  const documentsCollected = useMemo(() => ([
+    {
+      key: 'idDocs',
+      label: 'ID Documents',
+      collected: Boolean(String(activeProfile.idFront || '').trim() || String(activeProfile.idBack || '').trim())
+    },
+    {
+      key: 'businessCertificate',
+      label: 'Business Certificate',
+      collected: Boolean(String(activeProfile.businessCertificate || '').trim())
+    },
+    {
+      key: 'contract',
+      label: 'Contract',
+      collected: Boolean(String(activeProfile.contract || '').trim())
+    },
+    {
+      key: 'signedContract',
+      label: 'Signed Contract',
+      collected: Boolean(String(activeProfile.signedContract || '').trim())
+    }
+  ]), [activeProfile]);
 
   function setPhotoFromFile(file, setter, field = 'photo') {
     if (!file) {
@@ -378,7 +406,7 @@ function CustomersPage() {
     setModalMode('create');
     setSelectedId(null);
     setSelectedTab('profile');
-    setCreateForm({ name: '', phone: '', email: '', customerType: 'retail', dob: '', idType: '', idCardNumber: '', idFront: '', idBack: '', businessCertificate: '', address: '', registrationBranchId: String(currentBranchId || auth.user?.branchId || '').trim(), registrationBranchName: currentBranchName, businessName: '', businessAddress: '', registrationNumber: '', taxId: '', businessPhone: '', businessEmail: '', anniversaryDate: '', vip: false, photo: '' });
+    setCreateForm({ name: '', phone: '', email: '', customerType: 'retail', dob: '', idType: '', idCardNumber: '', idFront: '', idBack: '', businessCertificate: '', contract: '', signedContract: '', address: '', registrationBranchId: String(currentBranchId || auth.user?.branchId || '').trim(), registrationBranchName: currentBranchName, businessName: '', businessAddress: '', registrationNumber: '', taxId: '', businessPhone: '', businessEmail: '', anniversaryDate: '', vip: false, photo: '' });
     setModalOpen(true);
   }
 
@@ -407,6 +435,8 @@ function CustomersPage() {
         idFront: createForm.idFront || '',
         idBack: createForm.idBack || '',
         businessCertificate: createForm.businessCertificate || '',
+        contract: createForm.contract || '',
+        signedContract: createForm.signedContract || '',
         address: createForm.address.trim(),
         registrationBranchId: String(createForm.registrationBranchId || currentBranchId || auth.user?.branchId || '').trim(),
         registrationBranchName: String(createForm.registrationBranchName || currentBranchName || '').trim(),
@@ -469,6 +499,8 @@ function CustomersPage() {
       idFront: target.idFront || '',
       idBack: target.idBack || '',
       businessCertificate: target.businessCertificate || '',
+      contract: target.contract || '',
+      signedContract: target.signedContract || '',
       address: target.address || '',
       registrationBranchId: target.registrationBranchId || '',
       registrationBranchName: target.registrationBranchName || '',
@@ -502,6 +534,8 @@ function CustomersPage() {
         idFront: editForm.idFront || '',
         idBack: editForm.idBack || '',
         businessCertificate: editForm.businessCertificate || '',
+        contract: editForm.contract || '',
+        signedContract: editForm.signedContract || '',
         address: editForm.address.trim(),
         businessName: editForm.businessName.trim(),
         businessAddress: editForm.businessAddress.trim(),
@@ -940,6 +974,16 @@ function CustomersPage() {
                     <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>Business Certificate</div>
                     <input className="input" type="file" accept="image/*,.pdf" onChange={e => setPhotoFromFile(e.target.files?.[0], modalMode === 'create' ? setCreateForm : setEditForm, 'businessCertificate')} disabled={modalMode !== 'create' && !canEditCustomers} />
                   </label>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>Contract</div>
+                    <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Optional business document if collected during account creation.</div>
+                    <input className="input" type="file" accept="image/*,.pdf" onChange={e => setPhotoFromFile(e.target.files?.[0], modalMode === 'create' ? setCreateForm : setEditForm, 'contract')} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
+                  <label>
+                    <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>Signed Contract</div>
+                    <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Optional upload when there is a signed agreement.</div>
+                    <input className="input" type="file" accept="image/*,.pdf" onChange={e => setPhotoFromFile(e.target.files?.[0], modalMode === 'create' ? setCreateForm : setEditForm, 'signedContract')} disabled={modalMode !== 'create' && !canEditCustomers} />
+                  </label>
                 </div>
                 {modalMode !== 'create' && (
                   <div className="card" style={{ padding: 12, marginTop: 12 }}>
@@ -949,6 +993,21 @@ function CustomersPage() {
                         <div key={label} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: '#fff' }}>
                           <div style={{ color: '#475569', fontSize: 12 }}>{label}</div>
                           <div style={{ color: '#0f172a', fontWeight: 700, wordBreak: 'break-word' }}>{value || '—'}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {modalMode !== 'create' && (
+                  <div className="card" style={{ padding: 12, marginTop: 12 }}>
+                    <div style={{ fontWeight: 800, marginBottom: 8, color: '#0f172a' }}>Documents Collected</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+                      {documentsCollected.map((doc) => (
+                        <div key={doc.key} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: '#fff' }}>
+                          <div style={{ color: '#475569', fontSize: 12 }}>{doc.label}</div>
+                          <div style={{ color: doc.collected ? '#15803d' : '#b45309', fontWeight: 700 }}>
+                            {doc.collected ? 'Collected' : 'Missing'}
+                          </div>
                         </div>
                       ))}
                     </div>
