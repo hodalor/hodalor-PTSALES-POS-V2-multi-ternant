@@ -173,8 +173,12 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     if (operationType === 'transfer') {
       return normalizedArea === 'warehouse' ? grants.includes('add_warehouse_transfers') : grants.includes('add_wholesale_transfers');
     }
-    if (operationType === 'purchase') return grants.includes('add_purchases');
-    if (operationType === 'adjustment') return grants.includes('add_adjustments');
+    if (operationType === 'purchase') {
+      return normalizedArea === 'warehouse' ? grants.includes('add_warehouse_purchases') : grants.includes('add_wholesale_purchases');
+    }
+    if (operationType === 'adjustment') {
+      return normalizedArea === 'warehouse' ? grants.includes('add_warehouse_adjustments') : grants.includes('add_wholesale_adjustments');
+    }
     if (operationType === 'refund') return grants.includes('add_distribution_refunds');
     return false;
   }, [grants, normalizedArea, operationType, roleLower]);
