@@ -14,6 +14,8 @@ const CustomerSchema = new mongoose.Schema({
   idFront: { type: String },
   idBack: { type: String },
   businessCertificate: { type: String },
+  contract: { type: String },
+  signedContract: { type: String },
   address: { type: String },
   registrationBranchId: { type: String, index: true, default: '' },
   registrationBranchName: { type: String, default: '' },

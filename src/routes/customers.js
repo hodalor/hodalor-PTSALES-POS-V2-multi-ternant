@@ -41,7 +41,9 @@ async function uploadCustomerMediaFields(payload = {}, req) {
     ['photo', 'customer-photo'],
     ['idFront', 'customer-id-front'],
     ['idBack', 'customer-id-back'],
-    ['businessCertificate', 'customer-business-certificate']
+    ['businessCertificate', 'customer-business-certificate'],
+    ['contract', 'customer-contract'],
+    ['signedContract', 'customer-signed-contract']
   ];
   for (const [field, fallbackName] of fields) {
     if (!Object.prototype.hasOwnProperty.call(next, field)) continue;
@@ -99,6 +101,8 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_customers'), a
     idFront: String(payload.idFront || '').trim() || '',
     idBack: String(payload.idBack || '').trim() || '',
     businessCertificate: String(payload.businessCertificate || '').trim() || '',
+    contract: String(payload.contract || '').trim() || '',
+    signedContract: String(payload.signedContract || '').trim() || '',
     address: String(payload.address || '').trim() || '',
     registrationBranchId: registrationBranch.registrationBranchId,
     registrationBranchName: registrationBranch.registrationBranchName,
@@ -166,6 +170,8 @@ r.put('/:id', requireRoleOrPerm(['Admin','Manager','Cashier'], 'edit_customers')
     idFront: payload.idFront != null ? String(payload.idFront || '').trim() : undefined,
     idBack: payload.idBack != null ? String(payload.idBack || '').trim() : undefined,
     businessCertificate: payload.businessCertificate != null ? String(payload.businessCertificate || '').trim() : undefined,
+    contract: payload.contract != null ? String(payload.contract || '').trim() : undefined,
+    signedContract: payload.signedContract != null ? String(payload.signedContract || '').trim() : undefined,
     address: payload.address != null ? String(payload.address || '').trim() : undefined,
     businessName: payload.businessName != null ? String(payload.businessName || '').trim() : undefined,
     businessAddress: payload.businessAddress != null ? String(payload.businessAddress || '').trim() : undefined,
