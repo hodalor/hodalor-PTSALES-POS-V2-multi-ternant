@@ -16,6 +16,14 @@ export async function updateSaleDate(id, payload) {
   });
 }
 
+export async function updateSaleCreditPackage(id, payload) {
+  return fetchJson(`/api/sales/${encodeURIComponent(String(id || ''))}/credit-package`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload || {}),
+    timeoutMs: 60000
+  });
+}
+
 export function list(params = {}) {
   const qs = new URLSearchParams();
   if (params.branchId) qs.set('branchId', String(params.branchId));

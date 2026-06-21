@@ -34,11 +34,16 @@ export function getSaleSettlementStatus(sale) {
 
 export function getCreditModeLabel(sale) {
   const packageName = String(sale?.creditPackageName || sale?.creditSale?.creditPackageName || '').trim();
-  if (packageName) return packageName;
+  if (packageName) {
+    if (String(packageName).toLowerCase() === 'easybuy' && String(sale?.creditMode || '').trim().toLowerCase() === 'retail_easybuy') {
+      return 'Credit';
+    }
+    return packageName;
+  }
   const mode = String(sale?.creditMode || '').trim().toLowerCase();
-  if (mode === 'retail_easybuy') return 'EasyBuy';
+  if (mode === 'retail_easybuy') return 'Credit';
   if (mode === 'distribution_credit') return 'Credit Sale';
-  if (isCreditSale(sale)) return String(sale?.posType || 'retail') === 'wholesale' ? 'Credit Sale' : 'EasyBuy';
+  if (isCreditSale(sale)) return String(sale?.posType || 'retail') === 'wholesale' ? 'Credit Sale' : 'Credit';
   return 'Non Credit';
 }
 

@@ -43,8 +43,11 @@ function normalizeCreditSaleRow(row, now = new Date()) {
 
 function getCreditPackageLabel(row) {
   const packageName = String(row?.creditPackageName || '').trim();
-  if (packageName) return packageName;
-  return String(row?.posType || 'retail') === 'wholesale' ? 'Distribution Credit Sale' : 'Retail EasyBuy';
+  if (packageName) {
+    if (String(packageName).toLowerCase() === 'easybuy' && String(row?.posType || 'retail') !== 'wholesale') return 'Credit';
+    return packageName;
+  }
+  return String(row?.posType || 'retail') === 'wholesale' ? 'Distribution Credit Sale' : 'Credit';
 }
 
 function sortByLatest(rows = [], picker) {
@@ -334,7 +337,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       const itemText = Array.isArray(row.items)
         ? row.items.map((item) => `${item?.name || ''} ${item?.sku || ''}`).join(' ')
         : '';
-      const sourceText = String(row.posType || 'retail') === 'wholesale' ? 'distribution credit sale wholesale' : 'retail easybuy';
+      const sourceText = String(row.posType || 'retail') === 'wholesale' ? 'distribution credit sale wholesale' : 'retail credit';
       return [
         getCustomerSearchText(row.customer_id),
         itemText,
@@ -748,7 +751,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
             <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Credit Source</div>
             <select className="select" value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}>
               <option value="all">All Sources</option>
-              <option value="retail">Retail EasyBuy</option>
+              <option value="retail">Retail Credit</option>
               <option value="wholesale">Distribution Credit Sale</option>
             </select>
           </label>
@@ -772,7 +775,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
           <div style={{ fontSize: 28, fontWeight: 800, color: creditSummary.overdueCount > 0 ? '#b91c1c' : undefined }}>{creditSummary.overdueCount}</div>
         </div>
         <div>
-          <div style={{ color: '#64748b', fontSize: 12 }}>Retail EasyBuy Balance</div>
+          <div style={{ color: '#64748b', fontSize: 12 }}>Retail Credit Balance</div>
           <div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(creditSummary.easybuyOutstanding, settings)}</div>
         </div>
         <div>
@@ -951,7 +954,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
               value={salesSearch}
               onChange={e => setSalesSearch(e.target.value)}
             />
-            <div style={{ color: '#64748b', fontSize: 12 }}>Filtered by {branchFilter ? 'selected branch' : 'all branches'}, {sourceFilter === 'all' ? 'all sources' : sourceFilter === 'retail' ? 'Retail EasyBuy' : 'Distribution Credit Sale'}, and {creditPackageFilter === 'all' ? 'all credit packages' : creditPackageFilter}</div>
+            <div style={{ color: '#64748b', fontSize: 12 }}>Filtered by {branchFilter ? 'selected branch' : 'all branches'}, {sourceFilter === 'all' ? 'all sources' : sourceFilter === 'retail' ? 'Retail Credit' : 'Distribution Credit Sale'}, and {creditPackageFilter === 'all' ? 'all credit packages' : creditPackageFilter}</div>
           </div>
         </div>
         {canDeleteCredit && (
@@ -1062,7 +1065,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
               value={repaymentsSearch}
               onChange={e => setRepaymentsSearch(e.target.value)}
             />
-            <div style={{ color: '#64748b', fontSize: 12 }}>Filtered by {branchFilter ? 'selected branch' : 'all branches'}, {sourceFilter === 'all' ? 'all sources' : sourceFilter === 'retail' ? 'Retail EasyBuy' : 'Distribution Credit Sale'}, and {creditPackageFilter === 'all' ? 'all credit packages' : creditPackageFilter}</div>
+            <div style={{ color: '#64748b', fontSize: 12 }}>Filtered by {branchFilter ? 'selected branch' : 'all branches'}, {sourceFilter === 'all' ? 'all sources' : sourceFilter === 'retail' ? 'Retail Credit' : 'Distribution Credit Sale'}, and {creditPackageFilter === 'all' ? 'all credit packages' : creditPackageFilter}</div>
           </div>
         </div>
         {canDeleteCredit && (

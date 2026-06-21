@@ -60,6 +60,7 @@ function SalesPage() {
   const canViewRevenue = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_revenue') || grants.includes('view_financials');
   const canViewProfit = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_profit') || grants.includes('view_financials');
   const canBackdateSales = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('backdate_sales');
+  const canEditCreditPackage = canBackdateSales;
   const canViewCashierCompetitionAll = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_dashboard_cashier_all') || grants.includes('view_dashboard_branch_comparison_all');
   const canViewCashierCompetitionAssigned = canViewCashierCompetitionAll || grants.includes('view_dashboard_cashier_assigned') || grants.includes('view_dashboard_branch_comparison_assigned');
   const toast = useToast();
@@ -96,6 +97,9 @@ function SalesPage() {
   const [editingSaleDate, setEditingSaleDate] = useState('');
   const [editingSaleTime, setEditingSaleTime] = useState('');
   const [editingSaleSaving, setEditingSaleSaving] = useState(false);
+  const [editingCreditPackageSale, setEditingCreditPackageSale] = useState(null);
+  const [editingCreditPackageName, setEditingCreditPackageName] = useState('');
+  const [editingCreditPackageSaving, setEditingCreditPackageSaving] = useState(false);
   const productBrandById = useMemo(() => {
     const map = new Map();
     (products || []).forEach((product) => {
@@ -103,6 +107,14 @@ function SalesPage() {
     });
     return map;
   }, [products]);
+  const configuredCreditPackages = useMemo(() => {
+    const configured = Array.isArray(settings.creditPackages) ? settings.creditPackages.map((item) => String(item || '').trim()).filter(Boolean) : [];
+    const discovered = sales
+      .filter((sale) => String(sale?.creditMode || '').trim().toLowerCase() !== 'none' && String(sale?.creditMode || '').trim().toLowerCase() !== 'non_credit')
+      .map((sale) => String(getCreditModeLabel(sale) || '').trim())
+      .filter((label) => label && label !== 'Non Credit');
+    return Array.from(new Set([...configured, ...discovered]));
+  }, [sales, settings.creditPackages]);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -336,6 +348,44 @@ function SalesPage() {
     }
   }
 
+  function openCreditPackageEditor(sale) {
+    const currentLabel = String(getCreditModeLabel(sale) || '').trim();
+    setEditingCreditPackageSale(sale || null);
+    setEditingCreditPackageName(currentLabel);
+  }
+
+  function closeCreditPackageEditor() {
+    if (editingCreditPackageSaving) return;
+    setEditingCreditPackageSale(null);
+    setEditingCreditPackageName('');
+  }
+
+  async function saveCreditPackageEdit() {
+    if (!editingCreditPackageSale) return;
+    const nextPackageName = String(editingCreditPackageName || '').trim();
+    if (!nextPackageName) {
+      toast.show('Select a credit package', { type: 'error' });
+      return;
+    }
+    try {
+      setEditingCreditPackageSaving(true);
+      const saleId = String(editingCreditPackageSale.id || editingCreditPackageSale._id || editingCreditPackageSale.clientId || '');
+      await salesApi.updateSaleCreditPackage(saleId, {
+        creditPackageName: nextPackageName,
+        creditPackageId: nextPackageName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+      });
+      const branchScope = selectedBranchId ? { branchId: selectedBranchId, limit: 1000 } : { limit: 1000 };
+      const rows = await salesApi.list(branchScope);
+      dispatch(setSales(Array.isArray(rows) ? rows : []));
+      toast.show('Credit package updated', { type: 'success' });
+      closeCreditPackageEditor();
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to update credit package'), { type: 'error' });
+    } finally {
+      setEditingCreditPackageSaving(false);
+    }
+  }
+
   async function deleteSelectedSales() {
     const ids = selectedSaleIds.filter(Boolean);
     if (ids.length === 0) return;
@@ -457,7 +507,7 @@ function SalesPage() {
               <select className="select" value={creditKind} onChange={e => { setCreditKind(e.target.value); setPage(1); }}>
                 <option value="all">All Payment Types</option>
                 <option value="non_credit">Non Credit</option>
-                <option value="retail_easybuy">Retail EasyBuy</option>
+                <option value="retail_easybuy">Retail Credit</option>
                 <option value="wholesale_credit">Distribution Credit Sale</option>
               </select>
             </label>
@@ -485,7 +535,7 @@ function SalesPage() {
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Items Sold</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.itemsSold}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Credit Out</div><div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{maskRevenue(summary.creditOut)}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Incomplete Sales</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.incompleteCount}</div></div>
-            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Retail EasyBuy</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.easybuyCount}</div></div>
+            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Retail Credit</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.easybuyCount}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Distribution Credit</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.wholesaleCreditCount}</div></div>
           </div>
         </>
@@ -650,7 +700,16 @@ function SalesPage() {
               </td>
               <td>{branchLabel(sale)}</td>
               <td>{String(sale.posType || 'retail') === 'wholesale' ? 'Distribution' : 'Retail'}</td>
-              <td>{getCreditModeLabel(sale)}</td>
+              <td>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>{getCreditModeLabel(sale)}</span>
+                  {canEditCreditPackage && String(sale.creditMode || '').trim().toLowerCase() !== 'none' && String(sale.creditMode || '').trim().toLowerCase() !== 'non_credit' && (
+                    <button className="btn" type="button" onClick={() => openCreditPackageEditor(sale)} title="Edit credit package" style={{ padding: '6px 8px' }}>
+                      <svg viewBox="0 0 24 24" fill="none" width="16" height="16"><path d="M4 20h4l10-10-4-4L4 16v4z" stroke="currentColor" strokeWidth="2"/><path d="M13 7l4 4" stroke="currentColor" strokeWidth="2"/></svg>
+                    </button>
+                  )}
+                </div>
+              </td>
               <td>{sale.sellerName || '-'}</td>
               <td>{sale.invoiceSerial || '—'}</td>
               <td>{sale.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}${i.spec ? ' ['+i.spec+']' : ''}x${i.qty}`).join(', ')}</td>
@@ -730,6 +789,33 @@ function SalesPage() {
                 <input className="input" type="time" value={editingSaleTime} onChange={e => setEditingSaleTime(e.target.value)} />
               </label>
             </div>
+          </div>
+        </Modal>
+      )}
+      {editingCreditPackageSale && (
+        <Modal
+          title="Change Credit Package"
+          onClose={closeCreditPackageEditor}
+          footer={(
+            <>
+              <button className="btn" onClick={closeCreditPackageEditor} disabled={editingCreditPackageSaving}>Cancel</button>
+              <button className="btn btn-primary" onClick={() => void saveCreditPackageEdit()} disabled={editingCreditPackageSaving} style={{ marginLeft: 8 }}>
+                {editingCreditPackageSaving ? 'Saving...' : 'Save Package'}
+              </button>
+            </>
+          )}
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ color: '#64748b', fontSize: 13 }}>
+              {editingCreditPackageSale.invoiceSerial || editingCreditPackageSale.receiptNumber || editingCreditPackageSale.id || editingCreditPackageSale._id}
+            </div>
+            <label>
+              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Credit Package</div>
+              <select className="select" value={editingCreditPackageName} onChange={e => setEditingCreditPackageName(e.target.value)}>
+                <option value="">Select package</option>
+                {configuredCreditPackages.map((item) => <option key={item} value={item}>{item}</option>)}
+              </select>
+            </label>
           </div>
         </Modal>
       )}

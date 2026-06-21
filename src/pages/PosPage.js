@@ -82,7 +82,7 @@ function PosPage({ mode = 'retail' }) {
   const auth = useSelector(s => s.auth);
   const { t } = useAppLanguage();
   const isWholesale = String(mode || '').toLowerCase() === 'wholesale';
-  const creditModeLabel = isWholesale ? t('Credit Sale') : t('EasyBuy');
+  const creditModeLabel = isWholesale ? t('Credit Sale') : t('Credit');
   const modeLabel = isWholesale ? t('Distribution POS') : t('POS');
   const reservationStorageKey = `ptsales:pos-reservation-token:${String(mode || 'retail').toLowerCase()}`;
   const initialPriceTier = isWholesale ? 'wholesale' : 'retail';
@@ -617,13 +617,13 @@ function PosPage({ mode = 'retail' }) {
   const customerCreditScore = Number(selectedCustomer?.creditScore || 0);
   const creditPackageOptions = useMemo(() => {
     const configured = Array.isArray(settings.creditPackages) ? settings.creditPackages : [];
-    const defaultLabel = isWholesale ? 'Credit Sale' : 'EasyBuy';
+    const defaultLabel = isWholesale ? 'Credit Sale' : 'Credit';
     return Array.from(new Set([defaultLabel, ...configured.map((item) => String(item || '').trim()).filter(Boolean)]));
   }, [isWholesale, settings.creditPackages]);
   const activeCreditPackageName = useMemo(() => {
     const selected = String(selectedCreditPackageName || '').trim();
     if (selected) return selected;
-    return creditPackageOptions[0] || (isWholesale ? 'Credit Sale' : 'EasyBuy');
+    return creditPackageOptions[0] || (isWholesale ? 'Credit Sale' : 'Credit');
   }, [creditPackageOptions, isWholesale, selectedCreditPackageName]);
 
   useEffect(() => {
@@ -1403,7 +1403,7 @@ function PosPage({ mode = 'retail' }) {
               <div style={{ color: '#64748b', fontSize: 12 }}>
                 {isWholesale
                   ? `${t('Distribution inventory')}${branchLabel ? ` • ${branchLabel}` : ''}`
-                  : `${t('Retail inventory')}${branchLabel ? ` • ${branchLabel}` : ''} ${t('with EasyBuy support')}`}
+                  : `${t('Retail inventory')}${branchLabel ? ` • ${branchLabel}` : ''} ${t('with Credit support')}`}
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginLeft: 'auto', flexWrap: 'nowrap' }}>
