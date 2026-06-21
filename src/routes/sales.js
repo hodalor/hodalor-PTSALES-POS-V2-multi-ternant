@@ -175,6 +175,50 @@ r.patch('/:id/date', requireRoleOrPerm(['Admin'], 'backdate_sales'), async (req,
   res.json(sale);
 });
 
+r.patch('/:id/credit-package', requireRoleOrPerm(['Admin'], 'backdate_sales'), async (req, res) => {
+  const id = String(req.params.id || '').trim();
+  if (!id) return res.status(400).json({ error: 'Missing sale id' });
+  const query = mongoose.isValidObjectId(id)
+    ? { $or: [{ _id: id }, { clientId: id }] }
+    : { $or: [{ id }, { clientId: id }] };
+  const sale = await Sale.findOne(query);
+  if (!sale) return res.status(404).json({ error: 'Sale not found' });
+  const creditMode = String(sale.creditMode || '').trim().toLowerCase();
+  if (!creditMode || creditMode === 'none' || creditMode === 'non_credit') {
+    return res.status(400).json({ error: 'Only credit sales can change credit package' });
+  }
+  const nextPackageName = String(req.body?.creditPackageName || '').trim();
+  if (!nextPackageName) return res.status(400).json({ error: 'Credit package name is required' });
+  const nextPackageId = String(req.body?.creditPackageId || '').trim()
+    || nextPackageName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const previousPackageName = String(sale.creditPackageName || '').trim();
+  const previousPackageId = String(sale.creditPackageId || '').trim();
+  sale.creditPackageName = nextPackageName;
+  sale.creditPackageId = nextPackageId;
+  await sale.save();
+  if (String(sale.creditSaleId || '').trim()) {
+    await CreditSale.findByIdAndUpdate(String(sale.creditSaleId), {
+      creditPackageName: nextPackageName,
+      creditPackageId: nextPackageId
+    }).catch(() => null);
+  }
+  await Audit.create({
+    actor: String(req.user?.name || sale.sellerName || 'unknown').trim() || 'unknown',
+    actionType: 'sale_credit_package_edit',
+    details: {
+      saleId: String(sale._id),
+      invoiceSerial: sale.invoiceSerial || '',
+      previousPackageName,
+      nextPackageName,
+      previousPackageId,
+      nextPackageId
+    },
+    branchId: sale.branchId,
+    ts: new Date()
+  }).catch(() => {});
+  res.json(sale);
+});
+
 r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async (req, res) => {
   const payload = req.body || {};
   let saleTimes;
@@ -447,7 +491,7 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       }
     }
 
-    const defaultCreditPackageName = posType === 'wholesale' ? 'Credit Sale' : 'EasyBuy';
+    const defaultCreditPackageName = posType === 'wholesale' ? 'Credit Sale' : 'Credit';
     const creditPackageId = creditPayload ? String(payload.creditPackageId || '').trim() : '';
     const creditPackageName = creditPayload
       ? (String(payload.creditPackageName || '').trim() || defaultCreditPackageName)
