@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { Storage } from '@google-cloud/storage';
 
 let storageClient = null;
+const STORAGE_RETRY_DELAYS_MS = [250, 800, 1800];
 
 function trimString(value = '') {
   return String(value || '').trim();
@@ -88,6 +89,48 @@ export function isMediaStorageConfigured() {
   return !!(projectId && bucketName && credentials.client_email && credentials.private_key);
 }
 
+function resetStorageClient() {
+  storageClient = null;
+}
+
+function sleep(ms = 0) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableStorageError(error) {
+  const message = trimString(error?.message || '').toLowerCase();
+  const code = trimString(error?.code || error?.name || '').toLowerCase();
+  const status = Number(error?.statusCode || error?.status || 0);
+  if ([408, 425, 429, 500, 502, 503, 504].includes(status)) return true;
+  if (['econnreset', 'etimedout', 'eai_again', 'enotfound', 'und_err_socket'].includes(code)) return true;
+  return [
+    'premature close',
+    'socket hang up',
+    'connection reset',
+    'fetch failed',
+    'deadline exceeded',
+    'timed out',
+    'temporarily unavailable'
+  ].some((token) => message.includes(token));
+}
+
+async function withStorageRetry(work) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= STORAGE_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      return await work();
+    } catch (error) {
+      lastError = error;
+      if (!isRetryableStorageError(error) || attempt === STORAGE_RETRY_DELAYS_MS.length) {
+        throw error;
+      }
+      resetStorageClient();
+      await sleep(STORAGE_RETRY_DELAYS_MS[attempt]);
+    }
+  }
+  throw lastError || new Error('Media upload failed');
+}
+
 function getStorageClient() {
   if (storageClient) return storageClient;
   if (!isMediaStorageConfigured()) {
@@ -156,12 +199,14 @@ function buildPublicUrl(objectPath = '') {
 async function buildSignedReadUrl(objectPath = '') {
   const safeObjectPath = trimString(objectPath);
   if (!safeObjectPath) return '';
-  const bucket = getStorageClient().bucket(getBucketName());
-  const file = bucket.file(safeObjectPath);
-  const [signedUrl] = await file.getSignedUrl({
-    version: 'v2',
-    action: 'read',
-    expires: getSignedUrlExpiry()
+  const [signedUrl] = await withStorageRetry(async () => {
+    const bucket = getStorageClient().bucket(getBucketName());
+    const file = bucket.file(safeObjectPath);
+    return file.getSignedUrl({
+      version: 'v2',
+      action: 'read',
+      expires: getSignedUrlExpiry()
+    });
   });
   return signedUrl;
 }
@@ -192,14 +237,16 @@ export async function uploadMediaString(value, options = {}) {
     originalName: options.originalName,
     mimeType
   });
-  const bucket = getStorageClient().bucket(getBucketName());
-  const file = bucket.file(objectPath);
-  await file.save(buffer, {
-    resumable: false,
-    metadata: {
-      contentType: mimeType,
-      cacheControl: 'public, max-age=31536000, immutable'
-    }
+  await withStorageRetry(async () => {
+    const bucket = getStorageClient().bucket(getBucketName());
+    const file = bucket.file(objectPath);
+    await file.save(buffer, {
+      resumable: false,
+      metadata: {
+        contentType: mimeType,
+        cacheControl: 'public, max-age=31536000, immutable'
+      }
+    });
   });
   return buildSignedReadUrl(objectPath);
 }
