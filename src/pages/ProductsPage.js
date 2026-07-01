@@ -142,6 +142,7 @@ function ProductsPage() {
   }
   const canAddProducts = (['admin','manager'].includes(roleLower)) || has('add_products');
   const canEditProducts = (['admin','manager'].includes(roleLower)) || has('edit_products');
+  const canManageSerializedUnits = (['admin','manager','inventory staff','superadmin'].includes(roleLower)) || has('add_purchases') || has('edit_products');
   const canEditStock = false;
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);
   const visiblePriceTiers = useMemo(() => getAllowedPriceTiers(auth), [auth]);
@@ -399,6 +400,10 @@ function ProductsPage() {
 
   async function saveSerializedEntries() {
     if (!serializedModalProduct) return;
+    if (!canManageSerializedUnits) {
+      toast.show('Not authorized to add serialized units', { type: 'error' });
+      return;
+    }
     const lines = String(serializedEntriesText || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     if (lines.length === 0) {
       toast.show('Enter IMEI or serial numbers', { type: 'error' });
@@ -1743,7 +1748,7 @@ function ProductsPage() {
           footer={(
             <>
               <button className="btn" onClick={() => setSerializedModalProduct(null)} disabled={loadingSerialized}>{t('Close')}</button>
-              <button className="btn btn-primary" onClick={saveSerializedEntries} disabled={loadingSerialized || !serializedVariantReady}>
+              <button className="btn btn-primary" onClick={saveSerializedEntries} disabled={loadingSerialized || !serializedVariantReady || !canManageSerializedUnits}>
                 {loadingSerialized ? t('Saving…') : t('Add Units')}
               </button>
             </>
@@ -1755,6 +1760,11 @@ function ProductsPage() {
                 ? t('Select the exact variant first so new IMEI or serial units update only that variant stock.')
                 : t('Enter one IMEI or serial per line. You can also use IMEI,SerialNumber on the same line.')}
             </div>
+            {!canManageSerializedUnits && (
+              <div className="section-note">
+                {t('You can view serialized units here, but adding new units requires product edit or stock receiving permission.')}
+              </div>
+            )}
             {serializedVariantRequired && (
               <label>
                 <div className="field-label">{t('Variant')}</div>

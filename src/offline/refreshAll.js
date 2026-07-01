@@ -49,11 +49,8 @@ export async function refreshAllData(dispatch, getState) {
     if (roleLower !== 'admin') return required.some(hasGrant);
     return roleOk || required.some(hasGrant);
   };
-  const canUseExpenses = isFeatureEnabled(settings, 'modules.expenses') && (
-    roleLower === 'superadmin' ||
-    roleLower === 'admin' ||
-    ['view_expenses', 'see_expenses', 'add_expenses'].some((key) => grants.includes(key))
-  );
+  const canUseExpenseApprovals = isFeatureEnabled(settings, 'modules.expenseApprovals') && allow('modules.expenseApprovals', ['Admin','Manager'], ['approve_expenses']);
+  const canUseAdjustmentApprovals = isFeatureEnabled(settings, 'pages.retail.adjustments') && allow('pages.retail.adjustments', ['Admin','Manager','Director'], ['approve_adjustments']);
   const canLoadPosProducts = (
     (isFeatureEnabled(settings, 'pages.retail.pos') && allow('pages.retail.pos', ['Admin','Manager','Cashier'], ['view_pos','see_pos']))
     || (isFeatureEnabled(settings, 'pages.distribution.pos') && allow('pages.distribution.pos', ['Admin','Manager','Cashier'], ['view_wholesale_pos']))
@@ -66,8 +63,8 @@ export async function refreshAllData(dispatch, getState) {
     isFeatureEnabled(settings, 'pages.retail.refunds') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']) ? refundsApi.listRequests() : Promise.resolve([]),
     isFeatureEnabled(settings, 'pages.retail.purchases') && allow('pages.retail.purchases', ['Admin','Manager','Inventory Staff','Director'], ['approve_purchases','view_purchases','see_purchases']) ? purchasesApi.listRequests({ status: 'pending_approval', limit: 200 }) : Promise.resolve([]),
     isFeatureEnabled(settings, 'pages.retail.transfers') && allow('pages.retail.transfers', ['Admin','Manager','Inventory Staff','Director'], ['approve_transfers','view_transfers','see_transfers']) ? transfersApi.listRequests({ status: 'pending_approval', limit: 200 }) : Promise.resolve([]),
-    canUseExpenses ? expensesApi.listRequests() : Promise.resolve([]),
-    isFeatureEnabled(settings, 'pages.retail.adjustments') && allow('pages.retail.adjustments', ['Admin','Manager','Inventory Staff','Director'], ['approve_adjustments','view_adjustments','see_adjustments']) ? adjustmentsApi.listRequests() : Promise.resolve([]),
+    canUseExpenseApprovals ? expensesApi.listRequests() : Promise.resolve([]),
+    canUseAdjustmentApprovals ? adjustmentsApi.listRequests() : Promise.resolve([]),
     allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? salesApi.list() : Promise.resolve([]),
     isFeatureEnabled(settings, 'admin.users') && allow('admin.users', ['Admin'], ['view_users','see_users']) ? usersApi.list() : Promise.resolve([]),
     ((isFeatureEnabled(settings, 'admin.audit') && allow('admin.audit', ['Admin'], ['view_audit','see_audit'])) || (isFeatureEnabled(settings, 'sections.admin') && allow('sections.admin', ['Admin'], ['view_stock_records','see_stock_records']))) ? auditsApi.list(1000) : Promise.resolve([]),

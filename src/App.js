@@ -660,8 +660,8 @@ function App() {
           allow('modules.invoices', ['Admin','Manager','Cashier'], ['view_invoices','see_invoices','view_wholesale_invoices','view_warehouse_invoices']) ? invoicesApi.list() : Promise.resolve([]),
           section('sections.retail') && allow('pages.retail.purchases', ['Admin','Manager','Inventory Staff','Director'], ['approve_purchases','view_purchases','see_purchases']) ? purchasesApi.listRequests({ status: 'pending_director', limit: 200 }) : Promise.resolve([]),
           section('sections.retail') && allow('pages.retail.transfers', ['Admin','Manager','Inventory Staff','Director'], ['approve_transfers','view_transfers','see_transfers']) ? transfersApi.listRequests({ status: 'pending_director', limit: 200 }) : Promise.resolve([]),
-          section('sections.expense') && (allow('modules.expenses', ['Admin','Manager'], ['view_expenses','see_expenses','add_expenses']) || allow('modules.expenseApprovals', ['Admin','Manager'], ['approve_expenses'])) ? expensesApi.listRequests({ status: 'pending', limit: 200 }) : Promise.resolve([]),
-          section('sections.retail') && allow('pages.retail.adjustments', ['Admin','Manager','Inventory Staff','Director'], ['approve_adjustments','view_adjustments','see_adjustments']) ? adjustmentsApi.listRequests({ status: 'pending_director', limit: 200 }) : Promise.resolve([])
+          section('sections.expense') && allow('modules.expenseApprovals', ['Admin','Manager'], ['approve_expenses']) ? expensesApi.listRequests({ status: 'pending', limit: 200 }) : Promise.resolve([]),
+          section('sections.retail') && allow('pages.retail.adjustments', ['Admin','Manager','Director'], ['approve_adjustments']) ? adjustmentsApi.listRequests({ status: 'pending_director', limit: 200 }) : Promise.resolve([])
         ]);
         if (alive && b.status === 'fulfilled' && Array.isArray(b.value) && b.value.length > 0) {
           dispatch(setBranches(b.value));
