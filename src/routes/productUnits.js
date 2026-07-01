@@ -26,7 +26,7 @@ r.get('/', async (req, res) => {
   res.json(result);
 });
 
-r.post('/bulk-create', requireRoleOrPerm(['Admin', 'Manager', 'Inventory Staff'], 'add_purchases'), async (req, res) => {
+r.post('/bulk-create', requireRoleOrPerm(['Admin', 'Manager', 'Inventory Staff'], ['add_purchases', 'edit_products']), async (req, res) => {
   const payload = req.body || {};
   const branchId = String(payload.branchId || '');
   if (!branchId) return res.status(400).json({ error: 'Missing branchId' });
