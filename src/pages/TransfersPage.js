@@ -735,11 +735,11 @@ function TransfersPage() {
             )}
             <label>
               <div className="field-label">{t('From Branch')}</div>
-              <BranchSelect value={fromId} onChange={setFromId} overrideBranches={retailFromBranchOptions} />
+              <BranchSelect value={fromId} onChange={setFromId} overrideBranches={retailFromBranchOptions} enforceRole={false} />
             </label>
             <label>
               <div className="field-label">{t('To Branch')}</div>
-              <BranchSelect value={toId} onChange={setToId} overrideBranches={retailToBranchOptions} />
+              <BranchSelect value={toId} onChange={setToId} overrideBranches={retailToBranchOptions} enforceRole={false} />
             </label>
             <label>
               <div className="field-label">{t('Quantity')}</div>
