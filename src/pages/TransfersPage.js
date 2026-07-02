@@ -130,14 +130,18 @@ function TransfersPage() {
   const [bulkAction, setBulkAction] = useState('');
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const assigned = auth.user?.assignedBranches || 'all';
-  const branchOptions = useMemo(() => {
+  const accessibleBranchOptions = useMemo(() => {
     if (roleLower === 'superadmin' || roleLower === 'admin' || assigned === 'all') return branches;
     const ids = new Set(Array.isArray(assigned) ? assigned : [assigned]);
     return branches.filter(b => ids.has(b.id));
   }, [roleLower, assigned, branches]);
-  const retailBranchOptions = useMemo(
-    () => branchOptions.filter((branch) => String(branch.branchType || 'retail').toLowerCase() === 'retail'),
-    [branchOptions]
+  const retailFromBranchOptions = useMemo(
+    () => accessibleBranchOptions.filter((branch) => String(branch.branchType || 'retail').toLowerCase() === 'retail'),
+    [accessibleBranchOptions]
+  );
+  const retailToBranchOptions = useMemo(
+    () => branches.filter((branch) => String(branch.branchType || 'retail').toLowerCase() === 'retail'),
+    [branches]
   );
 
   const byId = useMemo(() => {
@@ -147,16 +151,16 @@ function TransfersPage() {
   }, [branches]);
   const selectedProduct = useMemo(() => products.find(p => p.id === productId) || null, [productId, products]);
   useEffect(() => {
-    if (!retailBranchOptions.some((branch) => String(branch.id) === String(fromId || ''))) {
-      setFromId(retailBranchOptions[0]?.id || '');
+    if (!retailFromBranchOptions.some((branch) => String(branch.id) === String(fromId || ''))) {
+      setFromId(retailFromBranchOptions[0]?.id || '');
     }
-  }, [fromId, retailBranchOptions]);
+  }, [fromId, retailFromBranchOptions]);
   useEffect(() => {
-    if (!branchOptions.some((branch) => String(branch.id) === String(toId || ''))) {
-      const nextTo = branchOptions.find((branch) => String(branch.id) !== String(fromId || ''))?.id || branchOptions[0]?.id || '';
+    if (!retailToBranchOptions.some((branch) => String(branch.id) === String(toId || '')) || String(toId || '') === String(fromId || '')) {
+      const nextTo = retailToBranchOptions.find((branch) => String(branch.id) !== String(fromId || ''))?.id || retailToBranchOptions[0]?.id || '';
       setToId(nextTo);
     }
-  }, [branchOptions, fromId, toId]);
+  }, [fromId, retailToBranchOptions, toId]);
   const filteredProducts = useMemo(() => {
     const term = String(productQuery || '').trim().toLowerCase();
     if (!term) return [];
@@ -731,11 +735,11 @@ function TransfersPage() {
             )}
             <label>
               <div className="field-label">{t('From Branch')}</div>
-              <BranchSelect value={fromId} onChange={setFromId} overrideBranches={retailBranchOptions} />
+              <BranchSelect value={fromId} onChange={setFromId} overrideBranches={retailFromBranchOptions} />
             </label>
             <label>
               <div className="field-label">{t('To Branch')}</div>
-              <BranchSelect value={toId} onChange={setToId} overrideBranches={branchOptions} />
+              <BranchSelect value={toId} onChange={setToId} overrideBranches={retailToBranchOptions} />
             </label>
             <label>
               <div className="field-label">{t('Quantity')}</div>
@@ -956,14 +960,14 @@ function TransfersPage() {
             <div className="field-label">{t('From Branch')}</div>
             <select className="select" value={fFrom} onChange={e => setFFrom(e.target.value)}>
               <option value="">{t('All')}</option>
-              {branchOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {retailToBranchOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </label>
           <label>
             <div className="field-label">{t('To Branch')}</div>
             <select className="select" value={fTo} onChange={e => setFTo(e.target.value)}>
               <option value="">{t('All')}</option>
-              {branchOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {retailToBranchOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </label>
           <label>
