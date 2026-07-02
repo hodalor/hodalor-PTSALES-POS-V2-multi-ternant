@@ -88,6 +88,19 @@ r.get('/requests', async (req, res) => {
 r.post('/requests', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'add_transfers'), async (req, res) => {
   const payload = req.body || {};
   const clientId = String(payload.clientId || '').trim();
+  const role = String(req.user?.role || '').toLowerCase();
+  const assigned = req.user?.assignedBranches ?? 'all';
+  const fromBranch = String(payload.from || '').trim();
+  const toBranch = String(payload.to || '').trim();
+  if (!(role === 'superadmin' || role === 'admin') && assigned !== 'all') {
+    const arr = (Array.isArray(assigned) ? assigned : [assigned]).map(String).filter(Boolean);
+    if (!arr.includes(fromBranch)) {
+      return res.status(403).json({ error: 'Forbidden for source branch' });
+    }
+  }
+  if (!fromBranch || !toBranch) {
+    return res.status(400).json({ error: 'Missing from or to branch' });
+  }
   if (clientId) {
     const existing = await TransferRequest.findOne({ clientId });
     if (existing) return res.json(existing);
@@ -96,8 +109,8 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
     clientId: clientId || undefined,
     productId: payload.productId,
     variantId: payload.variantId || undefined,
-    from: payload.from,
-    to: payload.to,
+    from: fromBranch,
+    to: toBranch,
     qty: Number(payload.qty),
     transactionTitle: String(payload.transactionTitle || '').trim(),
     remark: payload.remark || '',
