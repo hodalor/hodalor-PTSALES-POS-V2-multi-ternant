@@ -8,6 +8,87 @@ import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import InlineSpinner from '../components/InlineSpinner';
 import BranchSelect from '../components/BranchSelect';
 import LoadingDots from '../components/LoadingDots';
+import Modal from '../components/Modal';
+import { exportCsv, exportTablePdf } from '../utils/exporters';
+import { formatDate, formatDateTime } from '../utils/dateFormat';
+import { getCreditModeLabel, isCreditSale } from '../utils/saleAccounting';
+
+function toNumber(value) {
+  const num = Number(value || 0);
+  return Number.isFinite(num) ? num : 0;
+}
+
+function sortByLatest(rows = [], picker) {
+  return [...rows].sort((a, b) => {
+    const aTs = new Date(typeof picker === 'function' ? picker(a) : a?.created_at || a?.createdAt || 0).getTime();
+    const bTs = new Date(typeof picker === 'function' ? picker(b) : b?.created_at || b?.createdAt || 0).getTime();
+    return (Number.isNaN(bTs) ? 0 : bTs) - (Number.isNaN(aTs) ? 0 : aTs);
+  });
+}
+
+function isCreditSaleRecord(row) {
+  return isCreditSale(row);
+}
+
+function getCreditPackageLabel(row) {
+  return getCreditModeLabel(row);
+}
+
+function normalizeCreditSaleRow(row = {}) {
+  const totalAmount = toNumber(row.total_amount ?? row.totalAmount ?? row.total);
+  const amountPaid = toNumber(row.amount_paid ?? row.amountPaid ?? row.creditAmountPaidNow ?? row.creditSale?.amount_paid ?? row.creditSale?.amountPaidNow);
+  const balance = row.balance != null
+    ? toNumber(row.balance)
+    : Math.max(0, totalAmount - amountPaid);
+  const accumulatedPenalty = toNumber(row.accumulated_penalty ?? row.accumulatedPenalty ?? row.creditSale?.accumulated_penalty);
+  const dueDate = row.due_date || row.dueDate || row.creditDueDate || row.creditSale?.due_date || row.creditSale?.dueDate || null;
+  const createdAt = row.createdAt || row.created_at || row.saleDate || row.date || null;
+  const nowTs = Date.now();
+  const dueTs = dueDate ? new Date(dueDate).getTime() : NaN;
+  const rawStatus = String(row.status || '').trim().toLowerCase();
+  let status = rawStatus;
+  if (!['active', 'overdue', 'completed'].includes(status)) {
+    if (balance <= 0) status = 'completed';
+    else if (!Number.isNaN(dueTs) && dueTs < nowTs) status = 'overdue';
+    else status = 'active';
+  }
+  const overdueDays = row.overdue_days != null
+    ? Math.max(0, Number(row.overdue_days || 0))
+    : (status === 'overdue' && !Number.isNaN(dueTs)
+        ? Math.max(0, Math.floor((nowTs - dueTs) / (24 * 3600 * 1000)))
+        : 0);
+  return {
+    ...row,
+    _id: row._id || row.saleId || row.id || row.clientId || '',
+    saleId: row.saleId || row.id || row._id || row.clientId || '',
+    customer_id: row.customer_id || row.customerId || '',
+    branchId: row.branchId || '',
+    posType: String(row.posType || row.inventoryType || 'retail').toLowerCase() === 'wholesale' ? 'wholesale' : 'retail',
+    items: Array.isArray(row.items) ? row.items : [],
+    total_amount: totalAmount,
+    amount_paid: amountPaid,
+    balance,
+    accumulated_penalty: accumulatedPenalty,
+    creditPackageId: row.creditPackageId || row.creditSale?.creditPackageId || '',
+    creditPackageName: row.creditPackageName || row.creditSale?.creditPackageName || '',
+    due_date: dueDate,
+    createdAt,
+    overdue_days: overdueDays,
+    status
+  };
+}
+
+function formatPaymentRecordSummary(entry = {}, settings = {}) {
+  const bits = [
+    entry.label || 'Payment',
+    formatCurrency(Number(entry.amount || 0), settings),
+    formatDateTime(entry.paidAt || entry.approvedAt || entry.initiatedAt),
+    entry.paymentMethod ? String(entry.paymentMethod).toUpperCase() : '',
+    entry.status ? String(entry.status).replace(/_/g, ' ') : '',
+    entry.remark || ''
+  ].filter(Boolean);
+  return bits.join(' • ');
+}
 
 function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', title = 'Credit Sale Control', description = 'Credit sale balances, overdue tracking, customer rank, and repayment initiation.' }) {
   const settings = useSelector(s => s.settings);
