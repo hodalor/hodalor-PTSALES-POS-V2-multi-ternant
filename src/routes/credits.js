@@ -3,10 +3,11 @@ import mongoose from 'mongoose';
 import CreditRepayment from '../models/CreditRepayment.js';
 import CreditSale from '../models/CreditSale.js';
 import Customer from '../models/Customer.js';
+import Sale from '../models/Sale.js';
 import Approval from '../models/Approval.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import { createApprovalForReference } from '../utils/approvalWorkflow.js';
-import { refreshCreditSaleStatus, updateCustomerCreditMetrics } from '../utils/credit.js';
+import { computeCreditStatus, customerRankFromScore, refreshCreditSaleStatus, updateCustomerCreditMetrics } from '../utils/credit.js';
 import { archiveLiveDocument } from '../utils/superBin.js';
 
 const r = Router();
@@ -22,11 +23,84 @@ async function getPendingRepaymentAmount(creditSaleId) {
   return rows.reduce((sum, row) => sum + Math.max(0, Number(row?.amount || 0)), 0);
 }
 
+function normalizeBranchIds(value) {
+  if (value === 'all') return 'all';
+  return Array.from(new Set(
+    (Array.isArray(value) ? value : [value])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+  ));
+}
+
+function getAccessibleBranchIds(user = {}) {
+  const role = String(user?.role || '').toLowerCase();
+  if (role === 'superadmin' || role === 'admin') return 'all';
+  const assigned = normalizeBranchIds(user?.assignedBranches);
+  if (assigned === 'all') return 'all';
+  return normalizeBranchIds([user?.branchId, ...(Array.isArray(assigned) ? assigned : [])]);
+}
+
+function buildCustomerLookupQuery(customerIds = []) {
+  const ids = Array.from(new Set((Array.isArray(customerIds) ? customerIds : []).map((item) => String(item || '').trim()).filter(Boolean)));
+  const objectIds = ids.filter((id) => mongoose.isValidObjectId(id));
+  const or = [];
+  if (objectIds.length > 0) or.push({ _id: { $in: objectIds } });
+  if (ids.length > 0) {
+    or.push({ clientId: { $in: ids } });
+    or.push({ customerCode: { $in: ids } });
+  }
+  return or.length > 0 ? { $or: or } : null;
+}
+
+function summarizeCustomerCreditRows(creditSales = [], repayments = []) {
+  let totalCreditPurchases = 0;
+  let totalCreditPaid = 0;
+  let outstandingBalance = 0;
+  let overdueDays = 0;
+  let onTimePayments = 0;
+  let latePayments = 0;
+  for (const doc of creditSales) {
+    const current = computeCreditStatus(doc);
+    totalCreditPurchases += Number(doc?.total_amount || 0);
+    outstandingBalance += Number(current?.balance || 0);
+    overdueDays += Number(current?.overdueDays || 0);
+    if (current.status === 'completed') {
+      if (current.overdueDays > 0) latePayments += 1;
+      else onTimePayments += 1;
+    } else if (current.status === 'overdue') {
+      latePayments += 1;
+    }
+  }
+  for (const doc of repayments) {
+    totalCreditPaid += Number(doc?.amount || 0);
+  }
+  const scoreBase = 100 + (onTimePayments * 5) - (latePayments * 10) - Math.min(overdueDays, 30);
+  const creditScore = Math.max(0, Math.min(100, scoreBase));
+  const creditRank = customerRankFromScore(creditScore);
+  return {
+    totalCreditPurchases,
+    totalCreditPaid,
+    outstandingBalance,
+    overdueDays,
+    onTimePayments,
+    latePayments,
+    creditScore,
+    creditRank
+  };
+}
+
 r.get('/sales', async (req, res) => {
+  const accessibleBranchIds = getAccessibleBranchIds(req.user);
   const query = {};
   if (req.query.customerId) query.customer_id = String(req.query.customerId);
   if (req.query.status) query.status = String(req.query.status);
-  if (req.query.branchId) query.branchId = String(req.query.branchId);
+  if (req.query.branchId) {
+    const requestedBranchId = String(req.query.branchId);
+    if (accessibleBranchIds !== 'all' && !accessibleBranchIds.includes(requestedBranchId)) return res.json([]);
+    query.branchId = requestedBranchId;
+  } else if (accessibleBranchIds !== 'all') {
+    query.branchId = { $in: accessibleBranchIds };
+  }
   if (req.query.posType) query.posType = String(req.query.posType);
   if (req.query.creditPackageName) query.creditPackageName = String(req.query.creditPackageName);
   const rows = await CreditSale.find(query).sort({ createdAt: -1 }).limit(500).lean();
@@ -34,30 +108,113 @@ r.get('/sales', async (req, res) => {
 });
 
 r.get('/repayments', async (req, res) => {
+  const accessibleBranchIds = getAccessibleBranchIds(req.user);
   const query = {};
   if (req.query.customerId) query.customerId = String(req.query.customerId);
   if (req.query.status) query.status = String(req.query.status);
+  if (accessibleBranchIds !== 'all') {
+    const saleBranchQuery = {};
+    if (req.query.branchId) {
+      const requestedBranchId = String(req.query.branchId);
+      if (!accessibleBranchIds.includes(requestedBranchId)) return res.json([]);
+      saleBranchQuery.branchId = requestedBranchId;
+    } else {
+      saleBranchQuery.branchId = { $in: accessibleBranchIds };
+    }
+    const saleIds = (await CreditSale.find(saleBranchQuery).select('_id').lean()).map((row) => String(row?._id || '')).filter(Boolean);
+    if (saleIds.length === 0) return res.json([]);
+    query.creditSaleId = { $in: saleIds };
+  }
   const rows = await CreditRepayment.find(query).sort({ createdAt: -1 }).limit(500).lean();
   res.json(rows);
 });
 
 r.get('/customers/:id/summary', async (req, res) => {
   const customerId = String(req.params.id || '');
+  const accessibleBranchIds = getAccessibleBranchIds(req.user);
   let customer = null;
   if (mongoose.isValidObjectId(customerId)) customer = await Customer.findById(customerId);
   if (!customer) customer = await Customer.findOne({ $or: [{ clientId: customerId }, { customerCode: customerId }] });
   if (!customer) return res.status(404).json({ error: 'Customer not found' });
+  if (accessibleBranchIds !== 'all') {
+    const creditSales = await CreditSale.find({
+      customer_id: String(customer._id),
+      branchId: { $in: accessibleBranchIds }
+    }).sort({ createdAt: -1 }).lean();
+    if (creditSales.length === 0) return res.status(404).json({ error: 'Customer not found' });
+    const creditSaleIds = creditSales.map((row) => String(row?._id || '')).filter(Boolean);
+    const repayments = creditSaleIds.length > 0
+      ? await CreditRepayment.find({
+          customerId: String(customer._id),
+          status: 'approved',
+          creditSaleId: { $in: creditSaleIds }
+        }).sort({ createdAt: -1 }).lean()
+      : [];
+    const sales = await Sale.find({
+      customerId: String(customer._id),
+      branchId: { $in: accessibleBranchIds }
+    }).sort({ created_at: -1 }).limit(100).lean();
+    const summary = summarizeCustomerCreditRows(creditSales, repayments);
+    return res.json({
+      customer,
+      creditSales,
+      repayments,
+      sales,
+      summary
+    });
+  }
   const data = await updateCustomerCreditMetrics(String(customer._id));
   res.json(data);
 });
 
-r.get('/customers', async (_req, res) => {
-  const customers = await Customer.find().sort({ name: 1 }).limit(500).lean();
-  res.json(customers);
+r.get('/customers', async (req, res) => {
+  const accessibleBranchIds = getAccessibleBranchIds(req.user);
+  if (accessibleBranchIds === 'all') {
+    const customers = await Customer.find().sort({ name: 1 }).limit(500).lean();
+    return res.json(customers);
+  }
+  const creditSales = await CreditSale.find({ branchId: { $in: accessibleBranchIds } }).sort({ createdAt: -1 }).lean();
+  const customerIds = Array.from(new Set(creditSales.map((row) => String(row?.customer_id || '')).filter(Boolean)));
+  if (customerIds.length === 0) return res.json([]);
+  const lookupQuery = buildCustomerLookupQuery(customerIds);
+  if (!lookupQuery) return res.json([]);
+  const customers = await Customer.find(lookupQuery).sort({ name: 1 }).lean();
+  const saleIds = creditSales.map((row) => String(row?._id || '')).filter(Boolean);
+  const repayments = saleIds.length > 0
+    ? await CreditRepayment.find({ status: 'approved', creditSaleId: { $in: saleIds } }).sort({ createdAt: -1 }).lean()
+    : [];
+  const creditSalesByCustomerId = new Map();
+  creditSales.forEach((row) => {
+    const key = String(row?.customer_id || '');
+    if (!key) return;
+    if (!creditSalesByCustomerId.has(key)) creditSalesByCustomerId.set(key, []);
+    creditSalesByCustomerId.get(key).push(row);
+  });
+  const saleCustomerIdByCreditSaleId = new Map(creditSales.map((row) => [String(row?._id || ''), String(row?.customer_id || '')]));
+  const repaymentsByCustomerId = new Map();
+  repayments.forEach((row) => {
+    const key = saleCustomerIdByCreditSaleId.get(String(row?.creditSaleId || '')) || String(row?.customerId || '');
+    if (!key) return;
+    if (!repaymentsByCustomerId.has(key)) repaymentsByCustomerId.set(key, []);
+    repaymentsByCustomerId.get(key).push(row);
+  });
+  const rows = customers.map((customer) => {
+    const key = String(customer?._id || customer?.clientId || customer?.customerCode || '');
+    const summary = summarizeCustomerCreditRows(
+      creditSalesByCustomerId.get(key) || [],
+      repaymentsByCustomerId.get(key) || []
+    );
+    return {
+      ...customer,
+      ...summary
+    };
+  });
+  res.json(rows);
 });
 
 r.post('/repayments', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], 'add_sales'), async (req, res) => {
   const body = req.body || {};
+  const accessibleBranchIds = getAccessibleBranchIds(req.user);
   const creditSaleId = String(body.creditSaleId || '');
   const amount = Math.max(0, Number(body.amount || 0));
   const paymentMethod = ['cash', 'card', 'mobile', 'wallet'].includes(String(body.paymentMethod || '').trim().toLowerCase())
@@ -67,6 +224,9 @@ r.post('/repayments', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], 'add_sa
   if (amount <= 0) return res.status(400).json({ error: 'Amount must be greater than zero' });
   const creditSale = await CreditSale.findById(creditSaleId);
   if (!creditSale) return res.status(404).json({ error: 'Credit sale not found' });
+  if (accessibleBranchIds !== 'all' && !accessibleBranchIds.includes(String(creditSale.branchId || ''))) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
   await refreshCreditSaleStatus(creditSale);
   if (String(creditSale.status || '') === 'completed') return res.status(400).json({ error: 'Credit sale is already completed' });
   const outstandingAmount = Math.max(0, Number(creditSale.balance || 0) + Number(creditSale.accumulated_penalty || 0));

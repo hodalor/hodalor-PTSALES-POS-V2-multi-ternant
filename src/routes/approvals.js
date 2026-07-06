@@ -1,5 +1,8 @@
 import { Router } from 'express';
 import Approval from '../models/Approval.js';
+import CashReconciliation from '../models/CashReconciliation.js';
+import CreditRepayment from '../models/CreditRepayment.js';
+import CreditSale from '../models/CreditSale.js';
 import WholesaleOperation from '../models/WholesaleOperation.js';
 import { requireAuth } from '../middleware/auth.js';
 import { canApproveAreaDirector, canApproveAreaManager, canApproveDirector, canApproveManager, executeApprovedReference, syncReferenceStatus } from '../utils/approvalWorkflow.js';
@@ -13,6 +16,59 @@ async function resolveApprovalArea(approval) {
   if (approval?.referenceModel !== 'WholesaleOperation') return '';
   const operation = await WholesaleOperation.findById(approval.referenceId).lean().catch(() => null);
   return String(operation?.operationArea || 'wholesale').toLowerCase() === 'warehouse' ? 'warehouse' : 'wholesale';
+}
+
+function normalizeBranchIds(value) {
+  if (value === 'all') return 'all';
+  return Array.from(new Set(
+    (Array.isArray(value) ? value : [value])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+  ));
+}
+
+function getAccessibleBranchIds(user = {}) {
+  const role = String(user?.role || '').toLowerCase();
+  if (role === 'superadmin' || role === 'admin') return 'all';
+  const assigned = normalizeBranchIds(user?.assignedBranches);
+  if (assigned === 'all') return 'all';
+  return normalizeBranchIds([user?.branchId, ...(Array.isArray(assigned) ? assigned : [])]);
+}
+
+async function resolveApprovalBranchIds(approval) {
+  const referenceModel = String(approval?.referenceModel || '').trim();
+  const referenceId = String(approval?.referenceId || '').trim();
+  if (!referenceModel || !referenceId) return [];
+  if (referenceModel === 'CreditRepayment') {
+    const repayment = await CreditRepayment.findById(referenceId).select('creditSaleId').lean().catch(() => null);
+    if (!repayment?.creditSaleId) return [];
+    const creditSale = await CreditSale.findById(String(repayment.creditSaleId)).select('branchId').lean().catch(() => null);
+    return creditSale?.branchId ? [String(creditSale.branchId)] : [];
+  }
+  if (referenceModel === 'WholesaleOperation') {
+    const operation = await WholesaleOperation.findById(referenceId)
+      .select('branchId fromBranchId toBranchId')
+      .lean()
+      .catch(() => null);
+    return Array.from(new Set([
+      String(operation?.branchId || '').trim(),
+      String(operation?.fromBranchId || '').trim(),
+      String(operation?.toBranchId || '').trim()
+    ].filter(Boolean)));
+  }
+  if (referenceModel === 'CashReconciliation') {
+    const row = await CashReconciliation.findById(referenceId).select('branchId').lean().catch(() => null);
+    return row?.branchId ? [String(row.branchId)] : [];
+  }
+  return [];
+}
+
+async function canAccessApprovalByBranch(user = {}, approval) {
+  const accessibleBranchIds = getAccessibleBranchIds(user);
+  if (accessibleBranchIds === 'all') return true;
+  const approvalBranchIds = await resolveApprovalBranchIds(approval);
+  if (approvalBranchIds.length === 0) return false;
+  return approvalBranchIds.some((branchId) => accessibleBranchIds.includes(String(branchId)));
 }
 
 function normalizeWholesaleReviewItems(items = []) {
@@ -58,12 +114,17 @@ r.get('/', async (req, res) => {
   if (req.query.referenceModel) query.referenceModel = String(req.query.referenceModel);
   if (req.query.referenceId) query.referenceId = String(req.query.referenceId);
   const rows = await Approval.find(query).sort({ createdAt: -1 }).limit(500).lean();
-  res.json(rows);
+  const filteredRows = [];
+  for (const row of rows) {
+    if (await canAccessApprovalByBranch(req.user, row)) filteredRows.push(row);
+  }
+  res.json(filteredRows);
 });
 
 r.post('/:id/approve', async (req, res) => {
   const approval = await Approval.findById(req.params.id);
   if (!approval) return res.status(404).json({ error: 'Approval not found' });
+  if (!await canAccessApprovalByBranch(req.user, approval)) return res.status(403).json({ error: 'Forbidden' });
   const remark = String(req.body?.remark || '').trim();
   if (approval.status === 'pending_director') {
     const approvalArea = await resolveApprovalArea(approval);
@@ -157,6 +218,7 @@ r.post('/:id/approve', async (req, res) => {
 r.post('/:id/reject', async (req, res) => {
   const approval = await Approval.findById(req.params.id);
   if (!approval) return res.status(404).json({ error: 'Approval not found' });
+  if (!await canAccessApprovalByBranch(req.user, approval)) return res.status(403).json({ error: 'Forbidden' });
   const reason = String(req.body?.reason || '').trim();
   if (!reason) return res.status(400).json({ error: 'Reason is required' });
   const approvalArea = await resolveApprovalArea(approval);

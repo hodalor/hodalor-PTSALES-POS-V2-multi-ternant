@@ -90,20 +90,27 @@ r.get('/', requireRoleOrPerm(['Admin','Manager','Cashier'], ['view_sales','see_s
   const role = String(req.user?.role || '').toLowerCase();
   const grants = Array.isArray(req.user?.grants) ? req.user.grants : [];
   const query = {};
+  const assigned = normalizeBranchIds(req.user?.assignedBranches);
+  if (role !== 'superadmin' && role !== 'admin' && assigned !== 'all') {
+    const branchIds = normalizeBranchIds([req.user?.branchId, ...(Array.isArray(assigned) ? assigned : [])]);
+    if (branchIds.length > 0) query.branchId = { $in: branchIds };
+  }
   const canViewCashierCompetitionAll = grants.includes('view_dashboard_cashier_all') || grants.includes('view_dashboard_branch_comparison_all');
   const canViewCashierCompetitionAssigned = canViewCashierCompetitionAll || grants.includes('view_dashboard_cashier_assigned') || grants.includes('view_dashboard_branch_comparison_assigned');
   if (role === 'cashier' && !canViewCashierCompetitionAssigned) {
     query.sellerName = new RegExp(`^${escapeRegex(String(req.user?.name || '').trim())}$`, 'i');
   }
   if (role === 'cashier' && canViewCashierCompetitionAssigned && !canViewCashierCompetitionAll) {
-    const assigned = normalizeBranchIds(req.user?.assignedBranches);
     const branchIds = assigned === 'all'
       ? normalizeBranchIds(req.user?.branchId)
       : normalizeBranchIds([req.user?.branchId, ...assigned]);
     if (branchIds.length > 0) query.branchId = { $in: branchIds };
   }
   if (req.query.branchId) {
-    query.branchId = String(req.query.branchId);
+    const requestedBranchId = String(req.query.branchId);
+    const allowedBranchIds = Array.isArray(query.branchId?.$in) ? query.branchId.$in.map(String) : null;
+    if (allowedBranchIds && !allowedBranchIds.includes(requestedBranchId)) return res.json([]);
+    query.branchId = requestedBranchId;
   }
   const limit = Math.min(2000, Math.max(1, Number(req.query.limit || 500)));
   const rows = await Sale.find(query).sort({ created_at: -1 }).limit(limit).lean();
