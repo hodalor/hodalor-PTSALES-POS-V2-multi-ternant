@@ -145,6 +145,12 @@ function InventoryPage() {
     );
   }, [viewInventoryType]);
 
+  const getExpectedUnitRevenue = useCallback((product) => {
+    const salePrice = getSalePrice(product);
+    const unitCost = Number(product?.costPrice || 0);
+    return Math.max(unitCost, salePrice);
+  }, [getSalePrice]);
+
   const formatEntityPriceDisplay = useCallback((entity, tier) => {
     const range = getDisplayPriceRange(entity, tier);
     if (!range) return formatCurrency(getDisplayPrice(entity, tier), settings);
@@ -157,10 +163,10 @@ function InventoryPage() {
     const stockTotals = rows.map((p) => getStockForProduct(p, branchId));
     const totalStock = stockTotals.reduce((sum, qty) => sum + (Number(qty) || 0), 0);
     const totalCost = rows.reduce((sum, p) => sum + ((Number(p.costPrice || 0) || 0) * getStockForProduct(p, branchId)), 0);
-    const expectedRevenue = rows.reduce((sum, p) => sum + (getSalePrice(p) * getStockForProduct(p, branchId)), 0);
+    const expectedRevenue = rows.reduce((sum, p) => sum + (getExpectedUnitRevenue(p) * getStockForProduct(p, branchId)), 0);
     const expectedProfit = rows.reduce((sum, p) => {
       const qty = getStockForProduct(p, branchId);
-      const margin = Math.max(0, getSalePrice(p) - Number(p.costPrice || 0));
+      const margin = Math.max(0, getExpectedUnitRevenue(p) - Number(p.costPrice || 0));
       return sum + (margin * qty);
     }, 0);
     return {
@@ -171,7 +177,7 @@ function InventoryPage() {
       expectedRevenue,
       expectedProfit
     };
-  }, [rows, branchId, getSalePrice, getStockForProduct]);
+  }, [rows, branchId, getExpectedUnitRevenue, getStockForProduct]);
 
   const getEntityStock = useCallback((entity, targetBranchId = branchId) => {
     if (!targetBranchId || String(targetBranchId) === 'all') return getTotalStock(entity, viewInventoryType);
