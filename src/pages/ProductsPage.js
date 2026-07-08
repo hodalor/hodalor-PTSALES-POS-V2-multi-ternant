@@ -51,6 +51,66 @@ function createVariantDraft(overrides = {}) {
   };
 }
 
+function hasValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== '';
+}
+
+function toFiniteNumber(value, fallback = 0) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function getProductPricingValidationMessage({
+  price,
+  wholesalePrice,
+  warehousePrice,
+  agentPrice,
+  costPrice,
+  variants
+}) {
+  const retailSellingPrice = toFiniteNumber(price, 0);
+  const unitCostPrice = toFiniteNumber(costPrice, 0);
+  if (unitCostPrice > 0 && retailSellingPrice > 0 && unitCostPrice > retailSellingPrice) {
+    return 'Cost price cannot be greater than retail selling price';
+  }
+  if (unitCostPrice > 0 && hasValue(wholesalePrice)) {
+    const wholesaleSellingPrice = toFiniteNumber(wholesalePrice, 0);
+    if (wholesaleSellingPrice > 0 && unitCostPrice > wholesaleSellingPrice) {
+      return 'Cost price cannot be greater than wholesale selling price';
+    }
+  }
+  if (unitCostPrice > 0 && hasValue(warehousePrice)) {
+    const warehouseSellingPrice = toFiniteNumber(warehousePrice, 0);
+    if (warehouseSellingPrice > 0 && unitCostPrice > warehouseSellingPrice) {
+      return 'Cost price cannot be greater than warehouse selling price';
+    }
+  }
+  if (unitCostPrice > 0 && hasValue(agentPrice)) {
+    const agentSellingPrice = toFiniteNumber(agentPrice, 0);
+    if (agentSellingPrice > 0 && unitCostPrice > agentSellingPrice) {
+      return 'Cost price cannot be greater than agent selling price';
+    }
+  }
+  for (let index = 0; index < (Array.isArray(variants) ? variants.length : 0); index += 1) {
+    const variant = variants[index] || {};
+    const isEmpty = !String(variant.label || '').trim()
+      && !String(variant.sku || '').trim()
+      && !String(variant.image || '').trim()
+      && !hasValue(variant.price)
+      && !hasValue(variant.costPrice);
+    if (isEmpty) continue;
+    const variantCostPrice = hasValue(variant.costPrice) ? toFiniteNumber(variant.costPrice, 0) : unitCostPrice;
+    const variantSellingPrice = hasValue(variant.price) ? toFiniteNumber(variant.price, 0) : retailSellingPrice;
+    if (variantCostPrice > 0 && variantSellingPrice > 0 && variantCostPrice > variantSellingPrice) {
+      const variantLabel = String(variant.label || '').trim();
+      return variantLabel
+        ? `Variant "${variantLabel}" cost price cannot be greater than its selling price`
+        : `Variant #${index + 1} cost price cannot be greater than its selling price`;
+    }
+  }
+  return '';
+}
+
 function getInventoryStockField(inventoryType) {
   return inventoryType === 'warehouse'
     ? 'warehouseStockByBranch'
@@ -508,6 +568,16 @@ function ProductsPage() {
         if (isEmpty) continue;
         if (!hasLabel) errors.push(`Variant #${i+1}: Label is required (e.g. Size/Color)`);
     }
+
+    const pricingValidationMessage = getProductPricingValidationMessage({
+      price,
+      wholesalePrice,
+      warehousePrice,
+      agentPrice,
+      costPrice,
+      variants
+    });
+    if (pricingValidationMessage) errors.push(pricingValidationMessage);
 
     if (errors.length > 0) {
         toast.show(errors[0], { type: 'error' });
@@ -1483,7 +1553,7 @@ function ProductsPage() {
                     <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                       <label>
                         <div className="label" style={{ color: '#cbd5e1' }}>{t('Cost Price (per unit)')}</div>
-                        <div className="section-note" style={{ marginTop: 4 }}>{t('Your purchase price (capital). Used to calculate profit.')}</div>
+                        <div className="section-note" style={{ marginTop: 4 }}>{t('Your purchase price (capital). Used to calculate profit. It must not be greater than the selling price.')}</div>
                         <input className="input" type="number" min="0" step="0.01" placeholder={t('e.g. 10.00')} value={costPrice} onChange={e => setCostPrice(e.target.value)} />
                       </label>
                       <label>
