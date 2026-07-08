@@ -80,6 +80,49 @@ function normalizePricingPayload(body = {}) {
   return out;
 }
 
+function getPricingValidationMessage(payload = {}) {
+  const retailSellingPrice = hasNumber(payload.retailPrice) ? toNumberOrZero(payload.retailPrice) : toNumberOrZero(payload.price || 0);
+  const unitCostPrice = hasNumber(payload.costPrice) ? toNumberOrZero(payload.costPrice) : 0;
+  if (unitCostPrice > 0 && retailSellingPrice > 0 && unitCostPrice > retailSellingPrice) {
+    return 'Cost price cannot be greater than retail selling price';
+  }
+  if (unitCostPrice > 0 && hasNumber(payload.wholesalePrice)) {
+    const wholesaleSellingPrice = toNumberOrZero(payload.wholesalePrice);
+    if (wholesaleSellingPrice > 0 && unitCostPrice > wholesaleSellingPrice) {
+      return 'Cost price cannot be greater than wholesale selling price';
+    }
+  }
+  if (unitCostPrice > 0 && hasNumber(payload.warehousePrice)) {
+    const warehouseSellingPrice = toNumberOrZero(payload.warehousePrice);
+    if (warehouseSellingPrice > 0 && unitCostPrice > warehouseSellingPrice) {
+      return 'Cost price cannot be greater than warehouse selling price';
+    }
+  }
+  if (unitCostPrice > 0 && hasNumber(payload.agentPrice)) {
+    const agentSellingPrice = toNumberOrZero(payload.agentPrice);
+    if (agentSellingPrice > 0 && unitCostPrice > agentSellingPrice) {
+      return 'Cost price cannot be greater than agent selling price';
+    }
+  }
+  if (!Array.isArray(payload.variants)) return '';
+  for (let index = 0; index < payload.variants.length; index += 1) {
+    const variant = payload.variants[index] || {};
+    const variantCostPrice = hasNumber(variant.costPrice) ? toNumberOrZero(variant.costPrice) : unitCostPrice;
+    const variantSellingPrice = hasNumber(variant.retailPrice)
+      ? toNumberOrZero(variant.retailPrice)
+      : hasNumber(variant.price)
+        ? toNumberOrZero(variant.price)
+        : retailSellingPrice;
+    if (variantCostPrice > 0 && variantSellingPrice > 0 && variantCostPrice > variantSellingPrice) {
+      const variantLabel = String(variant.label || '').trim();
+      return variantLabel
+        ? `Variant "${variantLabel}" cost price cannot be greater than its selling price`
+        : `Variant #${index + 1} cost price cannot be greater than its selling price`;
+    }
+  }
+  return '';
+}
+
 function stripInventoryMapsFromPayload(body) {
   if (!body || typeof body !== 'object') return body;
   const next = { ...body };
@@ -259,6 +302,8 @@ r.get('/', async (req, res) => {
 r.post('/', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (req, res) => {
   try {
     let body = normalizePricingPayload(req.body || {});
+    const pricingValidationMessage = getPricingValidationMessage(body);
+    if (pricingValidationMessage) return res.status(400).json({ error: pricingValidationMessage });
     body = await uploadProductMediaPayload(body, req);
     const initialStock = Number(body.initialStock || 0);
     const initialBranchId = String(body.initialBranchId || '').trim();
@@ -344,6 +389,8 @@ r.put('/:id', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (re
     });
   }
   let payload = normalizePricingPayload(req.body || {});
+  const pricingValidationMessage = getPricingValidationMessage(payload);
+  if (pricingValidationMessage) return res.status(400).json({ error: pricingValidationMessage });
   payload = await uploadProductMediaPayload(payload, req);
   if (!payload.id && before?.id) {
     payload.id = before.id;
