@@ -71,7 +71,8 @@ function InventoryPage() {
   const toast = useToast();
   const { t } = useAppLanguage();
   const visiblePriceTiers = useMemo(() => getAllowedPriceTiers(auth), [auth]);
-  const isAllBranches = String(branchId || '') === 'all';
+  const normalizedBranchId = String(branchId || '').trim().toLowerCase();
+  const isAllBranches = normalizedBranchId === '' || normalizedBranchId === 'all';
   const inventoryTypeLabel = useMemo(() => viewInventoryType === 'wholesale' ? t('Distribution') : viewInventoryType === 'warehouse' ? t('Warehouse') : t('Retail'), [t, viewInventoryType]);
   const inventoryPriceTierLabel = useMemo(() => getPriceTierLabel(viewInventoryType === 'wholesale' ? 'wholesale' : viewInventoryType === 'warehouse' ? 'warehouse' : 'retail'), [viewInventoryType]);
 
@@ -112,12 +113,12 @@ function InventoryPage() {
   }, [brandFilter, categoryFilter, products, search, trackTypeFilter]);
   useEffect(() => { setBranchId(currentBranchId); }, [currentBranchId]);
   useEffect(() => {
-    if (String(branchId || '') === 'all') return;
+    if (isAllBranches) return;
     const selectedBranch = branches.find((item) => String(item.id) === String(branchId));
     if (!selectedBranch) return;
     const nextType = normalizeInventoryType(selectedBranch.branchType);
     setViewInventoryType((prev) => prev === nextType ? prev : nextType);
-  }, [branches, branchId]);
+  }, [branches, branchId, isAllBranches]);
   useEffect(() => {
     if (categoryFilter !== 'all' && !categoryOptions.some((item) => item.value === categoryFilter)) setCategoryFilter('all');
   }, [categoryOptions, categoryFilter]);

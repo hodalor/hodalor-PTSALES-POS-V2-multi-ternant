@@ -42,13 +42,21 @@ function WarehouseGoodsPage() {
       .filter(product => !q || getProductSearchText(product).includes(q))
       .sort((a, b) => b.warehouseStock - a.warehouseStock || String(a.name || '').localeCompare(String(b.name || '')));
   }, [activeBranchId, products, query]);
+  const getStockStatus = (product) => {
+    const stock = Number(product?.warehouseStock || 0);
+    const lowStock = Number(product?.warehouseLowStock || 0);
+    if (stock <= 0) return 'out';
+    if (lowStock > 0 && stock <= lowStock) return 'low';
+    return 'available';
+  };
   const summary = useMemo(() => ({
     totalProducts: rows.length,
-    availableProducts: rows.filter(product => product.warehouseStock > Number(product.warehouseLowStock || 0)).length,
-    lowStockProducts: rows.filter(product => product.warehouseStock <= Number(product.warehouseLowStock || 0)).length,
+    availableProducts: rows.filter(product => getStockStatus(product) === 'available').length,
+    lowStockProducts: rows.filter(product => getStockStatus(product) === 'low').length,
+    outOfStockProducts: rows.filter(product => getStockStatus(product) === 'out').length,
     totalUnits: rows.reduce((sum, product) => sum + Number(product.warehouseStock || 0), 0)
   }), [rows]);
-  const lowStockRows = useMemo(() => rows.filter(product => product.warehouseStock <= Number(product.warehouseLowStock || 0)).slice(0, 8), [rows]);
+  const lowStockRows = useMemo(() => rows.filter(product => getStockStatus(product) === 'low').slice(0, 8), [rows]);
 
   return (
     <div className="goods-page-shell">
@@ -86,6 +94,10 @@ function WarehouseGoodsPage() {
         <div className="goods-stat-card">
           <div className="goods-stat-label">{t('Low Stock')}</div>
           <div className="goods-stat-value" style={{ color: '#b91c1c' }}>{summary.lowStockProducts}</div>
+        </div>
+        <div className="goods-stat-card">
+          <div className="goods-stat-label">{t('Out Of Stock')}</div>
+          <div className="goods-stat-value" style={{ color: '#991b1b' }}>{summary.outOfStockProducts}</div>
         </div>
         <div className="goods-stat-card">
           <div className="goods-stat-label">{t('Units')}</div>
@@ -145,8 +157,8 @@ function WarehouseGoodsPage() {
                 <div key={tier} className="goods-item-line price-line"><strong>{getPriceTierLabel(tier)}:</strong> <span className="price-accent">{formatCurrency(getDisplayPrice(product, tier), settings)}</span></div>
               ))}
               <div className="goods-item-line"><strong>{t('Low Stock Threshold')}:</strong> {product.warehouseLowStock}</div>
-              <div className={`goods-status-pill ${product.warehouseStock <= Number(product.warehouseLowStock || 0) ? 'low' : 'ok'}`}>
-                {product.warehouseStock <= Number(product.warehouseLowStock || 0) ? t('Low stock') : t('Available')}
+              <div className={`goods-status-pill ${getStockStatus(product) === 'out' ? 'low' : getStockStatus(product) === 'low' ? 'low' : 'ok'}`}>
+                {getStockStatus(product) === 'out' ? t('Out of stock') : getStockStatus(product) === 'low' ? t('Low stock') : t('Available')}
               </div>
             </div>
           ))}
@@ -176,8 +188,8 @@ function WarehouseGoodsPage() {
                   <td>{product.warehouseLowStock}</td>
                   {visiblePriceTiers.map(tier => <td key={tier}><span className="price-accent">{formatCurrency(getDisplayPrice(product, tier), settings)}</span></td>)}
                   <td>
-                    <span style={{ display: 'inline-flex', padding: '4px 10px', borderRadius: 999, background: product.warehouseStock <= Number(product.warehouseLowStock || 0) ? '#fee2e2' : '#dcfce7', color: product.warehouseStock <= Number(product.warehouseLowStock || 0) ? '#b91c1c' : '#15803d', fontWeight: 700 }}>
-                      {product.warehouseStock <= Number(product.warehouseLowStock || 0) ? t('Low stock') : t('Available')}
+                    <span style={{ display: 'inline-flex', padding: '4px 10px', borderRadius: 999, background: getStockStatus(product) === 'out' ? '#fecaca' : getStockStatus(product) === 'low' ? '#fee2e2' : '#dcfce7', color: getStockStatus(product) === 'out' ? '#991b1b' : getStockStatus(product) === 'low' ? '#b91c1c' : '#15803d', fontWeight: 700 }}>
+                      {getStockStatus(product) === 'out' ? t('Out of stock') : getStockStatus(product) === 'low' ? t('Low stock') : t('Available')}
                     </span>
                   </td>
                 </tr>
