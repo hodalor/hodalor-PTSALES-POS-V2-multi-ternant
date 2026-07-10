@@ -31,10 +31,13 @@ function shouldShowBranchTypeBadge(branchType = 'retail') {
 
 function normalizeInventoryType(value = 'retail') {
   const kind = String(value || 'retail').toLowerCase();
+  if (kind === 'all') return 'all';
   if (kind === 'warehouse') return 'warehouse';
   if (kind === 'wholesale') return 'wholesale';
   return 'retail';
 }
+
+const COMBINED_INVENTORY_TYPES = ['retail', 'wholesale', 'warehouse'];
 
 function getSerializedCachedUnitsCount(productId, variantId, branchId, inventoryType) {
   const cached = productUnitsApi.getCachedProductUnitCount({
@@ -73,8 +76,21 @@ function InventoryPage() {
   const visiblePriceTiers = useMemo(() => getAllowedPriceTiers(auth), [auth]);
   const normalizedBranchId = String(branchId || '').trim().toLowerCase();
   const isAllBranches = normalizedBranchId === '' || normalizedBranchId === 'all';
-  const inventoryTypeLabel = useMemo(() => viewInventoryType === 'wholesale' ? t('Distribution') : viewInventoryType === 'warehouse' ? t('Warehouse') : t('Retail'), [t, viewInventoryType]);
-  const inventoryPriceTierLabel = useMemo(() => getPriceTierLabel(viewInventoryType === 'wholesale' ? 'wholesale' : viewInventoryType === 'warehouse' ? 'warehouse' : 'retail'), [viewInventoryType]);
+  const isCombinedInventoryView = isAllBranches && viewInventoryType === 'all';
+  const inventoryTypeLabel = useMemo(() => (
+    viewInventoryType === 'all'
+      ? t('All Inventory Types')
+      : viewInventoryType === 'wholesale'
+        ? t('Distribution')
+        : viewInventoryType === 'warehouse'
+          ? t('Warehouse')
+          : t('Retail')
+  ), [t, viewInventoryType]);
+  const inventoryPriceTierLabel = useMemo(() => (
+    viewInventoryType === 'all'
+      ? t('Combined')
+      : getPriceTierLabel(viewInventoryType === 'wholesale' ? 'wholesale' : viewInventoryType === 'warehouse' ? 'warehouse' : 'retail')
+  ), [t, viewInventoryType]);
 
   const branch = useMemo(() => (isAllBranches ? null : (branches.find(b => b.id === branchId) || branches[0])), [branches, branchId, isAllBranches]);
   const selectedBranchInventoryType = useMemo(() => normalizeInventoryType(branch?.branchType), [branch?.branchType]);
@@ -120,6 +136,12 @@ function InventoryPage() {
     setViewInventoryType((prev) => prev === nextType ? prev : nextType);
   }, [branches, branchId, isAllBranches]);
   useEffect(() => {
+    if (isAllBranches) return;
+    if (viewInventoryType !== 'all') return;
+    const fallbackType = branch ? normalizeInventoryType(branch.branchType) : 'retail';
+    setViewInventoryType(fallbackType);
+  }, [branch, isAllBranches, viewInventoryType]);
+  useEffect(() => {
     if (categoryFilter !== 'all' && !categoryOptions.some((item) => item.value === categoryFilter)) setCategoryFilter('all');
   }, [categoryOptions, categoryFilter]);
   useEffect(() => {
@@ -127,29 +149,48 @@ function InventoryPage() {
   }, [brandFilter, brandOptions]);
   const selected = useMemo(() => rows.find(p => p.id === modalId) || null, [rows, modalId]);
 
-  const getStockForProduct = useCallback((product, targetBranchId = branchId) => {
-    if (!targetBranchId || String(targetBranchId) === 'all') return getTotalStock(product, viewInventoryType);
-    const numeric = getBranchStock(product, targetBranchId, viewInventoryType);
+  const getStockForProductByType = useCallback((product, targetBranchId = branchId, inventoryType = viewInventoryType) => {
+    if (!targetBranchId || String(targetBranchId) === 'all') return getTotalStock(product, inventoryType);
+    const numeric = getBranchStock(product, targetBranchId, inventoryType);
     if (String(product?.trackType || 'quantity') !== 'serialized') return numeric;
-    const cached = getSerializedCachedUnitsCount(String(product?.id || product?._id || ''), '', String(targetBranchId || ''), viewInventoryType);
+    const cached = getSerializedCachedUnitsCount(String(product?.id || product?._id || ''), '', String(targetBranchId || ''), inventoryType);
     return cached == null ? numeric : cached;
   }, [branchId, viewInventoryType]);
 
-  const getSalePrice = useCallback((product) => {
+  const getStockForProduct = useCallback((product, targetBranchId = branchId) => {
+    if (isCombinedInventoryView) {
+      return COMBINED_INVENTORY_TYPES.reduce((sum, inventoryType) => sum + getStockForProductByType(product, targetBranchId, inventoryType), 0);
+    }
+    return getStockForProductByType(product, targetBranchId, viewInventoryType);
+  }, [branchId, getStockForProductByType, isCombinedInventoryView, viewInventoryType]);
+
+  const getSalePriceByType = useCallback((product, inventoryType = viewInventoryType) => {
     return Number(
-      viewInventoryType === 'warehouse'
+      inventoryType === 'warehouse'
         ? (product.warehousePrice != null ? product.warehousePrice : 0)
-        : viewInventoryType === 'wholesale'
+        : inventoryType === 'wholesale'
           ? (product.wholesalePrice != null ? product.wholesalePrice : product.price || 0)
           : (product.retailPrice != null ? product.retailPrice : product.price || 0)
     );
   }, [viewInventoryType]);
 
-  const getExpectedUnitRevenue = useCallback((product) => {
-    const salePrice = getSalePrice(product);
+  const getExpectedUnitRevenueByType = useCallback((product, inventoryType = viewInventoryType) => {
+    const salePrice = getSalePriceByType(product, inventoryType);
     const unitCost = Number(product?.costPrice || 0);
     return Math.max(unitCost, salePrice);
-  }, [getSalePrice]);
+  }, [getSalePriceByType, viewInventoryType]);
+
+  const formatCombinedPriceDisplay = useCallback((entity) => {
+    const priceValues = COMBINED_INVENTORY_TYPES
+      .map((inventoryType) => getSalePriceByType(entity, inventoryType))
+      .filter((value) => Number.isFinite(value) && value > 0);
+    if (priceValues.length === 0) return formatCurrency(0, settings);
+    const minPrice = Math.min(...priceValues);
+    const maxPrice = Math.max(...priceValues);
+    return minPrice === maxPrice
+      ? formatCurrency(minPrice, settings)
+      : `${formatCurrency(minPrice, settings)} - ${formatCurrency(maxPrice, settings)}`;
+  }, [getSalePriceByType, settings]);
 
   const formatEntityPriceDisplay = useCallback((entity, tier) => {
     const range = getDisplayPriceRange(entity, tier);
@@ -163,10 +204,24 @@ function InventoryPage() {
     const stockTotals = rows.map((p) => getStockForProduct(p, branchId));
     const totalStock = stockTotals.reduce((sum, qty) => sum + (Number(qty) || 0), 0);
     const totalCost = rows.reduce((sum, p) => sum + ((Number(p.costPrice || 0) || 0) * getStockForProduct(p, branchId)), 0);
-    const expectedRevenue = rows.reduce((sum, p) => sum + (getExpectedUnitRevenue(p) * getStockForProduct(p, branchId)), 0);
+    const expectedRevenue = rows.reduce((sum, p) => {
+      if (isCombinedInventoryView) {
+        return sum + COMBINED_INVENTORY_TYPES.reduce((typeSum, inventoryType) => (
+          typeSum + (getExpectedUnitRevenueByType(p, inventoryType) * getStockForProductByType(p, branchId, inventoryType))
+        ), 0);
+      }
+      return sum + (getExpectedUnitRevenueByType(p, viewInventoryType) * getStockForProduct(p, branchId));
+    }, 0);
     const expectedProfit = rows.reduce((sum, p) => {
+      if (isCombinedInventoryView) {
+        return sum + COMBINED_INVENTORY_TYPES.reduce((typeSum, inventoryType) => {
+          const qty = getStockForProductByType(p, branchId, inventoryType);
+          const margin = Math.max(0, getExpectedUnitRevenueByType(p, inventoryType) - Number(p.costPrice || 0));
+          return typeSum + (margin * qty);
+        }, 0);
+      }
       const qty = getStockForProduct(p, branchId);
-      const margin = Math.max(0, getExpectedUnitRevenue(p) - Number(p.costPrice || 0));
+      const margin = Math.max(0, getExpectedUnitRevenueByType(p, viewInventoryType) - Number(p.costPrice || 0));
       return sum + (margin * qty);
     }, 0);
     return {
@@ -177,23 +232,30 @@ function InventoryPage() {
       expectedRevenue,
       expectedProfit
     };
-  }, [rows, branchId, getExpectedUnitRevenue, getStockForProduct]);
+  }, [rows, branchId, getExpectedUnitRevenueByType, getStockForProduct, getStockForProductByType, isCombinedInventoryView, viewInventoryType]);
 
-  const getEntityStock = useCallback((entity, targetBranchId = branchId) => {
-    if (!targetBranchId || String(targetBranchId) === 'all') return getTotalStock(entity, viewInventoryType);
-    const numeric = getBranchStock(entity, targetBranchId, viewInventoryType);
+  const getEntityStockByType = useCallback((entity, targetBranchId = branchId, inventoryType = viewInventoryType) => {
+    if (!targetBranchId || String(targetBranchId) === 'all') return getTotalStock(entity, inventoryType);
+    const numeric = getBranchStock(entity, targetBranchId, inventoryType);
     const parentProductId = entity?.productId || entity?.id || entity?._id || '';
     const variantId = entity?.productId ? (entity?.id || entity?.variantId || '') : '';
     const trackType = String(entity?.trackType || entity?.parentTrackType || 'quantity');
     if (trackType !== 'serialized') return numeric;
-    const cached = getSerializedCachedUnitsCount(String(parentProductId || ''), String(variantId || ''), String(targetBranchId || ''), viewInventoryType);
+    const cached = getSerializedCachedUnitsCount(String(parentProductId || ''), String(variantId || ''), String(targetBranchId || ''), inventoryType);
     return cached == null ? numeric : cached;
   }, [branchId, viewInventoryType]);
 
-  const getEntitySalePrice = useCallback((entity, parent = null) => {
+  const getEntityStock = useCallback((entity, targetBranchId = branchId) => {
+    if (isCombinedInventoryView) {
+      return COMBINED_INVENTORY_TYPES.reduce((sum, inventoryType) => sum + getEntityStockByType(entity, targetBranchId, inventoryType), 0);
+    }
+    return getEntityStockByType(entity, targetBranchId, viewInventoryType);
+  }, [branchId, getEntityStockByType, isCombinedInventoryView, viewInventoryType]);
+
+  const getEntitySalePriceByType = useCallback((entity, parent = null, inventoryType = viewInventoryType) => {
     const source = entity || parent || {};
-    if (viewInventoryType === 'warehouse') return Number(source.warehousePrice != null ? source.warehousePrice : (parent?.warehousePrice != null ? parent.warehousePrice : 0));
-    if (viewInventoryType === 'wholesale') return Number(source.wholesalePrice != null ? source.wholesalePrice : (parent?.wholesalePrice != null ? parent.wholesalePrice : source.price || parent?.price || 0));
+    if (inventoryType === 'warehouse') return Number(source.warehousePrice != null ? source.warehousePrice : (parent?.warehousePrice != null ? parent.warehousePrice : 0));
+    if (inventoryType === 'wholesale') return Number(source.wholesalePrice != null ? source.wholesalePrice : (parent?.wholesalePrice != null ? parent.wholesalePrice : source.price || parent?.price || 0));
     return Number(source.retailPrice != null ? source.retailPrice : (parent?.retailPrice != null ? parent.retailPrice : source.price || parent?.price || 0));
   }, [viewInventoryType]);
 
@@ -215,7 +277,7 @@ function InventoryPage() {
         priceTier: inventoryPriceTierLabel,
         stock: getEntityStock(product, branchId),
         costPrice: Number(product.costPrice || 0),
-        salePrice: getEntitySalePrice(product),
+        salePrice: isCombinedInventoryView ? formatCombinedPriceDisplay(product) : getEntitySalePriceByType(product, null, viewInventoryType),
         lowStock: Number(product.lowStock ?? 0)
       };
       if (!exportIncludeVariants || !Array.isArray(product.variants) || product.variants.length === 0) return [productRow];
@@ -226,11 +288,11 @@ function InventoryPage() {
         sku: variant.sku || product.sku || '',
         barcode: variant.barcode || product.barcode || '',
         stock: getEntityStock({ ...variant, productId: product.id || product._id || '', variantId: variant.id || '', parentTrackType: product.trackType }, branchId),
-        salePrice: getEntitySalePrice(variant, product)
+        salePrice: isCombinedInventoryView ? formatCombinedPriceDisplay({ ...product, ...variant }) : getEntitySalePriceByType(variant, product, viewInventoryType)
       }));
       return [productRow, ...variantRows];
     });
-  }, [branch, branchId, exportIncludeVariants, getEntitySalePrice, getEntityStock, inventoryPriceTierLabel, inventoryTypeLabel, isAllBranches, rows]);
+  }, [branch, branchId, exportIncludeVariants, formatCombinedPriceDisplay, getEntitySalePriceByType, getEntityStock, inventoryPriceTierLabel, inventoryTypeLabel, isAllBranches, isCombinedInventoryView, rows, viewInventoryType]);
 
   const exportHeaders = useMemo(() => [
     { key: 'name', label: 'Product' },
@@ -298,6 +360,10 @@ function InventoryPage() {
   }
 
   function setStockWithAudit(p, variantId, bId, quantity) {
+    if (viewInventoryType === 'all') {
+      toast.show(t('Combined inventory view is read-only. Choose Retail, Distribution, or Warehouse to inspect a single inventory type.'), { type: 'warning' });
+      return;
+    }
     if (String(p.trackType || 'quantity') === 'serialized') {
       toast.show(t('Serialized stock changes only through IMEI or serial unit actions'), { type: 'warning' });
       return;
@@ -397,6 +463,16 @@ function InventoryPage() {
           )}
         </div>
         <div className="filter-actions filter-actions-end" style={{ marginTop: 12 }}>
+            {isAllBranches && (
+              <button
+                className={viewInventoryType === 'all' ? 'btn btn-primary' : 'btn'}
+                onClick={() => !inventoryTypeLocked && setViewInventoryType('all')}
+                disabled={inventoryTypeLocked}
+                title={t('Show combined stock across retail, distribution, and warehouse')}
+              >
+                {t('All')}
+              </button>
+            )}
             <button
               className={viewInventoryType === 'retail' ? 'btn btn-primary' : 'btn'}
               onClick={() => !inventoryTypeLocked && setViewInventoryType('retail')}
@@ -512,18 +588,13 @@ function InventoryPage() {
               <th align="left">SKU</th>
               <th align="left">Price</th>
               <th align="left">Barcode</th>
-              <th align="left">Stock ({viewInventoryType === 'wholesale' ? 'Distribution' : viewInventoryType === 'warehouse' ? 'Warehouse' : 'Retail'} – {isAllBranches ? 'All Branches' : (branch?.code || branch?.name)})</th>
+              <th align="left">Stock ({viewInventoryType === 'all' ? 'All Inventory Types' : viewInventoryType === 'wholesale' ? 'Distribution' : viewInventoryType === 'warehouse' ? 'Warehouse' : 'Retail'} – {isAllBranches ? 'All Branches' : (branch?.code || branch?.name)})</th>
             </tr>
           </thead>
           <tbody>
             {rows.map(p => {
               const low = p.lowStock ?? 0;
               const cur = getStockForProduct(p, branchId);
-              const displayTier = viewInventoryType === 'warehouse'
-                ? 'warehouse'
-                : viewInventoryType === 'wholesale'
-                  ? 'wholesale'
-                  : 'retail';
               const hasVariants = Array.isArray(p.variants) && p.variants.length > 0;
               return (
                 <Fragment key={p.id}>
@@ -544,7 +615,7 @@ function InventoryPage() {
                       </div>
                     </td>
                     <td><code style={{ fontSize: 12 }}>{p.sku || '—'}</code></td>
-                    <td>{formatEntityPriceDisplay(p, displayTier)}</td>
+                    <td>{isCombinedInventoryView ? formatCombinedPriceDisplay(p) : formatEntityPriceDisplay(p, viewInventoryType === 'warehouse' ? 'warehouse' : viewInventoryType === 'wholesale' ? 'wholesale' : 'retail')}</td>
                     <td><code style={{ fontSize: 12 }}>{p.barcode || '—'}</code></td>
                     <td onClick={e => e.stopPropagation()}>
                       {hasVariants ? (
