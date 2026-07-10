@@ -214,7 +214,7 @@ r.post('/start-renewal-payment', async (req, res) => {
   const meta = await ensureTenantActivationCode(master, await Tenant.findOne({ tenantId: resolvedTenantId }));
   if (!meta) return res.status(404).json({ error: 'Tenant not found' });
   if (meta.disabled) return res.status(403).json({ error: 'Tenant disabled' });
-  if (!isTenantExpired(meta)) return res.status(400).json({ error: 'Renewal payment is only available for expired tenants' });
+  if (meta.subscriptionPermanent) return res.status(400).json({ error: 'This tenant already has permanent access' });
   const tenantConn = await getTenantConnection(resolvedTenantId);
   meta._masterConn = master;
   const info = await getTenantRenewalInfo(tenantConn, meta);

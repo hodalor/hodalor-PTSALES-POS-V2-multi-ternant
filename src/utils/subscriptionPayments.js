@@ -103,6 +103,12 @@ function resolveLimitUpgradeRedirectUrl(payload = {}) {
   return String(process.env.TENANT_LIMIT_PAYMENT_REDIRECT_URL || process.env.RENEWAL_PAYMENT_REDIRECT_URL || '').trim();
 }
 
+function resolveRenewalRedirectUrl(payload = {}) {
+  const explicit = String(payload.returnUrl || '').trim();
+  if (/^https?:\/\//i.test(explicit)) return explicit;
+  return String(process.env.RENEWAL_PAYMENT_REDIRECT_URL || '').trim();
+}
+
 function parseAddonTxRef(value) {
   const parts = String(value || '').split('_');
   if (parts.length < 7 || parts[0] !== 'limit' || parts[1] !== 'addon') return null;
@@ -212,7 +218,7 @@ export async function createDpoRenewalPayment(info, payload = {}) {
   if (!amount) throw new Error('Invalid renewal period or subscription amount');
   const channel = String(payload.method || 'card').trim().toLowerCase() === 'mobile_money' ? 'mobile_money' : 'card';
   const txRef = `renewal_${info.tenantId}_${payload.months}_${channel}_${Date.now()}`;
-  const redirectUrl = String(process.env.RENEWAL_PAYMENT_REDIRECT_URL || '').trim();
+  const redirectUrl = resolveRenewalRedirectUrl(payload);
   if (!redirectUrl) throw new Error('Missing renewal payment redirect URL');
   const { firstName, lastName } = splitCustomerName(payload.customerName || info.tenantName || info.tenantId);
   const requestXml = `<?xml version="1.0" encoding="utf-8"?>
@@ -272,7 +278,7 @@ export async function createPayPalRenewalPayment(info, payload = {}) {
   const amount = calculateRenewalAmountFromInfo(info, payload.months);
   if (!amount) throw new Error('Invalid renewal period or subscription amount');
   const txRef = `renewal_${info.tenantId}_${payload.months}_card_${Date.now()}`;
-  const redirectUrl = String(process.env.RENEWAL_PAYMENT_REDIRECT_URL || '').trim();
+  const redirectUrl = resolveRenewalRedirectUrl(payload);
   if (!redirectUrl) throw new Error('Missing renewal payment redirect URL');
   const accessToken = await getPayPalAccessToken();
   const response = await fetch(`${getPayPalBaseUrl()}/v2/checkout/orders`, {
@@ -334,7 +340,7 @@ export async function createPaystackRenewalPayment(info, payload = {}) {
   if (!amount) throw new Error('Invalid renewal period or subscription amount');
   const channel = String(payload.method || 'card').trim().toLowerCase() === 'mobile_money' ? 'mobile_money' : 'card';
   const txRef = `renewal_${info.tenantId}_${payload.months}_${channel}_${Date.now()}`;
-  const redirectUrl = String(process.env.RENEWAL_PAYMENT_REDIRECT_URL || '').trim();
+  const redirectUrl = resolveRenewalRedirectUrl(payload);
   if (!redirectUrl) throw new Error('Missing renewal payment redirect URL');
   const method = String(payload.method || 'card').toLowerCase();
   const channels = method === 'mobile_money' ? ['mobile_money'] : ['card'];
