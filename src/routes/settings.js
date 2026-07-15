@@ -43,6 +43,8 @@ const TENANT_ADMIN_ALLOWED_KEYS = new Set([
   'activeCurrencyCode',
   'themeColor',
   'subscriptionPaymentUnavailableMessage',
+  'systemUpgradeNoticeEnabled',
+  'systemUpgradeNoticeMessage',
   'currentBranchId',
   'categories',
   'creditPackages'
@@ -77,6 +79,10 @@ function normalizeSettingsData(input = {}) {
   if (!String(next.chatNotificationSound || '').trim()) next.chatNotificationSound = 'bright';
   if (!String(next.callNotificationSound || '').trim()) next.callNotificationSound = 'bright';
   if (!String(next.webRtcIceServers || '').trim()) next.webRtcIceServers = 'stun:stun.l.google.com:19302';
+  next.systemUpgradeNoticeEnabled = !!next.systemUpgradeNoticeEnabled;
+  if (!String(next.systemUpgradeNoticeMessage || '').trim()) {
+    next.systemUpgradeNoticeMessage = 'A database upgrade is currently in progress. Your data is safe. Some records may take a little longer to appear while we complete the update. Thank you for your patience.';
+  }
   next.categories = Array.isArray(next.categories)
     ? Array.from(new Set(next.categories.map((value) => String(value || '').trim()).filter(Boolean)))
     : [];
