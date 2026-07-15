@@ -44,6 +44,7 @@ const TENANT_ADMIN_ALLOWED_KEYS = new Set([
   'themeColor',
   'subscriptionPaymentUnavailableMessage',
   'systemUpgradeNoticeEnabled',
+  'systemUpgradeNoticeTitle',
   'systemUpgradeNoticeMessage',
   'currentBranchId',
   'categories',
@@ -80,6 +81,9 @@ function normalizeSettingsData(input = {}) {
   if (!String(next.callNotificationSound || '').trim()) next.callNotificationSound = 'bright';
   if (!String(next.webRtcIceServers || '').trim()) next.webRtcIceServers = 'stun:stun.l.google.com:19302';
   next.systemUpgradeNoticeEnabled = !!next.systemUpgradeNoticeEnabled;
+  if (!String(next.systemUpgradeNoticeTitle || '').trim()) {
+    next.systemUpgradeNoticeTitle = 'Database Upgrade In Progress';
+  }
   if (!String(next.systemUpgradeNoticeMessage || '').trim()) {
     next.systemUpgradeNoticeMessage = 'A database upgrade is currently in progress. Your data is safe. Some records may take a little longer to appear while we complete the update. Thank you for your patience.';
   }
@@ -102,6 +106,9 @@ r.get('/', async (req, res) => {
       const master = await getMasterConnection();
       const TenantModel = TenantModelFor(master);
       const tenant = await TenantModel.findOne({ tenantId }).lean();
+      const MasterSettings = master.model('Settings', Settings.schema);
+      const masterSettingsDoc = await MasterSettings.findOne({ key: 'default' }).lean().catch(() => null);
+      const masterSettings = normalizeSettingsData(masterSettingsDoc?.data || {});
       if (tenant) {
         const before = normalizeSettingsData(doc?.data || {});
         const nextData = {
@@ -111,7 +118,10 @@ r.get('/', async (req, res) => {
           themeColor: tenant.themeColor || before.themeColor || '',
           subscriptionPlan: tenant.subscriptionPlan || before.subscriptionPlan || 'basic',
           subscriptionExpiresAt: tenant.subscriptionExpiresAt || before.subscriptionExpiresAt || null,
-          featureFlags: featureFlagsFromEnabled(Array.isArray(tenant.features) ? tenant.features : [])
+          featureFlags: featureFlagsFromEnabled(Array.isArray(tenant.features) ? tenant.features : []),
+          systemUpgradeNoticeEnabled: !!masterSettings.systemUpgradeNoticeEnabled,
+          systemUpgradeNoticeTitle: String(masterSettings.systemUpgradeNoticeTitle || ''),
+          systemUpgradeNoticeMessage: String(masterSettings.systemUpgradeNoticeMessage || '')
         };
         if (!doc || JSON.stringify(before) !== JSON.stringify(nextData)) {
           doc = await Settings.findOneAndUpdate(
