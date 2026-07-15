@@ -99,6 +99,8 @@ function ConfigSettingsPage() {
     'activeCurrencyCode',
     'themeColor',
     'subscriptionPaymentUnavailableMessage',
+    'systemUpgradeNoticeEnabled',
+    'systemUpgradeNoticeMessage',
     'currentBranchId',
     'categories',
     'creditPackages',
@@ -949,6 +951,33 @@ function ConfigSettingsPage() {
                   style={{ display: 'block', width: '100%', marginTop: 6 }}
                 />
               </label>
+              {isMasterSuperAdmin ? (
+                <div style={{ marginTop: 12, padding: 12, borderRadius: 14, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+                  <h3 className="section-title" style={{ margin: '0 0 8px 0' }}>System Upgrade Notice</h3>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                    <input
+                      type="checkbox"
+                      checked={!!settings.systemUpgradeNoticeEnabled}
+                      onChange={(e) => setSetting('systemUpgradeNoticeEnabled', e.target.checked)}
+                    />
+                    <span>Show database upgrade notice to tenants</span>
+                  </label>
+                  <label style={{ display: 'block' }}>
+                    Upgrade Notice Message
+                    <textarea
+                      className="input"
+                      rows="4"
+                      value={settings.systemUpgradeNoticeMessage || ''}
+                      onChange={e => setSetting('systemUpgradeNoticeMessage', e.target.value)}
+                      style={{ display: 'block', width: '100%', marginTop: 6 }}
+                      placeholder="Example: A database upgrade is currently in progress. Your data is safe and will continue appearing as the update completes. Thank you for your patience."
+                    />
+                  </label>
+                  <div style={{ marginTop: 8, color: '#64748b', fontSize: 12 }}>
+                    Controlled only by master superadmin. When enabled, tenants will see this notice across the app to reassure them during the upgrade.
+                  </div>
+                </div>
+              ) : null}
               {String(auth.user?.tenantId || '').toLowerCase() !== 'master' && (
                 <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: '#f8fafc', color: '#475569' }}>
                   Plan: {String(settings.subscriptionPlan || 'basic')}{settings.subscriptionExpiresAt ? ` • Expires ${new Date(settings.subscriptionExpiresAt).toLocaleDateString()}` : ''}

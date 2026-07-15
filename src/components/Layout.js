@@ -20,6 +20,7 @@ function Layout({ bootstrapLoading = false }) {
   const store = useStore();
   const footer = useSelector(s => s.settings.footerText);
   const settings = useSelector(s => s.settings);
+  const auth = useSelector(s => s.auth);
   const currentBranchId = useSelector(s => s.settings.currentBranchId || '');
   const { t } = useAppLanguage();
   const location = useLocation();
@@ -102,6 +103,12 @@ function Layout({ bootstrapLoading = false }) {
   }
   const brandedName = settings?.clientAppName || settings?.receiptBrandName || settings?.appName || 'ptSales POS';
   const brandedLogo = settings?.clientLogoUrl || '/clientlogo512.png';
+  const tenantId = String(auth?.user?.tenantId || '').trim().toLowerCase();
+  const showSystemUpgradeNotice = !!settings?.systemUpgradeNoticeEnabled && tenantId && tenantId !== 'master';
+  const systemUpgradeNoticeMessage = String(
+    settings?.systemUpgradeNoticeMessage
+    || 'A database upgrade is currently in progress. Your data is safe. Some records may take a little longer to appear while we complete the update. Thank you for your patience.'
+  ).trim();
   const branchScopedPrefix = [
     '/pos',
     '/wholesale-pos',
@@ -167,6 +174,21 @@ function Layout({ bootstrapLoading = false }) {
             </div>
           )}
           <OfflineBanner />
+          {showSystemUpgradeNotice ? (
+            <div
+              className="card"
+              style={{
+                margin: '8px 16px',
+                padding: 14,
+                border: '1px solid #fde68a',
+                background: '#fffbeb',
+                color: '#92400e'
+              }}
+            >
+              <div style={{ fontWeight: 800, marginBottom: 4 }}>{t('Database Upgrade In Progress')}</div>
+              <div style={{ fontSize: 14, lineHeight: 1.5 }}>{systemUpgradeNoticeMessage}</div>
+            </div>
+          ) : null}
           <Breadcrumbs />
           <main className={`main${isPosRoute ? ' pos-main-shell' : ''}`}>
             {bootstrapLoading ? (
