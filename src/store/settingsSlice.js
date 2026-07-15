@@ -20,6 +20,7 @@ const initialState = {
   webRtcIceServers: 'stun:stun.l.google.com:19302',
   subscriptionPaymentUnavailableMessage: 'Online payment is currently unavailable contact Prynovatechnologies@gmail.com for activation code.',
   systemUpgradeNoticeEnabled: false,
+  systemUpgradeNoticeTitle: 'Database Upgrade In Progress',
   systemUpgradeNoticeMessage: 'A database upgrade is currently in progress. Your data is safe. Some records may take a little longer to appear while we complete the update. Thank you for your patience.',
   subscriptionPlan: 'basic',
   subscriptionExpiresAt: null,

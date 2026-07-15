@@ -105,6 +105,10 @@ function Layout({ bootstrapLoading = false }) {
   const brandedLogo = settings?.clientLogoUrl || '/clientlogo512.png';
   const tenantId = String(auth?.user?.tenantId || '').trim().toLowerCase();
   const showSystemUpgradeNotice = !!settings?.systemUpgradeNoticeEnabled && tenantId && tenantId !== 'master';
+  const systemUpgradeNoticeTitle = String(
+    settings?.systemUpgradeNoticeTitle
+    || 'Database Upgrade In Progress'
+  ).trim();
   const systemUpgradeNoticeMessage = String(
     settings?.systemUpgradeNoticeMessage
     || 'A database upgrade is currently in progress. Your data is safe. Some records may take a little longer to appear while we complete the update. Thank you for your patience.'
@@ -185,7 +189,7 @@ function Layout({ bootstrapLoading = false }) {
                 color: '#92400e'
               }}
             >
-              <div style={{ fontWeight: 800, marginBottom: 4 }}>{t('Database Upgrade In Progress')}</div>
+              <div style={{ fontWeight: 800, marginBottom: 4 }}>{systemUpgradeNoticeTitle}</div>
               <div style={{ fontSize: 14, lineHeight: 1.5 }}>{systemUpgradeNoticeMessage}</div>
             </div>
           ) : null}

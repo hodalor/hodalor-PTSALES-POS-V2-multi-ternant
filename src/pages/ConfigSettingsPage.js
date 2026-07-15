@@ -100,6 +100,7 @@ function ConfigSettingsPage() {
     'themeColor',
     'subscriptionPaymentUnavailableMessage',
     'systemUpgradeNoticeEnabled',
+    'systemUpgradeNoticeTitle',
     'systemUpgradeNoticeMessage',
     'currentBranchId',
     'categories',
@@ -963,6 +964,16 @@ function ConfigSettingsPage() {
                     <span>Show database upgrade notice to tenants</span>
                   </label>
                   <label style={{ display: 'block' }}>
+                    Upgrade Notice Title
+                    <input
+                      className="input"
+                      value={settings.systemUpgradeNoticeTitle || ''}
+                      onChange={e => setSetting('systemUpgradeNoticeTitle', e.target.value)}
+                      style={{ display: 'block', width: '100%', marginTop: 6 }}
+                      placeholder="Example: Database Upgrade In Progress"
+                    />
+                  </label>
+                  <label style={{ display: 'block', marginTop: 10 }}>
                     Upgrade Notice Message
                     <textarea
                       className="input"
