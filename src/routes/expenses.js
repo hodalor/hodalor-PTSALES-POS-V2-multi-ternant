@@ -11,6 +11,15 @@ const r = Router();
 
 r.use(requireAuth);
 
+function findExpenseRequestByKey(id = '') {
+  const key = String(id || '').trim();
+  if (!key) return null;
+  if (mongoose.isValidObjectId(key)) {
+    return ExpenseRequest.findOne({ $or: [{ _id: key }, { clientId: key }] });
+  }
+  return ExpenseRequest.findOne({ clientId: key });
+}
+
 r.get('/', async (req, res) => {
   const branchId = String(req.query.branchId || '');
   const from = String(req.query.from || '');
@@ -67,17 +76,34 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager'], 'add_expenses'), asyn
 
 r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_expenses'), async (req, res) => {
   const { id, remark } = req.body || {};
-  const row = await ExpenseRequest.findById(id);
+  const row = await findExpenseRequestByKey(id);
   if (!row) return res.status(404).json({ error: 'Request not found' });
+  const expenseClientId = `expense-request:${String(row._id)}`;
+  if (row.status === 'approved') {
+    const existingExpense = await Expense.findOne({ clientId: expenseClientId }).lean().catch(() => null);
+    return res.json({ ok: true, alreadyProcessed: true, expense: existingExpense, request: row });
+  }
   if (row.status !== 'pending_approval') return res.status(400).json({ error: 'Request not pending' });
-  const exp = await Expense.create({
-    branchId: row.branchId,
-    date: row.date,
-    category: row.category,
-    amount: row.amount,
-    note: row.note,
-    createdBy: req.user?.name || 'unknown'
-  });
+  let exp = await Expense.findOne({ clientId: expenseClientId });
+  if (!exp) {
+    try {
+      exp = await Expense.create({
+        clientId: expenseClientId,
+        branchId: row.branchId,
+        date: row.date,
+        category: row.category,
+        amount: row.amount,
+        note: row.note,
+        createdBy: req.user?.name || 'unknown'
+      });
+    } catch (error) {
+      if (error?.code === 11000) {
+        exp = await Expense.findOne({ clientId: expenseClientId });
+      } else {
+        throw error;
+      }
+    }
+  }
   row.status = 'approved';
   row.approverName = req.user?.name || '';
   row.approverRole = req.user?.role || '';
@@ -96,8 +122,9 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_expenses'), a
 
 r.post('/reject', requireRoleOrPerm(['Admin','Manager'], 'approve_expenses'), async (req, res) => {
   const { id, remark } = req.body || {};
-  const row = await ExpenseRequest.findById(id);
+  const row = await findExpenseRequestByKey(id);
   if (!row) return res.status(404).json({ error: 'Request not found' });
+  if (row.status === 'rejected') return res.json({ ok: true, alreadyProcessed: true, request: row });
   if (row.status !== 'pending_approval') return res.status(400).json({ error: 'Request not pending' });
   row.status = 'rejected';
   row.approverName = req.user?.name || '';
