@@ -56,6 +56,10 @@ function ExpenseApprovalsPage() {
     return () => { alive = false; };
   }, [statusFilter, reloadAt]);
 
+  function refreshRequests() {
+    setReloadAt(Date.now());
+  }
+
   const byId = useMemo(() => {
     const map = new Map();
     branches.forEach(b => map.set(b.id, b.name || b.code || b.id));
@@ -76,10 +80,22 @@ function ExpenseApprovalsPage() {
       } else {
         await expensesApi.approve({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
       }
-      setRows(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, status: 'approved', approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', approvalRemark: remark, approved_at: new Date().toISOString() } : x));
+      setRows(prev => {
+        if (statusFilter === 'pending') {
+          return prev.filter(x => String(x._id || x.clientId) !== String(id));
+        }
+        return prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, status: 'approved', approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', approvalRemark: remark, approved_at: new Date().toISOString() } : x);
+      });
+      refreshRequests();
       toast.show('Expense approved', { type: 'success' });
     } catch (e) {
-      toast.show(String(e?.message || 'Failed to approve'), { type: 'error' });
+      const msg = String(e?.message || '');
+      if (/timed out/i.test(msg) || /request not pending/i.test(msg)) {
+        refreshRequests();
+        toast.show('Approval is processing or already completed. The list has been refreshed.', { type: 'success' });
+      } else {
+        toast.show(msg || 'Failed to approve', { type: 'error' });
+      }
     } finally { setBusyId(null); }
   }
   async function reject(r) {
@@ -94,10 +110,22 @@ function ExpenseApprovalsPage() {
       } else {
         await expensesApi.reject({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
       }
-      setRows(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, status: 'rejected', approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', rejectionRemark: remark, rejected_at: new Date().toISOString() } : x));
+      setRows(prev => {
+        if (statusFilter === 'pending') {
+          return prev.filter(x => String(x._id || x.clientId) !== String(id));
+        }
+        return prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, status: 'rejected', approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', rejectionRemark: remark, rejected_at: new Date().toISOString() } : x);
+      });
+      refreshRequests();
       toast.show('Expense rejected', { type: 'success' });
     } catch (e) {
-      toast.show(String(e?.message || 'Failed to reject'), { type: 'error' });
+      const msg = String(e?.message || '');
+      if (/timed out/i.test(msg) || /request not pending/i.test(msg)) {
+        refreshRequests();
+        toast.show('Rejection is processing or already completed. The list has been refreshed.', { type: 'success' });
+      } else {
+        toast.show(msg || 'Failed to reject', { type: 'error' });
+      }
     } finally { setBusyId(null); }
   }
 
