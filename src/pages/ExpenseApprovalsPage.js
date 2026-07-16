@@ -9,6 +9,14 @@ import { enqueueHttp } from '../offline/offlineBackup';
 import { promptDialog } from '../utils/dialogs';
 import LoadingDots from '../components/LoadingDots';
 
+// #region debug-point A:helper
+const reportExpenseApprovalDebug = (hypothesisId, msg, data = {}) => fetch('http://127.0.0.1:7777/event', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ sessionId: 'expense-approval-stuck', runId: 'post-fix', hypothesisId, location: 'frontend/src/pages/ExpenseApprovalsPage.js', msg: `[DEBUG] ${msg}`, data, ts: Date.now() })
+}).catch(() => {});
+// #endregion
+
 function ExpenseApprovalsPage() {
   const settings = useSelector(s => s.settings);
   const branches = useSelector(s => s.branches.branches);
@@ -35,6 +43,9 @@ function ExpenseApprovalsPage() {
   useEffect(() => {
     let alive = true;
     (async () => {
+      // #region debug-point C:load-start
+      reportExpenseApprovalDebug('C', 'load requests start', { statusFilter, reloadAt, branchFilter });
+      // #endregion
       setLoading(true);
       try {
         let list = await expensesApi.listRequests({ status: statusFilter, limit: 300 });
@@ -44,7 +55,13 @@ function ExpenseApprovalsPage() {
           list = Array.isArray(all) ? all.filter(r => wanted.includes(String(r.status || ''))) : [];
         }
         if (alive) setRows(Array.isArray(list) ? list : []);
+        // #region debug-point C:load-success
+        reportExpenseApprovalDebug('C', 'load requests success', { statusFilter, count: Array.isArray(list) ? list.length : -1 });
+        // #endregion
       } catch (e) {
+        // #region debug-point C:load-error
+        reportExpenseApprovalDebug('C', 'load requests error', { statusFilter, error: String(e?.message || e || '') });
+        // #endregion
         if (alive) {
           setRows([]);
           try { toast.show(String(e?.message || 'Failed to load requests'), { type: 'error' }); } catch {}
@@ -74,12 +91,21 @@ function ExpenseApprovalsPage() {
     try {
       const remark = await promptDialog('Enter remark for approval (required)');
       if (!remark || !String(remark).trim()) { toast.show('Remark is required', { type: 'error' }); return; }
+      // #region debug-point A:approve-start
+      reportExpenseApprovalDebug('A', 'approve start', { id: String(id), status: String(r?.status || ''), branchId: String(r?.branchId || ''), navigatorOnline: !!navigator.onLine });
+      // #endregion
       setBusyId(id);
       if (!navigator.onLine) {
         await enqueueHttp({ collection: 'expenserequests', label: 'Expense approve', path: '/api/expenses/approve', method: 'POST', body: { id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark } });
       } else {
+        // #region debug-point A:approve-api-call
+        reportExpenseApprovalDebug('A', 'approve api call', { id: String(id) });
+        // #endregion
         await expensesApi.approve({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
       }
+      // #region debug-point A:approve-success
+      reportExpenseApprovalDebug('A', 'approve success', { id: String(id), statusFilter });
+      // #endregion
       setRows(prev => {
         if (statusFilter === 'pending') {
           return prev.filter(x => String(x._id || x.clientId) !== String(id));
@@ -90,13 +116,21 @@ function ExpenseApprovalsPage() {
       toast.show('Expense approved', { type: 'success' });
     } catch (e) {
       const msg = String(e?.message || '');
+      // #region debug-point B:approve-error
+      reportExpenseApprovalDebug('B', 'approve error', { id: String(id), message: msg, status: Number(e?.status || 0) || null });
+      // #endregion
       if (/timed out/i.test(msg) || /request not pending/i.test(msg)) {
         refreshRequests();
         toast.show('Approval is processing or already completed. The list has been refreshed.', { type: 'success' });
       } else {
         toast.show(msg || 'Failed to approve', { type: 'error' });
       }
-    } finally { setBusyId(null); }
+    } finally {
+      // #region debug-point A:approve-finally
+      reportExpenseApprovalDebug('A', 'approve finally clear busy', { id: String(id) });
+      // #endregion
+      setBusyId(null);
+    }
   }
   async function reject(r) {
     if (!canApprove) { toast.show('Not authorized to reject expenses', { type: 'error' }); return; }
@@ -104,6 +138,9 @@ function ExpenseApprovalsPage() {
     try {
       const remark = await promptDialog('Enter reason for rejection (required)');
       if (!remark || !String(remark).trim()) { toast.show('Remark is required', { type: 'error' }); return; }
+      // #region debug-point D:reject-start
+      reportExpenseApprovalDebug('D', 'reject start', { id: String(id), status: String(r?.status || ''), branchId: String(r?.branchId || ''), navigatorOnline: !!navigator.onLine });
+      // #endregion
       setBusyId(id);
       if (!navigator.onLine) {
         await enqueueHttp({ collection: 'expenserequests', label: 'Expense reject', path: '/api/expenses/reject', method: 'POST', body: { id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark } });
@@ -120,13 +157,21 @@ function ExpenseApprovalsPage() {
       toast.show('Expense rejected', { type: 'success' });
     } catch (e) {
       const msg = String(e?.message || '');
+      // #region debug-point D:reject-error
+      reportExpenseApprovalDebug('D', 'reject error', { id: String(id), message: msg, status: Number(e?.status || 0) || null });
+      // #endregion
       if (/timed out/i.test(msg) || /request not pending/i.test(msg)) {
         refreshRequests();
         toast.show('Rejection is processing or already completed. The list has been refreshed.', { type: 'success' });
       } else {
         toast.show(msg || 'Failed to reject', { type: 'error' });
       }
-    } finally { setBusyId(null); }
+    } finally {
+      // #region debug-point D:reject-finally
+      reportExpenseApprovalDebug('D', 'reject finally clear busy', { id: String(id) });
+      // #endregion
+      setBusyId(null);
+    }
   }
 
   return (
