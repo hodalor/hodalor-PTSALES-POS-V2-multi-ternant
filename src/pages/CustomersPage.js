@@ -16,6 +16,7 @@ import { Chart, BarElement, CategoryScale, LinearScale, Tooltip, Legend } from '
 import LoadingDots from '../components/LoadingDots';
 import { getCreditModeLabel, getSaleSettlementStatus } from '../utils/saleAccounting';
 import { formatDateTime } from '../utils/dateFormat';
+import { exportCsv, exportTablePdf } from '../utils/exporters';
 
 Chart.register(BarElement, CategoryScale, LinearScale, Tooltip, Legend);
 
@@ -62,6 +63,9 @@ function CustomersPage() {
   const [pageTab, setPageTab] = useState('customers');
   const [leaderboardMode, setLeaderboardMode] = useState('amount');
   const [leaderboardTypeFilter, setLeaderboardTypeFilter] = useState('all');
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportScope, setExportScope] = useState('all');
+  const [exportFormat, setExportFormat] = useState('csv');
   const purchaseHistoryEnabled = isFeatureEnabled(settings, 'tabs.customerPurchaseHistory');
 
   useEffect(() => {
@@ -185,6 +189,7 @@ function CustomersPage() {
     vip: filtered.filter(c => Boolean(c.vip)).length,
     businessProfiles: filtered.filter(c => String(c.businessName || '').trim() || String(c.registrationNumber || '').trim() || String(c.taxId || '').trim()).length
   }), [filtered]);
+  const selectedCustomers = useMemo(() => customers.filter((customer) => selectedIds.includes(String(customer.id))), [customers, selectedIds]);
   const customerMetaMap = useMemo(() => {
     const map = new Map();
     customers.forEach((customer) => {
@@ -619,6 +624,45 @@ function CustomersPage() {
     }
   }
 
+  function openExportModal() {
+    setExportScope(selectedCustomers.length > 0 ? 'selected' : 'all');
+    setExportFormat('csv');
+    setExportOpen(true);
+  }
+
+  function runCustomerExport() {
+    const sourceRows = exportScope === 'selected' ? selectedCustomers : customers;
+    if (!Array.isArray(sourceRows) || sourceRows.length === 0) {
+      toast.show(exportScope === 'selected' ? 'Select customers to export' : 'No customers to export', { type: 'error' });
+      return;
+    }
+    const headers = [
+      { key: 'name', label: 'Name' },
+      { key: 'phone', label: 'Phone' },
+      { key: 'address', label: 'Location / Address', value: (row) => String(row.address || row.businessAddress || '').trim() || '—' },
+      { key: 'businessName', label: 'Business Name', value: (row) => String(row.businessName || '').trim() || '—' }
+    ];
+    const fileSuffix = exportScope === 'selected' ? 'selected-customers' : 'customers';
+    if (exportFormat === 'csv') {
+      exportCsv(`${fileSuffix}.csv`, headers, sourceRows);
+    } else {
+      exportTablePdf('Customers Export', headers, sourceRows, {
+        letterhead: {
+          companyName: settings.clientAppName || settings.receiptBrandName || settings.appName || 'ptSales POS',
+          branch: currentBranchName || 'All Branches',
+          phone: settings.phone || '',
+          address: settings.address || ''
+        },
+        meta: [
+          { label: 'Scope', value: exportScope === 'selected' ? `Selected Customers (${sourceRows.length})` : `All Customers (${sourceRows.length})` },
+          { label: 'Customer Type', value: customerTypeFilter === 'all' ? 'All Customer Types' : customerTypeFilter === 'distribution' ? 'Distribution Customers' : 'Retail Customers' }
+        ]
+      });
+    }
+    setExportOpen(false);
+    toast.show(`Customer export started as ${String(exportFormat || '').toUpperCase()}`, { type: 'success' });
+  }
+
   return (
     <div className="page-shell">
       <div className="page-header">
@@ -628,6 +672,9 @@ function CustomersPage() {
         </div>
         <div className="page-header-actions">
           <OfflineQueueIndicator collection="customers" label="Customers queued" />
+          <button className="btn" onClick={openExportModal} disabled={filtered.length === 0}>
+            Export Customers
+          </button>
           {canAddCustomers && (
             <button className="btn btn-primary" onClick={openCreate}>
               <svg viewBox="0 0 24 24" fill="none" style={{ marginRight: 6 }}><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2"/></svg>
@@ -775,16 +822,14 @@ function CustomersPage() {
         <table className="table">
           <thead>
             <tr>
-              {canRemoveCustomers && (
-                <th align="left">
-                  <input
-                    type="checkbox"
-                    disabled={bulkDeleting}
-                    checked={filtered.length > 0 && filtered.every(c => selectedIds.includes(String(c.id)))}
-                    onChange={e => setSelectedIds(e.target.checked ? filtered.map(c => String(c.id)).filter(Boolean) : [])}
-                  />
-                </th>
-              )}
+              <th align="left">
+                <input
+                  type="checkbox"
+                  disabled={bulkDeleting}
+                  checked={filtered.length > 0 && filtered.every(c => selectedIds.includes(String(c.id)))}
+                  onChange={e => setSelectedIds(e.target.checked ? filtered.map(c => String(c.id)).filter(Boolean) : [])}
+                />
+              </th>
               <th align="left">Customer</th>
               <th align="left">Customer ID</th>
               <th align="left">Type</th>
@@ -799,16 +844,14 @@ function CustomersPage() {
           <tbody>
             {filtered.map(c => (
               <tr key={c.id} style={{ cursor: bulkDeleting ? 'default' : 'pointer', opacity: bulkDeleting && selectedIds.includes(String(c.id)) ? 0.55 : 1 }} onClick={() => { if (!bulkDeleting) openCustomer(c); }}>
-                {canRemoveCustomers && (
-                  <td onClick={e => e.stopPropagation()}>
-                    <input
-                      type="checkbox"
-                      disabled={bulkDeleting}
-                      checked={selectedIds.includes(String(c.id))}
-                      onChange={e => setSelectedIds(prev => e.target.checked ? [...new Set([...prev, String(c.id)])] : prev.filter(id => id !== String(c.id)))}
-                    />
-                  </td>
-                )}
+                <td onClick={e => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    disabled={bulkDeleting}
+                    checked={selectedIds.includes(String(c.id))}
+                    onChange={e => setSelectedIds(prev => e.target.checked ? [...new Set([...prev, String(c.id)])] : prev.filter(id => id !== String(c.id)))}
+                  />
+                </td>
                 <td style={{ fontWeight: 700 }}>{c.name}</td>
                 <td>{c.customerCode || '—'}</td>
                 <td>{String(c.customerType || 'retail') === 'distribution' ? 'Distribution' : 'Retail'}</td>
@@ -820,11 +863,44 @@ function CustomersPage() {
                 <td>{c.vip ? 'Yes' : 'No'}</td>
               </tr>
             ))}
-            {loading && <tr><td colSpan={canRemoveCustomers ? 10 : 9} style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading customers" /></td></tr>}
-            {!loading && filtered.length === 0 && <tr><td colSpan={canRemoveCustomers ? 10 : 9} style={{ padding: 12, color: '#64748b' }}>No customers</td></tr>}
+            {loading && <tr><td colSpan="10" style={{ padding: 12, color: '#64748b' }}><LoadingDots label="Loading customers" /></td></tr>}
+            {!loading && filtered.length === 0 && <tr><td colSpan="10" style={{ padding: 12, color: '#64748b' }}>No customers</td></tr>}
           </tbody>
         </table>
       </div>
+      )}
+
+      {exportOpen && (
+        <Modal
+          title="Export Customers"
+          onClose={() => setExportOpen(false)}
+          footer={(
+            <>
+              <button className="btn" onClick={() => setExportOpen(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={runCustomerExport}>Export</button>
+            </>
+          )}
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <label>
+              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Customers To Export</div>
+              <select className="select" value={exportScope} onChange={e => setExportScope(e.target.value)}>
+                <option value="all">All Customers ({customers.length})</option>
+                <option value="selected" disabled={selectedCustomers.length === 0}>Selected Customers ({selectedCustomers.length})</option>
+              </select>
+            </label>
+            <label>
+              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Format</div>
+              <select className="select" value={exportFormat} onChange={e => setExportFormat(e.target.value)}>
+                <option value="csv">CSV</option>
+                <option value="pdf">PDF</option>
+              </select>
+            </label>
+            <div style={{ color: '#64748b', fontSize: 13 }}>
+              Export includes name, phone, location or address, and business name when available.
+            </div>
+          </div>
+        </Modal>
       )}
 
       {modalOpen && (
