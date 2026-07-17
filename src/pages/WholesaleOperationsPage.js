@@ -50,6 +50,32 @@ function normalizeReviewItemsForCompare(items = []) {
   }));
 }
 
+function formatAdjustmentTypeLabel(value, t) {
+  return String(value || '').toLowerCase() === 'decrease' ? t('Decrease') : t('Increase');
+}
+
+function summarizeAdjustmentType(row, items, t) {
+  const itemTypes = Array.from(new Set(
+    (Array.isArray(items) ? items : [])
+      .map((item) => String(item?.adjustmentType || '').toLowerCase())
+      .filter(Boolean)
+  ));
+  if (itemTypes.length > 1) return t('Mixed Adjustment');
+  if (itemTypes.length === 1) return formatAdjustmentTypeLabel(itemTypes[0], t);
+  return formatAdjustmentTypeLabel(row?.adjustmentType || 'increase', t);
+}
+
+function getAdjustmentTypePillStyle(label) {
+  const lower = String(label || '').toLowerCase();
+  if (lower.includes('decrease')) {
+    return { background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c' };
+  }
+  if (lower.includes('mixed')) {
+    return { background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e' };
+  }
+  return { background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857' };
+}
+
 function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' }) {
   const { t } = useAppLanguage();
   const toast = useToast();
@@ -378,6 +404,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const pageRows = useMemo(
     () => filteredOperations.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize),
     [filteredOperations, page, pageSize]
+  );
+  const selectedAdjustmentLabel = useMemo(
+    () => summarizeAdjustmentType(selectedRow, reviewItems, t),
+    [reviewItems, selectedRow, t]
   );
 
   function resetForm() {
@@ -855,6 +885,9 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
               {loading && filteredOperations.length === 0 && <tr><td colSpan="9" style={{ padding: 12, color: '#64748b' }}><LoadingDots label={t('Loading wholesale operations')} /></td></tr>}
               {!loading && pageRows.map(row => {
                 const meta = getProductDisplayMeta(products, row.productId, row.variantId, row);
+                const rowAdjustmentLabel = String(row.operationType || '').toLowerCase() === 'adjustment'
+                  ? summarizeAdjustmentType(row, Array.isArray(row.items) ? row.items : [], t)
+                  : '';
                 const route = row.operationType === 'transfer'
                   ? `${branchNameById.get(row.fromBranchId || row.from) || row.fromBranchId || row.from || '—'} ${t(String(row.fromInventoryType || 'retail'))} → ${branchNameById.get(row.toBranchId || row.to) || row.toBranchId || row.to || '—'} ${t(String(row.toInventoryType || 'retail'))}`
                   : `${branchNameById.get(row.branchId) || row.branchId || '—'} • ${t(String(row.toInventoryType || row.fromInventoryType || 'wholesale'))}`;
@@ -868,6 +901,13 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                   <tr key={row._id || row.clientId} onClick={() => openReview(row)} style={{ cursor: 'pointer' }}>
                     <td>
                       <div>{title}</div>
+                      {rowAdjustmentLabel && (
+                        <div style={{ marginTop: 6 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, ...getAdjustmentTypePillStyle(rowAdjustmentLabel) }}>
+                            {rowAdjustmentLabel}
+                          </span>
+                        </div>
+                      )}
                       {meta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
                     </td>
                     <td>{route}</td>
@@ -1176,6 +1216,18 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
           )}
         >
           <div style={{ display: 'grid', gap: 12 }}>
+            {String(selectedRow.operationType || '').toLowerCase() === 'adjustment' && (
+              <div style={{
+                padding: 12,
+                borderRadius: 12,
+                background: String(selectedAdjustmentLabel).toLowerCase().includes('decrease') ? '#fef2f2' : String(selectedAdjustmentLabel).toLowerCase().includes('mixed') ? '#fffbeb' : '#ecfdf5',
+                border: String(selectedAdjustmentLabel).toLowerCase().includes('decrease') ? '1px solid #fecaca' : String(selectedAdjustmentLabel).toLowerCase().includes('mixed') ? '1px solid #fde68a' : '1px solid #a7f3d0',
+                color: String(selectedAdjustmentLabel).toLowerCase().includes('decrease') ? '#b91c1c' : String(selectedAdjustmentLabel).toLowerCase().includes('mixed') ? '#92400e' : '#047857'
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.8 }}>{t('Adjustment Type')}</div>
+                <div style={{ fontSize: 20, fontWeight: 800, marginTop: 4 }}>{selectedAdjustmentLabel}</div>
+              </div>
+            )}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Status')}</div><strong>{selectedRow.status}</strong></div>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Title')}</div><strong>{selectedRow.transactionTitle || '—'}</strong></div>
@@ -1190,16 +1242,19 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Director Approval Date')}</div><strong>{formatDateTime(selectedRow.directorApproved_at || selectedRow.directorApprovedAt)}</strong></div>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Manager Approval Date')}</div><strong>{formatDateTime(selectedRow.managerApproved_at || selectedRow.managerApprovedAt)}</strong></div>
             </div>
+            <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Reason')}</div><strong>{selectedRow.reason || '—'}</strong></div>
             <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Remark')}</div><strong>{selectedRow.remark || selectedRow.approvalRemark || selectedRow.rejectionRemark || '—'}</strong></div>
             <div className="table-wrap">
               <table className="table">
                 <thead>
                   <tr>
                     <th align="left">{t('Product')}</th>
+                    {String(selectedRow.operationType || '').toLowerCase() === 'adjustment' && <th align="left">{t('Adjustment Type')}</th>}
                     <th align="left">{t('Qty')}</th>
                     <th align="left">{t('Units')}</th>
                     <th align="left">{t('Status')}</th>
                     <th align="left">{t('Reason')}</th>
+                    <th align="left">{t('Remark')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1221,6 +1276,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                             </div>
                           )}
                         </td>
+                        {String(selectedRow.operationType || '').toLowerCase() === 'adjustment' && <td>{formatAdjustmentTypeLabel(item.adjustmentType || selectedRow.adjustmentType || 'increase', t)}</td>}
                         <td>
                           <input className="input" type="number" min="0" value={item.qty} onChange={e => setReviewItems(prev => prev.map((row, rowIndex) => rowIndex === index ? { ...row, qty: Number(e.target.value) || 0 } : row))} style={{ width: 90, color: '#111827' }} disabled={(Array.isArray(item.unitIds) && item.unitIds.length > 0) || (Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0) || !canActOnSelectedRow || reviewing} />
                         </td>
@@ -1232,6 +1288,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                           </select>
                         </td>
                         <td style={{ color: '#111827' }}>{item.reason || item.remark || '—'}</td>
+                        <td style={{ color: '#111827' }}>{item.remark || '—'}</td>
                       </tr>
                     );
                   })}

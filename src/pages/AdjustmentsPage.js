@@ -1186,8 +1186,30 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
 function RequestDetail({ detail, products, byId }) {
   const meta = getProductDisplayMeta(products, detail.productId, detail.variantId, detail);
   const adjustment = getAdjustmentDisplay(detail);
+  const itemAdjustmentTypes = Array.isArray(detail.items)
+    ? Array.from(new Set(detail.items.map((item) => getAdjustmentDisplay(item).type)))
+    : [];
+  const reviewTypeLabel = itemAdjustmentTypes.length > 1
+    ? 'Mixed Adjustment'
+    : (itemAdjustmentTypes[0] === 'decrease' ? 'Decrease Stock' : itemAdjustmentTypes[0] === 'increase' ? 'Increase Stock' : (adjustment.type === 'decrease' ? 'Decrease Stock' : 'Increase Stock'));
+  const reviewTypeStyle = String(reviewTypeLabel).toLowerCase().includes('decrease')
+    ? { background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c' }
+    : String(reviewTypeLabel).toLowerCase().includes('mixed')
+      ? { background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e' }
+      : { background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857' };
   return (
     <>
+      <div style={{ marginBottom: 12, padding: 12, borderRadius: 12, ...reviewTypeStyle }}>
+        <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.8 }}>Adjustment Review Type</div>
+        <div style={{ fontSize: 20, fontWeight: 800, marginTop: 4 }}>{reviewTypeLabel}</div>
+        <div style={{ fontSize: 13, marginTop: 4 }}>
+          {reviewTypeLabel === 'Mixed Adjustment'
+            ? 'This request contains both increase and decrease adjustment lines.'
+            : reviewTypeLabel === 'Decrease Stock'
+              ? 'Approving this request will reduce stock for the affected item(s).'
+              : 'Approving this request will increase stock for the affected item(s).'}
+        </div>
+      </div>
       <div className="detail-grid">
         <div className="detail-field"><div className="detail-label">Status</div><div className="detail-value"><span className={`status-pill ${detail.status === 'approved' ? 'status-pill-approved' : detail.status === 'rejected' ? 'status-pill-rejected' : 'status-pill-pending'}`}>{detail.status}</span></div></div>
         <div className="detail-field"><div className="detail-label">Title</div><div className="detail-value">{detail.transactionTitle || '—'}</div></div>

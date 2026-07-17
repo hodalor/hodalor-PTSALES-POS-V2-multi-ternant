@@ -9,6 +9,10 @@ import { confirmDialog, promptDialog } from '../utils/dialogs';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import LoadingDots from '../components/LoadingDots';
 
+function formatAdjustmentTypeLabel(value) {
+  return String(value || '').toLowerCase() === 'decrease' ? 'Decrease' : 'Increase';
+}
+
 function WarehouseApprovalsPage() {
   const toast = useToast();
   const dispatch = useDispatch();
@@ -44,6 +48,16 @@ function WarehouseApprovalsPage() {
     branches.forEach(branch => map.set(branch.id, branch.name || branch.code || branch.id));
     return map;
   }, [branches]);
+  const selectedAdjustmentLabel = useMemo(() => {
+    const types = Array.from(new Set(
+      reviewItems
+        .map((item) => String(item?.adjustmentType || '').toLowerCase())
+        .filter(Boolean)
+    ));
+    if (types.length > 1) return 'Mixed Adjustment';
+    if (types.length === 1) return formatAdjustmentTypeLabel(types[0]);
+    return formatAdjustmentTypeLabel(selectedRow?.adjustmentType || 'increase');
+  }, [reviewItems, selectedRow]);
 
   const load = useCallback(async (options = {}) => {
     setLoading(true);
@@ -76,10 +90,12 @@ function WarehouseApprovalsPage() {
         ? selectedRow.items.map((item, index) => ({
             lineId: item.lineId || `${index + 1}`,
             productId: item.productId,
+            variantId: item.variantId || '',
             qty: Number(item.qty || 0),
             unitIds: Array.isArray(item.unitIds) ? item.unitIds.map(String) : [],
             selectedUnits: Array.isArray(item.selectedUnits) ? item.selectedUnits.map(unit => ({ unitId: unit?.unitId || '', imei: unit?.imei || '', serialNumber: unit?.serialNumber || '' })) : [],
             serializedEntries: Array.isArray(item.serializedEntries) ? item.serializedEntries.map(entry => ({ imei: entry?.imei || '', serialNumber: entry?.serialNumber || '' })) : [],
+            adjustmentType: item.adjustmentType || 'increase',
             status: normalizeReviewStatus(item.status),
             reason: item.reason || '',
             remark: item.remark || ''
@@ -87,10 +103,12 @@ function WarehouseApprovalsPage() {
         : [{
             lineId: '1',
             productId: selectedRow.productId,
+            variantId: selectedRow.variantId || '',
             qty: Number(selectedRow.qty || 0),
             unitIds: Array.isArray(selectedRow.unitIds) ? selectedRow.unitIds.map(String) : [],
             selectedUnits: Array.isArray(selectedRow.selectedUnits) ? selectedRow.selectedUnits.map(unit => ({ unitId: unit?.unitId || '', imei: unit?.imei || '', serialNumber: unit?.serialNumber || '' })) : [],
             serializedEntries: Array.isArray(selectedRow.serializedEntries) ? selectedRow.serializedEntries.map(entry => ({ imei: entry?.imei || '', serialNumber: entry?.serialNumber || '' })) : [],
+            adjustmentType: selectedRow.adjustmentType || 'increase',
             status: 'accepted',
             reason: selectedRow.reason || '',
             remark: selectedRow.remark || ''
@@ -269,21 +287,38 @@ function WarehouseApprovalsPage() {
           )}
         >
           <div style={{ display: 'grid', gap: 10 }}>
+            {String(selectedRow.operationType || '').toLowerCase() === 'adjustment' && (
+              <div style={{
+                padding: 12,
+                borderRadius: 12,
+                background: String(selectedAdjustmentLabel).toLowerCase().includes('decrease') ? '#fef2f2' : String(selectedAdjustmentLabel).toLowerCase().includes('mixed') ? '#fffbeb' : '#ecfdf5',
+                border: String(selectedAdjustmentLabel).toLowerCase().includes('decrease') ? '1px solid #fecaca' : String(selectedAdjustmentLabel).toLowerCase().includes('mixed') ? '1px solid #fde68a' : '1px solid #a7f3d0',
+                color: String(selectedAdjustmentLabel).toLowerCase().includes('decrease') ? '#b91c1c' : String(selectedAdjustmentLabel).toLowerCase().includes('mixed') ? '#92400e' : '#047857'
+              }}>
+                <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.8 }}>Adjustment Type</div>
+                <div style={{ fontSize: 20, fontWeight: 800, marginTop: 4 }}>{selectedAdjustmentLabel}</div>
+              </div>
+            )}
             <div><strong>Type:</strong> {selectedRow.operationType}</div>
+            <div><strong>Title:</strong> {selectedRow.transactionTitle || '—'}</div>
             <div><strong>Status:</strong> {selectedRow.status}</div>
             <div><strong>Quantity:</strong> {Number(selectedRow.qty || 0)}</div>
             <div><strong>Value:</strong> {maskCostValue(selectedRow.cost || selectedRow.requestedAmount || 0)}</div>
             <div><strong>Source:</strong> {branchNameById.get(selectedRow.fromBranchId || selectedRow.from || selectedRow.branchId) || selectedRow.fromBranchId || selectedRow.from || selectedRow.branchId || '—'} ({selectedRow.fromInventoryType || 'warehouse'})</div>
             <div><strong>Destination:</strong> {branchNameById.get(selectedRow.toBranchId || selectedRow.to) || selectedRow.toBranchId || selectedRow.to || '—'} ({selectedRow.toInventoryType || selectedRow.fromInventoryType || 'warehouse'})</div>
+            <div><strong>Reason:</strong> {selectedRow.reason || '—'}</div>
             <div><strong>Remark:</strong> {selectedRow.remark || '—'}</div>
             <div style={{ overflowX: 'auto' }}>
               <table className="table">
                 <thead>
                   <tr>
                     <th align="left">Product</th>
+                    {String(selectedRow.operationType || '').toLowerCase() === 'adjustment' && <th align="left">Adjustment Type</th>}
                     <th align="left">Qty</th>
                     <th align="left">Units</th>
                     <th align="left">Status</th>
+                    <th align="left">Reason</th>
+                    <th align="left">Remark</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -304,6 +339,7 @@ function WarehouseApprovalsPage() {
                             </div>
                           )}
                         </td>
+                        {String(selectedRow.operationType || '').toLowerCase() === 'adjustment' && <td>{formatAdjustmentTypeLabel(item.adjustmentType || selectedRow.adjustmentType || 'increase')}</td>}
                         <td><input className="input" type="number" min="0" value={item.qty} onChange={e => setReviewItems(prev => prev.map((row, rowIndex) => rowIndex === index ? { ...row, qty: Number(e.target.value) || 0 } : row))} style={{ width: 90, color: '#111827' }} disabled={(Array.isArray(item.unitIds) && item.unitIds.length > 0) || (Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0) || !canAct(selectedRow) || !!workingId} /></td>
                         <td style={{ color: '#111827' }}>{Array.isArray(item.unitIds) && item.unitIds.length > 0 ? item.unitIds.length : (Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0 ? item.serializedEntries.length : '—')}</td>
                         <td>
@@ -312,6 +348,8 @@ function WarehouseApprovalsPage() {
                             <option value="cancelled">Cancelled</option>
                           </select>
                         </td>
+                        <td style={{ color: '#111827' }}>{item.reason || '—'}</td>
+                        <td style={{ color: '#111827' }}>{item.remark || '—'}</td>
                       </tr>
                     );
                   })}
