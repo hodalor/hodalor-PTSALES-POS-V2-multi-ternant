@@ -13,6 +13,17 @@ function formatAdjustmentTypeLabel(value) {
   return String(value || '').toLowerCase() === 'decrease' ? 'Decrease' : 'Increase';
 }
 
+function getAdjustmentTypePillStyle(label) {
+  const lower = String(label || '').toLowerCase();
+  if (lower.includes('decrease')) {
+    return { background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c' };
+  }
+  if (lower.includes('mixed')) {
+    return { background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e' };
+  }
+  return { background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857' };
+}
+
 function WarehouseApprovalsPage() {
   const toast = useToast();
   const dispatch = useDispatch();
@@ -245,13 +256,27 @@ function WarehouseApprovalsPage() {
             <tbody>
               {!loading && rows.map(row => {
                 const product = products.find(item => String(item.id) === String(row.productId));
+                const rowAdjustmentLabel = String(row.operationType || '').toLowerCase() === 'adjustment'
+                  ? (Array.from(new Set((Array.isArray(row.items) ? row.items : []).map((item) => String(item?.adjustmentType || '').toLowerCase()).filter(Boolean))).length > 1
+                    ? 'Mixed Adjustment'
+                    : formatAdjustmentTypeLabel((Array.isArray(row.items) && row.items[0]?.adjustmentType) || row.adjustmentType || 'increase'))
+                  : '';
                 const route = row.operationType === 'transfer'
                   ? `${branchNameById.get(row.fromBranchId || row.from) || row.fromBranchId || row.from || '—'} (${row.fromInventoryType || 'warehouse'}) → ${branchNameById.get(row.toBranchId || row.to) || row.toBranchId || row.to || '—'} (${row.toInventoryType || 'warehouse'})`
                   : `${branchNameById.get(row.branchId) || row.branchId || '—'} • ${row.operationArea || 'warehouse'}`;
                 return (
                   <tr key={row._id || row.clientId} style={{ cursor: 'pointer' }} onClick={() => setSelectedRow(row)}>
                     <td>{row.operationType}</td>
-                    <td>{product?.name || row.productId}</td>
+                    <td>
+                      <div>{product?.name || row.productId}</div>
+                      {rowAdjustmentLabel && (
+                        <div style={{ marginTop: 6 }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, ...getAdjustmentTypePillStyle(rowAdjustmentLabel) }}>
+                            {rowAdjustmentLabel}
+                          </span>
+                        </div>
+                      )}
+                    </td>
                     <td>{route}</td>
                     <td>{Number(row.qty || 0)}</td>
                     <td>{maskCostValue(row.cost || row.requestedAmount || 0)}</td>
