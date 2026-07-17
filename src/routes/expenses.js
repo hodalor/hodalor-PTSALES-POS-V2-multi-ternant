@@ -11,16 +11,6 @@ const r = Router();
 
 r.use(requireAuth);
 
-// #region debug-point A:helper
-function reportExpenseApprovalDebug(hypothesisId, msg, data = {}) {
-  fetch('http://127.0.0.1:7777/event', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId: 'expense-approval-stuck', runId: 'post-fix', hypothesisId, location: 'backend/src/routes/expenses.js', msg: `[DEBUG] ${msg}`, data, ts: Date.now() })
-  }).catch(() => {});
-}
-// #endregion
-
 function findExpenseRequestByKey(id = '') {
   const key = String(id || '').trim();
   if (!key) return null;
@@ -91,32 +81,17 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager'], 'add_expenses'), asyn
 
 r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_expenses'), async (req, res) => {
   const { id, remark } = req.body || {};
-  // #region debug-point A:approve-entry
-  reportExpenseApprovalDebug('A', 'approve route entry', { id: String(id || ''), actor: String(req.user?.name || ''), role: String(req.user?.role || '') });
-  // #endregion
   const row = await findExpenseRequestByKey(id);
-  // #region debug-point A:approve-row
-  reportExpenseApprovalDebug('A', 'approve row lookup result', { id: String(id || ''), found: !!row, status: String(row?.status || ''), branchId: String(row?.branchId || '') });
-  // #endregion
   if (!row) return res.status(404).json({ error: 'Request not found' });
   const expenseClientId = `expense-request:${String(row._id)}`;
   if (row.status === 'approved') {
     const existingExpense = await Expense.findOne({ clientId: expenseClientId }).lean().catch(() => null);
-    // #region debug-point B:approve-already-processed
-    reportExpenseApprovalDebug('B', 'approve already processed', { id: String(id || ''), expenseClientId, hasExpense: !!existingExpense });
-    // #endregion
     return res.json({ ok: true, alreadyProcessed: true, expense: existingExpense, request: row });
   }
   if (row.status !== 'pending_approval') return res.status(400).json({ error: 'Request not pending' });
   let exp = await Expense.findOne({ clientId: expenseClientId });
-  // #region debug-point A:approve-existing-expense
-  reportExpenseApprovalDebug('A', 'approve existing expense lookup', { id: String(id || ''), expenseClientId, hasExpense: !!exp });
-  // #endregion
   if (!exp) {
     try {
-      // #region debug-point A:approve-expense-create-start
-      reportExpenseApprovalDebug('A', 'approve expense create start', { id: String(id || ''), expenseClientId });
-      // #endregion
       exp = await Expense.create({
         clientId: expenseClientId,
         branchId: row.branchId,
@@ -126,13 +101,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_expenses'), a
         note: row.note,
         createdBy: req.user?.name || 'unknown'
       });
-      // #region debug-point A:approve-expense-create-success
-      reportExpenseApprovalDebug('A', 'approve expense create success', { id: String(id || ''), expenseId: String(exp?._id || '') });
-      // #endregion
     } catch (error) {
-      // #region debug-point B:approve-expense-create-error
-      reportExpenseApprovalDebug('B', 'approve expense create error', { id: String(id || ''), code: String(error?.code || ''), message: String(error?.message || '') });
-      // #endregion
       if (error?.code === 11000) {
         exp = await Expense.findOne({ clientId: expenseClientId });
       } else {
@@ -145,16 +114,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_expenses'), a
   row.approverRole = req.user?.role || '';
   row.approvalRemark = String(remark || '');
   row.approved_at = new Date();
-  // #region debug-point A:approve-save-start
-  reportExpenseApprovalDebug('A', 'approve save start', { id: String(id || ''), rowId: String(row?._id || '') });
-  // #endregion
   await row.save();
-  // #region debug-point A:approve-save-success
-  reportExpenseApprovalDebug('A', 'approve save success', { id: String(id || ''), rowId: String(row?._id || '') });
-  // #endregion
-  // #region debug-point A:approve-response
-  reportExpenseApprovalDebug('A', 'approve response send', { id: String(id || ''), expenseId: String(exp?._id || ''), rowStatus: String(row?.status || '') });
-  // #endregion
   res.json({ ok: true, expense: exp, request: row });
   void Audit.create({
     actor: req.user?.name || 'unknown',
@@ -167,13 +127,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_expenses'), a
 
 r.post('/reject', requireRoleOrPerm(['Admin','Manager'], 'approve_expenses'), async (req, res) => {
   const { id, remark } = req.body || {};
-  // #region debug-point D:reject-entry
-  reportExpenseApprovalDebug('D', 'reject route entry', { id: String(id || ''), actor: String(req.user?.name || ''), role: String(req.user?.role || '') });
-  // #endregion
   const row = await findExpenseRequestByKey(id);
-  // #region debug-point D:reject-row
-  reportExpenseApprovalDebug('D', 'reject row lookup result', { id: String(id || ''), found: !!row, status: String(row?.status || ''), branchId: String(row?.branchId || '') });
-  // #endregion
   if (!row) return res.status(404).json({ error: 'Request not found' });
   if (row.status === 'rejected') return res.json({ ok: true, alreadyProcessed: true, request: row });
   if (row.status !== 'pending_approval') return res.status(400).json({ error: 'Request not pending' });
@@ -182,16 +136,7 @@ r.post('/reject', requireRoleOrPerm(['Admin','Manager'], 'approve_expenses'), as
   row.approverRole = req.user?.role || '';
   row.rejectionRemark = String(remark || '');
   row.rejected_at = new Date();
-  // #region debug-point D:reject-save-start
-  reportExpenseApprovalDebug('D', 'reject save start', { id: String(id || ''), rowId: String(row?._id || '') });
-  // #endregion
   await row.save();
-  // #region debug-point D:reject-save-success
-  reportExpenseApprovalDebug('D', 'reject save success', { id: String(id || ''), rowId: String(row?._id || '') });
-  // #endregion
-  // #region debug-point D:reject-response
-  reportExpenseApprovalDebug('D', 'reject response send', { id: String(id || ''), rowStatus: String(row?.status || '') });
-  // #endregion
   res.json({ ok: true, request: row });
   void Audit.create({
     actor: req.user?.name || 'unknown',
