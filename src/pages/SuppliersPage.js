@@ -9,6 +9,8 @@ import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import InlineSpinner from '../components/InlineSpinner';
 import { ensureSupplierByName, findSupplierByName, normalizeSupplierName } from '../utils/suppliers';
+import Modal from '../components/Modal';
+import { exportCsv, exportTablePdf } from '../utils/exporters';
 
 function SuppliersPage() {
   const suppliers = useSelector(s => s.suppliers.suppliers);
@@ -24,6 +26,7 @@ function SuppliersPage() {
   const canAddSuppliers = (['admin','manager'].includes(roleLower)) || has('add_suppliers');
   const canEditSuppliers = (['admin','manager'].includes(roleLower)) || has('edit_suppliers');
   const canRemoveSuppliers = (roleLower === 'admin' || roleLower === 'superadmin');
+  const canExportSuppliers = (['admin','manager','superadmin'].includes(roleLower)) || has('export_suppliers');
   const [query, setQuery] = useState('');
   const [name, setName] = useState('');
   const [contact, setContact] = useState('');
@@ -36,6 +39,10 @@ function SuppliersPage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [removingId, setRemovingId] = useState('');
   const [savingCreate, setSavingCreate] = useState(false);
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportScope, setExportScope] = useState('all');
+  const [exportFormat, setExportFormat] = useState('csv');
   const dispatch = useDispatch();
   const toast = useToast();
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);
@@ -56,6 +63,7 @@ function SuppliersPage() {
     withPhone: filtered.filter(s => String(s.phone || '').trim()).length,
     withEmail: filtered.filter(s => String(s.email || '').trim()).length
   }), [filtered]);
+  const selectedSuppliers = useMemo(() => suppliers.filter((supplier) => selectedIds.includes(String(supplier.id))), [suppliers, selectedIds]);
 
   async function addNew() {
     if (!canAddSuppliers) { toast.show('Not authorized to add suppliers', { type: 'error' }); return; }
@@ -165,11 +173,62 @@ function SuppliersPage() {
     }
   }
 
+  function openExportModal() {
+    if (!canExportSuppliers) {
+      toast.show('Not authorized to export suppliers', { type: 'error' });
+      return;
+    }
+    setExportScope(selectedSuppliers.length > 0 ? 'selected' : 'all');
+    setExportFormat('csv');
+    setExportOpen(true);
+  }
+
+  function runSupplierExport() {
+    if (!canExportSuppliers) {
+      toast.show('Not authorized to export suppliers', { type: 'error' });
+      return;
+    }
+    const sourceRows = exportScope === 'selected' ? selectedSuppliers : suppliers;
+    if (!Array.isArray(sourceRows) || sourceRows.length === 0) {
+      toast.show(exportScope === 'selected' ? 'Select suppliers to export' : 'No suppliers to export', { type: 'error' });
+      return;
+    }
+    const headers = [
+      { key: 'name', label: 'Name' },
+      { key: 'contact', label: 'Contact Person', value: (row) => String(row.contact || '').trim() || '—' },
+      { key: 'phone', label: 'Phone', value: (row) => String(row.phone || '').trim() || '—' },
+      { key: 'address', label: 'Location / Address', value: (row) => String(row.address || '').trim() || '—' }
+    ];
+    const fileSuffix = exportScope === 'selected' ? 'selected-suppliers' : 'suppliers';
+    if (exportFormat === 'csv') {
+      exportCsv(`${fileSuffix}.csv`, headers, sourceRows);
+    } else {
+      exportTablePdf('Suppliers Export', headers, sourceRows, {
+        letterhead: {
+          companyName: settings.clientAppName || settings.receiptBrandName || settings.appName || 'ptSales POS',
+          branch: 'All Suppliers',
+          phone: settings.phone || '',
+          address: settings.address || ''
+        },
+        meta: [
+          { label: 'Scope', value: exportScope === 'selected' ? `Selected Suppliers (${sourceRows.length})` : `All Suppliers (${sourceRows.length})` }
+        ]
+      });
+    }
+    setExportOpen(false);
+    toast.show(`Supplier export started as ${String(exportFormat || '').toUpperCase()}`, { type: 'success' });
+  }
+
   return (
     <div style={{ padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
         <h1 style={{ margin: 0 }}>Suppliers</h1>
-        <OfflineQueueIndicator collection="suppliers" label="Suppliers queued" />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <OfflineQueueIndicator collection="suppliers" label="Suppliers queued" />
+          <button className="btn" onClick={openExportModal} disabled={!canExportSuppliers || suppliers.length === 0}>
+            Export Suppliers
+          </button>
+        </div>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Suppliers</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.total}</div></div>
@@ -204,6 +263,13 @@ function SuppliersPage() {
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr>
+              <th align="left">
+                <input
+                  type="checkbox"
+                  checked={filtered.length > 0 && filtered.every(s => selectedIds.includes(String(s.id)))}
+                  onChange={(e) => setSelectedIds(e.target.checked ? filtered.map(s => String(s.id)).filter(Boolean) : [])}
+                />
+              </th>
               <th align="left">Name</th>
               <th align="left">Contact</th>
               <th align="left">Phone</th>
@@ -216,6 +282,13 @@ function SuppliersPage() {
           <tbody>
             {filtered.map(s => (
               <tr key={s.id} style={{ borderTop: '1px solid #e2e8f0' }}>
+                <td>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(String(s.id))}
+                    onChange={(e) => setSelectedIds((prev) => e.target.checked ? [...new Set([...prev, String(s.id)])] : prev.filter((id) => id !== String(s.id)))}
+                  />
+                </td>
                 <td>
                   {editingId === s.id ? (
                     <input className="input" value={edit.name} onChange={e => setEdit({ ...edit, name: e.target.value })} />
@@ -276,11 +349,43 @@ function SuppliersPage() {
               </tr>
             ))}
             {filtered.length === 0 && (
-              <tr><td colSpan="7" style={{ padding: 12, color: '#64748b' }}>No suppliers</td></tr>
+              <tr><td colSpan="8" style={{ padding: 12, color: '#64748b' }}>No suppliers</td></tr>
             )}
           </tbody>
         </table>
       </div>
+      {exportOpen && (
+        <Modal
+          title="Export Suppliers"
+          onClose={() => setExportOpen(false)}
+          footer={(
+            <>
+              <button className="btn" onClick={() => setExportOpen(false)}>Cancel</button>
+              <button className="btn btn-primary" onClick={runSupplierExport}>Export</button>
+            </>
+          )}
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <label>
+              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Suppliers To Export</div>
+              <select className="select" value={exportScope} onChange={(e) => setExportScope(e.target.value)}>
+                <option value="all">All Suppliers ({suppliers.length})</option>
+                <option value="selected" disabled={selectedSuppliers.length === 0}>Selected Suppliers ({selectedSuppliers.length})</option>
+              </select>
+            </label>
+            <label>
+              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Format</div>
+              <select className="select" value={exportFormat} onChange={(e) => setExportFormat(e.target.value)}>
+                <option value="csv">CSV</option>
+                <option value="pdf">PDF</option>
+              </select>
+            </label>
+            <div style={{ color: '#64748b', fontSize: 13 }}>
+              Export includes supplier name, contact person, phone, and location or address.
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

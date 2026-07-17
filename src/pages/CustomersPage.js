@@ -46,6 +46,7 @@ function CustomersPage() {
   const canAddCustomers = roleLower === 'superadmin' || has('add_customers');
   const canEditCustomers = (['admin','manager','cashier'].includes(roleLower)) || has('edit_customers');
   const canRemoveCustomers = (roleLower === 'admin' || roleLower === 'superadmin');
+  const canExportCustomers = (['admin','manager','superadmin'].includes(roleLower)) || has('export_customers');
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
@@ -625,12 +626,20 @@ function CustomersPage() {
   }
 
   function openExportModal() {
+    if (!canExportCustomers) {
+      toast.show('Not authorized to export customers', { type: 'error' });
+      return;
+    }
     setExportScope(selectedCustomers.length > 0 ? 'selected' : 'all');
     setExportFormat('csv');
     setExportOpen(true);
   }
 
   function runCustomerExport() {
+    if (!canExportCustomers) {
+      toast.show('Not authorized to export customers', { type: 'error' });
+      return;
+    }
     const sourceRows = exportScope === 'selected' ? selectedCustomers : customers;
     if (!Array.isArray(sourceRows) || sourceRows.length === 0) {
       toast.show(exportScope === 'selected' ? 'Select customers to export' : 'No customers to export', { type: 'error' });
@@ -672,7 +681,7 @@ function CustomersPage() {
         </div>
         <div className="page-header-actions">
           <OfflineQueueIndicator collection="customers" label="Customers queued" />
-          <button className="btn" onClick={openExportModal} disabled={filtered.length === 0}>
+          <button className="btn" onClick={openExportModal} disabled={!canExportCustomers || customers.length === 0}>
             Export Customers
           </button>
           {canAddCustomers && (

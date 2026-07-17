@@ -76,6 +76,8 @@ export function exportTablePdf(title, headers, rows, options = {}) {
       table { width: 100%; border-collapse: collapse; font-size: 12px; }
       th, td { border: 1px solid #e2e8f0; padding: 6px 8px; text-align: left; vertical-align: top; }
       th { background: #f8fafc; }
+      .table-image { width: 56px; height: 56px; object-fit: contain; border-radius: 6px; display: block; background: #fff; border: 1px solid #e2e8f0; }
+      .table-image-placeholder { color: #94a3b8; font-size: 11px; }
       .row-sale td { font-weight: 700; background: #f8fafc; }
       .row-payment td { font-weight: 400; background: #ffffff; }
       ${extraStyles}
@@ -100,6 +102,10 @@ export function exportTablePdf(title, headers, rows, options = {}) {
     const rowClass = getRowClass ? String(getRowClass(r) || '').trim() : '';
     const tds = headers.map(h => {
       const val = typeof h.value === 'function' ? h.value(r) : r[h.key];
+      if (String(h?.render || '').toLowerCase() === 'image') {
+        const imageUrl = String(val || '').trim();
+        return `<td>${imageUrl ? `<img class="table-image" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(h.label || 'Image')}" />` : `<span class="table-image-placeholder">${escapeHtml(t('No image'))}</span>`}</td>`;
+      }
       return `<td>${escapeHtml(String(val ?? '')).replace(/\n/g, '<br />')}</td>`;
     }).join('');
     return `<tr${rowClass ? ` class="${escapeHtml(rowClass)}"` : ''}>${tds}</tr>`;

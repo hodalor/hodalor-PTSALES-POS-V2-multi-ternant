@@ -19,6 +19,7 @@ import { setAllSettings } from '../store/settingsSlice';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { useAppLanguage } from '../utils/localization';
 import { getProductBrand, getProductSearchText } from '../utils/productSearch';
+import { exportCsv, exportTablePdf } from '../utils/exporters';
 
 function stripInventoryMapsForProductUpdate(payload) {
   if (!payload || typeof payload !== 'object') return payload;
@@ -203,6 +204,7 @@ function ProductsPage() {
   const canAddProducts = (['admin','manager'].includes(roleLower)) || has('add_products');
   const canEditProducts = (['admin','manager'].includes(roleLower)) || has('edit_products');
   const canManageSerializedUnits = (['admin','manager','inventory staff','superadmin'].includes(roleLower)) || has('add_purchases') || has('edit_products');
+  const canExportProducts = (['admin','manager','superadmin'].includes(roleLower)) || has('export_products');
   const canEditStock = false;
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);
   const visiblePriceTiers = useMemo(() => getAllowedPriceTiers(auth), [auth]);
@@ -214,6 +216,10 @@ function ProductsPage() {
   const [leadDays, setLeadDays] = useState(7);
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogCategory, setCatalogCategory] = useState('all');
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState('csv');
+  const [exportIncludeVariants, setExportIncludeVariants] = useState(true);
+  const [exportFieldKeys, setExportFieldKeys] = useState([]);
 
   // Unified form state
   const [name, setName] = useState('');
@@ -306,6 +312,85 @@ function ProductsPage() {
       return hay.includes(query);
     });
   }, [products, catalogCategory, catalogQuery]);
+
+  const productExportHeaders = useMemo(() => ([
+    { key: 'name', label: 'Product' },
+    { key: 'variant', label: 'Variant' },
+    { key: 'image', label: 'Image', render: 'image' },
+    { key: 'brand', label: 'Brand' },
+    { key: 'sku', label: 'SKU' },
+    { key: 'barcode', label: 'Barcode' },
+    { key: 'spec', label: 'Spec' },
+    { key: 'category', label: 'Category' },
+    { key: 'trackType', label: 'Track Type' },
+    { key: 'retailPrice', label: 'Retail Price' },
+    { key: 'wholesalePrice', label: 'Wholesale Price' },
+    { key: 'warehousePrice', label: 'Warehouse Price' },
+    { key: 'agentPrice', label: 'Agent Price' },
+    { key: 'costPrice', label: 'Cost Price' },
+    { key: 'currentStock', label: `Stock (${currentBranchLabel})` },
+    { key: 'lowStock', label: 'Retail Low Stock' },
+    { key: 'wholesaleLowStock', label: 'Distribution Low Stock' },
+    { key: 'warehouseLowStock', label: 'Warehouse Low Stock' },
+    { key: 'allowCredit', label: 'Allow Credit' },
+    { key: 'minimumCreditPercentage', label: 'Minimum Credit %' }
+  ]), [currentBranchLabel]);
+
+  useEffect(() => {
+    setExportFieldKeys((prev) => {
+      const nextDefault = productExportHeaders.map((header) => header.key);
+      if (!Array.isArray(prev) || prev.length === 0) return nextDefault;
+      const allowed = new Set(nextDefault);
+      const filtered = prev.filter((key) => allowed.has(key));
+      return filtered.length > 0 ? filtered : nextDefault;
+    });
+  }, [productExportHeaders]);
+
+  const selectedProductExportHeaders = useMemo(() => {
+    const selected = new Set(exportFieldKeys);
+    return productExportHeaders.filter((header) => selected.has(header.key));
+  }, [exportFieldKeys, productExportHeaders]);
+
+  const productExportRows = useMemo(() => filteredCatalogProducts.flatMap((product) => {
+    const baseRow = {
+      name: product.name || '',
+      variant: '',
+      image: product.image || '',
+      brand: getProductBrand(product) || '',
+      sku: product.sku || '',
+      barcode: product.barcode || '',
+      spec: productSpec(product) || '—',
+      category: product.category || 'Uncategorized',
+      trackType: String(product.trackType || 'quantity'),
+      retailPrice: Number(product.retailPrice != null ? product.retailPrice : product.price || 0),
+      wholesalePrice: Number(product.wholesalePrice != null ? product.wholesalePrice : product.price || 0),
+      warehousePrice: Number(product.warehousePrice != null ? product.warehousePrice : 0),
+      agentPrice: Number(product.agentPrice != null ? product.agentPrice : product.price || 0),
+      costPrice: Number(product.costPrice || 0),
+      currentStock: getDisplayStockValue(product, null, currentBranchId, currentInventoryType),
+      lowStock: Number(product.lowStock ?? 0),
+      wholesaleLowStock: Number(product.wholesaleLowStock ?? product.lowStock ?? 0),
+      warehouseLowStock: Number(product.warehouseLowStock ?? product.lowStock ?? 0),
+      allowCredit: product.allowCredit !== false ? 'Yes' : 'No',
+      minimumCreditPercentage: Number(product.minimumCreditPercentage || 0)
+    };
+    if (!exportIncludeVariants || !Array.isArray(product.variants) || product.variants.length === 0) return [baseRow];
+    const variantRows = product.variants.map((variant) => ({
+      ...baseRow,
+      variant: variant.label || '',
+      image: variant.image || product.image || '',
+      sku: variant.sku || product.sku || '',
+      barcode: variant.barcode || product.barcode || '',
+      retailPrice: Number(variant.price != null ? variant.price : (product.retailPrice != null ? product.retailPrice : product.price || 0)),
+      wholesalePrice: Number(variant.wholesalePrice != null ? variant.wholesalePrice : (product.wholesalePrice != null ? product.wholesalePrice : product.price || 0)),
+      warehousePrice: Number(variant.warehousePrice != null ? variant.warehousePrice : (product.warehousePrice != null ? product.warehousePrice : 0)),
+      agentPrice: Number(variant.agentPrice != null ? variant.agentPrice : (product.agentPrice != null ? product.agentPrice : product.price || 0)),
+      costPrice: Number(variant.costPrice != null ? variant.costPrice : product.costPrice || 0),
+      currentStock: getDisplayStockValue(product, variant, currentBranchId, currentInventoryType),
+      trackType: String(variant.trackType || product.trackType || 'quantity')
+    }));
+    return [baseRow, ...variantRows];
+  }), [currentBranchId, currentInventoryType, exportIncludeVariants, filteredCatalogProducts]);
 
   useEffect(() => {
     if (!category && categoryOptions.length > 0) setCategory(categoryOptions[0]);
@@ -514,6 +599,53 @@ function ProductsPage() {
     try {
       navigator.clipboard.writeText(text);
     } catch {}
+  }
+
+  function openExportModal() {
+    if (!canExportProducts) {
+      toast.show('Not authorized to export products', { type: 'error' });
+      return;
+    }
+    setExportFormat('csv');
+    setExportOpen(true);
+  }
+
+  function exportProductsCatalog() {
+    if (!canExportProducts) {
+      toast.show('Not authorized to export products', { type: 'error' });
+      return;
+    }
+    if (selectedProductExportHeaders.length === 0) {
+      toast.show('Select at least one field to export', { type: 'error' });
+      return;
+    }
+    if (productExportRows.length === 0) {
+      toast.show('No products to export', { type: 'error' });
+      return;
+    }
+    const categoryLabel = catalogCategory === 'all' ? 'all-categories' : String(catalogCategory || '').trim().toLowerCase().replace(/\s+/g, '-');
+    if (exportFormat === 'csv') {
+      exportCsv(`products-${categoryLabel}.csv`, selectedProductExportHeaders, productExportRows);
+      setExportOpen(false);
+      toast.show('Product export started as CSV', { type: 'success' });
+      return;
+    }
+    exportTablePdf('Products Export', selectedProductExportHeaders, productExportRows, {
+      letterhead: {
+        companyName: settings.clientAppName || settings.receiptBrandName || settings.appName || 'ptSales POS',
+        branch: currentBranchLabel || 'Current Branch',
+        phone: settings.phone || '',
+        address: settings.address || ''
+      },
+      meta: [
+        { label: 'Branch', value: currentBranchLabel || 'Current Branch' },
+        { label: 'Category', value: catalogCategory === 'all' ? 'All Categories' : catalogCategory },
+        { label: 'Variant Rows', value: exportIncludeVariants ? 'Included' : 'Products only' },
+        { label: 'Fields', value: selectedProductExportHeaders.map((header) => header.label).join(', ') }
+      ]
+    });
+    setExportOpen(false);
+    toast.show('Product export started as PDF', { type: 'success' });
   }
 
   async function onFileChange(e) {
@@ -1004,6 +1136,10 @@ function ProductsPage() {
         <div className="page-header-actions">
           <OfflineQueueIndicator collection="products" label={t('Products queued')} />
           <OfflineQueueIndicator collection="audits" label={t('Stock queued')} />
+          <button className="btn" onClick={openExportModal} disabled={!canExportProducts || filteredCatalogProducts.length === 0}>
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 3v12m0 0l-3-3m3 3l3-3" stroke="currentColor" strokeWidth="2"/><path d="M5 21h14" stroke="currentColor" strokeWidth="2"/></svg>
+            {t('Export')}
+          </button>
           {canAddProducts && (
             <button className="btn btn-primary" onClick={openAdd}>
               <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2"/></svg>
@@ -1019,6 +1155,71 @@ function ProductsPage() {
         <button className={tab === 'expiry' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('expiry')}>{t('Expiry Alerts')}</button>
         <button className={tab === 'profitability' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('profitability')}>{t('Profitability')}</button>
       </div>
+
+      {exportOpen && (
+        <Modal
+          title={t('Export Products')}
+          onClose={() => setExportOpen(false)}
+          footer={(
+            <>
+              <button className="btn" onClick={() => setExportOpen(false)}>{t('Cancel')}</button>
+              <button className="btn btn-primary" onClick={exportProductsCatalog}>{t('Export')}</button>
+            </>
+          )}
+        >
+          <div style={{ display: 'grid', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+              <label>
+                <div className="field-label">{t('Format')}</div>
+                <select className="select" value={exportFormat} onChange={(e) => setExportFormat(e.target.value)}>
+                  <option value="csv">CSV</option>
+                  <option value="pdf">PDF</option>
+                </select>
+              </label>
+              <label style={{ display: 'grid', alignContent: 'end' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                  <input type="checkbox" checked={exportIncludeVariants} onChange={(e) => setExportIncludeVariants(e.target.checked)} />
+                  {t('Include variant rows separately')}
+                </span>
+              </label>
+            </div>
+            <div className="card" style={{ padding: 12, display: 'grid', gap: 10, background: '#fff', boxShadow: 'none' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <strong>{t('Fields To Export')}</strong>
+                <div style={{ display: 'inline-flex', gap: 6 }}>
+                  <button type="button" className="btn" onClick={() => setExportFieldKeys(productExportHeaders.map((header) => header.key))}>{t('Select All')}</button>
+                  <button type="button" className="btn" onClick={() => setExportFieldKeys([])}>{t('Clear')}</button>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
+                {productExportHeaders.map((header) => (
+                  <label key={header.key} style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={exportFieldKeys.includes(header.key)}
+                      onChange={(e) => {
+                        setExportFieldKeys((prev) => {
+                          const set = new Set(prev);
+                          if (e.target.checked) set.add(header.key);
+                          else set.delete(header.key);
+                          return productExportHeaders.map((item) => item.key).filter((key) => set.has(key));
+                        });
+                      }}
+                    />
+                    <span>{header.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="card" style={{ padding: 12, display: 'grid', gap: 6, background: '#f8fafc', boxShadow: 'none' }}>
+              <div><strong>{t('Branch')}:</strong> {currentBranchLabel || t('Current Branch')}</div>
+              <div><strong>{t('Category')}:</strong> {catalogCategory === 'all' ? t('All Categories') : catalogCategory}</div>
+              <div><strong>{t('Rows To Export')}:</strong> {productExportRows.length}</div>
+              <div><strong>{t('Selected Fields')}:</strong> {selectedProductExportHeaders.length}</div>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {tab === 'reorder' && (
         <div className="card">
