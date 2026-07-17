@@ -71,14 +71,36 @@ async function canAccessApprovalByBranch(user = {}, approval) {
   return approvalBranchIds.some((branchId) => accessibleBranchIds.includes(String(branchId)));
 }
 
-function normalizeWholesaleReviewItems(items = []) {
+function normalizeWholesaleReviewItems(items = [], fallback = {}) {
+  const fallbackItems = Array.isArray(fallback?.items) && fallback.items.length > 0
+    ? fallback.items
+    : [{
+        lineId: '1',
+        productId: fallback?.productId || '',
+        variantId: fallback?.variantId || '',
+        qty: Number(fallback?.qty || 0),
+        unitIds: Array.isArray(fallback?.unitIds) ? fallback.unitIds : [],
+        selectedUnits: Array.isArray(fallback?.selectedUnits) ? fallback.selectedUnits : [],
+        serializedEntries: Array.isArray(fallback?.serializedEntries) ? fallback.serializedEntries : [],
+        cost: Number(fallback?.cost || 0),
+        requestedAmount: Number(fallback?.requestedAmount || 0),
+        adjustmentType: String(fallback?.adjustmentType || 'increase'),
+        supplier: String(fallback?.supplier || ''),
+        transactionTitle: String(fallback?.transactionTitle || ''),
+        reason: String(fallback?.reason || ''),
+        remark: String(fallback?.remark || ''),
+        status: String(fallback?.status || 'accepted')
+      }];
   return (Array.isArray(items) ? items : [])
     .map((item, index) => {
+      const fallbackItem = fallbackItems.find((entry) => String(entry?.lineId || '') === String(item?.lineId || ''))
+        || fallbackItems[index]
+        || {};
       const status = String(item?.status || 'accepted').toLowerCase() === 'cancelled' ? 'cancelled' : 'accepted';
       return {
         lineId: String(item?.lineId || `${index + 1}`),
-        productId: String(item?.productId || ''),
-        variantId: String(item?.variantId || ''),
+        productId: String(item?.productId || fallbackItem?.productId || ''),
+        variantId: String(item?.variantId || fallbackItem?.variantId || ''),
         qty: Math.max(0, Number(item?.qty || 0)),
         unitIds: Array.isArray(item?.unitIds) ? item.unitIds.map(String).filter(Boolean) : [],
         selectedUnits: Array.isArray(item?.selectedUnits)
@@ -96,7 +118,7 @@ function normalizeWholesaleReviewItems(items = []) {
           : [],
         cost: Number(item?.cost || 0),
         requestedAmount: Number(item?.requestedAmount || 0),
-        adjustmentType: String(item?.adjustmentType || 'increase') === 'decrease' ? 'decrease' : 'increase',
+        adjustmentType: String(item?.adjustmentType || fallbackItem?.adjustmentType || fallback?.adjustmentType || 'increase') === 'decrease' ? 'decrease' : 'increase',
         supplier: String(item?.supplier || ''),
         transactionTitle: String(item?.transactionTitle || ''),
         reason: String(item?.reason || ''),
@@ -133,7 +155,7 @@ r.post('/:id/approve', async (req, res) => {
     if (approval.referenceModel === 'WholesaleOperation' && Array.isArray(req.body?.items)) {
       const operation = await WholesaleOperation.findById(approval.referenceId);
       if (!operation) return res.status(404).json({ error: 'Wholesale operation not found' });
-      const reviewedItems = normalizeWholesaleReviewItems(req.body?.items);
+      const reviewedItems = normalizeWholesaleReviewItems(req.body?.items, operation);
       const acceptedQty = reviewedItems
         .filter((item) => String(item.status || 'accepted').toLowerCase() !== 'cancelled')
         .reduce((sum, item) => sum + Math.max(0, Number(item.qty || 0)), 0);
@@ -172,7 +194,7 @@ r.post('/:id/approve', async (req, res) => {
       if (String(operation.operationType || '').toLowerCase() !== 'transfer') {
         return res.status(400).json({ error: 'Only transfer requests can be resubmitted to director approval' });
       }
-      const reviewedItems = normalizeWholesaleReviewItems(req.body?.items);
+      const reviewedItems = normalizeWholesaleReviewItems(req.body?.items, operation);
       const acceptedQty = reviewedItems
         .filter((item) => String(item.status || 'accepted').toLowerCase() !== 'cancelled')
         .reduce((sum, item) => sum + Math.max(0, Number(item.qty || 0)), 0);
