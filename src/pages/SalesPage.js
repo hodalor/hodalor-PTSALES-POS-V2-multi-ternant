@@ -55,6 +55,20 @@ function isDateWithinRange(value, fromDate = null, toDate = null) {
   return true;
 }
 
+function getSaleBookedCost(sale) {
+  const stored = Number(sale?.costTotal || 0);
+  if (Number.isFinite(stored) && stored > 0) return stored;
+  return Array.isArray(sale?.items)
+    ? sale.items.reduce((sum, item) => sum + ((Number(item?.costPrice || 0) || 0) * (Number(item?.qty || 0) || 0)), 0)
+    : 0;
+}
+
+function getSaleBookedProfit(sale) {
+  const stored = Number(sale?.profitTotal || 0);
+  if (Number.isFinite(stored)) return stored;
+  return Math.max(0, Number(sale?.total || 0) - getSaleBookedCost(sale));
+}
+
 function SalesPage() {
   const dispatch = useDispatch();
   const sales = useSelector(s => s.sales.sales);
@@ -245,7 +259,7 @@ function SalesPage() {
     const toDate = periodMode === 'all_time' ? null : parseRangeEnd(dateTo);
     const totalRevenue = filteredSales.reduce((sum, sale) => sum + getSaleRangeTotals(sale, fromDate, toDate).revenue, 0);
     const totalProfit = filteredSales.reduce((sum, sale) => sum + getSaleRangeTotals(sale, fromDate, toDate).profit, 0);
-    const totalCost = filteredSales.reduce((sum, sale) => sum + getSaleRangeTotals(sale, fromDate, toDate).cost, 0);
+    const totalCost = filteredSales.reduce((sum, sale) => sum + getSaleBookedCost(sale), 0);
     const itemsSold = filteredSales.reduce((sum, sale) => sum + (Array.isArray(sale.items) ? sale.items.reduce((acc, item) => acc + (Number(item.qty) || 0), 0) : 0), 0);
     const easybuyCount = filteredSales.filter(sale => String(sale.creditMode || '').trim().toLowerCase() === 'retail_easybuy').length;
     const wholesaleCreditCount = filteredSales.filter(sale => String(sale.creditMode || '').trim().toLowerCase() === 'distribution_credit').length;
@@ -426,8 +440,8 @@ function SalesPage() {
       { key: 'invoice', label: 'Invoice', value: s => s.invoiceSerial || '' },
       { key: 'items', label: 'Items', value: s => s.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}x${i.qty}`).join('; ') },
       { key: 'total', label: 'Sale Total', value: s => s.total },
-      ...(canViewCost ? [{ key: 'cost', label: 'Cost Price', value: s => getSaleRangeTotals(s, fromDate, toDate).cost }] : []),
-      ...(canViewProfit ? [{ key: 'profit', label: 'Profit', value: s => getSaleRangeTotals(s, fromDate, toDate).profit }] : []),
+      ...(canViewCost ? [{ key: 'cost', label: 'Cost Price', value: s => getSaleBookedCost(s) }] : []),
+      ...(canViewProfit ? [{ key: 'profit', label: 'Profit', value: s => getSaleBookedProfit(s) }] : []),
       { key: 'paid', label: 'Collected In Period', value: s => getSaleRangeTotals(s, fromDate, toDate).revenue },
       { key: 'remaining', label: 'Remaining', value: s => Number(s.outstandingTotal || s.outstandingBalance || 0) },
       { key: 'status', label: 'Status', value: s => getSaleSettlementStatus(s) }
@@ -444,8 +458,8 @@ function SalesPage() {
       { key: 'invoice', label: 'Invoice', value: s => s.invoiceSerial || '' },
       { key: 'items', label: 'Items', value: s => s.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}x${i.qty}`).join('; ') },
       { key: 'total', label: 'Sale Total', value: s => formatCurrency(s.total, settings) },
-      ...(canViewCost ? [{ key: 'cost', label: 'Cost Price', value: s => formatCurrency(getSaleRangeTotals(s, fromDate, toDate).cost, settings) }] : []),
-      ...(canViewProfit ? [{ key: 'profit', label: 'Profit', value: s => formatCurrency(getSaleRangeTotals(s, fromDate, toDate).profit, settings) }] : []),
+      ...(canViewCost ? [{ key: 'cost', label: 'Cost Price', value: s => formatCurrency(getSaleBookedCost(s), settings) }] : []),
+      ...(canViewProfit ? [{ key: 'profit', label: 'Profit', value: s => formatCurrency(getSaleBookedProfit(s), settings) }] : []),
       { key: 'paid', label: 'Collected In Period', value: s => maskRevenue(getSaleRangeTotals(s, fromDate, toDate).revenue) },
       { key: 'remaining', label: 'Remaining', value: s => maskRevenue(Number(s.outstandingTotal || s.outstandingBalance || 0)) },
       { key: 'status', label: 'Status', value: s => getSaleSettlementStatus(s) }
