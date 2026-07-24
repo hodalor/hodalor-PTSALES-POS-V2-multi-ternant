@@ -12,7 +12,7 @@ import InlineSpinner from '../components/InlineSpinner';
 import BranchSelect from '../components/BranchSelect';
 import { getProductBrand } from '../utils/productSearch';
 import Modal from '../components/Modal';
-import { getCreditModeLabel, getSaleRangeTotals, getSaleSettlementStatus, saleHasActivityInRange } from '../utils/saleAccounting';
+import { getCreditModeLabel, getSaleRangeTotals, getSaleSettlementStatus } from '../utils/saleAccounting';
 import { formatDateTime } from '../utils/dateFormat';
 
 function pad2(value) {
@@ -47,6 +47,14 @@ function parseRangeEnd(value) {
   return Number.isNaN(dt.getTime()) ? null : dt;
 }
 
+function isDateWithinRange(value, fromDate = null, toDate = null) {
+  const dt = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(dt.getTime())) return false;
+  if (fromDate && dt.getTime() < fromDate.getTime()) return false;
+  if (toDate && dt.getTime() > toDate.getTime()) return false;
+  return true;
+}
+
 function SalesPage() {
   const dispatch = useDispatch();
   const sales = useSelector(s => s.sales.sales);
@@ -59,6 +67,7 @@ function SalesPage() {
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
   const canViewRevenue = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_revenue') || grants.includes('view_financials');
   const canViewProfit = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_profit') || grants.includes('view_financials');
+  const canViewCost = canViewProfit;
   const canBackdateSales = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('backdate_sales');
   const canEditCreditPackage = canBackdateSales;
   const canViewCashierCompetitionAll = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_dashboard_cashier_all') || grants.includes('view_dashboard_branch_comparison_all');
@@ -171,7 +180,7 @@ function SalesPage() {
       list = list.filter(s => String(s.sellerName || '').trim().toLowerCase() === me);
     }
     if (periodMode !== 'all_time' && (fromDate || toDate)) {
-      list = list.filter((sale) => saleHasActivityInRange(sale, fromDate, toDate));
+      list = list.filter((sale) => isDateWithinRange(sale?.created_at, fromDate, toDate));
     }
     if (saleKind === 'retail') {
       list = list.filter(s => String(s.posType || 'retail') === 'retail');
@@ -236,6 +245,7 @@ function SalesPage() {
     const toDate = periodMode === 'all_time' ? null : parseRangeEnd(dateTo);
     const totalRevenue = filteredSales.reduce((sum, sale) => sum + getSaleRangeTotals(sale, fromDate, toDate).revenue, 0);
     const totalProfit = filteredSales.reduce((sum, sale) => sum + getSaleRangeTotals(sale, fromDate, toDate).profit, 0);
+    const totalCost = filteredSales.reduce((sum, sale) => sum + getSaleRangeTotals(sale, fromDate, toDate).cost, 0);
     const itemsSold = filteredSales.reduce((sum, sale) => sum + (Array.isArray(sale.items) ? sale.items.reduce((acc, item) => acc + (Number(item.qty) || 0), 0) : 0), 0);
     const easybuyCount = filteredSales.filter(sale => String(sale.creditMode || '').trim().toLowerCase() === 'retail_easybuy').length;
     const wholesaleCreditCount = filteredSales.filter(sale => String(sale.creditMode || '').trim().toLowerCase() === 'distribution_credit').length;
@@ -245,6 +255,7 @@ function SalesPage() {
       totalSales: filteredSales.length,
       totalRevenue,
       totalProfit,
+      totalCost,
       itemsSold,
       easybuyCount,
       wholesaleCreditCount,
@@ -415,6 +426,8 @@ function SalesPage() {
       { key: 'invoice', label: 'Invoice', value: s => s.invoiceSerial || '' },
       { key: 'items', label: 'Items', value: s => s.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}x${i.qty}`).join('; ') },
       { key: 'total', label: 'Sale Total', value: s => s.total },
+      ...(canViewCost ? [{ key: 'cost', label: 'Cost Price', value: s => getSaleRangeTotals(s, fromDate, toDate).cost }] : []),
+      ...(canViewProfit ? [{ key: 'profit', label: 'Profit', value: s => getSaleRangeTotals(s, fromDate, toDate).profit }] : []),
       { key: 'paid', label: 'Collected In Period', value: s => getSaleRangeTotals(s, fromDate, toDate).revenue },
       { key: 'remaining', label: 'Remaining', value: s => Number(s.outstandingTotal || s.outstandingBalance || 0) },
       { key: 'status', label: 'Status', value: s => getSaleSettlementStatus(s) }
@@ -431,6 +444,8 @@ function SalesPage() {
       { key: 'invoice', label: 'Invoice', value: s => s.invoiceSerial || '' },
       { key: 'items', label: 'Items', value: s => s.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}x${i.qty}`).join('; ') },
       { key: 'total', label: 'Sale Total', value: s => formatCurrency(s.total, settings) },
+      ...(canViewCost ? [{ key: 'cost', label: 'Cost Price', value: s => formatCurrency(getSaleRangeTotals(s, fromDate, toDate).cost, settings) }] : []),
+      ...(canViewProfit ? [{ key: 'profit', label: 'Profit', value: s => formatCurrency(getSaleRangeTotals(s, fromDate, toDate).profit, settings) }] : []),
       { key: 'paid', label: 'Collected In Period', value: s => maskRevenue(getSaleRangeTotals(s, fromDate, toDate).revenue) },
       { key: 'remaining', label: 'Remaining', value: s => maskRevenue(Number(s.outstandingTotal || s.outstandingBalance || 0)) },
       { key: 'status', label: 'Status', value: s => getSaleSettlementStatus(s) }
@@ -442,6 +457,9 @@ function SalesPage() {
   }
   function maskProfit(value) {
     return canViewProfit ? formatCurrency(value, settings) : '***';
+  }
+  function maskCost(value) {
+    return canViewCost ? formatCurrency(value, settings) : '***';
   }
   return (
     <div style={{ padding: 16 }}>
@@ -532,6 +550,9 @@ function SalesPage() {
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Sales Count</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.totalSales}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Collected Revenue</div><div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{maskRevenue(summary.totalRevenue)}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Collected Profit</div><div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{maskProfit(summary.totalProfit)}</div></div>
+            {canViewCost && (
+              <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Total Cost Price</div><div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{maskCost(summary.totalCost)}</div></div>
+            )}
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Items Sold</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.itemsSold}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Credit Out</div><div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{maskRevenue(summary.creditOut)}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Incomplete Sales</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.incompleteCount}</div></div>
