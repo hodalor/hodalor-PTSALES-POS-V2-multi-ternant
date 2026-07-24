@@ -63,10 +63,27 @@ function getSaleBookedCost(sale) {
     : 0;
 }
 
+function getSaleDisplaySubtotal(sale) {
+  const stored = Number(sale?.subtotal || 0);
+  if (Number.isFinite(stored) && stored > 0) return stored;
+  return Array.isArray(sale?.items)
+    ? sale.items.reduce((sum, item) => sum + ((Number(item?.price || 0) || 0) * (Number(item?.qty || 0) || 0)), 0)
+    : 0;
+}
+
+function getSaleDisplayTotal(sale) {
+  const stored = Number(sale?.total || 0);
+  if (Number.isFinite(stored) && stored > 0) return stored;
+  const subtotal = getSaleDisplaySubtotal(sale);
+  const discount = Math.max(0, Number(sale?.discount || 0));
+  const tax = Math.max(0, Number(sale?.tax || 0));
+  return Math.max(0, subtotal - discount + tax);
+}
+
 function getSaleBookedProfit(sale) {
   const stored = Number(sale?.profitTotal || 0);
-  if (Number.isFinite(stored)) return stored;
-  return Math.max(0, Number(sale?.total || 0) - getSaleBookedCost(sale));
+  if (Number.isFinite(stored) && (stored !== 0 || getSaleDisplayTotal(sale) === 0)) return stored;
+  return getSaleDisplayTotal(sale) - getSaleBookedCost(sale);
 }
 
 function SalesPage() {
@@ -439,7 +456,7 @@ function SalesPage() {
       { key: 'seller', label: 'Seller', value: s => s.sellerName || '' },
       { key: 'invoice', label: 'Invoice', value: s => s.invoiceSerial || '' },
       { key: 'items', label: 'Items', value: s => s.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}x${i.qty}`).join('; ') },
-      { key: 'total', label: 'Sale Total', value: s => s.total },
+      { key: 'total', label: 'Sale Total', value: s => getSaleDisplayTotal(s) },
       ...(canViewCost ? [{ key: 'cost', label: 'Cost Price', value: s => getSaleBookedCost(s) }] : []),
       ...(canViewProfit ? [{ key: 'profit', label: 'Profit', value: s => getSaleBookedProfit(s) }] : []),
       { key: 'paid', label: 'Collected In Period', value: s => getSaleRangeTotals(s, fromDate, toDate).revenue },
@@ -457,7 +474,7 @@ function SalesPage() {
       { key: 'seller', label: 'Seller', value: s => s.sellerName || '' },
       { key: 'invoice', label: 'Invoice', value: s => s.invoiceSerial || '' },
       { key: 'items', label: 'Items', value: s => s.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}x${i.qty}`).join('; ') },
-      { key: 'total', label: 'Sale Total', value: s => formatCurrency(s.total, settings) },
+      { key: 'total', label: 'Sale Total', value: s => formatCurrency(getSaleDisplayTotal(s), settings) },
       ...(canViewCost ? [{ key: 'cost', label: 'Cost Price', value: s => formatCurrency(getSaleBookedCost(s), settings) }] : []),
       ...(canViewProfit ? [{ key: 'profit', label: 'Profit', value: s => formatCurrency(getSaleBookedProfit(s), settings) }] : []),
       { key: 'paid', label: 'Collected In Period', value: s => maskRevenue(getSaleRangeTotals(s, fromDate, toDate).revenue) },
@@ -749,7 +766,7 @@ function SalesPage() {
               <td>{sale.invoiceSerial || '—'}</td>
               <td>{sale.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}${i.spec ? ' ['+i.spec+']' : ''}x${i.qty}`).join(', ')}</td>
               <td>{sale.customerName || ''}</td>
-              <td><span className="price-accent">{formatCurrency(sale.total, settings)}</span></td>
+              <td><span className="price-accent">{formatCurrency(getSaleDisplayTotal(sale), settings)}</span></td>
               <td><span className="price-accent">{maskRevenue(getSaleRangeTotals(sale, periodMode === 'all_time' ? null : parseRangeStart(dateFrom), periodMode === 'all_time' ? null : parseRangeEnd(dateTo)).revenue)}</span></td>
               <td><span className="price-accent">{maskRevenue(Number(sale.outstandingTotal || sale.outstandingBalance || 0))}</span></td>
               <td>
