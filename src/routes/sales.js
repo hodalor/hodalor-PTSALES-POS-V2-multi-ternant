@@ -86,6 +86,42 @@ function resolveSaleTimestamps(payload = {}, req) {
   };
 }
 
+function computeSaleItemsSubtotal(items = []) {
+  return (Array.isArray(items) ? items : []).reduce((sum, item) => (
+    sum + (Math.max(0, Number(item?.price || 0)) * Math.max(0, Number(item?.qty || 0)))
+  ), 0);
+}
+
+function computeSaleItemsCostTotal(items = []) {
+  return (Array.isArray(items) ? items : []).reduce((sum, item) => (
+    sum + (Math.max(0, Number(item?.costPrice || 0)) * Math.max(0, Number(item?.qty || 0)))
+  ), 0);
+}
+
+function normalizeSaleFinancials(row = {}) {
+  const itemsSubtotal = computeSaleItemsSubtotal(row.items);
+  const storedSubtotal = Number(row?.subtotal || 0);
+  const subtotal = storedSubtotal > 0 ? storedSubtotal : itemsSubtotal;
+  const discount = Math.max(0, Number(row?.discount || 0));
+  const tax = Math.max(0, Number(row?.tax || 0));
+  const storedTotal = Number(row?.total || 0);
+  const total = storedTotal > 0 ? storedTotal : Math.max(0, subtotal - discount + tax);
+  const itemCostTotal = computeSaleItemsCostTotal(row.items);
+  const storedCostTotal = Number(row?.costTotal || 0);
+  const costTotal = storedCostTotal > 0 ? storedCostTotal : itemCostTotal;
+  const storedProfitTotal = Number(row?.profitTotal);
+  const shouldRecomputeProfit = !Number.isFinite(storedProfitTotal)
+    || (storedTotal <= 0 && total > 0);
+  const profitTotal = shouldRecomputeProfit ? (total - costTotal) : storedProfitTotal;
+  return {
+    ...row,
+    subtotal,
+    total,
+    costTotal,
+    profitTotal
+  };
+}
+
 r.get('/', requireRoleOrPerm(['Admin','Manager','Cashier'], ['view_sales','see_sales']), async (req, res) => {
   const role = String(req.user?.role || '').toLowerCase();
   const grants = Array.isArray(req.user?.grants) ? req.user.grants : [];
@@ -114,7 +150,7 @@ r.get('/', requireRoleOrPerm(['Admin','Manager','Cashier'], ['view_sales','see_s
   }
   const limit = Math.min(2000, Math.max(1, Number(req.query.limit || 500)));
   const rows = await Sale.find(query).sort({ created_at: -1 }).limit(limit).lean();
-  const enriched = await enrichSalesWithAccounting(rows);
+  const enriched = await enrichSalesWithAccounting(rows.map(normalizeSaleFinancials));
   res.json(enriched);
 });
 
@@ -179,7 +215,7 @@ r.patch('/:id/date', requireRoleOrPerm(['Admin'], 'backdate_sales'), async (req,
     branchId: sale.branchId,
     ts: new Date()
   }).catch(() => {});
-  res.json(sale);
+  res.json(normalizeSaleFinancials(sale?.toObject ? sale.toObject() : sale));
 });
 
 r.patch('/:id/credit-package', requireRoleOrPerm(['Admin'], 'backdate_sales'), async (req, res) => {
@@ -223,7 +259,7 @@ r.patch('/:id/credit-package', requireRoleOrPerm(['Admin'], 'backdate_sales'), a
     branchId: sale.branchId,
     ts: new Date()
   }).catch(() => {});
-  res.json(sale);
+  res.json(normalizeSaleFinancials(sale?.toObject ? sale.toObject() : sale));
 });
 
 r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async (req, res) => {
@@ -387,7 +423,14 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       await p.save();
       const cp = variant?.costPrice != null ? Number(variant.costPrice || 0) : Number(p.costPrice || 0);
       if (Number.isFinite(cp) && cp > 0) costTotal += cp * it.qty;
-      const itemPrice = resolveTierPrice(variant || p, it.priceTier, it.requestedPrice || p.price || 0);
+      const requestedPrice = Math.max(0, Number(it.requestedPrice || 0));
+      const itemPrice = requestedPrice > 0
+        ? requestedPrice
+        : resolveTierPrice(
+            variant || p,
+            it.priceTier,
+            resolveTierPrice(p, it.priceTier, Number(p.retailPrice || p.price || 0))
+          );
       finalItems.push({
         productId: it.productId,
         variantId: it.variantId || null,
@@ -648,7 +691,7 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       details: { invoiceSerial, receiptNumber }
     });
   } catch {}
-  const out = sale?.toObject ? sale.toObject() : sale;
+  const out = normalizeSaleFinancials(sale?.toObject ? sale.toObject() : sale);
   if (customerPointsAfter != null) out.customerPointsAfter = customerPointsAfter;
   if (creditSale) out.creditSale = creditSale;
   try {
