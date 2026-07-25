@@ -183,6 +183,9 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_tr
         if (!Array.isArray(item.unitIds) || item.unitIds.length !== q) {
           return res.status(400).json({ error: `Serialized transfer for ${p.name} requires exactly ${q} selected unit(s)` });
         }
+        // #region debug-point C:legacy-transfer-serialized
+        import('node:fs').then(({ default: fs }) => { let u = 'http://127.0.0.1:7777/event'; let s = 'warehouse-transfer-source-stock'; try { const e = fs.readFileSync('.dbg/warehouse-transfer-source-stock.env', 'utf8'); u = e.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || u; s = e.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || s; } catch {} return fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: s, runId: 'pre-fix', hypothesisId: 'C', location: 'transfers.js:legacy-transfer-serialized', msg: '[DEBUG] Legacy transfer serialized approval executing', data: { transferId: String(tr?._id || tr?.clientId || ''), fromBranchId: String(tr?.from || ''), toBranchId: String(tr?.to || ''), fromInventoryType, toInventoryType, productId: String(item?.productId || ''), variantId: String(item?.variantId || ''), qty: q, unitCount: Array.isArray(item?.unitIds) ? item.unitIds.length : 0 }, ts: Date.now() }) }).catch(() => {}); }).catch(() => {});
+        // #endregion
         await transferSerializedUnits({
           productId: item.productId,
           variantId: item.variantId || '',
@@ -201,8 +204,14 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_tr
       const curFrom = getMapQty(fromTarget.container, tr.from);
       if (curFrom < q) return res.status(400).json({ error: 'Insufficient stock for transfer' });
       const curTo = getMapQty(toTarget.container, tr.to);
+      // #region debug-point D:legacy-transfer-before
+      import('node:fs').then(({ default: fs }) => { let u = 'http://127.0.0.1:7777/event'; let s = 'warehouse-transfer-source-stock'; try { const e = fs.readFileSync('.dbg/warehouse-transfer-source-stock.env', 'utf8'); u = e.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || u; s = e.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || s; } catch {} return fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: s, runId: 'pre-fix', hypothesisId: 'D', location: 'transfers.js:legacy-transfer-before', msg: '[DEBUG] Legacy transfer before stock mutation', data: { transferId: String(tr?._id || tr?.clientId || ''), fromBranchId: String(tr?.from || ''), toBranchId: String(tr?.to || ''), fromInventoryType, toInventoryType, productId: String(item?.productId || ''), variantId: String(item?.variantId || ''), qty: q, fromCurrent: curFrom, toCurrent: curTo }, ts: Date.now() }) }).catch(() => {}); }).catch(() => {});
+      // #endregion
       setMapQty(fromTarget.container, tr.from, curFrom - q);
       setMapQty(toTarget.container, tr.to, curTo + q);
+      // #region debug-point D:legacy-transfer-after
+      import('node:fs').then(({ default: fs }) => { let u = 'http://127.0.0.1:7777/event'; let s = 'warehouse-transfer-source-stock'; try { const e = fs.readFileSync('.dbg/warehouse-transfer-source-stock.env', 'utf8'); u = e.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || u; s = e.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || s; } catch {} return fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: s, runId: 'pre-fix', hypothesisId: 'D', location: 'transfers.js:legacy-transfer-after', msg: '[DEBUG] Legacy transfer after stock mutation', data: { transferId: String(tr?._id || tr?.clientId || ''), fromBranchId: String(tr?.from || ''), toBranchId: String(tr?.to || ''), fromInventoryType, toInventoryType, productId: String(item?.productId || ''), variantId: String(item?.variantId || ''), qty: q, fromNext: getMapQty(fromTarget.container, tr.from), toNext: getMapQty(toTarget.container, tr.to) }, ts: Date.now() }) }).catch(() => {}); }).catch(() => {});
+      // #endregion
       markInventoryModified(fromTarget);
       markInventoryModified(toTarget);
       await p.save();

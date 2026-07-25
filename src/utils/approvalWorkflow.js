@@ -199,6 +199,9 @@ async function applyWholesaleOperation(operation, actor) {
           err.status = 400;
           throw err;
         }
+        // #region debug-point A:workflow-transfer-serialized
+        import('node:fs').then(({ default: fs }) => { let u = 'http://127.0.0.1:7777/event'; let s = 'warehouse-transfer-source-stock'; try { const e = fs.readFileSync('.dbg/warehouse-transfer-source-stock.env', 'utf8'); u = e.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || u; s = e.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || s; } catch {} return fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: s, runId: 'pre-fix', hypothesisId: 'A', location: 'approvalWorkflow.js:transfer-serialized', msg: '[DEBUG] Workflow serialized transfer approval executing', data: { operationId: String(operation?._id || operation?.clientId || ''), operationArea: String(operation?.operationArea || ''), fromBranchId: String(operation?.fromBranchId || ''), toBranchId: String(operation?.toBranchId || ''), fromInventoryType: String(operation?.fromInventoryType || ''), toInventoryType: String(operation?.toInventoryType || ''), productId: String(item?.productId || ''), variantId: String(item?.variantId || ''), qty, unitCount: Array.isArray(item?.unitIds) ? item.unitIds.length : 0, actorName: String(actor?.name || '') }, ts: Date.now() }) }).catch(() => {}); }).catch(() => {});
+        // #endregion
         await transferSerializedUnits({
           productId: item.productId,
           variantId: item.variantId || '',
@@ -225,8 +228,14 @@ async function applyWholesaleOperation(operation, actor) {
         throw err;
       }
       const toCurrent = getMapQty(toTarget.container, operation.toBranchId);
+      // #region debug-point B:workflow-transfer-before-after
+      import('node:fs').then(({ default: fs }) => { let u = 'http://127.0.0.1:7777/event'; let s = 'warehouse-transfer-source-stock'; try { const e = fs.readFileSync('.dbg/warehouse-transfer-source-stock.env', 'utf8'); u = e.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || u; s = e.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || s; } catch {} return fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: s, runId: 'pre-fix', hypothesisId: 'B', location: 'approvalWorkflow.js:transfer-before', msg: '[DEBUG] Workflow transfer before stock mutation', data: { operationId: String(operation?._id || operation?.clientId || ''), operationArea: String(operation?.operationArea || ''), fromBranchId: String(operation?.fromBranchId || ''), toBranchId: String(operation?.toBranchId || ''), fromInventoryType: String(operation?.fromInventoryType || ''), toInventoryType: String(operation?.toInventoryType || ''), productId: String(item?.productId || ''), variantId: String(item?.variantId || ''), qty, fromCurrent, toCurrent }, ts: Date.now() }) }).catch(() => {}); }).catch(() => {});
+      // #endregion
       setMapQty(fromTarget.container, operation.fromBranchId, fromCurrent - qty);
       setMapQty(toTarget.container, operation.toBranchId, toCurrent + qty);
+      // #region debug-point B:workflow-transfer-after
+      import('node:fs').then(({ default: fs }) => { let u = 'http://127.0.0.1:7777/event'; let s = 'warehouse-transfer-source-stock'; try { const e = fs.readFileSync('.dbg/warehouse-transfer-source-stock.env', 'utf8'); u = e.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || u; s = e.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || s; } catch {} return fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: s, runId: 'pre-fix', hypothesisId: 'B', location: 'approvalWorkflow.js:transfer-after', msg: '[DEBUG] Workflow transfer after stock mutation', data: { operationId: String(operation?._id || operation?.clientId || ''), operationArea: String(operation?.operationArea || ''), fromBranchId: String(operation?.fromBranchId || ''), toBranchId: String(operation?.toBranchId || ''), fromInventoryType: String(operation?.fromInventoryType || ''), toInventoryType: String(operation?.toInventoryType || ''), productId: String(item?.productId || ''), variantId: String(item?.variantId || ''), qty, fromNext: getMapQty(fromTarget.container, operation.toBranchId ? operation.fromBranchId : operation.fromBranchId), toNext: getMapQty(toTarget.container, operation.toBranchId) }, ts: Date.now() }) }).catch(() => {}); }).catch(() => {});
+      // #endregion
       markInventoryModified(fromTarget);
       markInventoryModified(toTarget);
       dirtyProducts.set(String(product._id), product);
