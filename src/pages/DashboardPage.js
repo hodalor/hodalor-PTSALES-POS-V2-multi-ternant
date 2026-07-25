@@ -72,6 +72,16 @@ function getDashboardSaleActivityType(sale) {
   return getSaleActivityType(sale);
 }
 
+function isRefundSale(sale) {
+  if (Number(sale?.total || 0) < 0) return true;
+  if ((Array.isArray(sale?.payment_methods) ? sale.payment_methods : []).some((row) => String(row?.type || '').trim().toLowerCase() === 'refund')) return true;
+  return (Array.isArray(sale?.items) ? sale.items : []).some((item) => String(item?.name || '').trim().toUpperCase().startsWith('REFUND '));
+}
+
+function getRefundEventDate(refund) {
+  return refund?.approved_at || refund?.created_at || null;
+}
+
 function matchesDashboardActivityFilter(sale, filter) {
   const activityType = getDashboardSaleActivityType(sale);
   switch (String(filter || 'all').trim().toLowerCase()) {
@@ -105,6 +115,7 @@ function enumerateDateKeys(fromKey, toKey) {
 
 function DashboardPage() {
   const sales = useSelector(s => s.sales.sales);
+  const refunds = useSelector(s => s.refunds.requests || []);
   const products = useSelector(s => s.products.products);
   const branches = useSelector(s => s.branches.branches);
   const settings = useSelector(s => s.settings);
@@ -377,10 +388,22 @@ function DashboardPage() {
   const metrics = useMemo(() => {
     const selectedFrom = periodMode === 'all_time' ? null : startOfLocalDay(dateFrom || defaultFromIso);
     const selectedTo = periodMode === 'all_time' ? null : endOfLocalDay(dateTo || todayIso);
+    const salesById = new Map(sales.map((sale) => [String(sale?.id || sale?._id || sale?.clientId || ''), sale]));
     const branchSales = sales.filter((s) => matchBranch(s.branchId));
     const filteredSales = branchSales.filter((s) => matchesDashboardActivityFilter(s, activityFilter));
-    const createdSales = filteredSales.filter((s) => isDateInRange(s.created_at, selectedFrom, selectedTo));
-    const activitySales = filteredSales.filter((s) => saleHasActivityInRange(s, selectedFrom, selectedTo));
+    const createdSales = filteredSales.filter((s) => !isRefundSale(s) && isDateInRange(s.created_at, selectedFrom, selectedTo));
+    const activitySales = filteredSales.filter((s) => !isRefundSale(s) && saleHasActivityInRange(s, selectedFrom, selectedTo));
+    const approvedRefunds = refunds.filter((refund) => {
+      if (String(refund?.status || '').trim().toLowerCase() !== 'approved') return false;
+      if (!matchBranch(refund?.branchId)) return false;
+      if (!isDateInRange(getRefundEventDate(refund), selectedFrom, selectedTo)) return false;
+      const originalSale = salesById.get(String(refund?.saleId || ''));
+      const fallbackSale = originalSale || {
+        branchId: refund?.branchId,
+        posType: String(refund?.refundArea || '').trim().toLowerCase() === 'distribution' ? 'wholesale' : 'retail'
+      };
+      return matchesDashboardActivityFilter(fallbackSale, activityFilter);
+    });
     const productById = new Map();
     const categoryBySku = new Map();
     products.forEach((product) => {
@@ -396,6 +419,8 @@ function DashboardPage() {
       });
     });
     const competitionSales = sales.filter((s) => (
+      !isRefundSale(s)
+      &&
       matchCompetitionBranch(s.branchId)
       && matchesDashboardActivityFilter(s, activityFilter)
       && (isDateInRange(s.created_at, selectedFrom, selectedTo) || saleHasActivityInRange(s, selectedFrom, selectedTo))
@@ -413,6 +438,11 @@ function DashboardPage() {
     let totalCreditRecovered = 0;
     let retailCreditRecovered = 0;
     let wholesaleCreditRecovered = 0;
+    let approvedRefundAmount = 0;
+    let approvedRefundProfit = 0;
+    let approvedRefundCost = 0;
+    let approvedRefundItems = 0;
+    let approvedFullRefundSalesCount = 0;
     const perDay = {};
     const revenuePerDay = {};
     const perDayPayments = {}; // { 'YYYY-MM-DD': { cash: x, card: y, ... } }
@@ -433,7 +463,7 @@ function DashboardPage() {
     }
     for (const sale of activitySales) {
       const recognized = getSaleRangeTotals(sale, selectedFrom, selectedTo);
-      if (recognized.revenue <= 0 && recognized.profit <= 0 && recognized.cost <= 0) continue;
+      if (recognized.revenue === 0 && recognized.profit === 0 && recognized.cost === 0) continue;
       const creditMode = String(sale.creditMode || '').trim().toLowerCase();
       if (creditMode === 'retail_easybuy') {
         retailCreditRecovered += recognized.revenue;
@@ -466,7 +496,7 @@ function DashboardPage() {
         customerRow.amount += recognized.revenue;
       }
     }
-    for (const sale of createdSales) {
+    for (const sale of createdSales.filter((row) => !isRefundSale(row))) {
       const customerId = String(sale.customerId || '').trim();
       const customerCode = String(sale.customerCode || '').trim();
       const customerName = String(sale.customerName || '').trim();
@@ -509,6 +539,39 @@ function DashboardPage() {
         row.profit = row.revenue - row.cost;
         if (customerRow) customerRow.products += qty;
       }
+    }
+    for (const refund of approvedRefunds) {
+      const refundType = String(refund?.type || '').trim().toLowerCase();
+      const originalSale = salesById.get(String(refund?.saleId || ''));
+      const originalItems = Array.isArray(originalSale?.items) ? originalSale.items : [];
+      const refundItems = Array.isArray(refund?.restockItems) ? refund.restockItems : [];
+      const fallbackRevenue = refundType === 'full' ? Math.abs(Number(originalSale?.total || 0)) : 0;
+      const refundRevenue = Math.abs(Number(refund?.requestedAmount || 0)) || fallbackRevenue;
+      let refundCost = 0;
+      let refundItemQty = 0;
+      if (refundItems.length > 0) {
+        refundItems.forEach((refundItem) => {
+          const qty = Math.max(0, Number(refundItem?.qty || 0));
+          if (qty <= 0) return;
+          refundItemQty += qty;
+          const matchedOriginal = originalItems.find((item) => (
+            (refundItem?.productId && String(item?.productId || '') === String(refundItem.productId || ''))
+            || (refundItem?.variantId && String(item?.variantId || '') === String(refundItem.variantId || ''))
+            || (refundItem?.sku && String(item?.sku || '') === String(refundItem.sku || ''))
+          )) || {};
+          const matchedProduct = productById.get(String(matchedOriginal?.productId || refundItem?.productId || ''));
+          const costPrice = Number(matchedOriginal?.costPrice || matchedProduct?.costPrice || 0);
+          refundCost += qty * (Number.isFinite(costPrice) ? costPrice : 0);
+        });
+      } else if (refundType === 'full' && originalSale) {
+        refundItemQty = originalItems.reduce((sum, item) => sum + Math.max(0, Number(item?.qty || 0)), 0);
+        refundCost = Math.abs(Number(originalSale?.costTotal || 0));
+      }
+      approvedRefundAmount += refundRevenue;
+      approvedRefundCost += refundCost;
+      approvedRefundProfit += Math.max(0, refundRevenue - refundCost);
+      approvedRefundItems += refundItemQty;
+      if (refundType === 'full' && originalSale) approvedFullRefundSalesCount += 1;
     }
     for (const sale of activitySales) {
       const timeline = Array.isArray(sale.paymentTimeline) ? sale.paymentTimeline : [];
@@ -581,7 +644,7 @@ function DashboardPage() {
       }
       const cashierRow = cashierMap.get(cashierKey);
       const totals = getSaleRangeTotals(sale, selectedFrom, selectedTo);
-      if (totals.revenue <= 0 && totals.profit <= 0) continue;
+      if (totals.revenue === 0 && totals.profit === 0) continue;
       cashierRow.sales += 1;
       cashierRow.revenue += totals.revenue;
       cashierRow.profit += totals.profit;
@@ -618,6 +681,12 @@ function DashboardPage() {
     const last30Sales = activitySales;
     last30Profit = last30Sales.reduce((s, x) => s + getSaleRangeTotals(x, selectedFrom, selectedTo).profit, 0);
     last30Cost = last30Sales.reduce((s, x) => s + getSaleRangeTotals(x, selectedFrom, selectedTo).cost, 0);
+    todayTotal = Math.max(0, todayTotal - approvedRefundAmount);
+    todayProfit = Math.max(0, todayProfit - approvedRefundProfit);
+    itemsSold = Math.max(0, itemsSold - approvedRefundItems);
+    last30Revenue = Math.max(0, last30Revenue - approvedRefundAmount);
+    last30Profit = Math.max(0, last30Profit - approvedRefundProfit);
+    last30Cost = Math.max(0, last30Cost - approvedRefundCost);
     const marginPct = last30Revenue > 0 ? Math.round((last30Profit / last30Revenue) * 10000) / 100 : 0;
     const paymentTypes = ['cash','card','mobile','wallet','other'];
     const paymentBar = {
@@ -736,13 +805,14 @@ function DashboardPage() {
       todayTotal,
       todayProfit,
       itemsSold,
-      transactionCount: createdSales.length,
+      transactionCount: Math.max(0, createdSales.length - approvedFullRefundSalesCount),
       creditOut,
       retailCreditOut,
       wholesaleCreditOut,
       totalCreditRecovered,
       retailCreditRecovered,
       wholesaleCreditRecovered,
+      approvedRefundAmount,
       lineData,
       paymentBar,
       doughData,
@@ -762,7 +832,7 @@ function DashboardPage() {
       multiBranchCashierView,
       revenueLineTitle
     };
-  }, [sales, products, branches, branchId, dateFrom, dateTo, inRange, matchBranch, matchCompetitionBranch, defaultFromIso, defaultRevenueChartFromIso, todayIso, periodMode, activityFilter, canUseScopedDashboardBranches, canViewBranchCompetitionAll, canViewCashierCompetitionAll, t]);
+  }, [sales, refunds, products, branches, branchId, dateFrom, dateTo, inRange, matchBranch, matchCompetitionBranch, defaultFromIso, defaultRevenueChartFromIso, todayIso, periodMode, activityFilter, canUseScopedDashboardBranches, canViewBranchCompetitionAll, canViewCashierCompetitionAll, t]);
 
   const finance = useMemo(() => {
     const expenseTotal = expenses.reduce((s, x) => s + (Number(x.amount) || 0), 0);
@@ -786,8 +856,18 @@ function DashboardPage() {
   const branchComparison = useMemo(() => {
     if (!(canViewBranchCompetitionAssigned || canViewBranchCompetitionAll)) return [];
     const byId = new Map(branches.map(b => [String(b.id), b.name || b.code || b.id]));
+    const fullyRefundedSaleIds = new Set(
+      (Array.isArray(refunds) ? refunds : [])
+        .filter((refund) => String(refund?.status || '').trim().toLowerCase() === 'approved')
+        .filter((refund) => String(refund?.type || '').trim().toLowerCase() === 'full')
+        .map((refund) => String(refund?.saleId || '').trim())
+        .filter(Boolean)
+    );
     const map = new Map();
     for (const s of sales) {
+      const saleId = String(s?.id || s?._id || s?.clientId || '').trim();
+      if (isRefundSale(s)) continue;
+      if (saleId && fullyRefundedSaleIds.has(saleId)) continue;
       if (!inRange(s.created_at) || !matchCompetitionBranch(s.branchId)) continue;
       const key = String(s.branchId || '');
       if (!map.has(key)) map.set(key, { branchId: key, name: byId.get(key) || key, revenue: 0, profit: 0, sales: 0 });
@@ -797,7 +877,7 @@ function DashboardPage() {
       row.sales += 1;
     }
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
-  }, [sales, branches, inRange, matchCompetitionBranch, canViewBranchCompetitionAssigned, canViewBranchCompetitionAll]);
+  }, [sales, refunds, branches, inRange, matchCompetitionBranch, canViewBranchCompetitionAssigned, canViewBranchCompetitionAll]);
   const customerLeaderboard = useMemo(() => (
     customerLeaderboardMode === 'products'
       ? metrics.customerLeaderboardByProducts
@@ -902,7 +982,7 @@ function DashboardPage() {
     { key: 'items', label: t('Items Sold'), value: metrics.itemsSold, subtitle: t('Units from sales created in range'), accent: '#0f766e', tint: '#ccfbf1', badge: 'IT', primary: true },
     { key: 'credit_out', label: t('Total Credit Sales'), value: maskRevenue(metrics.creditOut), subtitle: t('Outstanding balance across all credit sales'), accent: '#b45309', tint: '#ffedd5', badge: 'CR', primary: true },
     { key: 'total_credit_recovered', label: t('Total Credit Recovered'), value: maskRevenue(metrics.totalCreditRecovered), subtitle: periodMode === 'all_time' ? t('All credit repayments received') : t('Credit repayments received in selected range'), accent: '#10b981', tint: '#d1fae5', badge: 'TR', primary: true },
-    { key: 'awaiting', label: t('Pending Deposit'), value: maskRevenue(financeSummary.awaitingAmount), subtitle: financeSummaryLoading ? t('Refreshing finance summary') : t('Money waiting to be deposited'), accent: '#ef4444', tint: '#fee2e2', badge: 'PD', loading: financeSummaryLoading, primary: canUseFinanceReconciliation, hidden: !canUseFinanceReconciliation },
+    { key: 'awaiting', label: t('Pending Deposit'), value: maskRevenue(Math.max(0, financeSummary.awaitingAmount - metrics.approvedRefundAmount)), subtitle: financeSummaryLoading ? t('Refreshing finance summary') : t('Money waiting to be deposited after refunds'), accent: '#ef4444', tint: '#fee2e2', badge: 'PD', loading: financeSummaryLoading, primary: canUseFinanceReconciliation, hidden: !canUseFinanceReconciliation },
     { key: 'cashflow', label: t('Cash Available'), value: maskProfit(finance.net), subtitle: t('Recognized revenue minus expenses'), accent: '#16a34a', tint: '#dcfce7', badge: 'CF' },
     { key: 'deposited', label: t('Money Deposited'), value: maskRevenue(financeSummary.depositedAmount), subtitle: financeSummaryLoading ? t('Refreshing finance summary') : t('Approved reconciliations'), accent: '#14b8a6', tint: '#ccfbf1', badge: 'MD', loading: financeSummaryLoading, hidden: !canUseFinanceReconciliation },
     { key: 'retail_credit_out', label: t('Retail Credit Sales'), value: maskRevenue(metrics.retailCreditOut), subtitle: t('Outstanding retail credit balance'), accent: '#0ea5e9', tint: '#e0f2fe', badge: 'RE' },
@@ -910,7 +990,8 @@ function DashboardPage() {
     { key: 'retail_credit_recovered', label: t('Retail Credit Repayment'), value: maskRevenue(metrics.retailCreditRecovered), subtitle: periodMode === 'all_time' ? t('All retail credit repayments received') : t('Retail credit repayments in selected range'), accent: '#22c55e', tint: '#dcfce7', badge: 'RR' },
     { key: 'wholesale_credit_recovered', label: t('Wholesale Credit Repayment'), value: maskRevenue(metrics.wholesaleCreditRecovered), subtitle: periodMode === 'all_time' ? t('All wholesale credit repayments received') : t('Wholesale credit repayments in selected range'), accent: '#a855f7', tint: '#f3e8ff', badge: 'WR' },
     { key: 'transactions', label: t('Sales Count'), value: metrics.transactionCount, subtitle: t('Sales created in selected range'), accent: '#f59e0b', tint: '#fef3c7', badge: 'TX' },
-    { key: 'margin', label: t('Margin'), value: maskProfitText(`${metrics.marginPct}%`), subtitle: t('Gross margin percentage'), accent: '#ec4899', tint: '#fce7f3', badge: 'MG' }
+    { key: 'margin', label: t('Margin'), value: maskProfitText(`${metrics.marginPct}%`), subtitle: t('Gross margin percentage'), accent: '#ec4899', tint: '#fce7f3', badge: 'MG' },
+    { key: 'refunded', label: t('Refunded'), value: maskRevenue(metrics.approvedRefundAmount), subtitle: periodMode === 'all_time' ? t('Approved refunds for all time') : t('Approved refunds in selected range'), accent: '#dc2626', tint: '#fee2e2', badge: 'RF' }
   ].filter((card) => !card.hidden);
   const primarySummaryCards = summaryCards.filter((card) => card.primary);
   const secondarySummaryCards = summaryCards.filter((card) => !card.primary);

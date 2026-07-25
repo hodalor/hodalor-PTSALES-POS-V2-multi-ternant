@@ -88,9 +88,45 @@ function getSaleBookedProfit(sale) {
   return getSaleDisplayTotal(sale) - getSaleBookedCost(sale);
 }
 
+function isRefundSale(sale) {
+  if (getSaleDisplayTotal(sale) < 0) return true;
+  if ((Array.isArray(sale?.payment_methods) ? sale.payment_methods : []).some((row) => String(row?.type || '').trim().toLowerCase() === 'refund')) return true;
+  return (Array.isArray(sale?.items) ? sale.items : []).some((item) => String(item?.name || '').trim().toUpperCase().startsWith('REFUND '));
+}
+
+function amountCellStyle(value) {
+  return {
+    color: Number(value || 0) < 0 ? '#dc2626' : undefined,
+    fontWeight: 800
+  };
+}
+
+function buildApprovedRefundInfoMap(refunds = []) {
+  const map = new Map();
+  (Array.isArray(refunds) ? refunds : []).forEach((refund) => {
+    if (String(refund?.status || '').trim().toLowerCase() !== 'approved') return;
+    const saleId = String(refund?.saleId || '').trim();
+    if (!saleId) return;
+    const current = map.get(saleId) || { amount: 0, hasFull: false, count: 0 };
+    current.amount += Math.abs(Number(refund?.requestedAmount || 0));
+    current.hasFull = current.hasFull || String(refund?.type || '').trim().toLowerCase() === 'full';
+    current.count += 1;
+    map.set(saleId, current);
+  });
+  return map;
+}
+
+function getSaleRefundBadge(sale, approvedRefundInfoMap) {
+  const saleId = String(sale?.id || sale?._id || sale?.clientId || '').trim();
+  const info = saleId ? approvedRefundInfoMap.get(saleId) : null;
+  if (!info) return null;
+  return info.hasFull ? 'fully_refunded' : 'part_refunded';
+}
+
 function SalesPage() {
   const dispatch = useDispatch();
   const sales = useSelector(s => s.sales.sales);
+  const refunds = useSelector(s => s.refunds.requests || []);
   const products = useSelector(s => s.products.products);
   const settings = useSelector(s => s.settings);
   const branches = useSelector(s => s.branches.branches);
@@ -157,6 +193,7 @@ function SalesPage() {
       .filter((label) => label && label !== 'Non Credit');
     return Array.from(new Set([...configured, ...discovered]));
   }, [sales, settings.creditPackages]);
+  const approvedRefundInfoMap = useMemo(() => buildApprovedRefundInfoMap(refunds), [refunds]);
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -262,6 +299,7 @@ function SalesPage() {
         return fields.includes(q);
       });
     }
+    list = list.filter((sale) => !isRefundSale(sale));
     return list;
   }, [auth.user?.name, branchLabel, canUseCompetitionScope, creditKind, creditPackageFilter, dateFrom, dateTo, filteredByBranch, periodMode, productBrandById, roleLower, saleKind, searchTerm, settlementFilter]);
 
@@ -274,18 +312,19 @@ function SalesPage() {
   }, [sales]);
 
   const summary = useMemo(() => {
+    const summarySales = filteredSales.filter((sale) => !getSaleRefundBadge(sale, approvedRefundInfoMap));
     const fromDate = periodMode === 'all_time' ? null : parseRangeStart(dateFrom);
     const toDate = periodMode === 'all_time' ? null : parseRangeEnd(dateTo);
-    const totalRevenue = filteredSales.reduce((sum, sale) => sum + getSaleRangeTotals(sale, fromDate, toDate).revenue, 0);
-    const totalProfit = filteredSales.reduce((sum, sale) => sum + getSaleRangeTotals(sale, fromDate, toDate).profit, 0);
-    const totalCost = filteredSales.reduce((sum, sale) => sum + getSaleBookedCost(sale), 0);
-    const itemsSold = filteredSales.reduce((sum, sale) => sum + (Array.isArray(sale.items) ? sale.items.reduce((acc, item) => acc + (Number(item.qty) || 0), 0) : 0), 0);
-    const easybuyCount = filteredSales.filter(sale => String(sale.creditMode || '').trim().toLowerCase() === 'retail_easybuy').length;
-    const wholesaleCreditCount = filteredSales.filter(sale => String(sale.creditMode || '').trim().toLowerCase() === 'distribution_credit').length;
-    const incompleteCount = filteredSales.filter((sale) => getSaleSettlementStatus(sale) === 'incomplete').length;
-    const creditOut = filteredSales.reduce((sum, sale) => sum + Number(sale.outstandingTotal || sale.outstandingBalance || 0), 0);
+    const totalRevenue = summarySales.reduce((sum, sale) => sum + getSaleRangeTotals(sale, fromDate, toDate).revenue, 0);
+    const totalProfit = summarySales.reduce((sum, sale) => sum + getSaleRangeTotals(sale, fromDate, toDate).profit, 0);
+    const totalCost = summarySales.reduce((sum, sale) => sum + getSaleBookedCost(sale), 0);
+    const itemsSold = summarySales.reduce((sum, sale) => sum + (Array.isArray(sale.items) ? sale.items.reduce((acc, item) => acc + (Number(item.qty) || 0), 0) : 0), 0);
+    const easybuyCount = summarySales.filter(sale => String(sale.creditMode || '').trim().toLowerCase() === 'retail_easybuy').length;
+    const wholesaleCreditCount = summarySales.filter(sale => String(sale.creditMode || '').trim().toLowerCase() === 'distribution_credit').length;
+    const incompleteCount = summarySales.filter((sale) => getSaleSettlementStatus(sale) === 'incomplete').length;
+    const creditOut = summarySales.reduce((sum, sale) => sum + Number(sale.outstandingTotal || sale.outstandingBalance || 0), 0);
     return {
-      totalSales: filteredSales.length,
+      totalSales: summarySales.length,
       totalRevenue,
       totalProfit,
       totalCost,
@@ -295,13 +334,14 @@ function SalesPage() {
       incompleteCount,
       creditOut
     };
-  }, [dateFrom, dateTo, filteredSales, periodMode]);
+  }, [approvedRefundInfoMap, dateFrom, dateTo, filteredSales, periodMode]);
 
   const leaderboard = useMemo(() => {
     const fromDate = periodMode === 'all_time' ? null : parseRangeStart(dateFrom);
     const toDate = periodMode === 'all_time' ? null : parseRangeEnd(dateTo);
     const map = new Map();
     for (const s of filteredSales) {
+      if (getSaleRefundBadge(s, approvedRefundInfoMap)) continue;
       const name = s.sellerName || 'Unknown';
       if (!map.has(name)) map.set(name, { seller: name, revenue: 0, profit: 0, sales: 0 });
       const row = map.get(name);
@@ -311,7 +351,7 @@ function SalesPage() {
       row.sales += 1;
     }
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
-  }, [dateFrom, dateTo, filteredSales, periodMode]);
+  }, [approvedRefundInfoMap, dateFrom, dateTo, filteredSales, periodMode]);
 
   const byId = useMemo(() => {
     const map = new Map();
@@ -324,6 +364,7 @@ function SalesPage() {
     const toDate = periodMode === 'all_time' ? null : parseRangeEnd(dateTo);
     const map = new Map();
     for (const s of filteredSales) {
+      if (getSaleRefundBadge(s, approvedRefundInfoMap)) continue;
       const key = String(s.branchId || '');
       if (!map.has(key)) map.set(key, { branchId: key, name: byId.get(key) || key, revenue: 0, profit: 0, sales: 0 });
       const row = map.get(key);
@@ -333,7 +374,7 @@ function SalesPage() {
       row.sales += 1;
     }
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
-  }, [byId, dateFrom, dateTo, filteredSales, periodMode]);
+  }, [approvedRefundInfoMap, byId, dateFrom, dateTo, filteredSales, periodMode]);
   function reprint(sale, escpos = false) {
     if (escpos) {
       const text = escposReceipt({
@@ -768,21 +809,38 @@ function SalesPage() {
               <td>{sale.invoiceSerial || '—'}</td>
               <td>{sale.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}${i.spec ? ' ['+i.spec+']' : ''}x${i.qty}`).join(', ')}</td>
               <td>{sale.customerName || ''}</td>
-              <td><span className="price-accent">{formatCurrency(getSaleDisplayTotal(sale), settings)}</span></td>
-              <td><span className="price-accent">{maskRevenue(getSaleRangeTotals(sale, periodMode === 'all_time' ? null : parseRangeStart(dateFrom), periodMode === 'all_time' ? null : parseRangeEnd(dateTo)).revenue)}</span></td>
+              <td><span className="price-accent" style={amountCellStyle(getSaleDisplayTotal(sale))}>{formatCurrency(getSaleDisplayTotal(sale), settings)}</span></td>
+              <td><span className="price-accent" style={amountCellStyle(getSaleRangeTotals(sale, periodMode === 'all_time' ? null : parseRangeStart(dateFrom), periodMode === 'all_time' ? null : parseRangeEnd(dateTo)).revenue)}>{maskRevenue(getSaleRangeTotals(sale, periodMode === 'all_time' ? null : parseRangeStart(dateFrom), periodMode === 'all_time' ? null : parseRangeEnd(dateTo)).revenue)}</span></td>
               <td><span className="price-accent">{maskRevenue(Number(sale.outstandingTotal || sale.outstandingBalance || 0))}</span></td>
               <td>
+                {(() => {
+                  const refundBadge = getSaleRefundBadge(sale, approvedRefundInfoMap);
+                  const isIncomplete = getSaleSettlementStatus(sale) === 'incomplete';
+                  const label = refundBadge === 'fully_refunded'
+                    ? 'Fully Refunded'
+                    : refundBadge === 'part_refunded'
+                      ? 'Part Refunded'
+                      : (isIncomplete ? 'Incomplete' : 'Completed');
+                  const color = refundBadge
+                    ? '#b91c1c'
+                    : (isIncomplete ? '#b45309' : '#15803d');
+                  const background = refundBadge
+                    ? '#fee2e2'
+                    : (isIncomplete ? '#fef3c7' : '#dcfce7');
+                  return (
                 <span style={{
                   display: 'inline-flex',
                   padding: '4px 10px',
                   borderRadius: 999,
                   fontSize: 12,
                   fontWeight: 700,
-                  color: getSaleSettlementStatus(sale) === 'incomplete' ? '#b45309' : '#15803d',
-                  background: getSaleSettlementStatus(sale) === 'incomplete' ? '#fef3c7' : '#dcfce7'
+                  color,
+                  background
                 }}>
-                  {getSaleSettlementStatus(sale) === 'incomplete' ? 'Incomplete' : 'Completed'}
+                  {label}
                 </span>
+                  );
+                })()}
               </td>
               <td>
                 <button className="btn btn-primary" onClick={() => reprint(sale, false)} disabled={bulkDeleting && selectedSaleIds.includes(String(sale.id || sale._id || sale.clientId || ''))}>

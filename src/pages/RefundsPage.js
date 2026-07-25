@@ -8,6 +8,7 @@ import { exportCsv, exportTablePdf } from '../utils/exporters';
 import * as refundsApi from '../api/refunds';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
+import Modal from '../components/Modal';
 
 function toDataUrl(file) {
   return new Promise((resolve, reject) => {
@@ -37,8 +38,12 @@ function RefundsPage({ mode = 'retail' }) {
   const [lookupSale, setLookupSale] = useState(null);
   const [lookupLoading, setLookupLoading] = useState(false);
   const [lookupError, setLookupError] = useState('');
+  const [selectedRequest, setSelectedRequest] = useState(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const salesById = useMemo(() => new Map(
+    (sales || []).map((row) => [String(row?.id || row?._id || row?.clientId || ''), row])
+  ), [sales]);
   const localSale = useMemo(() => {
     const q = query.trim();
     if (!q) return null;
@@ -257,6 +262,15 @@ function RefundsPage({ mode = 'retail' }) {
     return rows;
   }, [refunds, auth.user, auth.role, settings.currentBranchId]);
 
+  function getSaleForRequest(request) {
+    const direct = salesById.get(String(request?.saleId || ''));
+    if (direct) return direct;
+    return (sales || []).find((row) => (
+      String(row?.invoiceSerial || '').trim().toLowerCase() === String(request?.invoiceSerial || '').trim().toLowerCase()
+      || String(row?.receiptNumber || '').trim().toLowerCase() === String(request?.receiptNumber || '').trim().toLowerCase()
+    )) || null;
+  }
+
   function onExportCsv() {
     const headers = [
       { key: 'ref', label: 'Ref', value: r => r.invoiceSerial || r.receiptNumber || r.saleId },
@@ -431,7 +445,7 @@ function RefundsPage({ mode = 'retail' }) {
           </thead>
           <tbody>
             {allRequests.slice((page-1)*pageSize, (page-1)*pageSize + pageSize).map(r => (
-              <tr key={r.id}>
+              <tr key={r.id} onClick={() => setSelectedRequest(r)} style={{ cursor: 'pointer' }} title="Open refund details">
                 <td>{r.invoiceSerial || r.receiptNumber || r.saleId}</td>
                 <td>{r.initiatorName}</td>
                 <td>{branchLabel(r.branchId)}</td>
@@ -461,6 +475,100 @@ function RefundsPage({ mode = 'retail' }) {
           </label>
         </div>
       </div>
+      {selectedRequest && (() => {
+        const linkedSale = getSaleForRequest(selectedRequest);
+        const linkedItems = Array.isArray(linkedSale?.items) ? linkedSale.items : [];
+        const refundItems = Array.isArray(selectedRequest?.restockItems) ? selectedRequest.restockItems : [];
+        const images = Array.isArray(selectedRequest?.images) ? selectedRequest.images : [];
+        return (
+          <Modal
+            title="Refund Record Details"
+            onClose={() => setSelectedRequest(null)}
+            footer={<button className="btn" onClick={() => setSelectedRequest(null)}>Close</button>}
+          >
+            <div style={{ display: 'grid', gap: 16 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                <div className="card" style={{ padding: 12 }}>
+                  <div style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>Refund</div>
+                  <div><strong>Reference:</strong> {selectedRequest.invoiceSerial || selectedRequest.receiptNumber || selectedRequest.saleId}</div>
+                  <div><strong>Branch:</strong> {branchLabel(selectedRequest.branchId)}</div>
+                  <div><strong>Type:</strong> {String(selectedRequest.type || '').toUpperCase()}</div>
+                  <div><strong>Amount:</strong> {formatCurrency(selectedRequest.requestedAmount || 0, settings)}</div>
+                  <div><strong>Status:</strong> {String(selectedRequest.status || '').replace('_', ' ')}</div>
+                  <div><strong>Created:</strong> {selectedRequest.created_at ? new Date(selectedRequest.created_at).toLocaleString() : '—'}</div>
+                  <div><strong>Approved:</strong> {selectedRequest.approved_at ? new Date(selectedRequest.approved_at).toLocaleString() : '—'}</div>
+                </div>
+                <div className="card" style={{ padding: 12 }}>
+                  <div style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>People</div>
+                  <div><strong>Initiator:</strong> {selectedRequest.initiatorName || '—'}</div>
+                  <div><strong>Initiator Role:</strong> {selectedRequest.initiatorRole || '—'}</div>
+                  <div><strong>Approver:</strong> {selectedRequest.approverName || '—'}</div>
+                  <div><strong>Approver Role:</strong> {selectedRequest.approverRole || '—'}</div>
+                  <div><strong>Remark:</strong> {selectedRequest.remark || '—'}</div>
+                  <div><strong>Approval Remark:</strong> {selectedRequest.approvalRemark || '—'}</div>
+                  <div><strong>Rejected Remark:</strong> {selectedRequest.rejectionRemark || '—'}</div>
+                </div>
+              </div>
+
+              <div className="card" style={{ padding: 12 }}>
+                <div style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>Customer And Sale</div>
+                <div><strong>Customer:</strong> {linkedSale?.customerName || '—'}</div>
+                <div><strong>Customer Code:</strong> {linkedSale?.customerCode || '—'}</div>
+                <div><strong>Sale Date:</strong> {linkedSale?.created_at ? new Date(linkedSale.created_at).toLocaleString() : '—'}</div>
+                <div><strong>Original Invoice:</strong> {linkedSale?.invoiceSerial || selectedRequest.invoiceSerial || '—'}</div>
+                <div><strong>Original Receipt:</strong> {linkedSale?.receiptNumber || selectedRequest.receiptNumber || '—'}</div>
+                <div><strong>Original Total:</strong> {linkedSale ? formatCurrency(linkedSale.total || 0, settings) : '—'}</div>
+              </div>
+
+              <div className="card" style={{ padding: 12 }}>
+                <div style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>Products In Original Sale</div>
+                {linkedItems.length > 0 ? linkedItems.map((item, index) => (
+                  <div key={`${item.sku || item.name}-${index}`} style={{ padding: '8px 0', borderTop: index === 0 ? 'none' : '1px solid #e2e8f0' }}>
+                    <div><strong>{item.name || item.sku || 'Item'}</strong></div>
+                    <div style={{ color: '#64748b' }}>
+                      SKU: {item.sku || '—'} | Qty: {item.qty || 0} | Price: {formatCurrency((Number(item.price) || 0), settings)}
+                    </div>
+                  </div>
+                )) : (
+                  <div style={{ color: '#64748b' }}>No linked sale items found</div>
+                )}
+              </div>
+
+              <div className="card" style={{ padding: 12 }}>
+                <div style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>Refunded Items</div>
+                {refundItems.length > 0 ? refundItems.map((item, index) => (
+                  <div key={`${item.sku || item.productId || index}`} style={{ padding: '8px 0', borderTop: index === 0 ? 'none' : '1px solid #e2e8f0' }}>
+                    <div><strong>{item.sku || item.productId || 'Refund Item'}</strong></div>
+                    <div style={{ color: '#64748b' }}>
+                      Qty: {item.qty || 0} | Product ID: {item.productId || '—'} | Variant ID: {item.variantId || '—'}
+                    </div>
+                    {Array.isArray(item.unitIds) && item.unitIds.length > 0 && (
+                      <div style={{ color: '#64748b' }}>Units: {item.unitIds.join(', ')}</div>
+                    )}
+                  </div>
+                )) : (
+                  <div style={{ color: '#64748b' }}>No refund item breakdown recorded</div>
+                )}
+              </div>
+
+              <div className="card" style={{ padding: 12 }}>
+                <div style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>Uploaded Images</div>
+                {images.length > 0 ? (
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                    {images.map((src, index) => (
+                      <a key={index} href={src} target="_blank" rel="noreferrer">
+                        <img src={src} alt={`refund-${index}`} style={{ width: 120, height: 120, objectFit: 'cover', borderRadius: 8, border: '1px solid #e2e8f0' }} />
+                      </a>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ color: '#64748b' }}>No images uploaded</div>
+                )}
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 }
