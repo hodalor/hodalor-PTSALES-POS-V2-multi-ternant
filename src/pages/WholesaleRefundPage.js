@@ -1,7 +1,7 @@
-import WholesaleOperationsPage from './WholesaleOperationsPage';
+import RefundsPage from './RefundsPage';
 
 function WholesaleRefundPage() {
-  return <WholesaleOperationsPage operationType="refund" />;
+  return <RefundsPage mode="distribution" />;
 }
 
 export default WholesaleRefundPage;

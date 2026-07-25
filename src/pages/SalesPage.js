@@ -64,20 +64,22 @@ function getSaleBookedCost(sale) {
 }
 
 function getSaleDisplaySubtotal(sale) {
-  const stored = Number(sale?.subtotal || 0);
-  if (Number.isFinite(stored) && stored > 0) return stored;
-  return Array.isArray(sale?.items)
+  const stored = Number(sale?.subtotal);
+  const itemsSubtotal = Array.isArray(sale?.items)
     ? sale.items.reduce((sum, item) => sum + ((Number(item?.price || 0) || 0) * (Number(item?.qty || 0) || 0)), 0)
     : 0;
+  if (Number.isFinite(stored) && (stored !== 0 || itemsSubtotal === 0)) return stored;
+  return itemsSubtotal;
 }
 
 function getSaleDisplayTotal(sale) {
-  const stored = Number(sale?.total || 0);
-  if (Number.isFinite(stored) && stored > 0) return stored;
+  const stored = Number(sale?.total);
   const subtotal = getSaleDisplaySubtotal(sale);
   const discount = Math.max(0, Number(sale?.discount || 0));
   const tax = Math.max(0, Number(sale?.tax || 0));
-  return Math.max(0, subtotal - discount + tax);
+  const computed = subtotal - discount + tax;
+  if (Number.isFinite(stored) && (stored !== 0 || computed === 0)) return stored;
+  return computed;
 }
 
 function getSaleBookedProfit(sale) {

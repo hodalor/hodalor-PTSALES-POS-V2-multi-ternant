@@ -13,6 +13,7 @@ const titles = {
   'suppliers': 'Suppliers',
   'customers': 'Customers',
   'refunds': 'Refunds',
+  'wholesale-refund': 'Distribution Refund',
   'reports': 'Reports',
   'users': 'Users',
   'inventory-consistency': 'Inventory Consistency',

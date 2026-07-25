@@ -18,7 +18,7 @@ function toDataUrl(file) {
   });
 }
 
-function RefundsPage() {
+function RefundsPage({ mode = 'retail' }) {
   const dispatch = useDispatch();
   const toast = useToast();
   const settings = useSelector(s => s.settings);
@@ -34,9 +34,12 @@ function RefundsPage() {
   const [images, setImages] = useState([]);
   const [restock, setRestock] = useState(true);
   const [serializedSelections, setSerializedSelections] = useState({});
+  const [lookupSale, setLookupSale] = useState(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupError, setLookupError] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const sale = useMemo(() => {
+  const localSale = useMemo(() => {
     const q = query.trim();
     if (!q) return null;
     return sales.find(s =>
@@ -45,12 +48,25 @@ function RefundsPage() {
       String(s._id || s.id) === q
     ) || null;
   }, [query, sales]);
+  const sale = lookupSale || localSale;
   const eligible = useMemo(() => {
     if (!sale) return 0;
     const v = Math.max(0, Number(sale.total || 0) - Number(sale.tax || 0));
     return Math.round(v * 100) / 100;
   }, [sale]);
   const roleLower = String(auth.role || '').toLowerCase();
+  const isDistributionMode = String(mode || '').toLowerCase() === 'distribution';
+  const pageTitle = isDistributionMode ? 'Distribution Refunds' : 'Refunds';
+  const searchLabel = isDistributionMode ? 'Search Distribution Sale by Receipt or Invoice' : 'Search by Receipt or Invoice';
+  const searchPlaceholder = isDistributionMode
+    ? 'e.g., INV-WHOLESALE-000123 or RCPT-WHOLESALE-000123'
+    : 'e.g., RCPT-XXX-000123 or INV-XXX-000123';
+  const requestButtonLabel = isDistributionMode ? 'Request Distribution Refund' : 'Request Refund';
+  const grants = Array.isArray(auth.grants) ? auth.grants : [];
+  const canRequest = roleLower === 'superadmin'
+    || ['admin','manager','cashier'].includes(roleLower)
+    || grants.includes('add_refunds')
+    || grants.includes('add_distribution_refunds');
   const refundSummary = useMemo(() => ({
     total: refunds.length,
     pending: refunds.filter(r => String(r.status || '').includes('pending')).length,
@@ -58,6 +74,43 @@ function RefundsPage() {
     rejected: refunds.filter(r => String(r.status || '') === 'rejected').length,
     totalAmount: refunds.reduce((sum, r) => sum + (Number(r.amount || r.requestedAmount) || 0), 0)
   }), [refunds]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const q = query.trim();
+    if (!q) {
+      setLookupSale(null);
+      setLookupError('');
+      setLookupLoading(false);
+      return () => {};
+    }
+    if (localSale) {
+      setLookupSale(localSale);
+      setLookupError('');
+      setLookupLoading(false);
+      return () => {};
+    }
+    setLookupLoading(true);
+    setLookupError('');
+    setLookupSale(null);
+    refundsApi.lookupSale(q)
+      .then((row) => {
+        if (cancelled) return;
+        const id = row?.id || row?._id || row?.clientId || '';
+        setLookupSale(row ? { ...row, id: String(id || '') } : null);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setLookupSale(null);
+        setLookupError(String(error?.message || 'Sale not found'));
+      })
+      .finally(() => {
+        if (!cancelled) setLookupLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [localSale, query]);
 
   useEffect(() => {
     if (!sale) {
@@ -91,9 +144,8 @@ function RefundsPage() {
 
   async function startRequest() {
     const roleOk = ['admin','manager','cashier'].includes(roleLower);
-    const grants = Array.isArray(auth.grants) ? auth.grants : [];
-    const canRequest = roleLower === 'superadmin' || roleOk || grants.includes('add_refunds');
-    if (!canRequest) {
+    const canRequestNow = roleLower === 'superadmin' || roleOk || grants.includes('add_refunds') || grants.includes('add_distribution_refunds');
+    if (!canRequestNow) {
       toast.show('Not authorized to request refunds', { type: 'error' });
       return;
     }
@@ -138,10 +190,11 @@ function RefundsPage() {
         }).filter(item => item.qty > 0)
       : [];
     const payload = {
-      saleId: sale.id,
+      saleId: sale.id || sale._id || sale.clientId || '',
       invoiceSerial: sale.invoiceSerial || '',
       receiptNumber: sale.receiptNumber || '',
       branchId: sale.branchId,
+      refundArea: isDistributionMode ? 'distribution' : 'retail',
       initiatorName: auth.user?.name || 'unknown',
       initiatorRole: auth.role || '',
       type: refundType,
@@ -234,8 +287,8 @@ function RefundsPage() {
   return (
     <div style={{ padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <h1 style={{ margin: 0 }}>Refunds</h1>
-        <OfflineQueueIndicator collection="refundrequests" label="Refunds queued" />
+        <h1 style={{ margin: 0 }}>{pageTitle}</h1>
+        <OfflineQueueIndicator collection="refundrequests" label={isDistributionMode ? 'Distribution refunds queued' : 'Refunds queued'} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Refund Requests</div><div style={{ fontSize: 28, fontWeight: 800 }}>{refundSummary.total}</div></div>
@@ -247,10 +300,15 @@ function RefundsPage() {
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'end' }}>
           <label>
-            Search by Receipt or Invoice
-            <input className="input" placeholder="e.g., RCPT-XXX-000123 or INV-XXX-000123" value={query} onChange={e => setQuery(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 6 }} />
+            {searchLabel}
+            <input className="input" placeholder={searchPlaceholder} value={query} onChange={e => setQuery(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 6 }} />
           </label>
         </div>
+        {query.trim() && (
+          <div style={{ marginTop: 8, color: lookupError ? '#b91c1c' : '#64748b' }}>
+            {lookupLoading ? 'Searching sale...' : (sale ? `Found ${sale.invoiceSerial || sale.receiptNumber || sale.id}` : (lookupError || 'Sale not found'))}
+          </div>
+        )}
         {sale && (
           <div style={{ marginTop: 12, borderTop: '1px solid #e2e8f0', paddingTop: 12 }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8 }}>
@@ -344,10 +402,8 @@ function RefundsPage() {
             )}
             <div style={{ marginTop: 12 }}>
               {(() => {
-                const grants = Array.isArray(auth.grants) ? auth.grants : [];
-                const can = roleLower === 'superadmin' || ['admin','manager','cashier'].includes(roleLower) || grants.includes('add_refunds');
-                return can ? (
-                  <button className="btn btn-primary" onClick={startRequest}>Request Refund</button>
+                return canRequest ? (
+                  <button className="btn btn-primary" onClick={startRequest}>{requestButtonLabel}</button>
                 ) : null;
               })()}
             </div>

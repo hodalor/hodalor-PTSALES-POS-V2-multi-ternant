@@ -515,7 +515,9 @@ function App() {
         );
         const canLoadCustomers = section('sections.partners') && allow('modules.customers', ['Admin','Manager','Cashier'], ['view_customers','see_customers']);
         const canLoadSuppliers = section('sections.partners') && allow('modules.suppliers', ['Admin','Manager','Inventory Staff'], ['view_suppliers','see_suppliers']);
-        const canLoadRefunds = section('sections.retail') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']);
+        const canLoadRetailRefunds = section('sections.retail') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']);
+        const canLoadDistributionRefunds = section('sections.distribution') && allow('pages.distribution.refund', ['Admin','Manager','Inventory Staff','Cashier'], ['view_distribution_refunds','add_distribution_refunds']);
+        const canLoadRefunds = canLoadRetailRefunds || canLoadDistributionRefunds;
         const canLoadSales = allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']);
 
         const [criticalProducts, criticalBranches] = await Promise.allSettled([
@@ -653,7 +655,10 @@ function App() {
           section('sections.partners') && allow('modules.suppliers', ['Admin','Manager','Inventory Staff'], ['view_suppliers','see_suppliers']) ? suppliersApi.list() : Promise.resolve([]),
           section('sections.partners') && allow('modules.customers', ['Admin','Manager','Cashier'], ['view_customers','see_customers']) ? customersApi.list() : Promise.resolve([]),
           authInitialized && isAuthed ? branchesApi.list() : Promise.resolve([]),
-          section('sections.retail') && allow('modules.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']) ? refundsApi.listRequests() : Promise.resolve([]),
+          (
+            (section('sections.retail') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']))
+            || (section('sections.distribution') && allow('pages.distribution.refund', ['Admin','Manager','Inventory Staff','Cashier'], ['view_distribution_refunds','add_distribution_refunds']))
+          ) ? refundsApi.listRequests() : Promise.resolve([]),
           allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? salesApi.list() : Promise.resolve([]),
           section('sections.admin') && allow('admin.users', ['Admin'], ['view_users','see_users']) ? usersApi.list() : Promise.resolve([]),
           (((allow('admin.audit', ['Admin'], ['view_audit','see_audit']) || allow('sections.admin', ['Admin'], ['view_stock_records','see_stock_records'])) && !(roleLower === 'superadmin' && String(authTenantId || '').toLowerCase() === 'master'))) ? auditsApi.list(1000) : Promise.resolve([]),
