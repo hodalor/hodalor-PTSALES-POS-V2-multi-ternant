@@ -88,7 +88,7 @@ function resolveSaleTimestamps(payload = {}, req) {
 
 function computeSaleItemsSubtotal(items = []) {
   return (Array.isArray(items) ? items : []).reduce((sum, item) => (
-    sum + (Math.max(0, Number(item?.price || 0)) * Math.max(0, Number(item?.qty || 0)))
+    sum + (Number(item?.price || 0) * Math.max(0, Number(item?.qty || 0)))
   ), 0);
 }
 
@@ -100,18 +100,22 @@ function computeSaleItemsCostTotal(items = []) {
 
 function normalizeSaleFinancials(row = {}) {
   const itemsSubtotal = computeSaleItemsSubtotal(row.items);
-  const storedSubtotal = Number(row?.subtotal || 0);
-  const subtotal = storedSubtotal > 0 ? storedSubtotal : itemsSubtotal;
+  const storedSubtotal = Number(row?.subtotal);
+  const hasStoredSubtotal = Number.isFinite(storedSubtotal) && (storedSubtotal !== 0 || itemsSubtotal === 0);
+  const subtotal = hasStoredSubtotal ? storedSubtotal : itemsSubtotal;
   const discount = Math.max(0, Number(row?.discount || 0));
   const tax = Math.max(0, Number(row?.tax || 0));
-  const storedTotal = Number(row?.total || 0);
-  const total = storedTotal > 0 ? storedTotal : Math.max(0, subtotal - discount + tax);
+  const storedTotal = Number(row?.total);
+  const computedTotal = subtotal - discount + tax;
+  const hasStoredTotal = Number.isFinite(storedTotal) && (storedTotal !== 0 || computedTotal === 0);
+  const total = hasStoredTotal ? storedTotal : computedTotal;
   const itemCostTotal = computeSaleItemsCostTotal(row.items);
-  const storedCostTotal = Number(row?.costTotal || 0);
-  const costTotal = storedCostTotal > 0 ? storedCostTotal : itemCostTotal;
+  const storedCostTotal = Number(row?.costTotal);
+  const hasStoredCostTotal = Number.isFinite(storedCostTotal) && (storedCostTotal !== 0 || itemCostTotal === 0);
+  const costTotal = hasStoredCostTotal ? storedCostTotal : itemCostTotal;
   const storedProfitTotal = Number(row?.profitTotal);
   const shouldRecomputeProfit = !Number.isFinite(storedProfitTotal)
-    || (storedTotal <= 0 && total > 0);
+    || (!hasStoredTotal && total !== 0);
   const profitTotal = shouldRecomputeProfit ? (total - costTotal) : storedProfitTotal;
   return {
     ...row,

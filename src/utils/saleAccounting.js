@@ -83,21 +83,23 @@ function resolveCreditMode(sale, creditSale = null) {
 }
 
 export function buildSalePaymentTimeline(sale, creditSale = null, repayments = []) {
-  const total = Math.max(0, toNumber(sale?.total));
-  const costTotal = Math.max(0, toNumber(sale?.costTotal));
+  const total = toNumber(sale?.total);
+  const costTotal = toNumber(sale?.costTotal);
   const creditMode = resolveCreditMode(sale, creditSale);
   const events = [];
   if (creditMode === 'non_credit') {
-    if (total > 0) {
+    if (total !== 0) {
       events.push({
-        source: 'sale',
+        source: total < 0 ? 'refund' : 'sale',
         amount: total,
         principalAmount: total,
         penaltyAmount: 0,
         recognizedCost: costTotal,
-        recognizedProfit: toNumber(sale?.profitTotal || (total - costTotal)),
+        recognizedProfit: Number.isFinite(Number(sale?.profitTotal))
+          ? toNumber(sale?.profitTotal)
+          : (total - costTotal),
         paidAt: toDate(sale?.created_at) || toDate(sale?.saleCapturedAt) || toDate(sale?.recordedAt) || new Date(),
-        note: 'Sale paid in full on checkout'
+        note: total < 0 ? 'Refund recorded' : 'Sale paid in full on checkout'
       });
     }
     return events;
@@ -211,8 +213,8 @@ export function buildRecognizedDayTotals(rows = [], start, end) {
     const paymentMethodBreakdown = paymentMethods.reduce((map, row) => {
       const type = String(row?.type || 'cash').trim().toLowerCase() || 'cash';
       if (type === 'easybuy') return map;
-      const amount = Math.max(0, toNumber(row?.amount));
-      if (amount <= 0) return map;
+      const amount = toNumber(row?.amount);
+      if (amount === 0) return map;
       map.set(type, (map.get(type) || 0) + amount);
       return map;
     }, new Map());

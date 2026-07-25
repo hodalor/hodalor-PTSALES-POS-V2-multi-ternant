@@ -8,14 +8,93 @@ import mongoose from 'mongoose';
 import { resolveInventoryTypeFromBranch, returnSerializedUnits } from '../utils/productUnits.js';
 import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from '../utils/inventory.js';
 import { uploadMediaArray } from '../utils/mediaStorage.js';
+import { enrichSalesWithAccounting } from '../utils/saleAccounting.js';
 
 const r = Router();
 
 r.use(requireAuth);
 
+function escapeRegex(text = '') {
+  return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeBranchIds(value) {
+  if (value === 'all') return 'all';
+  return Array.from(new Set(
+    (Array.isArray(value) ? value : [value])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+  ));
+}
+
+function computeSaleItemsSubtotal(items = []) {
+  return (Array.isArray(items) ? items : []).reduce((sum, item) => (
+    sum + (Number(item?.price || 0) * Math.max(0, Number(item?.qty || 0)))
+  ), 0);
+}
+
+function computeSaleItemsCostTotal(items = []) {
+  return (Array.isArray(items) ? items : []).reduce((sum, item) => (
+    sum + (Number(item?.costPrice || 0) * Math.max(0, Number(item?.qty || 0)))
+  ), 0);
+}
+
+function normalizeSaleFinancials(row = {}) {
+  const itemsSubtotal = computeSaleItemsSubtotal(row.items);
+  const storedSubtotal = Number(row?.subtotal);
+  const hasStoredSubtotal = Number.isFinite(storedSubtotal) && (storedSubtotal !== 0 || itemsSubtotal === 0);
+  const subtotal = hasStoredSubtotal ? storedSubtotal : itemsSubtotal;
+  const discount = Math.max(0, Number(row?.discount || 0));
+  const tax = Math.max(0, Number(row?.tax || 0));
+  const storedTotal = Number(row?.total);
+  const computedTotal = subtotal - discount + tax;
+  const hasStoredTotal = Number.isFinite(storedTotal) && (storedTotal !== 0 || computedTotal === 0);
+  const total = hasStoredTotal ? storedTotal : computedTotal;
+  const itemCostTotal = computeSaleItemsCostTotal(row.items);
+  const storedCostTotal = Number(row?.costTotal);
+  const hasStoredCostTotal = Number.isFinite(storedCostTotal) && (storedCostTotal !== 0 || itemCostTotal === 0);
+  const costTotal = hasStoredCostTotal ? storedCostTotal : itemCostTotal;
+  const storedProfitTotal = Number(row?.profitTotal);
+  const shouldRecomputeProfit = !Number.isFinite(storedProfitTotal)
+    || (!hasStoredTotal && total !== 0);
+  const profitTotal = shouldRecomputeProfit ? (total - costTotal) : storedProfitTotal;
+  return {
+    ...row,
+    subtotal,
+    total,
+    costTotal,
+    profitTotal
+  };
+}
+
 r.get('/requests', async (req, res) => {
   const rows = await RefundRequest.find().sort({ created_at: -1 }).limit(500);
   res.json(rows);
+});
+
+r.get('/lookup-sale', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_refunds', 'add_distribution_refunds', 'approve_refunds']), async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  if (!q) return res.status(400).json({ error: 'Missing search query' });
+  const role = String(req.user?.role || '').toLowerCase();
+  const query = {};
+  const assigned = normalizeBranchIds(req.user?.assignedBranches);
+  if (role !== 'superadmin' && role !== 'admin' && assigned !== 'all') {
+    const branchIds = normalizeBranchIds([req.user?.branchId, ...(Array.isArray(assigned) ? assigned : [])]);
+    if (branchIds.length > 0) query.branchId = { $in: branchIds };
+  }
+  const exactRegex = new RegExp(`^${escapeRegex(q)}$`, 'i');
+  query.$or = [
+    { invoiceSerial: exactRegex },
+    { receiptNumber: exactRegex },
+    { clientId: q }
+  ];
+  if (mongoose.isValidObjectId(q)) {
+    query.$or.unshift({ _id: q });
+  }
+  const sale = await Sale.findOne(query).sort({ created_at: -1 }).lean();
+  if (!sale) return res.status(404).json({ error: 'Sale not found' });
+  const [enriched] = await enrichSalesWithAccounting([normalizeSaleFinancials(sale)]);
+  res.json(enriched || normalizeSaleFinancials(sale));
 });
 
 r.post('/requests', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_refunds', 'add_distribution_refunds']), async (req, res) => {
@@ -84,10 +163,15 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_refunds'), as
         price: -amt,
         spec: ''
       }],
-      subtotal: 0,
+      subtotal: -amt,
       discount: 0,
       tax: 0,
       total: -amt,
+      costTotal: 0,
+      profitTotal: -amt,
+      posType: saleRef.posType || 'retail',
+      inventoryType: saleRef.inventoryType || saleRef.posType || 'retail',
+      defaultPriceTier: saleRef.defaultPriceTier || (saleRef.posType || 'retail'),
       payment_methods: [{ type: 'refund', amount: -amt }],
       invoiceSerial: '',
       receiptNumber: '',
