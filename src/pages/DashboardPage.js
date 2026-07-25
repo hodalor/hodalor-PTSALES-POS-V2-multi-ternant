@@ -100,6 +100,11 @@ function matchesDashboardActivityFilter(sale, filter) {
   }
 }
 
+function isCreditOnlyDashboardFilter(filter) {
+  const normalized = String(filter || 'all').trim().toLowerCase();
+  return normalized === 'all_credit' || normalized === 'retail_credit' || normalized === 'wholesale_credit';
+}
+
 function enumerateDateKeys(fromKey, toKey) {
   const start = parseInputDateKey(fromKey);
   const end = parseInputDateKey(toKey);
@@ -840,6 +845,11 @@ function DashboardPage() {
     const projected30 = net;
     return { expenseTotal, net, projected30 };
   }, [expenses, metrics.last30Revenue]);
+  const creditOnlyDashboardView = useMemo(() => isCreditOnlyDashboardFilter(activityFilter), [activityFilter]);
+  const pendingDepositValue = useMemo(() => {
+    if (creditOnlyDashboardView) return 0;
+    return Math.max(0, financeSummary.awaitingAmount - metrics.approvedRefundAmount);
+  }, [creditOnlyDashboardView, financeSummary.awaitingAmount, metrics.approvedRefundAmount]);
 
   function maskRevenue(value) {
     return canViewRevenue ? formatCurrency(value, settings) : '******';
@@ -982,7 +992,7 @@ function DashboardPage() {
     { key: 'items', label: t('Items Sold'), value: metrics.itemsSold, subtitle: t('Units from sales created in range'), accent: '#0f766e', tint: '#ccfbf1', badge: 'IT', primary: true },
     { key: 'credit_out', label: t('Total Credit Sales'), value: maskRevenue(metrics.creditOut), subtitle: t('Outstanding balance across all credit sales'), accent: '#b45309', tint: '#ffedd5', badge: 'CR', primary: true },
     { key: 'total_credit_recovered', label: t('Total Credit Recovered'), value: maskRevenue(metrics.totalCreditRecovered), subtitle: periodMode === 'all_time' ? t('All credit repayments received') : t('Credit repayments received in selected range'), accent: '#10b981', tint: '#d1fae5', badge: 'TR', primary: true },
-    { key: 'awaiting', label: t('Pending Deposit'), value: maskRevenue(Math.max(0, financeSummary.awaitingAmount - metrics.approvedRefundAmount)), subtitle: financeSummaryLoading ? t('Refreshing finance summary') : t('Money waiting to be deposited after refunds'), accent: '#ef4444', tint: '#fee2e2', badge: 'PD', loading: financeSummaryLoading, primary: canUseFinanceReconciliation, hidden: !canUseFinanceReconciliation },
+    { key: 'awaiting', label: t('Pending Deposit'), value: maskRevenue(pendingDepositValue), subtitle: financeSummaryLoading ? t('Refreshing finance summary') : (creditOnlyDashboardView ? t('No pending deposit in credit-only view') : t('Money waiting to be deposited after refunds')), accent: '#ef4444', tint: '#fee2e2', badge: 'PD', loading: financeSummaryLoading, primary: canUseFinanceReconciliation, hidden: !canUseFinanceReconciliation },
     { key: 'cashflow', label: t('Cash Available'), value: maskProfit(finance.net), subtitle: t('Recognized revenue minus expenses'), accent: '#16a34a', tint: '#dcfce7', badge: 'CF' },
     { key: 'deposited', label: t('Money Deposited'), value: maskRevenue(financeSummary.depositedAmount), subtitle: financeSummaryLoading ? t('Refreshing finance summary') : t('Approved reconciliations'), accent: '#14b8a6', tint: '#ccfbf1', badge: 'MD', loading: financeSummaryLoading, hidden: !canUseFinanceReconciliation },
     { key: 'retail_credit_out', label: t('Retail Credit Sales'), value: maskRevenue(metrics.retailCreditOut), subtitle: t('Outstanding retail credit balance'), accent: '#0ea5e9', tint: '#e0f2fe', badge: 'RE' },

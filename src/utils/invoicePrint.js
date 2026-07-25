@@ -73,6 +73,7 @@ export function buildInvoiceA4Html({ settings, invoice }) {
     </tr>
   `).join('');
   const subtotal = Number(invoice.subtotal || 0);
+  const discount = Number(invoice.discount || 0);
   const tax = Number(invoice.tax || 0);
   const total = Number(invoice.total || 0);
   const words = amountInWords(total, '');
@@ -181,6 +182,10 @@ export function buildInvoiceA4Html({ settings, invoice }) {
         <tr>
           <td colspan="5" class="right strong">${t('Total')}</td>
           <td class="right strong">${formatCurrency(subtotal, settings)}</td>
+        </tr>
+        <tr>
+          <td colspan="5" class="right">${t('Discount')}</td>
+          <td class="right">-${formatCurrency(discount, settings)}</td>
         </tr>
         <tr>
           <td colspan="5" class="right">${t('Tax')}</td>
