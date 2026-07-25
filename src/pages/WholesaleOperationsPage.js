@@ -551,6 +551,9 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
       const reviewedPayloadItems = reviewItems.map(item => ({ ...item, status: normalizeReviewStatus(item.status) }));
       let response = null;
       if (String(selectedRow.approvalMode || '').toLowerCase() === 'workflow') {
+        // #region debug-point E:frontend-workflow-approval
+        fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'warehouse-transfer-source-stock', runId: 'pre-fix', hypothesisId: 'E', location: 'WholesaleOperationsPage.js:reviewAction-workflow', msg: '[DEBUG] Frontend workflow approval triggered', data: { action: type, operationId: String(selectedRow?._id || selectedRow?.clientId || ''), approvalId: String(selectedRow?.approvalId || ''), status: String(selectedRow?.status || ''), operationArea: String(selectedRow?.operationArea || ''), operationType: String(selectedRow?.operationType || ''), fromBranchId: String(selectedRow?.fromBranchId || ''), toBranchId: String(selectedRow?.toBranchId || ''), fromInventoryType: String(selectedRow?.fromInventoryType || ''), toInventoryType: String(selectedRow?.toInventoryType || ''), itemCount: reviewedPayloadItems.length, user: String(auth.user?.name || auth.user?.username || '') }, ts: Date.now() }) }).catch(() => {});
+        // #endregion
         if (type === 'approve') {
           response = await wholesaleApi.approveOperation(selectedRow, {
             ...payload,
@@ -561,6 +564,9 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
           await wholesaleApi.rejectOperation(selectedRow, payload);
         }
       } else if (type === 'approve') {
+        // #region debug-point E:frontend-legacy-approval
+        fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'warehouse-transfer-source-stock', runId: 'pre-fix', hypothesisId: 'E', location: 'WholesaleOperationsPage.js:reviewAction-legacy', msg: '[DEBUG] Frontend legacy approval triggered', data: { action: type, operationId: String(selectedRow?._id || selectedRow?.clientId || ''), status: String(selectedRow?.status || ''), operationArea: String(selectedRow?.operationArea || ''), operationType: String(selectedRow?.operationType || ''), fromBranchId: String(selectedRow?.fromBranchId || selectedRow?.from || ''), toBranchId: String(selectedRow?.toBranchId || selectedRow?.to || ''), fromInventoryType: String(selectedRow?.fromInventoryType || ''), toInventoryType: String(selectedRow?.toInventoryType || ''), itemCount: reviewedPayloadItems.length, user: String(auth.user?.name || auth.user?.username || '') }, ts: Date.now() }) }).catch(() => {});
+        // #endregion
         response = await transfersApi.approve({
           id: selectedRow._id || selectedRow.clientId,
           ...payload,
