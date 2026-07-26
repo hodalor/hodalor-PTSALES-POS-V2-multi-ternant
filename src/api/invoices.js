@@ -23,3 +23,22 @@ export async function create(inv) {
 export function list() {
   return fetchJson('/api/invoices');
 }
+
+export async function update(id, inv) {
+  await ensureOnlineJwt();
+  try {
+    return await fetchJson(`/api/invoices/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(inv)
+    });
+  } catch (e) {
+    const retried = await reauthIf401(e);
+    if (retried) {
+      return fetchJson(`/api/invoices/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        body: JSON.stringify(inv)
+      });
+    }
+    throw e;
+  }
+}

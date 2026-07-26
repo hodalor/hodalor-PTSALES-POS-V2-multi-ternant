@@ -1,10 +1,11 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { productSpec } from '../utils/productSpec';
 import { formatCurrency } from '../utils/currency';
 import { useToast } from '../components/ToastProvider';
 import { addCustomer } from '../store/customersSlice';
-import { addInvoice } from '../store/invoicesSlice';
+import { addInvoice, setInvoices } from '../store/invoicesSlice';
 import { setNextInvoiceNumber, setNextWarehouseInvoiceNumber, setNextWholesaleInvoiceNumber } from '../store/settingsSlice';
 import { buildInvoiceA4Html, printInvoiceA4 } from '../utils/invoicePrint';
 import * as invoicesApi from '../api/invoices';
@@ -12,11 +13,13 @@ import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import { isFeatureEnabled } from '../utils/featureFlags';
 import { getAllowedPriceTiers, getDisplayPrice, getPreferredPriceTier, getPriceTierLabel } from '../utils/priceVisibility';
 import { getProductBrand, getProductSearchText } from '../utils/productSearch';
+import { confirmDialog } from '../utils/dialogs';
 
 const MANUAL_INVOICE_PRICE_TIERS = ['retail', 'wholesale', 'agent'];
 
 function InvoicesPage({ mode = 'retail' }) {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const toast = useToast();
   const settings = useSelector(s => s.settings);
   const products = useSelector(s => s.products.products);
@@ -44,6 +47,7 @@ function InvoicesPage({ mode = 'retail' }) {
   const [adhocContact, setAdhocContact] = useState('');
   const [adhocAddress, setAdhocAddress] = useState('');
   const [notes, setNotes] = useState('');
+  const [manualDiscount, setManualDiscount] = useState(0);
   const [deliveryNote, setDeliveryNote] = useState('');
   const [paymentTerms, setPaymentTerms] = useState('');
   const [otherRef, setOtherRef] = useState('');
@@ -56,6 +60,9 @@ function InvoicesPage({ mode = 'retail' }) {
   const [destination, setDestination] = useState('');
   const [termsOfDelivery, setTermsOfDelivery] = useState('');
   const [saving, setSaving] = useState(false);
+  const [editingInvoiceId, setEditingInvoiceId] = useState('');
+  const [editingInvoiceNumber, setEditingInvoiceNumber] = useState('');
+  const [editingInvoiceDate, setEditingInvoiceDate] = useState('');
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);
   const modeLower = String(mode || 'retail').toLowerCase();
   const allowedPriceTiers = useMemo(() => getAllowedPriceTiers(auth), [auth]);
@@ -69,6 +76,18 @@ function InvoicesPage({ mode = 'retail' }) {
   const [selectedInvoiceTier, setSelectedInvoiceTier] = useState(activeInvoiceTier);
   const pageTitle = modeLower === 'wholesale' ? 'Distribution Invoices' : modeLower === 'warehouse' ? 'Warehouse Invoices' : 'Invoices';
   const invoiceSource = modeLower === 'wholesale' ? 'wholesale-manual' : modeLower === 'warehouse' ? 'warehouse-manual' : 'manual';
+  const isInvoiceEditable = useCallback((inv) => {
+    const source = String(inv?.source || 'manual').trim().toLowerCase();
+    const paymentStatus = String(inv?.paymentStatus || 'unpaid').trim().toLowerCase();
+    const hasLinkedSale = !!String(inv?.saleId || '').trim();
+    return ['manual', 'wholesale-manual', 'warehouse-manual'].includes(source)
+      && paymentStatus === 'unpaid'
+      && !hasLinkedSale;
+  }, []);
+  const canInvoiceConvertToSale = useCallback((inv) => {
+    const source = String(inv?.source || 'manual').trim().toLowerCase();
+    return isInvoiceEditable(inv) && ['manual', 'wholesale-manual'].includes(source);
+  }, [isInvoiceEditable]);
   const invoicePrefix = modeLower === 'wholesale'
     ? (settings.wholesaleInvoicePrefix || 'WINV')
     : modeLower === 'warehouse'
@@ -210,6 +229,7 @@ function InvoicesPage({ mode = 'retail' }) {
         id: `${p.id}:${Math.random()}`,
         sourceProductId: p.productId || p.id,
         sourceVariantId: p.variantId || '',
+        preserveRate: false,
         name: p.name,
         brand: p.brand || getProductBrand(p),
         sku: p.sku,
@@ -224,15 +244,86 @@ function InvoicesPage({ mode = 'retail' }) {
     setItems(list => list.map(i => i.id === id ? { ...i, qty: Math.max(1, Number(v) || 1) } : i));
   }
   function setRate(id, v) {
-    setItems(list => list.map(i => i.id === id ? { ...i, rate: Math.max(0, Number(v) || 0) } : i));
+    setItems(list => list.map(i => i.id === id ? { ...i, rate: Math.max(0, Number(v) || 0), preserveRate: true } : i));
   }
   function remove(id) {
     setItems(list => list.filter(i => i.id !== id));
   }
 
+  const resetInvoiceForm = useCallback(() => {
+    setItems([]);
+    setCustomerId('');
+    setAdhocName('');
+    setAdhocBusinessName('');
+    setAdhocContact('');
+    setAdhocAddress('');
+    setNotes('');
+    setManualDiscount(0);
+    setDeliveryNote('');
+    setPaymentTerms('');
+    setOtherRef('');
+    setSupplierRef('');
+    setBuyerOrderNo('');
+    setDespatchDocNo('');
+    setDeliveryDate('');
+    setDespatchedThrough('In person');
+    setDespatchCustom('');
+    setDestination('');
+    setTermsOfDelivery('');
+    setEditingInvoiceId('');
+    setEditingInvoiceNumber('');
+    setEditingInvoiceDate('');
+    setQuery('');
+  }, []);
+
+  const loadInvoiceForEdit = useCallback((inv) => {
+    const customer = inv?.customer || {};
+    const matchedCustomer = String(customer?.customerId || '').trim()
+      ? customers.find((row) => String(row.id || '') === String(customer.customerId || ''))
+      : null;
+    setEditingInvoiceId(String(inv?.id || inv?._id || inv?.clientId || ''));
+    setEditingInvoiceNumber(String(inv?.number || ''));
+    setEditingInvoiceDate(String(inv?.date || inv?.created_at || new Date().toISOString()));
+    setSelectedInvoiceTier(String(inv?.items?.[0]?.priceTier || activeInvoiceTier || selectableInvoiceTiers[0] || 'retail'));
+    setCustomerId(matchedCustomer ? String(matchedCustomer.id || '') : '');
+    setAdhocName(String(customer?.name || ''));
+    setAdhocBusinessName(String(customer?.businessName || ''));
+    setAdhocContact(String(customer?.phone || customer?.businessPhone || ''));
+    setAdhocAddress(String(customer?.address || customer?.businessAddress || ''));
+    setItems((Array.isArray(inv?.items) ? inv.items : []).map((item, index) => ({
+      id: `edit-${index}-${item?.sku || item?.name || Date.now()}`,
+      sourceProductId: item?.productId || '',
+      sourceVariantId: item?.variantId || '',
+      preserveRate: true,
+      name: item?.name || '',
+      brand: item?.brand || '',
+      sku: item?.sku || '',
+      spec: item?.spec || '',
+      qty: Math.max(1, Number(item?.qty || 1)),
+      rate: Math.max(0, Number(item?.rate || 0)),
+      per: item?.per || 'pcs'
+    })));
+    setManualDiscount(Math.max(0, Number(inv?.discount || 0)));
+    setNotes(String(inv?.notes || ''));
+    setDeliveryNote(String(inv?.deliveryNote || ''));
+    setPaymentTerms(String(inv?.paymentTerms || ''));
+    setOtherRef(String(inv?.otherRef || ''));
+    setSupplierRef(String(inv?.supplierRef || ''));
+    setBuyerOrderNo(String(inv?.buyerOrderNo || ''));
+    setDespatchDocNo(String(inv?.despatchDocNo || ''));
+    setDeliveryDate(String(inv?.deliveryDate || ''));
+    setDespatchedThrough(String(inv?.despatchedThrough || 'In person'));
+    setDespatchCustom('');
+    setDestination(String(inv?.destination || ''));
+    setTermsOfDelivery(String(inv?.termsOfDelivery || ''));
+    setTab('new');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [activeInvoiceTier, customers, selectableInvoiceTiers]);
+
   useEffect(() => {
     setItems((list) => list.map((item) => {
       if (!item.sourceProductId) return item;
+      if (item.preserveRate) return item;
       return {
         ...item,
         rate: resolveSellableRate(item.sourceProductId, item.sourceVariantId)
@@ -241,8 +332,10 @@ function InvoicesPage({ mode = 'retail' }) {
   }, [resolveSellableRate]);
 
   const subtotal = items.reduce((s, i) => s + (Number(i.qty) || 0) * (Number(i.rate) || 0), 0);
-  const tax = Math.max(0, subtotal * Number(settings.taxRate || 0));
-  const total = Math.max(0, subtotal + tax);
+  const discount = Math.max(0, Math.min(subtotal, Number(manualDiscount || 0)));
+  const taxableSubtotal = Math.max(0, subtotal - discount);
+  const tax = Math.max(0, taxableSubtotal * Number(settings.taxRate || 0));
+  const total = Math.max(0, taxableSubtotal + tax);
 
   async function generateInvoice() {
     if (saving) return;
@@ -251,7 +344,7 @@ function InvoicesPage({ mode = 'retail' }) {
       return;
     }
     const digits = Number(settings.invoiceNumberDigits || 6);
-    const number = `${invoicePrefix}-${String(nextInvoiceNumberValue || 1).padStart(digits, '0')}`;
+    const number = editingInvoiceNumber || `${invoicePrefix}-${String(nextInvoiceNumberValue || 1).padStart(digits, '0')}`;
     const customerClientId = !selectedCustomer && adhocName.trim()
       ? `invoice-customer-${Date.now()}-${Math.random().toString(16).slice(2)}`
       : '';
@@ -277,8 +370,8 @@ function InvoicesPage({ mode = 'retail' }) {
     } : null;
     const inv = {
       number,
-      date: new Date().toISOString(),
-      clientId: crypto.randomUUID ? crypto.randomUUID() : `manual-inv-${Date.now()}`,
+      date: editingInvoiceDate || new Date().toISOString(),
+      clientId: editingInvoiceId || (crypto.randomUUID ? crypto.randomUUID() : `manual-inv-${Date.now()}`),
       customer: invoiceCustomer ? {
         name: invoiceCustomer.name || '',
         phone: invoiceCustomer.phone || invoiceCustomer.contact || '',
@@ -299,8 +392,20 @@ function InvoicesPage({ mode = 'retail' }) {
         businessAddress: adhocAddress || '',
         clientId: customerClientId || undefined
       },
-      items: items.map(i => ({ name: i.name, brand: i.brand || '', spec: i.spec, qty: i.qty, rate: i.rate, per: i.per })),
+      items: items.map(i => ({
+        productId: i.sourceProductId || '',
+        variantId: i.sourceVariantId || '',
+        sku: i.sku || '',
+        name: i.name,
+        brand: i.brand || '',
+        spec: i.spec,
+        qty: i.qty,
+        rate: i.rate,
+        per: i.per,
+        priceTier: selectedInvoiceTier
+      })),
       subtotal,
+      discount,
       tax,
       total,
       notes,
@@ -320,6 +425,10 @@ function InvoicesPage({ mode = 'retail' }) {
     setSaving(true);
     try {
       let savedServer = null;
+      if (editingInvoiceId && !navigator.onLine) {
+        toast.show('Connect internet to update an existing invoice', { type: 'error' });
+        return;
+      }
       if (!navigator.onLine) {
         if (!offlineBackupAllowed) {
           toast.show('Offline: connect internet and try again.', { type: 'error' });
@@ -332,11 +441,11 @@ function InvoicesPage({ mode = 'retail' }) {
         toast.show('Saved offline. Will backup when online.', { type: 'success' });
       } else {
         try {
-          savedServer = await invoicesApi.create(inv);
-          dispatch(addInvoice(savedServer || inv));
+          savedServer = editingInvoiceId ? await invoicesApi.update(editingInvoiceId, inv) : await invoicesApi.create(inv);
+          dispatch(editingInvoiceId ? setInvoices([savedServer || inv]) : addInvoice(savedServer || inv));
           if (savedServer?.customer && savedServer.customer.customerId) registerLocalCustomer(savedServer.customer);
-          bumpInvoiceSequence();
-          toast.show('Invoice generated', { type: 'success' });
+          if (!editingInvoiceId) bumpInvoiceSequence();
+          toast.show(editingInvoiceId ? 'Invoice updated' : 'Invoice generated', { type: 'success' });
         } catch (e) {
           const msg = String(e?.message || '');
           if (/401|Unauthorized/i.test(msg)) {
@@ -344,11 +453,11 @@ function InvoicesPage({ mode = 'retail' }) {
               const { ensureOnlineJwt } = await import('../offline/reAuth');
               const ok = await ensureOnlineJwt();
               if (ok) {
-                savedServer = await invoicesApi.create(inv);
-                dispatch(addInvoice(savedServer || inv));
+                savedServer = editingInvoiceId ? await invoicesApi.update(editingInvoiceId, inv) : await invoicesApi.create(inv);
+                dispatch(editingInvoiceId ? setInvoices([savedServer || inv]) : addInvoice(savedServer || inv));
                 if (savedServer?.customer && savedServer.customer.customerId) registerLocalCustomer(savedServer.customer);
-                bumpInvoiceSequence();
-                toast.show('Invoice generated', { type: 'success' });
+                if (!editingInvoiceId) bumpInvoiceSequence();
+                toast.show(editingInvoiceId ? 'Invoice updated' : 'Invoice generated', { type: 'success' });
                 savedServer = savedServer || null;
               } else {
                 throw e;
@@ -373,30 +482,28 @@ function InvoicesPage({ mode = 'retail' }) {
       }
       const html = buildInvoiceA4Html({ settings, invoice: savedServer || inv });
       printInvoiceA4(html);
-      setItems([]);
-      setCustomerId('');
-      setAdhocName('');
-      setAdhocBusinessName('');
-      setAdhocContact('');
-      setAdhocAddress('');
-      setNotes('');
-      setDeliveryNote('');
-      setPaymentTerms('');
-      setOtherRef('');
-      setSupplierRef('');
-      setBuyerOrderNo('');
-      setDespatchDocNo('');
-      setDeliveryDate('');
-      setDespatchedThrough('In person');
-      setDespatchCustom('');
-      setDestination('');
-      setTermsOfDelivery('');
-      setQuery('');
+      resetInvoiceForm();
     } catch (e) {
       toast.show(String(e?.message || 'Failed to generate invoice'), { type: 'error' });
     } finally {
       setSaving(false);
     }
+  }
+
+  async function convertInvoiceToSale(inv) {
+    if (!canInvoiceConvertToSale(inv)) {
+      toast.show('Only unpaid generated invoices can be converted to sale', { type: 'error' });
+      return;
+    }
+    const isWarehouseInvoice = String(inv?.source || '').toLowerCase() === 'warehouse-manual';
+    if (isWarehouseInvoice) {
+      toast.show('Warehouse invoices cannot be converted to sale from this flow yet', { type: 'error' });
+      return;
+    }
+    const shouldContinue = await confirmDialog('Open this invoice in POS and preload its items for conversion to sale?');
+    if (!shouldContinue) return;
+    const targetPath = ['wholesale-manual', 'wholesale-pos'].includes(String(inv?.source || '').toLowerCase()) ? '/wholesale-pos' : '/pos';
+    navigate(targetPath, { state: { preloadInvoice: inv } });
   }
 
   return (
@@ -454,6 +561,15 @@ function InvoicesPage({ mode = 'retail' }) {
         </div>
         <div>
           <h2>Invoice</h2>
+        {editingInvoiceId && (
+          <div className="card" style={{ marginBottom: 12, padding: 12, display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+            <div>
+              <div style={{ fontWeight: 700 }}>Editing Invoice</div>
+              <div style={{ color: '#64748b', fontSize: 12 }}>{editingInvoiceNumber || 'Current invoice'} will be updated instead of creating a new one.</div>
+            </div>
+            <button className="btn" onClick={resetInvoiceForm}>Cancel Edit</button>
+          </div>
+        )}
         <div className="card" style={{ marginBottom: 12 }}>
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Customer</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
@@ -539,6 +655,10 @@ function InvoicesPage({ mode = 'retail' }) {
         <div className="totals-box">
           <div style={{ marginTop: 8 }}>
             <div><span className="price-accent">Subtotal: {formatCurrency(subtotal, settings)}</span></div>
+            <div style={{ marginTop: 8 }}>
+              <input className="input" type="number" min="0" step="0.01" value={manualDiscount} onChange={e => setManualDiscount(e.target.value)} placeholder="Discount" style={{ width: 140 }} />
+            </div>
+            <div><span className="price-accent">Discount: -{formatCurrency(discount, settings)}</span></div>
             <div><span className="price-accent">Tax ({Math.round((settings.taxRate || 0) * 100)}%): {formatCurrency(tax, settings)}</span></div>
             <div><strong className="price-accent">Total: {formatCurrency(total, settings)}</strong></div>
           </div>
@@ -569,7 +689,7 @@ function InvoicesPage({ mode = 'retail' }) {
             <textarea className="input" placeholder="Notes (optional)" value={notes} onChange={e => setNotes(e.target.value)} rows="3" />
           </div>
           <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={generateInvoice} disabled={saving || items.length === 0}>
-            {saving ? 'Generating…' : 'Generate Invoice (A4)'}
+            {saving ? (editingInvoiceId ? 'Updating…' : 'Generating…') : (editingInvoiceId ? 'Update Invoice (A4)' : 'Generate Invoice (A4)')}
           </button>
         </div>
         </div>
@@ -631,15 +751,23 @@ function InvoicesPage({ mode = 'retail' }) {
                   <td>{inv.paymentStatus ? inv.paymentStatus.toUpperCase() : ''}</td>
                   <td>{inv.buyerOrderNo || ''}</td>
                   <td>
-                    <button
-                      className="btn"
-                      onClick={() => {
-                        const html = buildInvoiceA4Html({ settings, invoice: inv });
-                        printInvoiceA4(html);
-                      }}
-                    >
-                      Print
-                    </button>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <button
+                        className="btn"
+                        onClick={() => {
+                          const html = buildInvoiceA4Html({ settings, invoice: inv });
+                          printInvoiceA4(html);
+                        }}
+                      >
+                        Print
+                      </button>
+                      {isInvoiceEditable(inv) ? (
+                        <button className="btn" onClick={() => loadInvoiceForEdit(inv)}>Edit</button>
+                      ) : null}
+                      {canInvoiceConvertToSale(inv) ? (
+                        <button className="btn" onClick={() => convertInvoiceToSale(inv)}>Convert To Sale</button>
+                      ) : null}
+                    </div>
                   </td>
                 </tr>
               ))}

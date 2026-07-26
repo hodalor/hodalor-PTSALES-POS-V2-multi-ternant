@@ -59,6 +59,30 @@ function RefundsPage({ mode = 'retail' }) {
     const v = Math.max(0, Number(sale.total || 0) - Number(sale.tax || 0));
     return Math.round(v * 100) / 100;
   }, [sale]);
+  const refundCoverage = useMemo(() => {
+    if (!sale) return { activeAmount: 0, approvedAmount: 0, remainingAmount: 0, hasApprovedFull: false, hasActiveFull: false };
+    const saleId = String(sale.id || sale._id || sale.clientId || '').trim();
+    const invoiceSerial = String(sale.invoiceSerial || '').trim().toLowerCase();
+    const receiptNumber = String(sale.receiptNumber || '').trim().toLowerCase();
+    const linked = (refunds || []).filter((row) => {
+      const status = String(row?.status || '').trim().toLowerCase();
+      if (!['pending_approval', 'approved'].includes(status)) return false;
+      if (saleId && String(row?.saleId || '').trim() === saleId) return true;
+      if (invoiceSerial && String(row?.invoiceSerial || '').trim().toLowerCase() === invoiceSerial) return true;
+      if (receiptNumber && String(row?.receiptNumber || '').trim().toLowerCase() === receiptNumber) return true;
+      return false;
+    });
+    const approvedRows = linked.filter((row) => String(row?.status || '').trim().toLowerCase() === 'approved');
+    const activeAmount = linked.reduce((sum, row) => sum + Math.abs(Number(row?.requestedAmount || 0)), 0);
+    const approvedAmount = approvedRows.reduce((sum, row) => sum + Math.abs(Number(row?.requestedAmount || 0)), 0);
+    return {
+      activeAmount,
+      approvedAmount,
+      remainingAmount: Math.max(0, eligible - activeAmount),
+      hasApprovedFull: approvedRows.some((row) => String(row?.type || '').trim().toLowerCase() === 'full'),
+      hasActiveFull: linked.some((row) => String(row?.type || '').trim().toLowerCase() === 'full')
+    };
+  }, [eligible, refunds, sale]);
   const roleLower = String(auth.role || '').toLowerCase();
   const isDistributionMode = String(mode || '').toLowerCase() === 'distribution';
   const pageTitle = isDistributionMode ? 'Distribution Refunds' : 'Refunds';
@@ -166,15 +190,19 @@ function RefundsPage({ mode = 'retail' }) {
       toast.show('Remark is required', { type: 'error' });
       return;
     }
-    let requestedAmount = eligible;
+    if (refundCoverage.hasActiveFull || refundCoverage.remainingAmount <= 0.0001) {
+      toast.show('Sale already refunded', { type: 'error' });
+      return;
+    }
+    let requestedAmount = refundCoverage.remainingAmount;
     if (refundType === 'partial') {
       const v = Number(amount);
       if (!Number.isFinite(v) || v <= 0) {
         toast.show('Enter a valid refundable amount', { type: 'error' });
         return;
       }
-      if (v > eligible) {
-        toast.show('Amount exceeds eligible (total minus tax)', { type: 'error' });
+      if (v > refundCoverage.remainingAmount) {
+        toast.show(`Amount exceeds remaining refundable amount of ${formatCurrency(refundCoverage.remainingAmount, settings)}`, { type: 'error' });
         return;
       }
       requestedAmount = Math.round(v * 100) / 100;
@@ -368,6 +396,11 @@ function RefundsPage({ mode = 'retail' }) {
                 <div style={{ marginTop: 4, color: '#64748b' }}>
                   Total: {formatCurrency(sale.total, settings)} • Tax: {formatCurrency(sale.tax, settings)} • Eligible refund: {formatCurrency(eligible, settings)}
                 </div>
+                <div style={{ marginTop: 4, color: refundCoverage.hasActiveFull || refundCoverage.remainingAmount <= 0.0001 ? '#b91c1c' : '#64748b' }}>
+                  {refundCoverage.hasActiveFull || refundCoverage.remainingAmount <= 0.0001
+                    ? 'Sale already refunded'
+                    : `Remaining refundable amount: ${formatCurrency(refundCoverage.remainingAmount, settings)}`}
+                </div>
               </div>
             </div>
             <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -381,7 +414,7 @@ function RefundsPage({ mode = 'retail' }) {
               {refundType === 'partial' && (
                 <label>
                   Refundable Amount
-                  <input className="input" type="number" min="0" value={amount} onChange={e => setAmount(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 6 }} />
+                  <input className="input" type="number" min="0" max={refundCoverage.remainingAmount || 0} value={amount} onChange={e => setAmount(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 6 }} />
                 </label>
               )}
             </div>
@@ -417,7 +450,7 @@ function RefundsPage({ mode = 'retail' }) {
             <div style={{ marginTop: 12 }}>
               {(() => {
                 return canRequest ? (
-                  <button className="btn btn-primary" onClick={startRequest}>{requestButtonLabel}</button>
+                  <button className="btn btn-primary" onClick={startRequest} disabled={refundCoverage.hasActiveFull || refundCoverage.remainingAmount <= 0.0001}>{requestButtonLabel}</button>
                 ) : null;
               })()}
             </div>

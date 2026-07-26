@@ -1,4 +1,5 @@
 import { useDispatch, useSelector } from 'react-redux';
+import { useLocation } from 'react-router-dom';
 import { addItem, removeItem, removeItemByUnitId, setQuantity, updateItemPricing, clearCart, setDiscount, addHeld, removeHeld, replaceCart, updateHeld } from '../store/cartSlice';
 import { adjustStock, setStock } from '../store/productsSlice';
 import { recordSale } from '../store/salesSlice';
@@ -53,6 +54,12 @@ function buildSaleDateTimeValue(dateValue, timeValue) {
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
+function toDateInputValue(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
 function buildCreditUpfrontTimeline(total, costTotal, upfrontAmount, paidAt) {
   const totalAmount = Math.max(0, Number(total || 0));
   const totalCost = Math.max(0, Number(costTotal || 0));
@@ -72,6 +79,7 @@ function buildCreditUpfrontTimeline(total, costTotal, upfrontAmount, paidAt) {
 
 function PosPage({ mode = 'retail' }) {
   const dispatch = useDispatch();
+  const location = useLocation();
   const cart = useSelector(state => state.cart);
   const heldSales = useMemo(() => cart.heldSales || [], [cart.heldSales]);
   const products = useSelector(s => s.products.products);
@@ -165,6 +173,7 @@ function PosPage({ mode = 'retail' }) {
   const serializedLoadSeqRef = useRef(0);
   const serializedPickerKeyRef = useRef('');
   const liveSerializedSearchSeqRef = useRef(0);
+  const preloadedInvoiceRef = useRef('');
   const completeSaleLockRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const [customerQuery, setCustomerQuery] = useState('');
@@ -356,6 +365,67 @@ function PosPage({ mode = 'retail' }) {
     if (!selectedCustomerId) return null;
     return customers.find(c => String(c.id) === String(selectedCustomerId)) || null;
   }, [customers, selectedCustomerId]);
+
+  useEffect(() => {
+    const invoice = location.state?.preloadInvoice;
+    const preloadKey = String(invoice?.id || invoice?._id || invoice?.clientId || invoice?.number || '').trim();
+    if (!invoice || !preloadKey || preloadedInvoiceRef.current === preloadKey) return;
+    preloadedInvoiceRef.current = preloadKey;
+    let cancelled = false;
+    (async () => {
+      const normalizedItems = (Array.isArray(invoice?.items) ? invoice.items : []).map((item, index) => ({
+        id: `invoice-${preloadKey}-${index}`,
+        productId: item?.productId || '',
+        variantId: item?.variantId || '',
+        name: item?.name || '',
+        brand: item?.brand || '',
+        sku: item?.sku || '',
+        spec: item?.spec || '',
+        quantity: Math.max(1, Number(item?.qty || 1)),
+        price: Math.max(0, Number(item?.rate || 0)),
+        priceTier: item?.priceTier || (isWholesale ? 'wholesale' : 'retail')
+      }));
+      const shortages = normalizedItems.filter((item) => {
+        const product = products.find((row) => String(row.id || '') === String(item.productId || '')) || products.find((row) => String(row.sku || '') === String(item.sku || ''));
+        const variant = item.variantId && Array.isArray(product?.variants)
+          ? product.variants.find((row) => String(row.id || '') === String(item.variantId || ''))
+          : null;
+        if (!product && !variant) return false;
+        const availableQty = getBranchStock(variant || product, stockBranchId, isWholesale ? 'wholesale' : 'retail');
+        return Number(item.quantity || 0) > Math.max(0, Number(availableQty || 0));
+      });
+      let nextItems = normalizedItems;
+      if (shortages.length > 0) {
+        const removeShortages = await confirmDialog(`Some invoice items are above current stock for ${branchLabel || 'this branch'}.\n\n${shortages.map((item) => `${item.name || item.sku}: need ${item.quantity}`).join('\n')}\n\nPress OK to remove those items before opening POS. Press Cancel to continue anyway.`);
+        if (cancelled) return;
+        if (removeShortages) {
+          const shortageKeys = new Set(shortages.map((item) => `${String(item.productId || '')}:${String(item.variantId || '')}:${String(item.sku || '')}`));
+          nextItems = normalizedItems.filter((item) => !shortageKeys.has(`${String(item.productId || '')}:${String(item.variantId || '')}:${String(item.sku || '')}`));
+        }
+      }
+      dispatch(replaceCart({ items: nextItems, discount: Number(invoice?.discount || 0), notes: String(invoice?.notes || '') }));
+      const invoiceCustomer = invoice?.customer || {};
+      const matchedCustomer = String(invoiceCustomer?.customerId || '').trim()
+        ? customers.find((row) => String(row.id || '') === String(invoiceCustomer.customerId || ''))
+        : (String(invoiceCustomer?.customerCode || '').trim()
+            ? customers.find((row) => String(row.customerCode || '') === String(invoiceCustomer.customerCode || ''))
+            : null);
+      setSelectedCustomerId(matchedCustomer ? String(matchedCustomer.id || '') : '');
+      setCustomerQuery(matchedCustomer ? '' : String(invoiceCustomer?.name || ''));
+      setQuickCustomerForm({
+        name: String(invoiceCustomer?.name || ''),
+        phone: String(invoiceCustomer?.phone || invoiceCustomer?.businessPhone || ''),
+        address: String(invoiceCustomer?.address || invoiceCustomer?.businessAddress || ''),
+        customerType: isWholesale ? 'distribution' : 'retail'
+      });
+      setSelectedPriceTier(String(invoice?.items?.[0]?.priceTier || (isWholesale ? 'wholesale' : 'retail')));
+      setQuery('');
+      if (!cancelled) toast.show(`Invoice ${invoice?.number || ''} loaded into POS`, { type: 'success' });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [branchLabel, customers, dispatch, isWholesale, location.state, products, stockBranchId, toast]);
 
   const customerMatches = useMemo(() => {
     const q = customerQuery.trim().toLowerCase();
@@ -999,6 +1069,12 @@ function PosPage({ mode = 'retail' }) {
         }
         if (!easyBuyDueDate) {
           toast.show(`Select a due date for ${creditModeLabel}`, { type: 'error' });
+          return;
+        }
+        const selectedSaleAt = buildSaleDateTimeValue(saleDate, saleTime);
+        const saleDay = toDateInputValue(selectedSaleAt);
+        if (saleDay && String(easyBuyDueDate || '') < saleDay) {
+          toast.show(`${creditModeLabel} due date cannot be earlier than the sale date`, { type: 'error' });
           return;
         }
         if (creditPaidNow >= (Number(total || 0) - 0.005)) {
@@ -1837,7 +1913,7 @@ function PosPage({ mode = 'retail' }) {
                   </label>
                   <label>
                     <div style={{ marginBottom: 6, color: '#64748b' }}>{t('Due date')}</div>
-                    <input className="input" type="date" value={easyBuyDueDate} onChange={e => setEasyBuyDueDate(e.target.value)} />
+                    <input className="input" type="date" min={toDateInputValue(buildSaleDateTimeValue(saleDate, saleTime)) || toDateInputValue(new Date())} value={easyBuyDueDate} onChange={e => setEasyBuyDueDate(e.target.value)} />
                   </label>
                 </div>
                 <label>
