@@ -12,6 +12,15 @@ const r = Router();
 
 r.use(requireAuth);
 
+function isInvoiceEditable(invoice) {
+  const source = String(invoice?.source || 'manual').trim().toLowerCase();
+  const paymentStatus = String(invoice?.paymentStatus || 'unpaid').trim().toLowerCase();
+  const hasLinkedSale = !!String(invoice?.saleId || '').trim();
+  return ['manual', 'wholesale-manual', 'warehouse-manual'].includes(source)
+    && paymentStatus === 'unpaid'
+    && !hasLinkedSale;
+}
+
 function makeCustomerCode() {
   const n = Math.floor(Math.random() * 1000000);
   return String(n).padStart(6, '0');
@@ -193,6 +202,66 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_invoices', 's
     });
   } catch {}
   res.json(inv);
+});
+
+r.put('/:id', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_invoices', 'see_invoices', 'view_invoices', 'view_wholesale_invoices', 'view_warehouse_invoices']), async (req, res) => {
+  const key = String(req.params.id || '').trim();
+  const query = [];
+  if (mongoose.isValidObjectId(key)) query.push({ _id: key });
+  query.push({ clientId: key });
+  const existing = await Invoice.findOne({ $or: query });
+  if (!existing) return res.status(404).json({ error: 'Invoice not found' });
+  if (!isInvoiceEditable(existing)) {
+    return res.status(400).json({ error: 'Only unpaid generated invoices can be edited' });
+  }
+  const payload = req.body || {};
+  let normalizedCustomer = payload.customer || existing.customer || null;
+  try {
+    const linkedCustomer = await resolveInvoiceCustomer(payload.customer || existing.customer || {}, String(existing.source || payload.source || 'manual'), req);
+    if (linkedCustomer) {
+      normalizedCustomer = {
+        name: linkedCustomer.name || '',
+        phone: linkedCustomer.phone || '',
+        email: linkedCustomer.email || '',
+        address: linkedCustomer.address || '',
+        businessName: linkedCustomer.businessName || '',
+        businessAddress: linkedCustomer.businessAddress || '',
+        taxId: linkedCustomer.taxId || '',
+        customerCode: linkedCustomer.customerCode || '',
+        customerId: String(linkedCustomer._id || linkedCustomer.id || ''),
+        clientId: linkedCustomer.clientId || String(payload.customer?.clientId || '').trim() || undefined,
+        businessPhone: linkedCustomer.businessPhone || ''
+      };
+    }
+  } catch {}
+  existing.date = payload.date || existing.date;
+  existing.customer = normalizedCustomer || {};
+  existing.items = Array.isArray(payload.items) ? payload.items : existing.items;
+  existing.subtotal = Number(payload.subtotal || 0);
+  existing.discount = Math.max(0, Number(payload.discount || 0));
+  existing.tax = Math.max(0, Number(payload.tax || 0));
+  existing.total = Math.max(0, Number(payload.total || 0));
+  existing.notes = String(payload.notes || '');
+  existing.deliveryNote = String(payload.deliveryNote || '');
+  existing.paymentTerms = String(payload.paymentTerms || '');
+  existing.otherRef = String(payload.otherRef || '');
+  existing.supplierRef = String(payload.supplierRef || '');
+  existing.buyerOrderNo = String(payload.buyerOrderNo || '');
+  existing.despatchDocNo = String(payload.despatchDocNo || '');
+  existing.deliveryDate = String(payload.deliveryDate || '');
+  existing.despatchedThrough = String(payload.despatchedThrough || '');
+  existing.destination = String(payload.destination || '');
+  existing.termsOfDelivery = String(payload.termsOfDelivery || '');
+  await existing.save();
+  try {
+    await Audit.create({
+      actor: req.user?.name || 'unknown',
+      actionType: 'invoice_updated',
+      details: { number: existing.number, source: existing.source || 'manual', total: existing.total },
+      branchId: payload.branchId || 'n/a'
+    });
+  } catch {}
+  res.json(existing);
 });
 
 export default r;

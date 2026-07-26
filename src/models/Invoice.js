@@ -2,11 +2,16 @@ import mongoose from 'mongoose';
 import { createTenantAwareModel } from './_tenantModel.js';
 
 const InvoiceItemSchema = new mongoose.Schema({
+  productId: String,
+  variantId: String,
+  sku: String,
   name: String,
+  brand: String,
   spec: String,
   qty: Number,
   rate: Number,
-  per: String
+  per: String,
+  priceTier: { type: String, default: 'retail' }
 }, { _id: false });
 
 const InvoiceCustomerSchema = new mongoose.Schema({
@@ -15,7 +20,12 @@ const InvoiceCustomerSchema = new mongoose.Schema({
   email: String,
   address: String,
   customerCode: String,
-  customerId: String
+  customerId: String,
+  clientId: String,
+  businessName: String,
+  businessAddress: String,
+  businessPhone: String,
+  taxId: String
 }, { _id: false });
 
 const InvoiceSchema = new mongoose.Schema({
@@ -28,6 +38,7 @@ const InvoiceSchema = new mongoose.Schema({
   customer: { type: InvoiceCustomerSchema, default: {} },
   items: { type: [InvoiceItemSchema], default: [] },
   subtotal: { type: Number, default: 0 },
+  discount: { type: Number, default: 0 },
   tax: { type: Number, default: 0 },
   total: { type: Number, default: 0 },
   notes: { type: String, default: '' },

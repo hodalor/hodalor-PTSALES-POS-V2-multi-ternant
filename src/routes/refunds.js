@@ -67,6 +67,60 @@ function normalizeSaleFinancials(row = {}) {
   };
 }
 
+function getRefundableSaleAmount(sale = {}) {
+  return Math.max(0, Number(sale?.total || 0) - Math.max(0, Number(sale?.tax || 0)));
+}
+
+async function resolveRefundSaleReference(payload = {}) {
+  const saleKey = String(payload?.saleId || '').trim();
+  if (saleKey) {
+    if (mongoose.isValidObjectId(saleKey)) {
+      const byId = await Sale.findById(saleKey);
+      if (byId) return byId;
+    }
+    const byClientId = await Sale.findOne({ clientId: saleKey });
+    if (byClientId) return byClientId;
+  }
+  const invoiceSerial = String(payload?.invoiceSerial || '').trim();
+  const receiptNumber = String(payload?.receiptNumber || '').trim();
+  const or = [];
+  if (invoiceSerial) or.push({ invoiceSerial });
+  if (receiptNumber) or.push({ receiptNumber });
+  if (or.length === 0) return null;
+  return Sale.findOne({ $or: or }).sort({ created_at: -1 });
+}
+
+async function getRefundCoverageForSale(sale = {}, options = {}) {
+  const saleId = String(sale?._id || sale?.id || sale?.clientId || '').trim();
+  const invoiceSerial = String(sale?.invoiceSerial || '').trim();
+  const receiptNumber = String(sale?.receiptNumber || '').trim();
+  const excludeRequestId = String(options?.excludeRequestId || '').trim();
+  const or = [];
+  if (saleId) or.push({ saleId });
+  if (invoiceSerial) or.push({ invoiceSerial });
+  if (receiptNumber) or.push({ receiptNumber });
+  if (or.length === 0) {
+    return { activeAmount: 0, approvedAmount: 0, remainingAmount: getRefundableSaleAmount(sale), hasApprovedFull: false, hasActiveFull: false };
+  }
+  const rows = await RefundRequest.find({
+    status: { $in: ['pending_approval', 'approved'] },
+    $or: or
+  }).lean();
+  const filteredRows = rows.filter((row) => String(row?._id || row?.clientId || '').trim() !== excludeRequestId);
+  const activeAmount = filteredRows.reduce((sum, row) => sum + Math.abs(Number(row?.requestedAmount || 0)), 0);
+  const approvedRows = filteredRows.filter((row) => String(row?.status || '').trim().toLowerCase() === 'approved');
+  const approvedAmount = approvedRows.reduce((sum, row) => sum + Math.abs(Number(row?.requestedAmount || 0)), 0);
+  const hasApprovedFull = approvedRows.some((row) => String(row?.type || '').trim().toLowerCase() === 'full');
+  const hasActiveFull = filteredRows.some((row) => String(row?.type || '').trim().toLowerCase() === 'full');
+  return {
+    activeAmount,
+    approvedAmount,
+    remainingAmount: Math.max(0, getRefundableSaleAmount(sale) - activeAmount),
+    hasApprovedFull,
+    hasActiveFull
+  };
+}
+
 r.get('/requests', async (req, res) => {
   const rows = await RefundRequest.find().sort({ created_at: -1 }).limit(500);
   res.json(rows);
@@ -112,7 +166,32 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_refun
     const existing = await RefundRequest.findOne({ clientId });
     if (existing) return res.json(existing);
   }
-  const rfd = await RefundRequest.create({ ...payload, clientId: clientId || undefined });
+  const saleRef = await resolveRefundSaleReference(payload);
+  if (!saleRef) return res.status(404).json({ error: 'Sale not found for refund' });
+  const coverage = await getRefundCoverageForSale(saleRef);
+  if (coverage.hasActiveFull || coverage.remainingAmount <= 0.0001) {
+    return res.status(400).json({ error: 'Sale already refunded' });
+  }
+  const requestedType = String(payload?.type || 'full').trim().toLowerCase();
+  let requestedAmount = Math.abs(Number(payload?.requestedAmount || 0));
+  if (requestedType === 'full') {
+    requestedAmount = coverage.remainingAmount;
+  }
+  if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+    return res.status(400).json({ error: 'Refund amount must be greater than zero' });
+  }
+  if (requestedAmount > coverage.remainingAmount + 0.0001) {
+    return res.status(400).json({ error: `Refund amount exceeds remaining refundable amount of ${coverage.remainingAmount.toFixed(2)}` });
+  }
+  const rfd = await RefundRequest.create({
+    ...payload,
+    saleId: String(saleRef?._id || saleRef?.clientId || payload?.saleId || ''),
+    invoiceSerial: saleRef?.invoiceSerial || payload?.invoiceSerial || '',
+    receiptNumber: saleRef?.receiptNumber || payload?.receiptNumber || '',
+    branchId: saleRef?.branchId || payload?.branchId || '',
+    requestedAmount,
+    clientId: clientId || undefined
+  });
   await Audit.create({
     actor: rfd.initiatorName || 'unknown',
     actionType: 'refund_initiated',
@@ -131,6 +210,16 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_refunds'), as
   const rfd = await RefundRequest.findOne({ $or: or });
   if (!rfd) return res.status(404).json({ error: 'Not found' });
   if (rfd.status !== 'pending_approval') return res.json(rfd);
+  const saleRef = await resolveRefundSaleReference(rfd);
+  if (!saleRef) return res.status(404).json({ error: 'Sale not found for refund approval' });
+  const coverage = await getRefundCoverageForSale(saleRef, { excludeRequestId: String(rfd?._id || '') });
+  if (coverage.hasApprovedFull || coverage.remainingAmount <= 0.0001) {
+    return res.status(400).json({ error: 'Sale already refunded' });
+  }
+  const requestedAmount = Math.abs(Number(rfd?.requestedAmount || 0));
+  if (requestedAmount > coverage.remainingAmount + 0.0001) {
+    return res.status(400).json({ error: `Refund amount exceeds remaining refundable amount of ${coverage.remainingAmount.toFixed(2)}` });
+  }
   
   // 1. Update request
   rfd.status = 'approved';
@@ -143,12 +232,8 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_refunds'), as
   await rfd.save();
 
   // 2. Create negative sale (Refund Record)
-  const saleKey = String(rfd.saleId || '');
-  let saleRef = null;
-  if (mongoose.isValidObjectId(saleKey)) saleRef = await Sale.findById(saleKey);
-  if (!saleRef) saleRef = await Sale.findOne({ clientId: saleKey });
   if (saleRef) {
-    const amt = Math.abs(rfd.requestedAmount || 0);
+    const amt = requestedAmount;
     const refundSale = new Sale({
       branchId: saleRef.branchId,
       sellerName: approverName || 'unknown',

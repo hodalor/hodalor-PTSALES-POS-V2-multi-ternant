@@ -523,6 +523,13 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       }
       creditDueDate = creditPayload.dueDate ? new Date(creditPayload.dueDate) : null;
       if (!creditDueDate || Number.isNaN(creditDueDate.getTime())) badRequest('EasyBuy due date is required');
+      const selectedSaleAt = parseTimestamp(payload.saleDateTime || payload.created_at) || new Date();
+      const effectiveSaleAt = selectedSaleAt;
+      const saleDayStart = new Date(effectiveSaleAt.getFullYear(), effectiveSaleAt.getMonth(), effectiveSaleAt.getDate());
+      const dueDayStart = new Date(creditDueDate.getFullYear(), creditDueDate.getMonth(), creditDueDate.getDate());
+      if (dueDayStart.getTime() < saleDayStart.getTime()) {
+        badRequest('EasyBuy due date cannot be earlier than the sale date');
+      }
       const globalPercent = Math.max(0, Math.min(100, Number(settingsData.minimumUpfrontPaymentPercent || 0)));
       const globalFixed = Math.max(0, Number(settingsData.minimumUpfrontPaymentFixed || 0));
       let requiredUpfront = Math.max(revenueTotal * (globalPercent / 100), globalFixed);
