@@ -3,12 +3,14 @@ import RefundRequest from '../models/RefundRequest.js';
 import Audit from '../models/Audit.js';
 import Sale from '../models/Sale.js';
 import Product from '../models/Product.js';
+import CreditSale from '../models/CreditSale.js';
 import { requireAuth, requireRole, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
 import { resolveInventoryTypeFromBranch, returnSerializedUnits } from '../utils/productUnits.js';
 import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from '../utils/inventory.js';
 import { uploadMediaArray } from '../utils/mediaStorage.js';
 import { enrichSalesWithAccounting } from '../utils/saleAccounting.js';
+import { refreshCreditSaleStatus, updateCustomerCreditMetrics } from '../utils/credit.js';
 
 const r = Router();
 
@@ -69,6 +71,65 @@ function normalizeSaleFinancials(row = {}) {
 
 function getRefundableSaleAmount(sale = {}) {
   return Math.max(0, Number(sale?.total || 0) - Math.max(0, Number(sale?.tax || 0)));
+}
+
+function roundMoney(value) {
+  return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+}
+
+function isCreditRefundSale(sale = {}, creditSale = null) {
+  const creditMode = String(sale?.creditMode || '').trim().toLowerCase();
+  return !!(creditSale || (creditMode && creditMode !== 'none' && creditMode !== 'non_credit') || String(sale?.creditSaleId || '').trim());
+}
+
+async function resolveLinkedCreditSale(sale = {}) {
+  const creditSaleId = String(sale?.creditSaleId || '').trim();
+  if (creditSaleId) {
+    if (mongoose.isValidObjectId(creditSaleId)) {
+      const byId = await CreditSale.findById(creditSaleId);
+      if (byId) return byId;
+    }
+  }
+  const saleObjectId = String(sale?._id || sale?.id || '').trim();
+  if (!saleObjectId) return null;
+  return CreditSale.findOne({ saleId: saleObjectId });
+}
+
+function buildRefundSettlement({ sale = {}, creditSale = null, requestedAmount = 0 }) {
+  const returnedValue = roundMoney(Math.max(0, Number(requestedAmount || 0)));
+  if (!isCreditRefundSale(sale, creditSale)) {
+    return {
+      isCredit: false,
+      settlementMode: 'cash_refund',
+      returnedValue,
+      cashRefundAmount: returnedValue,
+      creditReliefAmount: 0,
+      revisedCreditTotal: 0,
+      revisedCreditBalance: 0,
+      revisedAmountPaid: 0
+    };
+  }
+  const currentCreditTotal = roundMoney(Math.max(0, Number(creditSale?.total_amount ?? sale?.total ?? 0)));
+  const collectedToDate = roundMoney(Math.max(0, Number(creditSale?.amount_paid ?? sale?.creditAmountPaidNow ?? 0)));
+  const appliedReturnValue = roundMoney(Math.min(returnedValue, currentCreditTotal));
+  const revisedCreditTotal = roundMoney(Math.max(0, currentCreditTotal - appliedReturnValue));
+  const cashRefundAmount = roundMoney(Math.max(0, collectedToDate - revisedCreditTotal));
+  const revisedAmountPaid = roundMoney(Math.max(0, collectedToDate - cashRefundAmount));
+  const revisedCreditBalance = roundMoney(Math.max(0, revisedCreditTotal - revisedAmountPaid));
+  const creditReliefAmount = roundMoney(Math.max(0, appliedReturnValue - cashRefundAmount));
+  const settlementMode = cashRefundAmount > 0 && creditReliefAmount > 0
+    ? 'mixed'
+    : (cashRefundAmount > 0 ? 'cash_refund' : 'credit_relief');
+  return {
+    isCredit: true,
+    settlementMode,
+    returnedValue: appliedReturnValue,
+    cashRefundAmount,
+    creditReliefAmount,
+    revisedCreditTotal,
+    revisedCreditBalance,
+    revisedAmountPaid
+  };
 }
 
 async function resolveRefundSaleReference(payload = {}) {
@@ -212,6 +273,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_refunds'), as
   if (rfd.status !== 'pending_approval') return res.json(rfd);
   const saleRef = await resolveRefundSaleReference(rfd);
   if (!saleRef) return res.status(404).json({ error: 'Sale not found for refund approval' });
+  const linkedCreditSale = await resolveLinkedCreditSale(saleRef);
   const coverage = await getRefundCoverageForSale(saleRef, { excludeRequestId: String(rfd?._id || '') });
   if (coverage.hasApprovedFull || coverage.remainingAmount <= 0.0001) {
     return res.status(400).json({ error: 'Sale already refunded' });
@@ -220,6 +282,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_refunds'), as
   if (requestedAmount > coverage.remainingAmount + 0.0001) {
     return res.status(400).json({ error: `Refund amount exceeds remaining refundable amount of ${coverage.remainingAmount.toFixed(2)}` });
   }
+  const settlement = buildRefundSettlement({ sale: saleRef, creditSale: linkedCreditSale, requestedAmount });
   
   // 1. Update request
   rfd.status = 'approved';
@@ -228,12 +291,28 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_refunds'), as
   rfd.approvalRemark = approvalRemark || '';
   rfd.restockMode = restockMode || 'none';
   if (Array.isArray(restockItems)) rfd.restockItems = restockItems.map(x => ({ sku: x.sku, productId: x.productId || '', variantId: x.variantId || '', qty: Number(x.qty) || 0, unitIds: Array.isArray(x.unitIds) ? x.unitIds.map(String).filter(Boolean) : [] }));
+  rfd.settlementMode = settlement.settlementMode;
+  rfd.cashRefundAmount = settlement.cashRefundAmount;
+  rfd.creditReliefAmount = settlement.creditReliefAmount;
+  rfd.revisedCreditTotal = settlement.revisedCreditTotal;
+  rfd.revisedCreditBalance = settlement.revisedCreditBalance;
+  rfd.creditSaleId = linkedCreditSale ? String(linkedCreditSale._id || '') : '';
   rfd.approved_at = new Date();
   await rfd.save();
 
-  // 2. Create negative sale (Refund Record)
-  if (saleRef) {
-    const amt = requestedAmount;
+  // 2. Update linked credit sale when returned goods reduce debt and/or payout
+  if (linkedCreditSale && settlement.isCredit) {
+    linkedCreditSale.total_amount = settlement.revisedCreditTotal;
+    linkedCreditSale.amount_paid = settlement.revisedAmountPaid;
+    await refreshCreditSaleStatus(linkedCreditSale);
+    saleRef.creditBalance = Math.max(0, Number(linkedCreditSale.balance || 0));
+    await saleRef.save();
+    await updateCustomerCreditMetrics(String(linkedCreditSale.customer_id || saleRef.customerId || '')).catch(() => {});
+  }
+
+  // 3. Create negative sale only for actual cash refunded back to customer
+  if (saleRef && settlement.cashRefundAmount > 0) {
+    const amt = settlement.cashRefundAmount;
     const refundSale = new Sale({
       branchId: saleRef.branchId,
       sellerName: approverName || 'unknown',
@@ -263,9 +342,11 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_refunds'), as
       created_at: new Date()
     });
     await refundSale.save();
+    rfd.refundSaleId = String(refundSale._id || '');
+    await rfd.save();
   }
 
-  // 3. Restock inventory if needed
+  // 4. Restock inventory if needed
   if ((restockMode === 'full' || restockMode === 'partial') && Array.isArray(rfd.restockItems) && rfd.restockItems.length > 0) {
     const inventoryType = await resolveInventoryTypeFromBranch(rfd.branchId, saleRef?.inventoryType || 'retail');
     for (const item of rfd.restockItems) {
@@ -339,7 +420,16 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_refunds'), as
   await Audit.create({
     actor: approverName || 'unknown',
     actionType: rfd.restockMode !== 'none' ? 'stock_restock_refund' : 'refund_approved',
-    details: { saleId: rfd.saleId, items: rfd.restockItems || [], refundSale: true },
+    details: {
+      saleId: rfd.saleId,
+      items: rfd.restockItems || [],
+      refundSale: settlement.cashRefundAmount > 0,
+      settlementMode: settlement.settlementMode,
+      cashRefundAmount: settlement.cashRefundAmount,
+      creditReliefAmount: settlement.creditReliefAmount,
+      revisedCreditTotal: settlement.revisedCreditTotal,
+      revisedCreditBalance: settlement.revisedCreditBalance
+    },
     branchId: rfd.branchId
   });
 
