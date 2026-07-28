@@ -16,6 +16,10 @@ function toDate(value) {
   return Number.isNaN(dt.getTime()) ? null : dt;
 }
 
+function normalizeActivityFilter(value) {
+  return String(value || 'all').trim().toLowerCase();
+}
+
 function formatLocalDateKey(value) {
   const dt = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(dt.getTime())) return '';
@@ -69,6 +73,33 @@ export function isCreditSaleRecord(sale) {
     || toNumber(sale?.creditBalance) > 0
     || toNumber(sale?.creditAmountPaidNow) > 0
   );
+}
+
+export function getSaleActivityType(sale, creditSale = null) {
+  const saleType = String(sale?.posType || sale?.inventoryType || 'retail').trim().toLowerCase();
+  const creditMode = resolveCreditMode(sale, creditSale);
+  if (creditMode === 'retail_easybuy') return 'retail_credit';
+  if (creditMode === 'distribution_credit') return 'wholesale_credit';
+  return saleType === 'wholesale' ? 'wholesale_sales' : 'retail_sales';
+}
+
+export function matchesActivityFilter(sale, activityFilter = 'all', creditSale = null) {
+  const filter = normalizeActivityFilter(activityFilter);
+  const activityType = getSaleActivityType(sale, creditSale);
+  switch (filter) {
+    case 'all_sales':
+      return activityType === 'retail_sales' || activityType === 'wholesale_sales';
+    case 'all_credit':
+      return activityType === 'retail_credit' || activityType === 'wholesale_credit';
+    case 'retail_sales':
+    case 'retail_credit':
+    case 'wholesale_sales':
+    case 'wholesale_credit':
+      return activityType === filter;
+    case 'all':
+    default:
+      return true;
+  }
 }
 
 function resolveCreditMode(sale, creditSale = null) {
@@ -206,9 +237,11 @@ export async function enrichSalesWithAccounting(rows = []) {
   });
 }
 
-export function buildRecognizedDayTotals(rows = [], start, end) {
+export function buildRecognizedDayTotals(rows = [], start, end, options = {}) {
   const totals = new Map();
   for (const sale of Array.isArray(rows) ? rows : []) {
+    const creditSale = sale?.creditSale || null;
+    if (!matchesActivityFilter(sale, options?.activityFilter, creditSale)) continue;
     const paymentMethods = Array.isArray(sale?.payment_methods) ? sale.payment_methods : [];
     const paymentMethodBreakdown = paymentMethods.reduce((map, row) => {
       const type = String(row?.type || 'cash').trim().toLowerCase() || 'cash';
@@ -218,7 +251,7 @@ export function buildRecognizedDayTotals(rows = [], start, end) {
       map.set(type, (map.get(type) || 0) + amount);
       return map;
     }, new Map());
-    const snapshot = buildSaleAccountingSnapshot(sale, sale?.creditSale || null, sale?.approvedRepayments || []);
+    const snapshot = buildSaleAccountingSnapshot(sale, creditSale, sale?.approvedRepayments || []);
     const events = Array.isArray(snapshot.paymentTimeline) ? snapshot.paymentTimeline : [];
     events.forEach((event) => {
       if (!eventWithinRange(event, start, end)) return;
@@ -251,7 +284,7 @@ export function buildRecognizedDayTotals(rows = [], start, end) {
   return totals;
 }
 
-export async function listRecognizedSalesTotalsByDay(branchIds = [], start, end) {
+export async function listRecognizedSalesTotalsByDay(branchIds = [], start, end, options = {}) {
   const normalizedBranchIds = Array.from(new Set((Array.isArray(branchIds) ? branchIds : [branchIds]).map(toId).filter(Boolean)));
   if (normalizedBranchIds.length === 0) return new Map();
   const regularRows = await Sale.find({
@@ -284,5 +317,5 @@ export async function listRecognizedSalesTotalsByDay(branchIds = [], start, end)
       approvedRepayments: creditSale ? (repaymentsByCreditSaleId.get(toId(creditSale?._id)) || []) : []
     };
   });
-  return buildRecognizedDayTotals(salesWithCredit, start, end);
+  return buildRecognizedDayTotals(salesWithCredit, start, end, options);
 }

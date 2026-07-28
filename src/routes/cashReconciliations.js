@@ -117,12 +117,12 @@ async function resolveRequestedBranchIds(req, scope) {
   return scope.allowedBranchIds;
 }
 
-async function listSalesTotalsByDay(branchIds, start, end) {
-  return listRecognizedSalesTotalsByDay(branchIds, start, end);
+async function listSalesTotalsByDay(branchIds, start, end, options = {}) {
+  return listRecognizedSalesTotalsByDay(branchIds, start, end, options);
 }
 
-async function listSalesAmountsByDay(branchIds, start, end) {
-  return listRecognizedSalesTotalsByDay(branchIds, start, end);
+async function listSalesAmountsByDay(branchIds, start, end, options = {}) {
+  return listRecognizedSalesTotalsByDay(branchIds, start, end, options);
 }
 
 async function loadCoverageSets(branchIds, start, end) {
@@ -192,6 +192,7 @@ r.use(requireAuth);
 r.get('/backlog', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_finance_reconciliation', 'add_finance_reconciliation']), async (req, res) => {
   const scope = await resolveScope(req);
   const branchIds = await resolveRequestedBranchIds(req, scope);
+  const activityFilter = normalizeString(req.query.activityFilter || 'all').toLowerCase() || 'all';
   const [tenantCreatedStart, earliestSaleStart] = await Promise.all([
     resolveTenantCreatedStart(req),
     resolveEarliestSaleStart(branchIds)
@@ -204,7 +205,7 @@ r.get('/backlog', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_fina
     : null;
   const start = explicitFrom || minDate(tenantCreatedStart, earliestSaleStart) || buildRange(undefined, req.query.to, 120).start;
   const [totals, coverage, branchNames] = await Promise.all([
-    listSalesTotalsByDay(branchIds, start, end),
+    listSalesTotalsByDay(branchIds, start, end, { activityFilter }),
     loadCoverageSets(branchIds, start, end),
     branchNameMap()
   ]);
@@ -225,6 +226,7 @@ r.get('/backlog', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_fina
 r.get('/summary', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_finance_reconciliation', 'add_finance_reconciliation', 'approve_finance_reconciliation_director', 'approve_finance_reconciliation_manager']), async (req, res) => {
   const scope = await resolveScope(req);
   const branchIds = await resolveRequestedBranchIds(req, scope);
+  const activityFilter = normalizeString(req.query.activityFilter || 'all').toLowerCase() || 'all';
   const fromKey = normalizeDateKey(req.query.from);
   const toKey = normalizeDateKey(req.query.to);
   const { start, end } = buildRange(fromKey, toKey, 30);
@@ -236,15 +238,15 @@ r.get('/summary', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_fina
   const backlogStart = useFilteredWindowForAwaiting ? start : (minDate(tenantCreatedStart, earliestSaleStart) || start);
   const [totals, coverage, backlogTotals, backlogCoverage] = backlogStart.getTime() === start.getTime()
     ? await Promise.all([
-      listSalesAmountsByDay(branchIds, start, end),
+      listSalesAmountsByDay(branchIds, start, end, { activityFilter }),
       loadCoverageSets(branchIds, start, end),
       Promise.resolve(null),
       Promise.resolve(null)
     ])
     : await Promise.all([
-      listSalesAmountsByDay(branchIds, start, end),
+      listSalesAmountsByDay(branchIds, start, end, { activityFilter }),
       loadCoverageSets(branchIds, start, end),
-      listSalesAmountsByDay(branchIds, backlogStart, end),
+      listSalesAmountsByDay(branchIds, backlogStart, end, { activityFilter }),
       loadCoverageSets(branchIds, backlogStart, end)
     ]);
   const awaitingTotals = backlogTotals || totals;
@@ -303,6 +305,7 @@ r.get('/', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_finance_rec
 r.post('/', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['add_finance_reconciliation']), async (req, res) => {
   const scope = await resolveScope(req);
   const branchId = normalizeString(req.body?.branchId);
+  const activityFilter = normalizeString(req.body?.activityFilter || 'all').toLowerCase() || 'all';
   if (!branchId) return res.status(400).json({ error: 'Branch is required' });
   if (!scope.allBranchesAllowed && !scope.allowedBranchIdSet.has(branchId)) return res.status(403).json({ error: 'You cannot submit reconciliation for that branch' });
   const selectedDates = uniqueDateKeys(req.body?.selectedDates);
@@ -312,7 +315,7 @@ r.post('/', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['add_finance_rec
     end: endOfLocalDay(parseDateKey(selectedDates[selectedDates.length - 1]))
   };
   const [totals, coverage, accounts, branches] = await Promise.all([
-    listSalesTotalsByDay([branchId], range.start, range.end),
+    listSalesTotalsByDay([branchId], range.start, range.end, { activityFilter }),
     loadCoverageSets([branchId], range.start, range.end),
     ReconciliationAccount.find({ active: true }).lean(),
     Branch.find({}).lean()
