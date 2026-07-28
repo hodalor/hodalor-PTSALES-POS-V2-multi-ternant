@@ -479,7 +479,8 @@ function DashboardPage() {
     let totalCreditRecovered = 0;
     let retailCreditRecovered = 0;
     let wholesaleCreditRecovered = 0;
-    let approvedRefundAmount = 0;
+    let approvedRefundAmountInRange = 0;
+    let recognizedRefundRevenueImpact = 0;
     let approvedRefundProfit = 0;
     let approvedRefundCost = 0;
     let approvedRefundItems = 0;
@@ -628,13 +629,14 @@ function DashboardPage() {
     }
     for (const refund of approvedRefundsInRange) {
       const originalSale = salesById.get(String(refund?.saleId || ''));
-      approvedRefundAmount += Math.max(0, getRefundCashImpact(refund, originalSale || null));
+      approvedRefundAmountInRange += Math.max(0, getRefundCashImpact(refund, originalSale || null));
     }
     for (const refund of approvedRefundsForSalesMath) {
       const refundType = String(refund?.type || '').trim().toLowerCase();
       const originalSale = salesById.get(String(refund?.saleId || ''));
       if (!originalSale) continue;
       const saleId = String(originalSale?.id || originalSale?._id || originalSale?.clientId || '').trim();
+      const originalSaleCreatedInRange = isDateInRange(originalSale.created_at, selectedFrom, selectedTo);
       const originalItems = Array.isArray(originalSale?.items) ? originalSale.items : [];
       const refundItems = Array.isArray(refund?.restockItems) ? refund.restockItems : [];
       const refundReturnedValue = getRefundReturnedValue(refund, originalSale);
@@ -656,12 +658,13 @@ function DashboardPage() {
       const alreadyAppliedCost = Number(refundCostAppliedBySaleId.get(saleId) || 0);
       const profitImpact = Math.min(Math.max(0, Number(originalRecognized.profit || 0) - alreadyAppliedProfit), rawProfitImpact);
       const costImpact = Math.min(Math.max(0, Number(originalRecognized.cost || 0) - alreadyAppliedCost), rawCostImpact);
+      recognizedRefundRevenueImpact += refundCashImpact;
       refundProfitAppliedBySaleId.set(saleId, alreadyAppliedProfit + profitImpact);
       refundCostAppliedBySaleId.set(saleId, alreadyAppliedCost + costImpact);
       if (customerKey && customerMap.has(customerKey)) {
         customerMap.get(customerKey).amount = Math.max(0, Number(customerMap.get(customerKey).amount || 0) - refundCashImpact);
       }
-      if (refundItems.length > 0) {
+      if (originalSaleCreatedInRange && refundItems.length > 0) {
         refundItems.forEach((refundItem) => {
           const qty = Math.max(0, Number(refundItem?.qty || 0));
           if (qty <= 0) return;
@@ -692,7 +695,7 @@ function DashboardPage() {
             customerMap.get(customerKey).products = Math.max(0, Number(customerMap.get(customerKey).products || 0) - qty);
           }
         });
-      } else if (refundType === 'full' && originalSale) {
+      } else if (originalSaleCreatedInRange && refundType === 'full' && originalSale) {
         refundItemQty = originalItems.reduce((sum, item) => sum + Math.max(0, Number(item?.qty || 0)), 0);
         originalItems.forEach((item) => {
           const qty = Math.max(0, Number(item?.qty || 0));
@@ -858,7 +861,7 @@ function DashboardPage() {
     const last30Sales = activitySales;
     last30Profit = last30Sales.reduce((s, x) => s + getSaleRangeTotals(x, selectedFrom, selectedTo).profit, 0);
     last30Cost = last30Sales.reduce((s, x) => s + getSaleRangeTotals(x, selectedFrom, selectedTo).cost, 0);
-    todayTotal = Math.max(0, todayTotal - approvedRefundAmount);
+    todayTotal = Math.max(0, todayTotal - recognizedRefundRevenueImpact);
     todayProfit = Math.max(0, todayProfit - approvedRefundProfit);
     itemsSold = Math.max(0, itemsSold - approvedRefundItems);
     last30Profit = Math.max(0, last30Profit - approvedRefundProfit);
@@ -988,7 +991,8 @@ function DashboardPage() {
       totalCreditRecovered,
       retailCreditRecovered,
       wholesaleCreditRecovered,
-      approvedRefundAmount,
+      approvedRefundAmount: approvedRefundAmountInRange,
+      recognizedRefundRevenueImpact,
       lineData,
       paymentBar,
       doughData,
@@ -1019,8 +1023,8 @@ function DashboardPage() {
   const creditOnlyDashboardView = useMemo(() => isCreditOnlyDashboardFilter(activityFilter), [activityFilter]);
   const pendingDepositValue = useMemo(() => {
     if (creditOnlyDashboardView) return 0;
-    return Math.max(0, financeSummary.awaitingAmount - metrics.approvedRefundAmount);
-  }, [creditOnlyDashboardView, financeSummary.awaitingAmount, metrics.approvedRefundAmount]);
+    return Math.max(0, financeSummary.awaitingAmount - metrics.recognizedRefundRevenueImpact);
+  }, [creditOnlyDashboardView, financeSummary.awaitingAmount, metrics.recognizedRefundRevenueImpact]);
 
   function maskRevenue(value) {
     return canViewRevenue ? formatCurrency(value, settings) : '******';
