@@ -243,10 +243,11 @@ function DashboardPage() {
   const financeSummaryCacheRef = useRef(new Map());
   const financeSummaryRequestKey = useMemo(() => JSON.stringify({
     branchId: financeSummaryBranchId || '',
+    activityFilter: String(activityFilter || 'all'),
     periodMode,
     from: periodMode === 'all_time' ? '' : (dateFrom || defaultFromIso),
     to: periodMode === 'all_time' ? '' : (dateTo || todayIso)
-  }), [dateFrom, dateTo, defaultFromIso, financeSummaryBranchId, periodMode, todayIso]);
+  }), [activityFilter, dateFrom, dateTo, defaultFromIso, financeSummaryBranchId, periodMode, todayIso]);
 
   useEffect(() => {
     const nextScopeMode = isPrivilegedDashboardViewer
@@ -338,6 +339,7 @@ function DashboardPage() {
       try {
         const data = await getCashReconciliationSummary({
           branchId: financeSummaryBranchId || undefined,
+          activityFilter: activityFilter || 'all',
           from: periodMode === 'all_time' ? undefined : (dateFrom || defaultFromIso),
           to: periodMode === 'all_time' ? undefined : (dateTo || todayIso)
         });
@@ -363,7 +365,7 @@ function DashboardPage() {
       alive = false;
       if (loadingTimer) clearTimeout(loadingTimer);
     };
-  }, [canUseFinanceReconciliation, dateFrom, dateTo, defaultFromIso, financeSummaryBranchId, financeSummaryRequestKey, periodMode, todayIso]);
+  }, [activityFilter, canUseFinanceReconciliation, dateFrom, dateTo, defaultFromIso, financeSummaryBranchId, financeSummaryRequestKey, periodMode, todayIso]);
 
   useEffect(() => {
     let alive = true;
