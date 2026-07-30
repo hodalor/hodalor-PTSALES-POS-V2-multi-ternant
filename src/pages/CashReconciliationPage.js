@@ -11,6 +11,8 @@ import { listReconciliationAccounts } from '../api/reconciliationAccounts';
 import LoadingDots from '../components/LoadingDots';
 
 const PAYMENT_METHOD_OPTIONS = ['cash', 'card', 'mobile', 'wallet', 'bank', 'other'];
+const PROOF_MAX_DIMENSION = 1600;
+const PROOF_OUTPUT_QUALITY = 0.82;
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -28,6 +30,46 @@ function dataUrlFromFile(file) {
     reader.onerror = () => reject(new Error('Failed to read file'));
     reader.readAsDataURL(file);
   });
+}
+
+function loadImageFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const imageUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(imageUrl);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(imageUrl);
+      reject(new Error('Failed to load image'));
+    };
+    image.src = imageUrl;
+  });
+}
+
+async function optimizeProofImage(file) {
+  if (!file) return '';
+  const type = String(file.type || '').toLowerCase();
+  if (!type.startsWith('image/')) {
+    return dataUrlFromFile(file);
+  }
+  const image = await loadImageFromFile(file);
+  const width = Number(image.width || 0);
+  const height = Number(image.height || 0);
+  if (width <= 0 || height <= 0) {
+    return dataUrlFromFile(file);
+  }
+  const scale = Math.min(1, PROOF_MAX_DIMENSION / Math.max(width, height));
+  const targetWidth = Math.max(1, Math.round(width * scale));
+  const targetHeight = Math.max(1, Math.round(height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return dataUrlFromFile(file);
+  ctx.drawImage(image, 0, 0, targetWidth, targetHeight);
+  return canvas.toDataURL('image/jpeg', PROOF_OUTPUT_QUALITY);
 }
 
 function CashReconciliationPage() {
@@ -171,7 +213,7 @@ function CashReconciliationPage() {
   useEffect(() => {
     if (!submitModalOpen) return;
     loadBacklog(submitBranchId);
-  }, [loadBacklog, submitModalOpen]);
+  }, [loadBacklog, submitBranchId, submitModalOpen]);
 
   function toggleDate(date) {
     setSelectedDates((prev) => prev.includes(date) ? prev.filter((item) => item !== date) : [...prev, date].sort());
@@ -192,8 +234,9 @@ function CashReconciliationPage() {
   async function onAllocationFileChange(index, file) {
     if (!file) return;
     try {
-      const proofImage = await dataUrlFromFile(file);
-      updateAllocation(index, { proofImage, proofName: file.name || 'deposit-proof' });
+      const proofImage = await optimizeProofImage(file);
+      const proofName = String(file.name || 'deposit-proof').replace(/\.[^.]+$/,'') + '.jpg';
+      updateAllocation(index, { proofImage, proofName });
     } catch (e) {
       toast.show(String(e?.message || 'Failed to load proof image'), { type: 'error' });
     }
@@ -216,18 +259,30 @@ function CashReconciliationPage() {
       toast.show('Entered allocation total must match expected amount exactly', { type: 'error' });
       return;
     }
+    const normalizedAllocations = allocations.map((item) => ({
+      accountId: String(item.accountId || '').trim(),
+      paymentMethod: String(item.paymentMethod || 'cash').trim().toLowerCase() || 'cash',
+      amount: Number(item.amount || 0),
+      proofImage: String(item.proofImage || '').trim(),
+      proofName: String(item.proofName || '').trim(),
+      note: String(item.note || '').trim()
+    })).filter((item) => item.accountId || item.amount > 0 || item.proofImage);
+    if (normalizedAllocations.length === 0) {
+      toast.show('Add at least one deposit allocation before submitting', { type: 'error' });
+      return;
+    }
+    const firstInvalidAllocation = normalizedAllocations.find((item) => (
+      !item.accountId || item.amount <= 0 || !item.proofImage
+    ));
+    if (firstInvalidAllocation) {
+      toast.show('Every allocation must have an account, positive amount, and proof image', { type: 'error' });
+      return;
+    }
     const payload = {
       branchId: submitBranchId,
       selectedDates,
       note: String(note || '').trim(),
-      allocations: allocations.map((item) => ({
-        accountId: item.accountId,
-        paymentMethod: item.paymentMethod,
-        amount: Number(item.amount || 0),
-        proofImage: item.proofImage,
-        proofName: item.proofName,
-        note: item.note
-      }))
+      allocations: normalizedAllocations
     };
     setSaving(true);
     try {
@@ -238,6 +293,7 @@ function CashReconciliationPage() {
       setNote('');
       setSubmitModalOpen(false);
       setTab('records');
+      await loadBacklog(submitBranchId);
       await loadPage();
     } catch (e) {
       toast.show(String(e?.message || 'Failed to submit reconciliation'), { type: 'error' });
@@ -310,7 +366,11 @@ function CashReconciliationPage() {
       return;
     }
     const nextRows = allBacklogRows.filter((row) => String(row.branchId || '') === nextBranchId);
-    setSelectedDates(nextRows.map((row) => String(row.date)).sort());
+    if (nextRows.length > 0) {
+      setSelectedDates(nextRows.map((row) => String(row.date)).sort());
+      return;
+    }
+    setSelectedDates([]);
   }
 
   return (

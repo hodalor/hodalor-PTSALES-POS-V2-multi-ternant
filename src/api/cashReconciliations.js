@@ -26,7 +26,7 @@ export function createCashReconciliation(body) {
   return fetchJson('/api/cash-reconciliations', {
     method: 'POST',
     body: JSON.stringify(body),
-    timeoutMs: 180000
+    timeoutMs: 300000
   });
 }
 
