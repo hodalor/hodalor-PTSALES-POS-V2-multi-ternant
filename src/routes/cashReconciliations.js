@@ -412,6 +412,9 @@ r.post('/', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['add_finance_rec
     initiatedByRole: req.user?.role || '',
     status: 'pending_director'
   });
+  // #region debug-point A:reconciliation-route-after-create
+  fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'A', location: 'cashReconciliations.js:post:after-create', msg: '[DEBUG] Cash reconciliation document created', data: { branchId, reconciliationId: String(doc?._id || ''), reconciliationNumber }, ts: Date.now() }) }).catch(() => {});
+  // #endregion
   const approval = await createApprovalForReference({
     actionType: 'cash_reconciliation',
     referenceModel: 'CashReconciliation',

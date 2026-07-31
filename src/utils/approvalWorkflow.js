@@ -425,6 +425,9 @@ export async function createApprovalForReference({
   initiatedByName,
   initiatedByRole
 }) {
+  // #region debug-point A:approval-create-start
+  fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'A', location: 'approvalWorkflow.js:createApprovalForReference:start', msg: '[DEBUG] Approval creation started for reference', data: { actionType: String(actionType || ''), referenceModel: String(referenceModel || ''), referenceId: String(referenceId || '') }, ts: Date.now() }) }).catch(() => {});
+  // #endregion
   const approval = await Approval.create({
     actionType,
     referenceModel,
@@ -433,6 +436,12 @@ export async function createApprovalForReference({
     initiatedByRole: initiatedByRole || '',
     status: 'pending_director'
   });
+  // #region debug-point A:approval-create-done
+  fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'A', location: 'approvalWorkflow.js:createApprovalForReference:created', msg: '[DEBUG] Approval document created for reference', data: { actionType: String(actionType || ''), referenceModel: String(referenceModel || ''), referenceId: String(referenceId || ''), approvalId: String(approval?._id || '') }, ts: Date.now() }) }).catch(() => {});
+  // #endregion
   await syncReferenceStatus(referenceModel, referenceId, 'pending_director', { approvalId: String(approval._id) });
+  // #region debug-point A:approval-sync-done
+  fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'A', location: 'approvalWorkflow.js:createApprovalForReference:sync-done', msg: '[DEBUG] Approval reference status sync completed', data: { actionType: String(actionType || ''), referenceModel: String(referenceModel || ''), referenceId: String(referenceId || ''), approvalId: String(approval?._id || '') }, ts: Date.now() }) }).catch(() => {});
+  // #endregion
   return approval;
 }
