@@ -104,10 +104,6 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     () => branchOptions.filter(branch => String(branch.branchType || 'retail').toLowerCase() === normalizedArea),
     [branchOptions, normalizedArea]
   );
-  const sameAreaBranchOptions = useMemo(
-    () => branches.filter(branch => String(branch.branchType || 'retail').toLowerCase() === normalizedArea),
-    [branches, normalizedArea]
-  );
 
   const branchNameById = useMemo(() => {
     const map = new Map();
@@ -154,7 +150,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const [variantId, setVariantId] = useState('');
   const [branchId, setBranchId] = useState(currentBranchId || scopedBranchOptions[0]?.id || branchOptions[0]?.id || '');
   const [fromBranchId, setFromBranchId] = useState(currentBranchId || scopedBranchOptions[0]?.id || branchOptions[0]?.id || '');
-  const [toBranchId, setToBranchId] = useState(sameAreaBranchOptions.find(branch => String(branch.id) !== String(currentBranchId || ''))?.id || sameAreaBranchOptions[0]?.id || '');
+  const [toBranchId, setToBranchId] = useState(branches.find(branch => String(branch.id) !== String(currentBranchId || ''))?.id || branches[0]?.id || '');
   const [qty, setQty] = useState(1);
   const [cost, setCost] = useState('');
   const [requestedAmount, setRequestedAmount] = useState('');
@@ -213,15 +209,15 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     return false;
   }, [grants, normalizedArea, operationType, roleLower]);
   const defaultBranchIdRef = useRef(currentBranchId || scopedBranchOptions[0]?.id || branchOptions[0]?.id || '');
-  const defaultTransferToBranchIdRef = useRef(sameAreaBranchOptions.find(branch => String(branch.id) !== String(currentBranchId || scopedBranchOptions[0]?.id || ''))?.id || sameAreaBranchOptions[0]?.id || '');
+  const defaultTransferToBranchIdRef = useRef(branches.find(branch => String(branch.id) !== String(currentBranchId || scopedBranchOptions[0]?.id || ''))?.id || branches[0]?.id || '');
   const serializedScanInputRef = useRef(null);
   const transferFromBranchOptions = useMemo(
     () => scopedBranchOptions,
     [scopedBranchOptions]
   );
   const transferToBranchOptions = useMemo(
-    () => sameAreaBranchOptions.filter(branch => String(branch.id) !== String(fromBranchId || '')),
-    [fromBranchId, sameAreaBranchOptions]
+    () => branches.filter(branch => String(branch.id) !== String(fromBranchId || '')),
+    [branches, fromBranchId]
   );
   useEffect(() => {
     if (!isCreateOpen || operationType !== 'transfer') return;
@@ -251,8 +247,8 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
 
   useEffect(() => {
     defaultBranchIdRef.current = currentBranchId || scopedBranchOptions[0]?.id || branchOptions[0]?.id || '';
-    defaultTransferToBranchIdRef.current = sameAreaBranchOptions.find(branch => String(branch.id) !== String(currentBranchId || scopedBranchOptions[0]?.id || ''))?.id || sameAreaBranchOptions[0]?.id || '';
-  }, [branchOptions, currentBranchId, sameAreaBranchOptions, scopedBranchOptions]);
+    defaultTransferToBranchIdRef.current = branches.find(branch => String(branch.id) !== String(currentBranchId || scopedBranchOptions[0]?.id || ''))?.id || branches[0]?.id || '';
+  }, [branchOptions, branches, currentBranchId, scopedBranchOptions]);
 
   useEffect(() => {
     if (operationType !== 'transfer' && scopedBranchOptions.length > 0 && !scopedBranchOptions.some(branch => branch.id === branchId)) {
@@ -277,10 +273,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     if (!fromBranchId && (currentBranchId || scopedBranchOptions[0]?.id)) {
       setFromBranchId(currentBranchId || scopedBranchOptions[0]?.id || '');
     }
-    if (!toBranchId && sameAreaBranchOptions[0]?.id) {
-      setToBranchId(sameAreaBranchOptions.find(branch => String(branch.id) !== String(fromBranchId || currentBranchId || sameAreaBranchOptions[0]?.id || ''))?.id || sameAreaBranchOptions[0]?.id || '');
+    if (!toBranchId && branches[0]?.id) {
+      setToBranchId(branches.find(branch => String(branch.id) !== String(fromBranchId || currentBranchId || branches[0]?.id || ''))?.id || branches[0]?.id || '');
     }
-  }, [branchId, branchOptions, currentBranchId, fromBranchId, sameAreaBranchOptions, scopedBranchOptions, toBranchId]);
+  }, [branchId, branchOptions, branches, currentBranchId, fromBranchId, scopedBranchOptions, toBranchId]);
 
   useEffect(() => {
     setVariantId('');
