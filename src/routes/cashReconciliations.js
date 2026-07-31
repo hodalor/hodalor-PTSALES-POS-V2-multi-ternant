@@ -306,6 +306,9 @@ r.post('/', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['add_finance_rec
   const scope = await resolveScope(req);
   const branchId = normalizeString(req.body?.branchId);
   const activityFilter = normalizeString(req.body?.activityFilter || 'all').toLowerCase() || 'all';
+  // #region debug-point A:reconciliation-route-enter
+  fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'A', location: 'cashReconciliations.js:post:start', msg: '[DEBUG] Reconciliation route entered', data: { branchId, activityFilter, selectedDates: uniqueDateKeys(req.body?.selectedDates), allocationCount: Array.isArray(req.body?.allocations) ? req.body.allocations.length : 0, user: String(req.user?.name || '') }, ts: Date.now() }) }).catch(() => {});
+  // #endregion
   if (!branchId) return res.status(400).json({ error: 'Branch is required' });
   if (!scope.allBranchesAllowed && !scope.allowedBranchIdSet.has(branchId)) return res.status(403).json({ error: 'You cannot submit reconciliation for that branch' });
   const selectedDates = uniqueDateKeys(req.body?.selectedDates);
@@ -338,6 +341,9 @@ r.post('/', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['add_finance_rec
     });
   });
   const uploadedAllocations = await uploadAllocationProofs(req.body?.allocations, req);
+  // #region debug-point A:reconciliation-route-uploaded
+  fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'A', location: 'cashReconciliations.js:post:uploaded', msg: '[DEBUG] Reconciliation proof upload finished', data: { branchId, uploadedAllocationCount: Array.isArray(uploadedAllocations) ? uploadedAllocations.length : 0, proofLengths: Array.isArray(uploadedAllocations) ? uploadedAllocations.map((item) => Number(String(item?.proofImage || '').length || 0)) : [] }, ts: Date.now() }) }).catch(() => {});
+  // #endregion
   const allocations = uploadedAllocations.map((item) => ({
     accountId: normalizeString(item.accountId),
     paymentMethod: normalizeString(item.paymentMethod || 'cash').toLowerCase() || 'cash',
@@ -346,22 +352,51 @@ r.post('/', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['add_finance_rec
     proofName: normalizeString(item.proofName),
     note: normalizeString(item.note)
   })).filter((item) => item.accountId && item.amount > 0);
-  if (allocations.length === 0) return res.status(400).json({ error: 'Add at least one deposit allocation' });
-  if (allocations.some((item) => !item.proofImage)) return res.status(400).json({ error: 'Upload proof of deposit for every allocation' });
+  // #region debug-point A:reconciliation-route-allocations-ready
+  fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'A', location: 'cashReconciliations.js:post:allocations-ready', msg: '[DEBUG] Reconciliation allocations normalized', data: { branchId, allocationCount: allocations.length, allocations: allocations.map((item) => ({ accountId: String(item?.accountId || ''), amount: Number(item?.amount || 0), paymentMethod: String(item?.paymentMethod || ''), hasProof: !!String(item?.proofImage || '') })) }, ts: Date.now() }) }).catch(() => {});
+  // #endregion
+  if (allocations.length === 0) {
+    // #region debug-point B:reconciliation-route-no-allocations
+    fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'B', location: 'cashReconciliations.js:post:no-allocations', msg: '[DEBUG] Reconciliation rejected because no allocations remained after normalization', data: { branchId }, ts: Date.now() }) }).catch(() => {});
+    // #endregion
+    return res.status(400).json({ error: 'Add at least one deposit allocation' });
+  }
+  if (allocations.some((item) => !item.proofImage)) {
+    // #region debug-point B:reconciliation-route-missing-proof
+    fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'B', location: 'cashReconciliations.js:post:missing-proof', msg: '[DEBUG] Reconciliation rejected because an allocation has no proof after upload', data: { branchId }, ts: Date.now() }) }).catch(() => {});
+    // #endregion
+    return res.status(400).json({ error: 'Upload proof of deposit for every allocation' });
+  }
   const accountMap = new Map(accounts.map((account) => [String(account._id), account]));
   for (const allocation of allocations) {
     const account = accountMap.get(allocation.accountId);
-    if (!account) return res.status(400).json({ error: 'Selected account no longer exists' });
-    if (!canAccessAccount(account, branchId)) return res.status(400).json({ error: `Account ${account.name} is not available for this branch` });
+    if (!account) {
+      // #region debug-point B:reconciliation-route-account-missing
+      fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'B', location: 'cashReconciliations.js:post:account-missing', msg: '[DEBUG] Reconciliation rejected because selected account no longer exists', data: { branchId, accountId: allocation.accountId }, ts: Date.now() }) }).catch(() => {});
+      // #endregion
+      return res.status(400).json({ error: 'Selected account no longer exists' });
+    }
+    if (!canAccessAccount(account, branchId)) {
+      // #region debug-point B:reconciliation-route-account-blocked
+      fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'B', location: 'cashReconciliations.js:post:account-blocked', msg: '[DEBUG] Reconciliation rejected because account is not accessible for branch', data: { branchId, accountId: allocation.accountId, accountName: String(account?.name || ''), accountBranchIds: Array.isArray(account?.branchIds) ? account.branchIds.map(String) : [] }, ts: Date.now() }) }).catch(() => {});
+      // #endregion
+      return res.status(400).json({ error: `Account ${account.name} is not available for this branch` });
+    }
     allocation.accountName = account.name || '';
   }
   const depositedAmount = allocations.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   if (!sameAmount(depositedAmount, expectedAmount)) {
+    // #region debug-point B:reconciliation-route-amount-mismatch
+    fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'B', location: 'cashReconciliations.js:post:amount-mismatch', msg: '[DEBUG] Reconciliation rejected because deposited total differs from expected total', data: { branchId, depositedAmount, expectedAmount }, ts: Date.now() }) }).catch(() => {});
+    // #endregion
     return res.status(400).json({ error: 'Deposited total must match expected sales exactly' });
   }
   const branchLookup = new Map(branches.map((branch) => [normalizeString(branch.id || branch._id), branch.name || branch.code || branch.id || branch._id]));
   const branchName = branchLookup.get(branchId) || branchId;
   const reconciliationNumber = `REC-${branchId}-${Date.now()}`;
+  // #region debug-point A:reconciliation-route-before-create
+  fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'A', location: 'cashReconciliations.js:post:before-create', msg: '[DEBUG] Reconciliation route passed validation and is about to create records', data: { branchId, branchName, reconciliationNumber, depositedAmount, expectedAmount }, ts: Date.now() }) }).catch(() => {});
+  // #endregion
   const doc = await CashReconciliation.create({
     reconciliationNumber,
     branchId,
@@ -386,12 +421,18 @@ r.post('/', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['add_finance_rec
   });
   doc.approvalId = String(approval?._id || '');
   await doc.save();
+  // #region debug-point B:reconciliation-route-created
+  fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'B', location: 'cashReconciliations.js:post:created', msg: '[DEBUG] Reconciliation and approval created', data: { branchId, reconciliationId: String(doc?._id || ''), approvalId: String(approval?._id || ''), expectedAmount: Number(expectedAmount || 0), depositedAmount: Number(depositedAmount || 0) }, ts: Date.now() }) }).catch(() => {});
+  // #endregion
   await Audit.create({
     actor: req.user?.name || 'unknown',
     actionType: 'cash_reconciliation_submit',
     details: { reconciliationId: String(doc._id), branchId, selectedDates, expectedAmount, depositedAmount },
     branchId
   }).catch(() => {});
+  // #region debug-point B:reconciliation-route-response
+  fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'B', location: 'cashReconciliations.js:post:response', msg: '[DEBUG] Reconciliation route sending response', data: { branchId, reconciliationId: String(doc?._id || '') }, ts: Date.now() }) }).catch(() => {});
+  // #endregion
   const fresh = await CashReconciliation.findById(doc._id).lean();
   res.status(201).json(fresh);
 });
