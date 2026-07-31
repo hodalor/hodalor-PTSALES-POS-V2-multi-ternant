@@ -234,10 +234,19 @@ function CashReconciliationPage() {
   async function onAllocationFileChange(index, file) {
     if (!file) return;
     try {
+      // #region debug-point A:proof-file-selected
+      fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'A', location: 'CashReconciliationPage.js:onAllocationFileChange:start', msg: '[DEBUG] Reconciliation proof file selected', data: { index, name: String(file?.name || ''), type: String(file?.type || ''), size: Number(file?.size || 0) }, ts: Date.now() }) }).catch(() => {});
+      // #endregion
       const proofImage = await optimizeProofImage(file);
       const proofName = String(file.name || 'deposit-proof').replace(/\.[^.]+$/,'') + '.jpg';
       updateAllocation(index, { proofImage, proofName });
+      // #region debug-point A:proof-file-optimized
+      fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'A', location: 'CashReconciliationPage.js:onAllocationFileChange:done', msg: '[DEBUG] Reconciliation proof image optimized', data: { index, proofName, proofLength: Number(String(proofImage || '').length || 0) }, ts: Date.now() }) }).catch(() => {});
+      // #endregion
     } catch (e) {
+      // #region debug-point A:proof-file-error
+      fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'A', location: 'CashReconciliationPage.js:onAllocationFileChange:error', msg: '[DEBUG] Reconciliation proof image optimization failed', data: { index, error: String(e?.message || e || '') }, ts: Date.now() }) }).catch(() => {});
+      // #endregion
       toast.show(String(e?.message || 'Failed to load proof image'), { type: 'error' });
     }
   }
@@ -285,8 +294,14 @@ function CashReconciliationPage() {
       allocations: normalizedAllocations
     };
     setSaving(true);
+    // #region debug-point A:reconciliation-submit-start
+    fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'A', location: 'CashReconciliationPage.js:submitReconciliation:start', msg: '[DEBUG] Reconciliation submit started', data: { branchId: String(submitBranchId || ''), selectedDates, expectedAmount: Number(expectedAmount || 0), enteredAmount: Number(enteredAmount || 0), allocationCount: normalizedAllocations.length, proofLengths: normalizedAllocations.map((item) => Number(String(item?.proofImage || '').length || 0)) }, ts: Date.now() }) }).catch(() => {});
+    // #endregion
     try {
       await createCashReconciliation(payload);
+      // #region debug-point B:reconciliation-submit-success
+      fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'B', location: 'CashReconciliationPage.js:submitReconciliation:success', msg: '[DEBUG] Reconciliation submit request resolved successfully', data: { branchId: String(submitBranchId || ''), selectedDates, allocationCount: normalizedAllocations.length }, ts: Date.now() }) }).catch(() => {});
+      // #endregion
       toast.show('Reconciliation submitted for approval', { type: 'success' });
       setSelectedDates([]);
       setAllocations([{ accountId: '', paymentMethod: 'cash', amount: '', proofImage: '', proofName: '', note: '' }]);
@@ -296,8 +311,14 @@ function CashReconciliationPage() {
       await loadBacklog(submitBranchId);
       await loadPage();
     } catch (e) {
+      // #region debug-point B:reconciliation-submit-error
+      fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'B', location: 'CashReconciliationPage.js:submitReconciliation:error', msg: '[DEBUG] Reconciliation submit request failed', data: { branchId: String(submitBranchId || ''), selectedDates, error: String(e?.message || e || ''), status: Number(e?.status || 0) || null }, ts: Date.now() }) }).catch(() => {});
+      // #endregion
       toast.show(String(e?.message || 'Failed to submit reconciliation'), { type: 'error' });
     } finally {
+      // #region debug-point B:reconciliation-submit-finally
+      fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'B', location: 'CashReconciliationPage.js:submitReconciliation:finally', msg: '[DEBUG] Reconciliation submit finished finally block', data: { branchId: String(submitBranchId || ''), selectedDates, savingWillReset: true }, ts: Date.now() }) }).catch(() => {});
+      // #endregion
       setSaving(false);
     }
   }

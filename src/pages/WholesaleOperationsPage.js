@@ -104,6 +104,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     () => branchOptions.filter(branch => String(branch.branchType || 'retail').toLowerCase() === normalizedArea),
     [branchOptions, normalizedArea]
   );
+  const sameAreaBranchOptions = useMemo(
+    () => branches.filter(branch => String(branch.branchType || 'retail').toLowerCase() === normalizedArea),
+    [branches, normalizedArea]
+  );
 
   const branchNameById = useMemo(() => {
     const map = new Map();
@@ -150,7 +154,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const [variantId, setVariantId] = useState('');
   const [branchId, setBranchId] = useState(currentBranchId || scopedBranchOptions[0]?.id || branchOptions[0]?.id || '');
   const [fromBranchId, setFromBranchId] = useState(currentBranchId || scopedBranchOptions[0]?.id || branchOptions[0]?.id || '');
-  const [toBranchId, setToBranchId] = useState(branchOptions.find(branch => String(branch.id) !== String(currentBranchId || ''))?.id || branchOptions[0]?.id || '');
+  const [toBranchId, setToBranchId] = useState(sameAreaBranchOptions.find(branch => String(branch.id) !== String(currentBranchId || ''))?.id || sameAreaBranchOptions[0]?.id || '');
   const [qty, setQty] = useState(1);
   const [cost, setCost] = useState('');
   const [requestedAmount, setRequestedAmount] = useState('');
@@ -209,16 +213,22 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     return false;
   }, [grants, normalizedArea, operationType, roleLower]);
   const defaultBranchIdRef = useRef(currentBranchId || scopedBranchOptions[0]?.id || branchOptions[0]?.id || '');
-  const defaultTransferToBranchIdRef = useRef(branchOptions.find(branch => String(branch.id) !== String(currentBranchId || scopedBranchOptions[0]?.id || ''))?.id || branchOptions[0]?.id || '');
+  const defaultTransferToBranchIdRef = useRef(sameAreaBranchOptions.find(branch => String(branch.id) !== String(currentBranchId || scopedBranchOptions[0]?.id || ''))?.id || sameAreaBranchOptions[0]?.id || '');
   const serializedScanInputRef = useRef(null);
   const transferFromBranchOptions = useMemo(
     () => scopedBranchOptions,
     [scopedBranchOptions]
   );
   const transferToBranchOptions = useMemo(
-    () => branchOptions.filter(branch => String(branch.id) !== String(fromBranchId || '')),
-    [branchOptions, fromBranchId]
+    () => sameAreaBranchOptions.filter(branch => String(branch.id) !== String(fromBranchId || '')),
+    [fromBranchId, sameAreaBranchOptions]
   );
+  useEffect(() => {
+    if (!isCreateOpen || operationType !== 'transfer') return;
+    // #region debug-point C:transfer-branch-options
+    fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'C', location: 'WholesaleOperationsPage.js:transfer-branch-options', msg: '[DEBUG] Transfer branch options recalculated', data: { user: String(auth.user?.name || auth.user?.username || ''), currentBranchId: String(currentBranchId || ''), fromBranchId: String(fromBranchId || ''), toBranchId: String(toBranchId || ''), scopedBranchOptions: transferFromBranchOptions.map((branch) => ({ id: String(branch?.id || ''), name: String(branch?.name || '') })), branchOptions: branchOptions.map((branch) => ({ id: String(branch?.id || ''), name: String(branch?.name || '') })), transferToBranchOptions: transferToBranchOptions.map((branch) => ({ id: String(branch?.id || ''), name: String(branch?.name || '') })), grants: Array.isArray(auth.grants) ? auth.grants : [] }, ts: Date.now() }) }).catch(() => {});
+    // #endregion
+  }, [auth.grants, auth.user?.name, auth.user?.username, branchOptions, currentBranchId, fromBranchId, isCreateOpen, operationType, toBranchId, transferFromBranchOptions, transferToBranchOptions]);
   const serializedEntries = useMemo(() => String(serializedEntriesText || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean).map(line => {
     const parts = line.split(/[,\t|]/).map(part => part.trim()).filter(Boolean);
     return { imei: parts[0] || '', serialNumber: parts[1] || parts[0] || '' };
@@ -241,8 +251,8 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
 
   useEffect(() => {
     defaultBranchIdRef.current = currentBranchId || scopedBranchOptions[0]?.id || branchOptions[0]?.id || '';
-    defaultTransferToBranchIdRef.current = branchOptions.find(branch => String(branch.id) !== String(currentBranchId || scopedBranchOptions[0]?.id || ''))?.id || branchOptions[0]?.id || '';
-  }, [branchOptions, currentBranchId, scopedBranchOptions]);
+    defaultTransferToBranchIdRef.current = sameAreaBranchOptions.find(branch => String(branch.id) !== String(currentBranchId || scopedBranchOptions[0]?.id || ''))?.id || sameAreaBranchOptions[0]?.id || '';
+  }, [branchOptions, currentBranchId, sameAreaBranchOptions, scopedBranchOptions]);
 
   useEffect(() => {
     if (operationType !== 'transfer' && scopedBranchOptions.length > 0 && !scopedBranchOptions.some(branch => branch.id === branchId)) {
@@ -267,10 +277,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     if (!fromBranchId && (currentBranchId || scopedBranchOptions[0]?.id)) {
       setFromBranchId(currentBranchId || scopedBranchOptions[0]?.id || '');
     }
-    if (!toBranchId && branchOptions[0]?.id) {
-      setToBranchId(branchOptions.find(branch => String(branch.id) !== String(fromBranchId || currentBranchId || branchOptions[0]?.id || ''))?.id || branchOptions[0]?.id || '');
+    if (!toBranchId && sameAreaBranchOptions[0]?.id) {
+      setToBranchId(sameAreaBranchOptions.find(branch => String(branch.id) !== String(fromBranchId || currentBranchId || sameAreaBranchOptions[0]?.id || ''))?.id || sameAreaBranchOptions[0]?.id || '');
     }
-  }, [branchId, branchOptions, currentBranchId, fromBranchId, scopedBranchOptions, toBranchId]);
+  }, [branchId, branchOptions, currentBranchId, fromBranchId, sameAreaBranchOptions, scopedBranchOptions, toBranchId]);
 
   useEffect(() => {
     setVariantId('');
