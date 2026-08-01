@@ -1,9 +1,10 @@
 import { Router } from 'express';
-import Audit from '../models/Audit.js';
+import mongoose from 'mongoose';
+import Audit, { modelFor as AuditModelFor } from '../models/Audit.js';
 import Approval from '../models/Approval.js';
-import Branch from '../models/Branch.js';
-import CashReconciliation from '../models/CashReconciliation.js';
-import ReconciliationAccount from '../models/ReconciliationAccount.js';
+import Branch, { modelFor as BranchModelFor } from '../models/Branch.js';
+import CashReconciliation, { modelFor as CashReconciliationModelFor } from '../models/CashReconciliation.js';
+import ReconciliationAccount, { modelFor as ReconciliationAccountModelFor } from '../models/ReconciliationAccount.js';
 import Sale from '../models/Sale.js';
 import { getMasterConnection } from '../config/tenancy.js';
 import { modelFor as TenantModelFor } from '../models/Tenant.js';
@@ -304,6 +305,10 @@ r.get('/', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_finance_rec
 
 r.post('/', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['add_finance_reconciliation']), async (req, res) => {
   const scope = await resolveScope(req);
+  const CashReconciliationModel = CashReconciliationModelFor(req.db);
+  const ReconciliationAccountModel = ReconciliationAccountModelFor(req.db);
+  const BranchModel = BranchModelFor(req.db);
+  const AuditModel = AuditModelFor(req.db);
   const branchId = normalizeString(req.body?.branchId);
   const activityFilter = normalizeString(req.body?.activityFilter || 'all').toLowerCase() || 'all';
   // #region debug-point A:reconciliation-route-enter
@@ -320,8 +325,8 @@ r.post('/', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['add_finance_rec
   const [totals, coverage, accounts, branches] = await Promise.all([
     listSalesTotalsByDay([branchId], range.start, range.end, { activityFilter }),
     loadCoverageSets([branchId], range.start, range.end),
-    ReconciliationAccount.find({ active: true }).lean(),
-    Branch.find({}).lean()
+    ReconciliationAccountModel.find({ active: true }).lean(),
+    BranchModel.find({}).lean()
   ]);
   for (const day of selectedDates) {
     const totalRow = totals.get(`${branchId}:${day}`);
@@ -394,10 +399,13 @@ r.post('/', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['add_finance_rec
   const branchLookup = new Map(branches.map((branch) => [normalizeString(branch.id || branch._id), branch.name || branch.code || branch.id || branch._id]));
   const branchName = branchLookup.get(branchId) || branchId;
   const reconciliationNumber = `REC-${branchId}-${Date.now()}`;
+  const reconciliationId = new mongoose.Types.ObjectId();
+  const writeTs = new Date();
   // #region debug-point A:reconciliation-route-before-create
   fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'A', location: 'cashReconciliations.js:post:before-create', msg: '[DEBUG] Reconciliation route passed validation and is about to create records', data: { branchId, branchName, reconciliationNumber, depositedAmount, expectedAmount }, ts: Date.now() }) }).catch(() => {});
   // #endregion
-  const doc = await CashReconciliation.create({
+  await CashReconciliationModel.collection.insertOne({
+    _id: reconciliationId,
     reconciliationNumber,
     branchId,
     branchName,
@@ -408,35 +416,39 @@ r.post('/', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['add_finance_rec
     paymentBreakdown: Array.from(paymentMap.entries()).map(([paymentMethod, amount]) => ({ paymentMethod, amount })),
     allocations,
     note: normalizeString(req.body?.note),
+    approvalId: '',
     initiatedByName: req.user?.name || 'unknown',
     initiatedByRole: req.user?.role || '',
-    status: 'pending_director'
+    status: 'pending_director',
+    executed: false,
+    createdAt: writeTs,
+    updatedAt: writeTs
   });
   // #region debug-point A:reconciliation-route-after-create
-  fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'A', location: 'cashReconciliations.js:post:after-create', msg: '[DEBUG] Cash reconciliation document created', data: { branchId, reconciliationId: String(doc?._id || ''), reconciliationNumber }, ts: Date.now() }) }).catch(() => {});
+  fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'A', location: 'cashReconciliations.js:post:after-create', msg: '[DEBUG] Cash reconciliation document created', data: { branchId, reconciliationId: String(reconciliationId || ''), reconciliationNumber }, ts: Date.now() }) }).catch(() => {});
   // #endregion
   const approval = await createApprovalForReference({
     actionType: 'cash_reconciliation',
     referenceModel: 'CashReconciliation',
-    referenceId: String(doc._id),
+    referenceId: String(reconciliationId),
     initiatedByName: req.user?.name || 'unknown',
-    initiatedByRole: req.user?.role || ''
+    initiatedByRole: req.user?.role || '',
+    db: req.db
   });
-  doc.approvalId = String(approval?._id || '');
-  await doc.save();
+  await CashReconciliationModel.updateOne({ _id: reconciliationId }, { $set: { approvalId: String(approval?._id || ''), updatedAt: new Date() } });
   // #region debug-point B:reconciliation-route-created
-  fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'B', location: 'cashReconciliations.js:post:created', msg: '[DEBUG] Reconciliation and approval created', data: { branchId, reconciliationId: String(doc?._id || ''), approvalId: String(approval?._id || ''), expectedAmount: Number(expectedAmount || 0), depositedAmount: Number(depositedAmount || 0) }, ts: Date.now() }) }).catch(() => {});
+  fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'B', location: 'cashReconciliations.js:post:created', msg: '[DEBUG] Reconciliation and approval created', data: { branchId, reconciliationId: String(reconciliationId || ''), approvalId: String(approval?._id || ''), expectedAmount: Number(expectedAmount || 0), depositedAmount: Number(depositedAmount || 0) }, ts: Date.now() }) }).catch(() => {});
   // #endregion
-  await Audit.create({
+  await AuditModel.create({
     actor: req.user?.name || 'unknown',
     actionType: 'cash_reconciliation_submit',
-    details: { reconciliationId: String(doc._id), branchId, selectedDates, expectedAmount, depositedAmount },
+    details: { reconciliationId: String(reconciliationId), branchId, selectedDates, expectedAmount, depositedAmount },
     branchId
   }).catch(() => {});
   // #region debug-point B:reconciliation-route-response
-  fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'B', location: 'cashReconciliations.js:post:response', msg: '[DEBUG] Reconciliation route sending response', data: { branchId, reconciliationId: String(doc?._id || '') }, ts: Date.now() }) }).catch(() => {});
+  fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'B', location: 'cashReconciliations.js:post:response', msg: '[DEBUG] Reconciliation route sending response', data: { branchId, reconciliationId: String(reconciliationId || '') }, ts: Date.now() }) }).catch(() => {});
   // #endregion
-  const fresh = await CashReconciliation.findById(doc._id).lean();
+  const fresh = await CashReconciliationModel.findById(reconciliationId).lean();
   res.status(201).json(fresh);
 });
 

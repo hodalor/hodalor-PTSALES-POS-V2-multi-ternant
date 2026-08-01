@@ -1,11 +1,11 @@
-import Audit from '../models/Audit.js';
-import Approval from '../models/Approval.js';
-import CashReconciliation from '../models/CashReconciliation.js';
-import CreditRepayment from '../models/CreditRepayment.js';
-import CreditSale from '../models/CreditSale.js';
-import Product from '../models/Product.js';
-import ReconciliationAccount from '../models/ReconciliationAccount.js';
-import WholesaleOperation from '../models/WholesaleOperation.js';
+import Audit, { modelFor as AuditModelFor } from '../models/Audit.js';
+import Approval, { modelFor as ApprovalModelFor } from '../models/Approval.js';
+import CashReconciliation, { modelFor as CashReconciliationModelFor } from '../models/CashReconciliation.js';
+import CreditRepayment, { modelFor as CreditRepaymentModelFor } from '../models/CreditRepayment.js';
+import CreditSale, { modelFor as CreditSaleModelFor } from '../models/CreditSale.js';
+import Product, { modelFor as ProductModelFor } from '../models/Product.js';
+import ReconciliationAccount, { modelFor as ReconciliationAccountModelFor } from '../models/ReconciliationAccount.js';
+import WholesaleOperation, { modelFor as WholesaleOperationModelFor } from '../models/WholesaleOperation.js';
 import mongoose from 'mongoose';
 import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from './inventory.js';
 import { makeInventoryLine, withInventoryAudit } from './inventoryAudit.js';
@@ -17,6 +17,19 @@ function productQuery(productId) {
   const or = [{ id: pid }];
   if (mongoose.isValidObjectId(pid)) or.unshift({ _id: pid });
   return { $or: or };
+}
+
+function resolveWorkflowModels(db = null) {
+  return {
+    Audit: db ? AuditModelFor(db) : Audit,
+    Approval: db ? ApprovalModelFor(db) : Approval,
+    CashReconciliation: db ? CashReconciliationModelFor(db) : CashReconciliation,
+    CreditRepayment: db ? CreditRepaymentModelFor(db) : CreditRepayment,
+    CreditSale: db ? CreditSaleModelFor(db) : CreditSale,
+    Product: db ? ProductModelFor(db) : Product,
+    ReconciliationAccount: db ? ReconciliationAccountModelFor(db) : ReconciliationAccount,
+    WholesaleOperation: db ? WholesaleOperationModelFor(db) : WholesaleOperation
+  };
 }
 
 export function canApproveDirector(user) {
@@ -406,12 +419,14 @@ export async function executeApprovedReference(approval, actor) {
 }
 
 export async function syncReferenceStatus(referenceModel, referenceId, status, extra = {}) {
+  const { db = null, ...updateExtra } = extra || {};
+  const { WholesaleOperation, CreditRepayment, CashReconciliation } = resolveWorkflowModels(db);
   if (referenceModel === 'WholesaleOperation') {
-    await WholesaleOperation.findByIdAndUpdate(referenceId, { status, ...extra });
+    await WholesaleOperation.findByIdAndUpdate(referenceId, { status, ...updateExtra });
   } else if (referenceModel === 'CreditRepayment') {
-    await CreditRepayment.findByIdAndUpdate(referenceId, { status, ...extra });
+    await CreditRepayment.findByIdAndUpdate(referenceId, { status, ...updateExtra });
   } else if (referenceModel === 'CashReconciliation') {
-    const update = { status, ...extra };
+    const update = { status, ...updateExtra };
     if (status === 'rejected' && !update.rejectedAt) update.rejectedAt = new Date();
     if (status === 'approved' && !update.approvedAt) update.approvedAt = new Date();
     await CashReconciliation.findByIdAndUpdate(referenceId, update);
@@ -423,23 +438,52 @@ export async function createApprovalForReference({
   referenceModel,
   referenceId,
   initiatedByName,
-  initiatedByRole
+  initiatedByRole,
+  db = null
 }) {
+  const { Approval } = resolveWorkflowModels(db);
   // #region debug-point A:approval-create-start
   fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'A', location: 'approvalWorkflow.js:createApprovalForReference:start', msg: '[DEBUG] Approval creation started for reference', data: { actionType: String(actionType || ''), referenceModel: String(referenceModel || ''), referenceId: String(referenceId || '') }, ts: Date.now() }) }).catch(() => {});
   // #endregion
-  const approval = await Approval.create({
-    actionType,
-    referenceModel,
-    referenceId,
-    initiatedByName: initiatedByName || '',
-    initiatedByRole: initiatedByRole || '',
-    status: 'pending_director'
-  });
+  let approval;
+  if (db) {
+    const approvalId = new mongoose.Types.ObjectId();
+    const now = new Date();
+    await Approval.collection.insertOne({
+      _id: approvalId,
+      actionType,
+      referenceModel,
+      referenceId,
+      initiatedByName: initiatedByName || '',
+      initiatedByRole: initiatedByRole || '',
+      directorApprovedByName: '',
+      directorApprovedByRole: '',
+      directorRemark: '',
+      managerApprovedByName: '',
+      managerApprovedByRole: '',
+      managerRemark: '',
+      rejectedByName: '',
+      rejectedByRole: '',
+      rejectionReason: '',
+      status: 'pending_director',
+      createdAt: now,
+      updatedAt: now
+    });
+    approval = { _id: approvalId, actionType, referenceModel, referenceId, initiatedByName: initiatedByName || '', initiatedByRole: initiatedByRole || '', status: 'pending_director' };
+  } else {
+    approval = await Approval.create({
+      actionType,
+      referenceModel,
+      referenceId,
+      initiatedByName: initiatedByName || '',
+      initiatedByRole: initiatedByRole || '',
+      status: 'pending_director'
+    });
+  }
   // #region debug-point A:approval-create-done
   fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'A', location: 'approvalWorkflow.js:createApprovalForReference:created', msg: '[DEBUG] Approval document created for reference', data: { actionType: String(actionType || ''), referenceModel: String(referenceModel || ''), referenceId: String(referenceId || ''), approvalId: String(approval?._id || '') }, ts: Date.now() }) }).catch(() => {});
   // #endregion
-  await syncReferenceStatus(referenceModel, referenceId, 'pending_director', { approvalId: String(approval._id) });
+  await syncReferenceStatus(referenceModel, referenceId, 'pending_director', { approvalId: String(approval._id), db });
   // #region debug-point A:approval-sync-done
   fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'reconciliation-transfer-bugs', runId: 'pre-fix', hypothesisId: 'A', location: 'approvalWorkflow.js:createApprovalForReference:sync-done', msg: '[DEBUG] Approval reference status sync completed', data: { actionType: String(actionType || ''), referenceModel: String(referenceModel || ''), referenceId: String(referenceId || ''), approvalId: String(approval?._id || '') }, ts: Date.now() }) }).catch(() => {});
   // #endregion
