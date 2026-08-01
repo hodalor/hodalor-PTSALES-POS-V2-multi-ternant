@@ -146,7 +146,8 @@ r.get('/', async (req, res) => {
 r.post('/:id/approve', async (req, res) => {
   const approval = await Approval.findById(req.params.id);
   if (!approval) return res.status(404).json({ error: 'Approval not found' });
-  if (!await canAccessApprovalByBranch(req.user, approval)) return res.status(403).json({ error: 'Forbidden' });
+  const hasBranchAccess = await canAccessApprovalByBranch(req.user, approval);
+  if (!hasBranchAccess) return res.status(403).json({ error: 'Forbidden' });
   const remark = String(req.body?.remark || '').trim();
   if (approval.status === 'pending_director') {
     const approvalArea = await resolveApprovalArea(approval);

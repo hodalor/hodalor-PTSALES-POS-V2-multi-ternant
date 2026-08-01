@@ -376,10 +376,21 @@ async function applyCashReconciliation(reconciliation, actor) {
     account.updatedByName = actor?.name || 'unknown';
     await account.save();
   }
+  const approvedAt = new Date();
+  // Avoid re-validating historical payment breakdown rows when approval only needs to mark execution state.
+  await reconciliation.constructor.updateOne(
+    { _id: reconciliation._id },
+    {
+      $set: {
+        status: 'approved',
+        executed: true,
+        approvedAt
+      }
+    }
+  );
   reconciliation.status = 'approved';
   reconciliation.executed = true;
-  reconciliation.approvedAt = new Date();
-  await reconciliation.save();
+  reconciliation.approvedAt = approvedAt;
   await Audit.create({
     actor: actor?.name || 'unknown',
     actionType: 'cash_reconciliation_approved',
