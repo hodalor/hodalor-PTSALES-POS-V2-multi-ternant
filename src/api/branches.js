@@ -23,3 +23,11 @@ export async function remove(id) {
     method: 'DELETE'
   });
 }
+
+export async function resolveNames(ids = []) {
+  return fetchJson('/api/branches/resolve', {
+    method: 'POST',
+    body: JSON.stringify({ ids: Array.isArray(ids) ? ids : [] }),
+    timeoutMs: 60000
+  });
+}

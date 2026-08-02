@@ -7,6 +7,7 @@ import * as transfersApi from '../api/transfers';
 import * as wholesaleApi from '../api/wholesale';
 import * as productUnitsApi from '../api/productUnits';
 import * as auditsApi from '../api/audits';
+import * as branchesApi from '../api/branches';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import Modal from '../components/Modal';
@@ -85,6 +86,7 @@ function TransfersPage() {
   const [reviewing, setReviewing] = useState(false);
   const [auditDetail, setAuditDetail] = useState(null);
   const [wholesaleInbound, setWholesaleInbound] = useState([]);
+  const [resolvedBranchNames, setResolvedBranchNames] = useState({});
   const dispatch = useDispatch();
   const toast = useToast();
   const { t } = useAppLanguage();
@@ -114,15 +116,15 @@ function TransfersPage() {
   const canWorkflowDirector = useCallback((row = {}) => {
     if (roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'director') return true;
     const toInventory = String(row?.toInventoryType || inventoryTypeForBranch(row?.to) || 'retail').toLowerCase();
-    if (toInventory === 'warehouse') return has('approve_warehouse_director');
-    if (toInventory === 'wholesale') return has('approve_distribution_director');
+    if (toInventory === 'warehouse') return has('approve_warehouse_director') || has('approve_transfers');
+    if (toInventory === 'wholesale') return has('approve_distribution_director') || has('approve_transfers');
     return has('approve_transfers');
   }, [has, inventoryTypeForBranch, roleLower]);
   const canWorkflowManager = useCallback((row = {}) => {
     if (roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'manager') return true;
     const toInventory = String(row?.toInventoryType || inventoryTypeForBranch(row?.to) || 'retail').toLowerCase();
-    if (toInventory === 'warehouse') return has('approve_warehouse_manager');
-    if (toInventory === 'wholesale') return has('approve_distribution_manager');
+    if (toInventory === 'warehouse') return has('approve_warehouse_manager') || has('approve_transfers');
+    if (toInventory === 'wholesale') return has('approve_distribution_manager') || has('approve_transfers');
     return has('approve_transfers');
   }, [has, inventoryTypeForBranch, roleLower]);
   const canDeleteRecords = roleLower === 'superadmin';
@@ -147,8 +149,15 @@ function TransfersPage() {
   const byId = useMemo(() => {
     const map = new Map();
     branches.forEach(b => map.set(b.id, b.name));
+    Object.entries(resolvedBranchNames || {}).forEach(([id, name]) => {
+      const key = String(id || '').trim();
+      if (!key) return;
+      const label = String(name || '').trim();
+      if (!label) return;
+      if (!map.has(key)) map.set(key, label);
+    });
     return map;
-  }, [branches]);
+  }, [branches, resolvedBranchNames]);
   const selectedProduct = useMemo(() => products.find(p => p.id === productId) || null, [productId, products]);
   useEffect(() => {
     if (!retailFromBranchOptions.some((branch) => String(branch.id) === String(fromId || ''))) {
@@ -445,6 +454,48 @@ function TransfersPage() {
     });
     return [...workflow, ...legacy];
   }, [requests, wholesaleInbound, statusFilter, allowedBranches]);
+
+  useEffect(() => {
+    let alive = true;
+    async function run() {
+      const needs = new Set();
+      const addId = (value) => {
+        const id = String(value || '').trim();
+        if (!id) return;
+        if (byId.has(id)) return;
+        if (resolvedBranchNames && resolvedBranchNames[id]) return;
+        needs.add(id);
+      };
+      pendingRequests.forEach((row) => {
+        addId(row?.fromBranchId || row?.from);
+        addId(row?.toBranchId || row?.to);
+      });
+      transfers.forEach((row) => {
+        const d = row?.details || {};
+        addId(d.from);
+        addId(d.to);
+      });
+      const ids = Array.from(needs);
+      if (ids.length === 0) return;
+      try {
+        const result = await branchesApi.resolveNames(ids);
+        const items = Array.isArray(result?.items) ? result.items : [];
+        if (!alive || items.length === 0) return;
+        setResolvedBranchNames((prev) => {
+          const next = { ...(prev || {}) };
+          items.forEach((item) => {
+            const id = String(item?.id || '').trim();
+            if (!id) return;
+            const name = String(item?.name || '').trim();
+            if (name) next[id] = item?.deleted ? `${name} (Deleted)` : name;
+          });
+          return next;
+        });
+      } catch {}
+    }
+    run();
+    return () => { alive = false; };
+  }, [byId, pendingRequests, resolvedBranchNames, transfers]);
   const filteredPendingRequests = useMemo(() => {
     return pendingRequests.filter((row) => {
       if (!matchesFilterText(getOperationSearchValues(row, products, byId), approvalQuery)) {
@@ -882,8 +933,10 @@ function TransfersPage() {
               {loading && filteredPendingRequests.length === 0 && <tr><td colSpan="8" style={{ padding: 12, color: '#64748b' }}><LoadingDots label={t('Loading transfers')} /></td></tr>}
               {!loading && filteredPendingRequests.map(r => {
                 const meta = getProductDisplayMeta(products, r.productId, r.variantId, r);
-                const fromLabel = byId.get(r.fromBranchId || r.from) || r.fromBranchId || r.from;
-                const toLabel = byId.get(r.toBranchId || r.to) || r.toBranchId || r.to;
+                const fromKey = String(r.fromBranchId || r.from || '').trim();
+                const toKey = String(r.toBranchId || r.to || '').trim();
+                const fromLabel = String(r.fromName || r.fromBranchName || '').trim() || byId.get(fromKey) || (fromKey ? 'Deleted branch' : '—');
+                const toLabel = String(r.toName || r.toBranchName || '').trim() || byId.get(toKey) || (toKey ? 'Deleted branch' : '—');
                 const qtyValue = Number(r.qty || r.baseUnits || 0);
                 const transferKind = String(r.approvalMode || '') === 'workflow'
                   ? (String(r.fromInventoryType || '').toLowerCase() === 'wholesale' || String(r.toInventoryType || '').toLowerCase() === 'wholesale'
@@ -1020,8 +1073,8 @@ function TransfersPage() {
           <tbody>
             {transfers.slice((page-1)*pageSize, (page-1)*pageSize + pageSize).map(e => {
               const d = e.details || {};
-              const fromName = byId.get(d.from) || d.from || '—';
-              const toName = byId.get(d.to) || d.to || '—';
+              const fromName = byId.get(d.from) || (d.from ? 'Deleted branch' : '—');
+              const toName = byId.get(d.to) || (d.to ? 'Deleted branch' : '—');
               return (
                 <tr key={e.id} style={{ cursor: bulkDeleting ? 'default' : 'pointer', opacity: bulkDeleting && selectedRecordIds.includes(String(e._id || e.id || '')) ? 0.55 : 1 }} onClick={() => { if (!bulkDeleting) setAuditDetail(e); }}>
                   <td>{new Date(e.ts).toLocaleString()}</td>
