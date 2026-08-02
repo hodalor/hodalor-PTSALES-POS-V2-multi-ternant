@@ -7,6 +7,7 @@ import ServerLog from '../models/ServerLog.js';
 import { requireAdmin } from '../middleware/auth.js';
 import { getMasterConnection } from '../config/tenancy.js';
 import { modelFor as TenantModelFor } from '../models/Tenant.js';
+import { modelFor as SuperBinModelFor } from '../models/SuperBin.js';
 import { getEffectiveTenantLimits, getTenantLimitDefaults, getTenantUsageSummary } from '../utils/tenantLimits.js';
 import { getPaymentManagementConfig } from '../utils/paymentManagement.js';
 import { getMobileMoneyNetworks, getTenantLimitUpgradeInfo } from '../utils/subscriptionPayments.js';
@@ -38,6 +39,63 @@ async function provisionBranchProducts(branch) {
 r.get('/', async (req, res) => {
   const items = await Branch.find().sort({ name: 1 });
   res.json(items);
+});
+
+r.post('/resolve', async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : [];
+  const uniq = Array.from(new Set(ids)).slice(0, 300);
+  if (uniq.length === 0) return res.json({ items: [] });
+  const branches = await Branch.find({ id: { $in: uniq } }).select('id name code branchType').lean();
+  const byId = new Map(branches.map((b) => [String(b.id), String(b.name || b.code || b.id)]));
+  const missing = uniq.filter((id) => !byId.has(String(id)));
+  const fallbackById = new Map();
+  if (missing.length > 0) {
+    const audits = await Audit.find({
+      actionType: { $in: ['branch_delete', 'branch_update', 'branch_create'] },
+      'details.id': { $in: missing }
+    })
+      .sort({ ts: -1, createdAt: -1 })
+      .limit(5000)
+      .lean();
+    for (const row of audits) {
+      const bid = String(row?.details?.id || '').trim();
+      if (!bid || fallbackById.has(bid)) continue;
+      const directName = String(row?.details?.name || '').trim();
+      const afterName = String(row?.details?.after?.name || '').trim();
+      const beforeName = String(row?.details?.before?.name || '').trim();
+      const name = directName || afterName || beforeName;
+      if (name) fallbackById.set(bid, name);
+    }
+  }
+  const tenantId = String(req.user?.tenantId || req.tenantId || '').trim();
+  const missingAfterAudit = missing.filter((id) => !fallbackById.has(String(id)));
+  if (tenantId && missingAfterAudit.length > 0) {
+    const master = await getMasterConnection();
+    const SuperBin = await SuperBinModelFor(master);
+    const rows = await SuperBin.find({
+      tenantId,
+      entityType: 'branch',
+      sourceId: { $in: missingAfterAudit }
+    })
+      .sort({ deletedAt: -1 })
+      .limit(1000)
+      .lean();
+    for (const row of rows) {
+      const bid = String(row?.sourceId || '').trim();
+      if (!bid || fallbackById.has(bid)) continue;
+      const displayName = String(row?.displayName || '').trim();
+      const summaryName = String(row?.summary?.name || '').trim();
+      const payloadName = String(row?.payload?.name || '').trim();
+      const name = displayName || summaryName || payloadName;
+      if (name) fallbackById.set(bid, name);
+    }
+  }
+  const items = uniq.map((id) => {
+    const key = String(id);
+    const name = byId.get(key) || fallbackById.get(key) || '';
+    return { id: key, name, deleted: !byId.has(key) };
+  });
+  res.json({ items });
 });
 
 r.post('/', requireAdmin, async (req, res) => {

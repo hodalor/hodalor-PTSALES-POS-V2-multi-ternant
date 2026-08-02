@@ -16,8 +16,8 @@ function canDirectorApproveRetail(user, approvalArea = 'retail') {
   const role = String(user?.role || '').toLowerCase();
   const grants = Array.isArray(user?.grants) ? user.grants : [];
   if (['superadmin', 'admin', 'director'].includes(role)) return true;
-  if (approvalArea === 'warehouse') return grants.includes('approve_warehouse_director');
-  if (approvalArea === 'wholesale') return grants.includes('approve_distribution_director');
+  if (approvalArea === 'warehouse') return grants.includes('approve_warehouse_director') || grants.includes('approve_transfers');
+  if (approvalArea === 'wholesale') return grants.includes('approve_distribution_director') || grants.includes('approve_transfers');
   return grants.includes('approve_credit_director') || grants.includes('approve_transfers');
 }
 
@@ -25,8 +25,8 @@ function canManagerApproveRetail(user, approvalArea = 'retail') {
   const role = String(user?.role || '').toLowerCase();
   const grants = Array.isArray(user?.grants) ? user.grants : [];
   if (['superadmin', 'admin', 'manager'].includes(role)) return true;
-  if (approvalArea === 'warehouse') return grants.includes('approve_warehouse_manager');
-  if (approvalArea === 'wholesale') return grants.includes('approve_distribution_manager');
+  if (approvalArea === 'warehouse') return grants.includes('approve_warehouse_manager') || grants.includes('approve_transfers');
+  if (approvalArea === 'wholesale') return grants.includes('approve_distribution_manager') || grants.includes('approve_transfers');
   return grants.includes('approve_credit_manager') || grants.includes('approve_transfers');
 }
 
