@@ -15,6 +15,9 @@ r.use(requireAuth);
 async function resolveApprovalArea(approval) {
   if (approval?.referenceModel !== 'WholesaleOperation') return '';
   const operation = await WholesaleOperation.findById(approval.referenceId).lean().catch(() => null);
+  if (String(operation?.operationType || '').toLowerCase() === 'transfer' && String(operation?.toInventoryType || '').toLowerCase() === 'retail') {
+    return 'retail';
+  }
   return String(operation?.operationArea || 'wholesale').toLowerCase() === 'warehouse' ? 'warehouse' : 'wholesale';
 }
 

@@ -16,7 +16,7 @@ function canDirectorApproveRetail(user) {
   const role = String(user?.role || '').toLowerCase();
   const grants = Array.isArray(user?.grants) ? user.grants : [];
   return ['superadmin', 'admin', 'director'].includes(role)
-    || grants.includes('approve_credit_director')
+    || grants.includes('approve_retail_director')
     || grants.includes('approve_adjustments');
 }
 
@@ -24,7 +24,7 @@ function canManagerApproveRetail(user) {
   const role = String(user?.role || '').toLowerCase();
   const grants = Array.isArray(user?.grants) ? user.grants : [];
   return ['superadmin', 'admin', 'manager'].includes(role)
-    || grants.includes('approve_credit_manager')
+    || grants.includes('approve_retail_manager')
     || grants.includes('approve_adjustments');
 }
 
@@ -126,7 +126,7 @@ async function adjustVariantStock(productId, variantId, branchId, delta, invento
   return p;
 }
 
-r.get('/requests', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_adjustments'), async (req, res) => {
+r.get('/requests', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_adjustments', 'approve_retail_director', 'approve_retail_manager']), async (req, res) => {
   const statusRaw = String(req.query.status || '').trim().toLowerCase();
   const limit = Math.min(2000, Math.max(1, Number(req.query.limit) || 200));
   const map = { pending: 'pending_approval', pending_director: 'pending_director', pending_manager: 'pending_manager', approved: 'approved', rejected: 'rejected' };
@@ -181,7 +181,7 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
   res.json(row);
 });
 
-r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_adjustments'), async (req, res) => {
+r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_adjustments', 'approve_retail_director', 'approve_retail_manager']), async (req, res) => {
   const { id, remark, items: reviewedItems } = req.body || {};
   const row = await AdjustmentRequest.findById(id);
   if (!row) return res.status(404).json({ error: 'Request not found' });
@@ -271,7 +271,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_ad
   }).catch(() => {});
 });
 
-r.post('/reject', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_adjustments'), async (req, res) => {
+r.post('/reject', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_adjustments', 'approve_retail_director', 'approve_retail_manager']), async (req, res) => {
   const { id, remark } = req.body || {};
   const row = await AdjustmentRequest.findById(id);
   if (!row) return res.status(404).json({ error: 'Request not found' });

@@ -16,7 +16,7 @@ function canDirectorApproveRetail(user) {
   const role = String(user?.role || '').toLowerCase();
   const grants = Array.isArray(user?.grants) ? user.grants : [];
   return ['superadmin', 'admin', 'director'].includes(role)
-    || grants.includes('approve_credit_director')
+    || grants.includes('approve_retail_director')
     || grants.includes('approve_purchases');
 }
 
@@ -24,7 +24,7 @@ function canManagerApproveRetail(user) {
   const role = String(user?.role || '').toLowerCase();
   const grants = Array.isArray(user?.grants) ? user.grants : [];
   return ['superadmin', 'admin', 'manager'].includes(role)
-    || grants.includes('approve_credit_manager')
+    || grants.includes('approve_retail_manager')
     || grants.includes('approve_purchases');
 }
 
@@ -119,7 +119,7 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
   res.json(pr);
 });
 
-r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_purchases'), async (req, res) => {
+r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_purchases', 'approve_retail_director', 'approve_retail_manager']), async (req, res) => {
   const { id, approverName, approverRole, remark, items: reviewedItems } = req.body || {};
   if (!remark || !String(remark).trim()) return res.status(400).json({ error: 'Approval remark required' });
   const key = String(id || '');
@@ -240,7 +240,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_pu
   }).catch(() => {});
 });
 
-r.post('/reject', requireRoleOrPerm(['Admin','Manager','Director'], 'approve_purchases'), async (req, res) => {
+r.post('/reject', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_purchases', 'approve_retail_director', 'approve_retail_manager']), async (req, res) => {
   const { id, approverName, approverRole, remark } = req.body || {};
   if (!remark || !String(remark).trim()) return res.status(400).json({ error: 'Rejection remark required' });
   const key = String(id || '');

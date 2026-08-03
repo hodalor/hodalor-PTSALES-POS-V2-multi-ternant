@@ -9,6 +9,7 @@ export const TENANT_GRANT_KEYS = [
   'view_chat', 'send_chat_messages', 'view_pt_ai',
   'add_customers', 'edit_customers', 'view_credit_control', 'approve_credit_director',
   'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals',
+  'approve_retail_director', 'approve_retail_manager',
   'approve_distribution_director', 'approve_distribution_manager', 'approve_warehouse_director', 'approve_warehouse_manager', 'view_refunds', 'add_refunds', 'view_distribution_refunds', 'add_distribution_refunds',
   'approve_refunds', 'view_expenses', 'add_expenses', 'approve_expenses', 'view_reports', 'view_revenue', 'view_profit', 'view_financials',
   'view_stock_records', 'view_inventory_consistency', 'view_wholesale_invoices', 'view_warehouse_invoices',
@@ -84,7 +85,7 @@ export const PLAN_FEATURES = {
     'admin.users', 'admin.manual', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords', 'admin.inventoryConsistency',
     'admin.cashDrawer', 'admin.config', 'admin.superBin', 'features.offlineBackup',
     'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
-    ...GRANT_FEATURE_KEYS.filter((key) => !['grants.approve_credit_director', 'grants.approve_distribution_director', 'grants.approve_warehouse_director'].includes(key))
+    ...GRANT_FEATURE_KEYS.filter((key) => !['grants.approve_credit_director', 'grants.approve_retail_director', 'grants.approve_distribution_director', 'grants.approve_warehouse_director'].includes(key))
   ],
   enterprise: ALL_FEATURES.slice()
 };
@@ -120,9 +121,9 @@ const PAGE_FALLBACKS = {
 
 const FEATURE_DEPENDENCIES = {
   'pages.retail.pos': ['modules.pos', 'grants.view_pos'],
-  'pages.retail.purchases': ['modules.purchases', 'grants.view_purchases', 'grants.add_purchases', 'grants.edit_purchases', 'grants.approve_purchases'],
-  'pages.retail.transfers': ['modules.transfers', 'grants.view_transfers', 'grants.add_transfers', 'grants.edit_transfers', 'grants.approve_transfers'],
-  'pages.retail.adjustments': ['modules.adjustments', 'grants.view_adjustments', 'grants.add_adjustments', 'grants.edit_adjustments', 'grants.approve_adjustments'],
+  'pages.retail.purchases': ['modules.purchases', 'grants.view_purchases', 'grants.add_purchases', 'grants.edit_purchases', 'grants.approve_purchases', 'grants.approve_retail_director', 'grants.approve_retail_manager'],
+  'pages.retail.transfers': ['modules.transfers', 'grants.view_transfers', 'grants.add_transfers', 'grants.edit_transfers', 'grants.approve_transfers', 'grants.approve_retail_director', 'grants.approve_retail_manager'],
+  'pages.retail.adjustments': ['modules.adjustments', 'grants.view_adjustments', 'grants.add_adjustments', 'grants.edit_adjustments', 'grants.approve_adjustments', 'grants.approve_retail_director', 'grants.approve_retail_manager'],
   'pages.retail.refunds': ['modules.refunds', 'grants.view_refunds', 'grants.add_refunds', 'grants.approve_refunds'],
   'pages.finance.reconciliation': ['modules.finance', 'grants.view_finance_reconciliation', 'grants.add_finance_reconciliation'],
   'pages.communication.chat': ['modules.communication', 'grants.view_chat', 'grants.send_chat_messages'],
