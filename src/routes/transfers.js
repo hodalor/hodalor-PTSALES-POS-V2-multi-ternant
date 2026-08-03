@@ -1,7 +1,5 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
-import fs from 'node:fs';
-import path from 'node:path';
 import TransferRequest from '../models/TransferRequest.js';
 import Product from '../models/Product.js';
 import Audit from '../models/Audit.js';
@@ -13,36 +11,6 @@ import { safeErrorMessage } from '../utils/safeError.js';
 
 const r = Router();
 r.use(requireAuth);
-
-function reportRetailTransferApprovalDebug({ hypothesisId = 'A', location = '', msg = '', data = {}, runId = 'pre-fix' } = {}) {
-  const envCandidates = [
-    path.resolve(process.cwd(), '.dbg', 'retail-transfer-approval.env'),
-    path.resolve(process.cwd(), '..', '.dbg', 'retail-transfer-approval.env')
-  ];
-  let url = 'http://127.0.0.1:7777/event';
-  let sessionId = 'retail-transfer-approval';
-  for (const candidate of envCandidates) {
-    try {
-      const envText = fs.readFileSync(candidate, 'utf8');
-      url = envText.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || url;
-      sessionId = envText.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || sessionId;
-      break;
-    } catch {}
-  }
-  fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sessionId,
-      runId,
-      hypothesisId,
-      location,
-      msg,
-      data,
-      ts: Date.now()
-    })
-  }).catch(() => {});
-}
 
 function canDirectorApproveRetail(user, approvalArea = 'retail') {
   const role = String(user?.role || '').toLowerCase();
@@ -163,59 +131,15 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
 
 r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_transfers', 'approve_retail_director', 'approve_retail_manager']), async (req, res) => {
   const { id, approverName, approverRole, remark, items: reviewedItems } = req.body || {};
-  // #region debug-point A:approve-entry
-  reportRetailTransferApprovalDebug({
-    hypothesisId: 'A',
-    location: 'transfers.js:approve:entry',
-    msg: '[DEBUG] Retail transfer approval request received',
-    data: {
-      transferId: String(id || ''),
-      actorName: String(req.user?.name || ''),
-      actorRole: String(req.user?.role || ''),
-      grants: Array.isArray(req.user?.grants) ? req.user.grants : [],
-      assignedBranches: req.user?.assignedBranches ?? 'all',
-      hasRemark: !!String(remark || '').trim()
-    }
-  });
-  // #endregion
   if (!remark || !String(remark).trim()) return res.status(400).json({ error: 'Approval remark required' });
   const key = String(id || '');
   const or = [];
   if (mongoose.isValidObjectId(key)) or.push({ _id: key });
   or.push({ clientId: key });
   const tr = await TransferRequest.findOne({ $or: or });
-  // #region debug-point A:approve-transfer-loaded
-  reportRetailTransferApprovalDebug({
-    hypothesisId: 'A',
-    location: 'transfers.js:approve:transfer-loaded',
-    msg: '[DEBUG] Retail transfer approval loaded transfer record',
-    data: {
-      transferId: String(tr?._id || tr?.clientId || key),
-      found: !!tr,
-      status: String(tr?.status || ''),
-      fromBranchId: String(tr?.from || ''),
-      toBranchId: String(tr?.to || ''),
-      itemCount: Array.isArray(tr?.items) ? tr.items.length : 0
-    }
-  });
-  // #endregion
   if (!tr) return res.status(404).json({ error: 'Not found' });
   if (!['pending_approval', 'pending_director', 'pending_manager'].includes(String(tr.status || ''))) return res.json(tr);
   const approvalArea = await resolveTransferApprovalArea(tr);
-  // #region debug-point A:approve-area
-  reportRetailTransferApprovalDebug({
-    hypothesisId: 'A',
-    location: 'transfers.js:approve:approval-area',
-    msg: '[DEBUG] Retail transfer approval area resolved',
-    data: {
-      transferId: String(tr?._id || tr?.clientId || ''),
-      status: String(tr?.status || ''),
-      approvalArea,
-      fromBranchId: String(tr?.from || ''),
-      toBranchId: String(tr?.to || '')
-    }
-  });
-  // #endregion
   const role = String(req.user?.role || '').toLowerCase();
   const assigned = req.user?.assignedBranches ?? 'all';
   if (!(role === 'superadmin' || role === 'admin')) {
@@ -224,22 +148,6 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_t
       const currentStatus = String(tr.status || '');
       const canAccessDirectorStage = arr.includes(tr.from) || arr.includes(tr.to);
       const canAccessManagerStage = arr.includes(tr.to);
-      // #region debug-point D:approve-branch-access
-      reportRetailTransferApprovalDebug({
-        hypothesisId: 'D',
-        location: 'transfers.js:approve:branch-access',
-        msg: '[DEBUG] Retail transfer branch access evaluated',
-        data: {
-          transferId: String(tr?._id || tr?.clientId || ''),
-          currentStatus,
-          assignedBranches: arr,
-          canAccessDirectorStage,
-          canAccessManagerStage,
-          fromBranchId: String(tr?.from || ''),
-          toBranchId: String(tr?.to || '')
-        }
-      });
-      // #endregion
       if ((currentStatus === 'pending_approval' || currentStatus === 'pending_director') && !canAccessDirectorStage) {
         return res.status(403).json({ error: 'Forbidden for branch' });
       }
@@ -251,21 +159,6 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_t
   const nextItems = normalizeItems({ items: reviewedItems && reviewedItems.length ? reviewedItems : (tr.items || []) });
   if (String(tr.status || '') === 'pending_approval' || String(tr.status || '') === 'pending_director') {
     const canDirectorApprove = canDirectorApproveRetail(req.user, approvalArea);
-    // #region debug-point C:director-gate
-    reportRetailTransferApprovalDebug({
-      hypothesisId: 'C',
-      location: 'transfers.js:approve:director-gate',
-      msg: '[DEBUG] Retail transfer director gate evaluated',
-      data: {
-        transferId: String(tr?._id || tr?.clientId || ''),
-        status: String(tr?.status || ''),
-        approvalArea,
-        canDirectorApprove,
-        actorRole: String(req.user?.role || ''),
-        grants: Array.isArray(req.user?.grants) ? req.user.grants : []
-      }
-    });
-    // #endregion
     if (!canDirectorApprove) return res.status(403).json({ error: 'Director approval required' });
     tr.status = 'pending_manager';
     tr.items = nextItems;
@@ -277,21 +170,6 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_t
     return res.json(tr);
   }
   const canManagerApprove = canManagerApproveRetail(req.user, approvalArea);
-  // #region debug-point C:manager-gate
-  reportRetailTransferApprovalDebug({
-    hypothesisId: 'C',
-    location: 'transfers.js:approve:manager-gate',
-    msg: '[DEBUG] Retail transfer manager gate evaluated',
-    data: {
-      transferId: String(tr?._id || tr?.clientId || ''),
-      status: String(tr?.status || ''),
-      approvalArea,
-      canManagerApprove,
-      actorRole: String(req.user?.role || ''),
-      grants: Array.isArray(req.user?.grants) ? req.user.grants : []
-    }
-  });
-  // #endregion
   if (!canManagerApprove) return res.status(403).json({ error: 'Manager approval required' });
   let lastProduct = null;
   const fromInventoryType = await resolveInventoryTypeFromBranch(tr.from, 'retail');

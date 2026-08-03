@@ -3,6 +3,7 @@ import { Storage } from '@google-cloud/storage';
 
 let storageClient = null;
 const STORAGE_RETRY_DELAYS_MS = [250, 800, 1800];
+const MAX_MEDIA_UPLOAD_BYTES = 6 * 1024 * 1024;
 
 function trimString(value = '') {
   return String(value || '').trim();
@@ -231,6 +232,9 @@ export async function uploadMediaString(value, options = {}) {
     throw new Error('Media storage is not configured. Add Google Cloud Storage environment values.');
   }
   const { mimeType, buffer } = parseDataUrl(raw);
+  if (buffer.length > MAX_MEDIA_UPLOAD_BYTES) {
+    throw new Error('Upload is too large (max 6MB)');
+  }
   const objectPath = buildObjectPath({
     tenantId: options.tenantId,
     folder: options.folder,
