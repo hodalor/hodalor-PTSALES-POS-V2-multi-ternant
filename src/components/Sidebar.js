@@ -107,7 +107,7 @@ function Sidebar({ collapsed, onNavigate }) {
     (async () => {
       try {
         const canCredit = isFeatureEnabled(settings, 'modules.creditControl') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_credit_control']);
-        const canApprovals = isFeatureEnabled(settings, 'modules.approvalsCenter') && can(['Admin','Manager','SuperAdmin'],['view_approvals','approve_credit_director','approve_credit_manager','approve_distribution_director','approve_distribution_manager','approve_warehouse_director','approve_warehouse_manager']);
+        const canApprovals = isFeatureEnabled(settings, 'modules.approvalsCenter') && can(['Admin','Manager','SuperAdmin'],['view_approvals','approve_credit_director','approve_credit_manager','approve_retail_director','approve_retail_manager','approve_distribution_director','approve_distribution_manager','approve_warehouse_director','approve_warehouse_manager']);
         const canWarehouse = sectionEnabled('sections.warehouse') && (
           (isFeatureEnabled(settings, 'pages.warehouse.goods') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_warehouse_products']))
           || (isFeatureEnabled(settings, 'pages.warehouse.invoices') && can(['Admin','Manager','Cashier','SuperAdmin'], ['view_warehouse_invoices']))
@@ -180,7 +180,7 @@ function Sidebar({ collapsed, onNavigate }) {
             {isFeatureEnabled(settings, 'pages.retail.purchases') && can(['Admin','Manager','Inventory Staff','SuperAdmin'],['view_purchases','see_purchases']) && (
             <NavLink to="/purchases" className="sidebar-link" title={t('Purchases')} style={{ display: 'flex', alignItems: 'center' }}>
               <span className="sidebar-text">{t('Purchases')}</span>
-              {purchasePending > 0 && can(['Admin','Manager','SuperAdmin'],['approve_purchases']) && (
+              {purchasePending > 0 && can(['Admin','Manager','SuperAdmin'],['approve_purchases','approve_retail_director','approve_retail_manager']) && (
                 <span style={{ marginLeft: 'auto', minWidth: 22, height: 20, borderRadius: 999, padding: '0 8px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: 12 }}>
                   {purchasePending}
                 </span>
@@ -190,7 +190,7 @@ function Sidebar({ collapsed, onNavigate }) {
             {isFeatureEnabled(settings, 'pages.retail.transfers') && can(['Admin','Manager','Inventory Staff','SuperAdmin'],['view_transfers','see_transfers']) && (
             <NavLink to="/transfers" className="sidebar-link" title={t('Transfers')} style={{ display: 'flex', alignItems: 'center' }}>
               <span className="sidebar-text">{t('Transfers')}</span>
-              {transferPending > 0 && can(['Admin','Manager','SuperAdmin'],['approve_transfers']) && (
+              {transferPending > 0 && can(['Admin','Manager','SuperAdmin'],['approve_transfers','approve_retail_director','approve_retail_manager']) && (
                 <span style={{ marginLeft: 'auto', minWidth: 22, height: 20, borderRadius: 999, padding: '0 8px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: 12 }}>
                   {transferPending}
                 </span>
@@ -200,7 +200,7 @@ function Sidebar({ collapsed, onNavigate }) {
             {isFeatureEnabled(settings, 'pages.retail.adjustments') && can(['Admin','Manager','Inventory Staff','SuperAdmin'],['view_adjustments','see_adjustments']) && (
             <NavLink to="/adjustments" className="sidebar-link" title={t('Adjustments')} style={{ display: 'flex', alignItems: 'center' }}>
               <span className="sidebar-text">{t('Adjustments')}</span>
-              {adjustmentPending > 0 && can(['Admin','Manager','SuperAdmin'],['approve_adjustments']) && (
+              {adjustmentPending > 0 && can(['Admin','Manager','SuperAdmin'],['approve_adjustments','approve_retail_director','approve_retail_manager']) && (
                 <span style={{ marginLeft: 'auto', minWidth: 22, height: 20, borderRadius: 999, padding: '0 8px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: '#ef4444', color: '#fff', fontWeight: 800, fontSize: 12 }}>
                   {adjustmentPending}
                 </span>
@@ -567,7 +567,7 @@ function Sidebar({ collapsed, onNavigate }) {
           )}
         </div>
         )}
-        {isFeatureEnabled(settings, 'modules.approvalsCenter') && can(['Admin','Manager','SuperAdmin'],['view_approvals','approve_distribution_director','approve_distribution_manager','approve_warehouse_director','approve_warehouse_manager','approve_credit_director','approve_credit_manager']) && (
+        {isFeatureEnabled(settings, 'modules.approvalsCenter') && can(['Admin','Manager','SuperAdmin'],['view_approvals','approve_retail_director','approve_retail_manager','approve_distribution_director','approve_distribution_manager','approve_warehouse_director','approve_warehouse_manager','approve_credit_director','approve_credit_manager']) && (
         <NavLink to="/approvals-center" className="sidebar-link" title={t('Approvals Center')}>
           <svg viewBox="0 0 24 24" fill="none"><path d="M5 3h14v18H5z" stroke="currentColor" strokeWidth="2"/><path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="2"/></svg>
           <span className="sidebar-text">{t('Approvals Center')}</span>

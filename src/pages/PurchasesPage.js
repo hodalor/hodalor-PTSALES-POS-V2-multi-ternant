@@ -127,9 +127,9 @@ function PurchasesPage() {
     return grants.includes(g);
   }
   const canReceive = (['admin','manager','inventory staff'].includes(roleLower)) || has('add_purchases');
-  const canApprove = (['admin','manager','director','superadmin'].includes(roleLower)) || has('approve_purchases');
-  const canDirectorApprove = (['admin','director','superadmin'].includes(roleLower)) || has('approve_credit_director') || has('approve_purchases');
-  const canManagerApprove = (['admin','manager','superadmin'].includes(roleLower)) || has('approve_credit_manager') || has('approve_purchases');
+  const canApprove = (['admin','manager','director','superadmin'].includes(roleLower)) || has('approve_purchases') || has('approve_retail_director') || has('approve_retail_manager');
+  const canDirectorApprove = (['admin','director','superadmin'].includes(roleLower)) || has('approve_retail_director') || has('approve_purchases');
+  const canManagerApprove = (['admin','manager','superadmin'].includes(roleLower)) || has('approve_retail_manager') || has('approve_purchases');
   const canDeleteRecords = roleLower === 'superadmin';
   const [selectedRecordIds, setSelectedRecordIds] = useState([]);
   const [bulkAction, setBulkAction] = useState('');

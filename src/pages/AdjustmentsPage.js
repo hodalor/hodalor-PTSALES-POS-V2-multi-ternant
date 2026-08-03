@@ -107,9 +107,9 @@ function AdjustmentsPage() {
     return grants.includes(g);
   }
   const canAdjust = (['admin','manager','inventory staff'].includes(roleLower)) || has('add_adjustments');
-  const canApprove = (['admin','manager','director','superadmin'].includes(roleLower)) || has('approve_adjustments');
-  const canDirectorApprove = (['admin','director','superadmin'].includes(roleLower)) || has('approve_credit_director') || has('approve_adjustments');
-  const canManagerApprove = (['admin','manager','superadmin'].includes(roleLower)) || has('approve_credit_manager') || has('approve_adjustments');
+  const canApprove = (['admin','manager','director','superadmin'].includes(roleLower)) || has('approve_adjustments') || has('approve_retail_director') || has('approve_retail_manager');
+  const canDirectorApprove = (['admin','director','superadmin'].includes(roleLower)) || has('approve_retail_director') || has('approve_adjustments');
+  const canManagerApprove = (['admin','manager','superadmin'].includes(roleLower)) || has('approve_retail_manager') || has('approve_adjustments');
   const canDeleteRecords = roleLower === 'superadmin';
   const [selectedRecordIds, setSelectedRecordIds] = useState([]);
   const [bulkAction, setBulkAction] = useState('');

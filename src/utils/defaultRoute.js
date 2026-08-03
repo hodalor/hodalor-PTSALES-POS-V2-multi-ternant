@@ -29,7 +29,7 @@ const ROUTE_CANDIDATES = [
   { path: '/reports', feature: 'modules.reports', roles: ['Admin', 'Manager', 'Auditor'], grant: ['view_reports', 'see_reports'] },
   { path: '/cash-reconciliation', feature: 'pages.finance.reconciliation', roles: ['Admin', 'Manager', 'Cashier'], grant: ['view_finance_reconciliation', 'add_finance_reconciliation', 'approve_finance_reconciliation_director', 'approve_finance_reconciliation_manager'] },
   { path: '/expenses', feature: 'sections.expense', roles: ['Admin', 'Manager'], grant: ['view_expenses', 'see_expenses', 'add_expenses'] },
-  { path: '/approvals-center', feature: 'modules.approvalsCenter', roles: ['Admin', 'Manager', 'SuperAdmin'], grant: ['view_approvals', 'approve_distribution_director', 'approve_distribution_manager', 'approve_warehouse_director', 'approve_warehouse_manager', 'approve_credit_director', 'approve_credit_manager'] },
+  { path: '/approvals-center', feature: 'modules.approvalsCenter', roles: ['Admin', 'Manager', 'SuperAdmin'], grant: ['view_approvals', 'approve_retail_director', 'approve_retail_manager', 'approve_distribution_director', 'approve_distribution_manager', 'approve_warehouse_director', 'approve_warehouse_manager', 'approve_credit_director', 'approve_credit_manager'] },
   { path: '/users', feature: 'sections.admin', roles: ['Admin', 'SuperAdmin'], grant: ['view_users', 'see_users'] },
   { path: '/inventory-consistency', feature: 'admin.inventoryConsistency', roles: ['Admin', 'Manager', 'SuperAdmin'], grant: ['view_inventory_consistency', 'see_inventory_consistency'] },
   { path: '/config', feature: 'sections.admin', roles: ['Admin', 'Manager'], grant: ['view_config', 'see_config'] },

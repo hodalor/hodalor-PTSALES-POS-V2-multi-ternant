@@ -54,6 +54,8 @@ export const TENANT_GRANT_CATALOG = [
   { key: 'approve_credit_manager', label: 'Manager Credit Approval' },
   { key: 'view_credit_repayment_approvals', label: 'Open Credit Repayment Approvals' },
   { key: 'view_approvals', label: 'Open Approvals Center' },
+  { key: 'approve_retail_director', label: 'Director Retail Approval' },
+  { key: 'approve_retail_manager', label: 'Manager Retail Approval' },
   { key: 'approve_distribution_director', label: 'Director Distribution Approval' },
   { key: 'approve_distribution_manager', label: 'Manager Distribution Approval' },
   { key: 'approve_warehouse_director', label: 'Director Warehouse Approval' },
@@ -120,7 +122,7 @@ export const PLAN_DEFAULT_FEATURES = {
     'admin.users', 'admin.manual', 'admin.audit', 'admin.serverLogs', 'admin.stockRecords', 'admin.inventoryConsistency',
     'admin.cashDrawer', 'admin.config', 'admin.superBin', 'features.offlineBackup',
     'tabs.customerPurchaseHistory', 'tabs.posHeldSales', 'tabs.invoiceNew', 'tabs.invoiceRecords',
-    ...TENANT_GRANT_CATALOG.map((item) => `grants.${item.key}`).filter((key) => !['grants.approve_credit_director', 'grants.approve_distribution_director', 'grants.approve_warehouse_director'].includes(key))
+    ...TENANT_GRANT_CATALOG.map((item) => `grants.${item.key}`).filter((key) => !['grants.approve_credit_director', 'grants.approve_retail_director', 'grants.approve_distribution_director', 'grants.approve_warehouse_director'].includes(key))
   ],
   enterprise: null
 };
@@ -199,7 +201,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
       { label: 'Inventory', keys: ['modules.inventory', 'grants.view_inventory', 'grants.edit_inventory'] },
       { label: 'Serialized Inventory', keys: ['modules.inventory', 'grants.view_serialized_inventory'] },
       { label: 'Labels', keys: ['modules.labels', 'grants.view_labels'] },
-      { label: 'Approvals Center', keys: ['modules.approvalsCenter', 'grants.view_approvals', 'grants.approve_credit_director', 'grants.approve_credit_manager', 'grants.approve_distribution_director', 'grants.approve_distribution_manager', 'grants.approve_warehouse_director', 'grants.approve_warehouse_manager'] },
+      { label: 'Approvals Center', keys: ['modules.approvalsCenter', 'grants.view_approvals', 'grants.approve_credit_director', 'grants.approve_credit_manager', 'grants.approve_retail_director', 'grants.approve_retail_manager', 'grants.approve_distribution_director', 'grants.approve_distribution_manager', 'grants.approve_warehouse_director', 'grants.approve_warehouse_manager'] },
       { label: 'Refund Approvals', keys: ['modules.refundApprovals', 'grants.approve_refunds'] },
       { label: 'Reports', keys: ['modules.reports', 'grants.view_reports'] },
       { label: 'Finance', keys: ['modules.finance', 'pages.finance.reconciliation', 'grants.view_finance_reconciliation', 'grants.add_finance_reconciliation', 'grants.view_finance_reconciliation_all_branches', 'grants.approve_finance_reconciliation_director', 'grants.approve_finance_reconciliation_manager'] },
@@ -219,6 +221,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
       { label: 'Purchases', keys: ['pages.retail.purchases', 'modules.purchases', 'grants.view_purchases', 'grants.add_purchases', 'grants.edit_purchases', 'grants.approve_purchases'] },
       { label: 'Transfers', keys: ['pages.retail.transfers', 'modules.transfers', 'grants.view_transfers', 'grants.add_transfers', 'grants.edit_transfers', 'grants.approve_transfers'] },
       { label: 'Adjustments', keys: ['pages.retail.adjustments', 'modules.adjustments', 'grants.view_adjustments', 'grants.add_adjustments', 'grants.edit_adjustments', 'grants.approve_adjustments'] },
+      { label: 'Director / Manager Approvals', keys: ['modules.approvalsCenter', 'grants.approve_retail_director', 'grants.approve_retail_manager'] },
       { label: 'Retail Refunds', keys: ['pages.retail.refunds', 'modules.refunds', 'grants.view_refunds', 'grants.add_refunds', 'grants.approve_refunds'] }
     ]
   },
