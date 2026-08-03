@@ -20,6 +20,8 @@ import { exportCsv, exportTablePdf } from '../utils/exporters';
 
 Chart.register(BarElement, CategoryScale, LinearScale, Tooltip, Legend);
 
+const MAX_CUSTOMER_UPLOAD_BYTES = 6 * 1024 * 1024;
+
 function sortByLatestDate(rows = [], picker) {
   return [...rows].sort((a, b) => {
     const aTs = new Date(typeof picker === 'function' ? picker(a) : a?.created_at || a?.createdAt || 0).getTime();
@@ -391,8 +393,8 @@ function CustomersPage() {
       setter(prev => ({ ...prev, [field]: '' }));
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
-      toast.show('Upload is too large (max 2MB)', { type: 'error' });
+    if (file.size > MAX_CUSTOMER_UPLOAD_BYTES) {
+      toast.show('Upload is too large (max 6MB)', { type: 'error' });
       return;
     }
     const reader = new FileReader();

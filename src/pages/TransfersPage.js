@@ -20,22 +20,6 @@ import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
 import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
 
-function reportRetailTransferApprovalClientDebug({ hypothesisId = 'B', location = '', msg = '', data = {}, runId = 'pre-fix' } = {}) {
-  fetch('http://127.0.0.1:7777/event', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sessionId: 'retail-transfer-approval',
-      runId,
-      hypothesisId,
-      location,
-      msg,
-      data,
-      ts: Date.now()
-    })
-  }).catch(() => {});
-}
-
 function normalizeTransferReviewStatus(value) {
   return String(value || '').toLowerCase() === 'cancelled' ? 'cancelled' : 'accepted';
 }
@@ -639,24 +623,6 @@ function TransfersPage() {
     const allowed = isWorkflow
       ? ((String(detail.status || '') === 'pending_director' && canWorkflowDirector(detail)) || (String(detail.status || '') === 'pending_manager' && canWorkflowManager(detail)))
       : canActOnRetailRequest(detail);
-    // #region debug-point B:review-action-entry
-    reportRetailTransferApprovalClientDebug({
-      hypothesisId: 'B',
-      location: 'TransfersPage.js:reviewAction:entry',
-      msg: '[DEBUG] Retail transfer review action started',
-      data: {
-        type,
-        transferId: String(detail?._id || detail?.clientId || ''),
-        status: String(detail?.status || ''),
-        approvalMode: String(detail?.approvalMode || ''),
-        fromBranchId: String(detail?.from || detail?.fromBranchId || ''),
-        toBranchId: String(detail?.to || detail?.toBranchId || ''),
-        role: String(auth.role || ''),
-        grants,
-        allowed
-      }
-    });
-    // #endregion
     if (!allowed) {
       toast.show(type === 'approve' ? t('Not authorized to approve transfers') : t('Not authorized to reject transfers'), { type: 'error' });
       return;
@@ -739,19 +705,6 @@ function TransfersPage() {
       setDecisionRemark('');
       await reloadApprovals();
     } catch (e) {
-      // #region debug-point B:review-action-error
-      reportRetailTransferApprovalClientDebug({
-        hypothesisId: 'B',
-        location: 'TransfersPage.js:reviewAction:error',
-        msg: '[DEBUG] Retail transfer review action failed',
-        data: {
-          type,
-          transferId: String(detail?._id || detail?.clientId || ''),
-          status: String(detail?.status || ''),
-          error: String(e?.message || e || '')
-        }
-      });
-      // #endregion
       toast.show(String(e?.message || (type === 'approve' ? t('Failed to approve') : t('Failed to reject'))), { type: 'error' });
     } finally {
       setReviewing(false);
