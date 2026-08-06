@@ -139,9 +139,52 @@ r.get('/', async (req, res) => {
   if (req.query.referenceModel) query.referenceModel = String(req.query.referenceModel);
   if (req.query.referenceId) query.referenceId = String(req.query.referenceId);
   const rows = await Approval.find(query).sort({ createdAt: -1 }).limit(500).lean();
+  const wholesaleReferenceIds = rows
+    .filter((row) => String(row?.referenceModel || '') === 'WholesaleOperation')
+    .map((row) => String(row.referenceId || '').trim())
+    .filter(Boolean);
+  const wholesaleOperations = wholesaleReferenceIds.length > 0
+    ? await WholesaleOperation.find({ _id: { $in: wholesaleReferenceIds } })
+      .select('operationType operationArea transactionTitle productId variantId items qty cost requestedAmount branchId fromBranchId toBranchId fromInventoryType toInventoryType reason remark initiatedByName initiatedByRole createdAt updatedAt')
+      .lean()
+      .catch(() => [])
+    : [];
+  const wholesaleById = new Map(
+    (Array.isArray(wholesaleOperations) ? wholesaleOperations : []).map((row) => [String(row._id), row])
+  );
   const filteredRows = [];
   for (const row of rows) {
-    if (await canAccessApprovalByBranch(req.user, row)) filteredRows.push(row);
+    if (!(await canAccessApprovalByBranch(req.user, row))) continue;
+    const wholesaleOperation = String(row?.referenceModel || '') === 'WholesaleOperation'
+      ? wholesaleById.get(String(row.referenceId || ''))
+      : null;
+    if (wholesaleOperation) {
+      filteredRows.push({
+        ...row,
+        operationType: wholesaleOperation.operationType || '',
+        operationArea: wholesaleOperation.operationArea || '',
+        transactionTitle: wholesaleOperation.transactionTitle || '',
+        productId: wholesaleOperation.productId || '',
+        variantId: wholesaleOperation.variantId || '',
+        items: Array.isArray(wholesaleOperation.items) ? wholesaleOperation.items : [],
+        qty: Number(wholesaleOperation.qty || 0),
+        cost: Number(wholesaleOperation.cost || 0),
+        requestedAmount: Number(wholesaleOperation.requestedAmount || 0),
+        branchId: wholesaleOperation.branchId || '',
+        fromBranchId: wholesaleOperation.fromBranchId || '',
+        toBranchId: wholesaleOperation.toBranchId || '',
+        fromInventoryType: wholesaleOperation.fromInventoryType || '',
+        toInventoryType: wholesaleOperation.toInventoryType || '',
+        reason: wholesaleOperation.reason || '',
+        remark: wholesaleOperation.remark || '',
+        initiatedByName: wholesaleOperation.initiatedByName || row.initiatedByName || '',
+        initiatedByRole: wholesaleOperation.initiatedByRole || row.initiatedByRole || '',
+        referenceCreatedAt: wholesaleOperation.createdAt || null,
+        referenceUpdatedAt: wholesaleOperation.updatedAt || null
+      });
+      continue;
+    }
+    filteredRows.push(row);
   }
   res.json(filteredRows);
 });
