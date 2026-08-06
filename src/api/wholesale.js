@@ -45,7 +45,14 @@ function normalizeModernOperation(row, operationType) {
   return {
     ...row,
     operationType,
-    approvalMode: 'workflow'
+    approvalMode: 'workflow',
+    directorApproverName: row.directorApproverName || row.directorApprovedByName || '',
+    directorApproverRole: row.directorApproverRole || row.directorApprovedByRole || '',
+    managerApproverName: row.managerApproverName || row.managerApprovedByName || '',
+    managerApproverRole: row.managerApproverRole || row.managerApprovedByRole || '',
+    approverName: row.approverName || row.managerApproverName || row.managerApprovedByName || '',
+    approverRole: row.approverRole || row.managerApproverRole || row.managerApprovedByRole || '',
+    approvalRemark: row.approvalRemark || row.managerApprovalRemark || row.directorApprovalRemark || ''
   };
 }
 

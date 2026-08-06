@@ -1,18 +1,27 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { approveApproval, listApprovals, rejectApproval } from '../api/approvals';
 import { useToast } from '../components/ToastProvider';
 import { promptDialog } from '../utils/dialogs';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import LoadingDots from '../components/LoadingDots';
+import { getProductDisplayMeta } from '../utils/inventoryFilters';
 
 function ApprovalsPage() {
   const toast = useToast();
   const dispatch = useDispatch();
+  const products = useSelector((s) => s.products.products);
+  const branches = useSelector((s) => s.branches.branches);
   const [rows, setRows] = useState([]);
   const [status, setStatus] = useState('pending_director');
   const [loading, setLoading] = useState(false);
   const [workingId, setWorkingId] = useState('');
+
+  const branchNameById = useMemo(() => {
+    const map = new Map();
+    branches.forEach((branch) => map.set(String(branch.id), branch.name || branch.code || branch.id));
+    return map;
+  }, [branches]);
 
   const load = useCallback(async (nextStatus = status, options = {}) => {
     setLoading(true);
@@ -31,6 +40,47 @@ function ApprovalsPage() {
   }, [load, status]);
 
   const grouped = useMemo(() => rows.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [rows]);
+
+  function formatActor(name = '', role = '') {
+    const actorName = String(name || '').trim();
+    const actorRole = String(role || '').trim();
+    if (!actorName) return '—';
+    return actorRole ? `${actorName} (${actorRole})` : actorName;
+  }
+
+  function renderProducts(row) {
+    const items = Array.isArray(row?.items) ? row.items : [];
+    if (items.length > 0) {
+      const visible = items.slice(0, 3);
+      return (
+        <div style={{ display: 'grid', gap: 4 }}>
+          {visible.map((item, index) => {
+            const meta = getProductDisplayMeta(products, item?.productId, item?.variantId, item);
+            return (
+              <div key={`${row._id}-item-${item?.lineId || index}`} style={{ color: '#111827' }}>
+                {meta.productName || item?.productId || '—'} x{Number(item?.qty || 0)}
+                {meta.secondaryLabel ? <div style={{ color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
+              </div>
+            );
+          })}
+          {items.length > 3 ? <div style={{ color: '#64748b', fontSize: 12 }}>+{items.length - 3} more</div> : null}
+        </div>
+      );
+    }
+    const meta = getProductDisplayMeta(products, row?.productId, row?.variantId, row);
+    return <span>{meta.productName || row?.productId || '—'}</span>;
+  }
+
+  function renderRoute(row) {
+    if (String(row?.referenceModel || '') !== 'WholesaleOperation') return '—';
+    if (String(row?.operationType || '').toLowerCase() === 'transfer') {
+      const fromLabel = branchNameById.get(String(row?.fromBranchId || '')) || row?.fromBranchId || '—';
+      const toLabel = branchNameById.get(String(row?.toBranchId || '')) || row?.toBranchId || '—';
+      return `${fromLabel} -> ${toLabel}`;
+    }
+    const branchLabel = branchNameById.get(String(row?.branchId || '')) || row?.branchId || '—';
+    return branchLabel;
+  }
 
   async function onApprove(row) {
     const remark = await promptDialog('Approval remark (optional)');
@@ -105,8 +155,12 @@ function ApprovalsPage() {
           <thead>
             <tr>
               <th align="left">Action</th>
+              <th align="left">Products</th>
+              <th align="left">Route</th>
               <th align="left">Type</th>
               <th align="left">Initiated By</th>
+              <th align="left">Director</th>
+              <th align="left">Manager</th>
               <th align="left">Status</th>
               <th align="left">Created</th>
               <th align="left"></th>
@@ -116,8 +170,12 @@ function ApprovalsPage() {
             {grouped.map(row => (
               <tr key={row._id}>
                 <td>{row.actionType}</td>
+                <td>{renderProducts(row)}</td>
+                <td>{renderRoute(row)}</td>
                 <td>{row.referenceModel}</td>
-                <td>{row.initiatedByName || '—'} {row.initiatedByRole ? `(${row.initiatedByRole})` : ''}</td>
+                <td>{formatActor(row.initiatedByName, row.initiatedByRole)}</td>
+                <td>{formatActor(row.directorApprovedByName, row.directorApprovedByRole)}</td>
+                <td>{formatActor(row.managerApprovedByName, row.managerApprovedByRole)}</td>
                 <td>{row.status}</td>
                 <td>{row.createdAt ? new Date(row.createdAt).toLocaleString() : '—'}</td>
                 <td>
@@ -132,7 +190,7 @@ function ApprovalsPage() {
                 </td>
               </tr>
             ))}
-            {!loading && grouped.length === 0 && <tr><td colSpan="6" style={{ padding: 12, color: '#64748b' }}>No approvals found</td></tr>}
+            {!loading && grouped.length === 0 && <tr><td colSpan="10" style={{ padding: 12, color: '#64748b' }}>No approvals found</td></tr>}
           </tbody>
         </table>
       </div>
