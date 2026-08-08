@@ -76,6 +76,15 @@ function getAdjustmentTypePillStyle(label) {
   return { background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857' };
 }
 
+function computeOperationValue(row = {}) {
+  const items = Array.isArray(row?.items) ? row.items : [];
+  if (items.length > 0) {
+    return items.reduce((sum, item) => sum + (Number(item?.qty || 0) * Number(item?.cost || 0)), 0);
+  }
+  if (String(row?.operationType || '').toLowerCase() === 'refund') return Number(row?.requestedAmount || 0);
+  return Number(row?.cost || 0) * Math.max(1, Number(row?.qty || 0));
+}
+
 function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' }) {
   const { t } = useAppLanguage();
   const toast = useToast();
@@ -362,6 +371,9 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
           }));
         const combined = [...workflowRows, ...inboundRetailTransfers]
           .sort((a, b) => new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime());
+        // #region debug-point C:transfer-merge
+        fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'transfer-visibility-value', runId: 'pre-fix', hypothesisId: 'C', location: 'WholesaleOperationsPage.js:loadOperations:transfer-merge', msg: '[DEBUG] Transfer page merged workflow and legacy rows', data: { normalizedArea, statusFilter, workflowCount: workflowRows.length, inboundRetailCount: inboundRetailTransfers.length, combinedCount: combined.length, workflowRows: workflowRows.slice(0, 20).map((row) => ({ id: String(row?._id || row?.clientId || ''), status: String(row?.status || ''), operationArea: String(row?.operationArea || ''), fromBranchId: String(row?.fromBranchId || row?.from || ''), toBranchId: String(row?.toBranchId || row?.to || ''), approvalMode: String(row?.approvalMode || '') })), inboundRetailRows: inboundRetailTransfers.slice(0, 20).map((row) => ({ id: String(row?._id || row?.clientId || ''), status: String(row?.status || ''), fromBranchId: String(row?.fromBranchId || ''), toBranchId: String(row?.toBranchId || ''), approvalMode: String(row?.approvalMode || '') })) }, ts: Date.now() }) }).catch(() => {});
+        // #endregion
         setOperations(combined);
         setTotal(combined.length);
       } else {
@@ -903,7 +915,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                 const route = row.operationType === 'transfer'
                   ? `${branchNameById.get(row.fromBranchId || row.from) || row.fromBranchId || row.from || '—'} ${t(String(row.fromInventoryType || 'retail'))} → ${branchNameById.get(row.toBranchId || row.to) || row.toBranchId || row.to || '—'} ${t(String(row.toInventoryType || 'retail'))}`
                   : `${branchNameById.get(row.branchId) || row.branchId || '—'} • ${t(String(row.toInventoryType || row.fromInventoryType || 'wholesale'))}`;
-                const value = row.operationType === 'refund' ? Number(row.requestedAmount || 0) : Number(row.cost || 0);
+                const value = computeOperationValue(row);
                 const title = String(row.transactionTitle || '').trim() || (Array.isArray(row.items) && row.items.length > 1 ? `${meta.productName || row.productId} +${row.items.length - 1} ${t('more')}` : (meta.productName || row.productId));
                 const rowCanAct = String(row.approvalMode || '').toLowerCase() === 'workflow'
                   ? ((String(row.status || '') === 'pending_director' && canDirectorApprove) || (String(row.status || '') === 'pending_manager' && canManagerApprove))
@@ -1247,7 +1259,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Director Approver')}</div><strong>{selectedRow.directorApprovedByName ? `${selectedRow.directorApprovedByName}${selectedRow.directorApprovedByRole ? ` (${selectedRow.directorApprovedByRole})` : ''}` : '—'}</strong></div>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Manager Approver')}</div><strong>{selectedRow.managerApprovedByName ? `${selectedRow.managerApprovedByName}${selectedRow.managerApprovedByRole ? ` (${selectedRow.managerApprovedByRole})` : ''}` : '—'}</strong></div>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Quantity')}</div><strong>{Number(selectedRow.qty || selectedRow.baseUnits || 0)}</strong></div>
-              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Value')}</div><strong>{maskCostValue(selectedRow.cost || selectedRow.requestedAmount || 0)}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Value')}</div><strong>{maskCostValue(computeOperationValue(selectedRow))}</strong></div>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Source')}</div><strong>{branchNameById.get(selectedRow.fromBranchId || selectedRow.from || selectedRow.branchId) || selectedRow.fromBranchId || selectedRow.from || selectedRow.branchId || '—'}</strong></div>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Destination')}</div><strong>{branchNameById.get(selectedRow.toBranchId || selectedRow.to) || selectedRow.toBranchId || selectedRow.to || '—'}</strong></div>
               <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('From Inventory')}</div><strong>{t(selectedRow.fromInventoryType || 'retail')}</strong></div>
@@ -1258,6 +1270,9 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
             </div>
             <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Reason')}</div><strong>{selectedRow.reason || '—'}</strong></div>
             <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Remark')}</div><strong>{selectedRow.remark || selectedRow.approvalRemark || selectedRow.rejectionRemark || '—'}</strong></div>
+            {/* #region debug-point D:value-breakdown */}
+            {(() => { fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'transfer-visibility-value', runId: 'pre-fix', hypothesisId: 'D', location: 'WholesaleOperationsPage.js:selectedRow:value-breakdown', msg: '[DEBUG] Transfer review value breakdown computed', data: { id: String(selectedRow?._id || selectedRow?.clientId || ''), operationType: String(selectedRow?.operationType || ''), qty: Number(selectedRow?.qty || 0), rowCost: Number(selectedRow?.cost || 0), requestedAmount: Number(selectedRow?.requestedAmount || 0), computedValue: computeOperationValue(selectedRow), items: (Array.isArray(selectedRow?.items) ? selectedRow.items : []).map((item) => ({ lineId: String(item?.lineId || ''), productId: String(item?.productId || ''), qty: Number(item?.qty || 0), cost: Number(item?.cost || 0), subtotal: Number(item?.qty || 0) * Number(item?.cost || 0) })).slice(0, 20) }, ts: Date.now() }) }).catch(() => {}); return null; })()}
+            {/* #endregion */}
             <div className="table-wrap">
               <table className="table">
                 <thead>
