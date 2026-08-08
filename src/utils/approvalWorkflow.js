@@ -62,6 +62,45 @@ export function canApproveAreaManager(user, area = 'wholesale') {
   return grants.includes('approve_distribution_manager');
 }
 
+function normalizeApprovalInventoryArea(value = '') {
+  const raw = String(value || '').toLowerCase();
+  if (raw === 'warehouse') return 'warehouse';
+  if (raw === 'retail') return 'retail';
+  return 'wholesale';
+}
+
+export function canApproveWholesaleOperationDirector(user, operation = null) {
+  const role = String(user?.role || '').toLowerCase();
+  const grants = Array.isArray(user?.grants) ? user.grants : [];
+  if (['admin', 'superadmin', 'director'].includes(role)) return true;
+  if (!operation || String(operation?.operationType || '').toLowerCase() !== 'transfer') {
+    return canApproveAreaDirector(user, normalizeApprovalInventoryArea(operation?.operationArea || 'wholesale'));
+  }
+  if (grants.includes('approve_transfers')) return true;
+  const candidateAreas = new Set([
+    normalizeApprovalInventoryArea(operation?.operationArea || 'wholesale'),
+    normalizeApprovalInventoryArea(operation?.fromInventoryType || operation?.operationArea || 'wholesale'),
+    normalizeApprovalInventoryArea(operation?.toInventoryType || operation?.operationArea || 'wholesale')
+  ]);
+  return Array.from(candidateAreas).some((area) => canApproveAreaDirector(user, area));
+}
+
+export function canApproveWholesaleOperationManager(user, operation = null) {
+  const role = String(user?.role || '').toLowerCase();
+  const grants = Array.isArray(user?.grants) ? user.grants : [];
+  if (['manager', 'admin', 'superadmin'].includes(role)) return true;
+  if (!operation || String(operation?.operationType || '').toLowerCase() !== 'transfer') {
+    return canApproveAreaManager(user, normalizeApprovalInventoryArea(operation?.operationArea || 'wholesale'));
+  }
+  if (grants.includes('approve_transfers')) return true;
+  const candidateAreas = new Set([
+    normalizeApprovalInventoryArea(operation?.operationArea || 'wholesale'),
+    normalizeApprovalInventoryArea(operation?.fromInventoryType || operation?.operationArea || 'wholesale'),
+    normalizeApprovalInventoryArea(operation?.toInventoryType || operation?.operationArea || 'wholesale')
+  ]);
+  return Array.from(candidateAreas).some((area) => canApproveAreaManager(user, area));
+}
+
 async function applyWholesaleOperation(operation, actor) {
   const items = Array.isArray(operation.items) && operation.items.length > 0
     ? operation.items

@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
 import WholesaleOperation from '../models/WholesaleOperation.js';
 import Approval from '../models/Approval.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
@@ -9,6 +11,28 @@ import { archiveLiveDocument } from '../utils/superBin.js';
 const r = Router();
 
 r.use(requireAuth);
+
+function reportTransferVisibilityDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  const envCandidates = [
+    path.resolve(process.cwd(), '.dbg', 'transfer-visibility-value.env'),
+    path.resolve(process.cwd(), '..', '.dbg', 'transfer-visibility-value.env')
+  ];
+  let url = 'http://127.0.0.1:7777/event';
+  let sessionId = 'transfer-visibility-value';
+  for (const candidate of envCandidates) {
+    try {
+      const text = fs.readFileSync(candidate, 'utf8');
+      url = text.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || url;
+      sessionId = text.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || sessionId;
+      break;
+    } catch {}
+  }
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, runId: 'pre-fix', hypothesisId, location, msg, data, ts: Date.now() })
+  }).catch(() => {});
+}
 
 function permissionForOperation(type = '', area = '') {
   const key = String(type || '').toLowerCase();
@@ -79,6 +103,41 @@ r.get('/operations', async (req, res) => {
         : row.status
     };
   });
+  // #region debug-point A:operations-list
+  reportTransferVisibilityDebug({
+    hypothesisId: 'A',
+    location: 'wholesale.js:get:operations',
+    msg: '[DEBUG] Wholesale operations list resolved transfer rows',
+    data: {
+      status: String(req.query.status || ''),
+      operationType: String(req.query.operationType || ''),
+      operationArea: String(req.query.operationArea || ''),
+      assignedBranches: req.user?.assignedBranches ?? 'all',
+      query,
+      rawRows: rows.filter((row) => String(row?.operationType || '').toLowerCase() === 'transfer').map((row) => ({
+        id: String(row?._id || ''),
+        status: String(row?.status || ''),
+        operationArea: String(row?.operationArea || ''),
+        fromBranchId: String(row?.fromBranchId || ''),
+        toBranchId: String(row?.toBranchId || ''),
+        qty: Number(row?.qty || 0),
+        cost: Number(row?.cost || 0),
+        itemCount: Array.isArray(row?.items) ? row.items.length : 0
+      })).slice(0, 20),
+      normalizedRows: normalized.filter((row) => String(row?.operationType || '').toLowerCase() === 'transfer').map((row) => ({
+        id: String(row?._id || ''),
+        status: String(row?.status || ''),
+        operationArea: String(row?.operationArea || ''),
+        fromBranchId: String(row?.fromBranchId || ''),
+        toBranchId: String(row?.toBranchId || ''),
+        qty: Number(row?.qty || 0),
+        cost: Number(row?.cost || 0),
+        itemCount: Array.isArray(row?.items) ? row.items.length : 0,
+        approvalId: String(row?.approvalId || '')
+      })).slice(0, 20)
+    }
+  });
+  // #endregion
   if (paged) return res.json({ rows: normalized, total, page, pageSize });
   res.json(normalized);
 });
