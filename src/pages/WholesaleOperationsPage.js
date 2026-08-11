@@ -79,7 +79,8 @@ function getAdjustmentTypePillStyle(label) {
 function computeOperationValue(row = {}) {
   const items = Array.isArray(row?.items) ? row.items : [];
   if (items.length > 0) {
-    return items.reduce((sum, item) => sum + (Number(item?.qty || 0) * Number(item?.cost || 0)), 0);
+    const summed = items.reduce((sum, item) => sum + (Number(item?.qty || 0) * Number(item?.cost || 0)), 0);
+    if (summed > 0) return summed;
   }
   if (String(row?.operationType || '').toLowerCase() === 'refund') return Number(row?.requestedAmount || 0);
   return Number(row?.cost || 0) * Math.max(1, Number(row?.qty || 0));
@@ -106,8 +107,12 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   }, [assigned, branches, roleLower]);
   const allowedBranchIds = useMemo(() => {
     if (roleLower === 'superadmin' || roleLower === 'admin' || assigned === 'all') return null;
-    return new Set(Array.isArray(assigned) ? assigned : [assigned]);
-  }, [assigned, roleLower]);
+    return new Set(
+      [auth.user?.branchId, ...(Array.isArray(assigned) ? assigned : [assigned])]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+    );
+  }, [assigned, auth.user?.branchId, roleLower]);
   const normalizedArea = String(operationArea || 'wholesale').toLowerCase() === 'warehouse' ? 'warehouse' : 'wholesale';
   const scopedBranchOptions = useMemo(
     () => branchOptions.filter(branch => String(branch.branchType || 'retail').toLowerCase() === normalizedArea),
@@ -762,6 +767,8 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
             unitIds: usesSerializedSelection ? serializedUnits.filter(unit => unit.selected).map(unit => unit._id) : [],
             selectedUnits: usesSerializedSelection ? serializedUnits.filter(unit => unit.selected).map(unit => ({ unitId: unit._id, imei: unit.imei || '', serialNumber: unit.serialNumber || '' })) : [],
             serializedEntries: !usesSerializedSelection ? serializedEntries : [],
+            cost: Number(cost || 0),
+            requestedAmount: Number(requestedAmount || 0),
             remark: remark.trim(),
             reason: reason.trim(),
             adjustmentType,
