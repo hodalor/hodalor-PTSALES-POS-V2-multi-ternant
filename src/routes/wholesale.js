@@ -55,7 +55,11 @@ r.get('/operations', async (req, res) => {
   const role = String(req.user?.role || '').toLowerCase();
   const assigned = req.user?.assignedBranches ?? 'all';
   if (!(role === 'superadmin' || role === 'admin') && assigned !== 'all') {
-    const arr = Array.isArray(assigned) ? assigned : [assigned];
+    const arr = Array.from(new Set(
+      [req.user?.branchId, ...(Array.isArray(assigned) ? assigned : [assigned])]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+    ));
     if (String(req.query.operationType || '').toLowerCase() === 'transfer') {
       query.$or = [
         { fromBranchId: { $in: arr } },
