@@ -286,9 +286,9 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   const salesById = useMemo(() => new Map(mergedSales.map((row) => [String(row._id || row.saleId || ''), row])), [mergedSales]);
   const shownActiveSales = useMemo(() => branchFilteredSales.filter(row => row.status !== 'completed'), [branchFilteredSales]);
   const overdueSales = useMemo(() => branchFilteredSales.filter(row => row.status === 'overdue'), [branchFilteredSales]);
-  const currentActiveSales = useMemo(() => branchScopedSales.filter((row) => row.status !== 'completed'), [branchScopedSales]);
-  const currentOverdueSales = useMemo(() => branchScopedSales.filter((row) => row.status === 'overdue'), [branchScopedSales]);
-  const currentPendingAmountRows = useMemo(() => branchScopedSales.filter((row) => row.status !== 'completed' && row.status !== 'overdue'), [branchScopedSales]);
+  const currentActiveSales = useMemo(() => branchFilteredSales.filter((row) => row.status !== 'completed'), [branchFilteredSales]);
+  const currentOverdueSales = useMemo(() => branchFilteredSales.filter((row) => row.status === 'overdue'), [branchFilteredSales]);
+  const currentPendingAmountRows = useMemo(() => branchFilteredSales.filter((row) => row.status !== 'completed' && row.status !== 'overdue'), [branchFilteredSales]);
   const defaulterRows = useMemo(() => {
     return overdueSales
       .slice()
@@ -375,6 +375,59 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       pendingRepaymentCount: currentPendingRepayments.length
     };
   }, [currentActiveSales, currentOverdueSales, currentPendingAmountRows, currentPendingRepayments, dueTodaySales.length]);
+
+  useEffect(() => {
+    // #region debug-point A:credit-summary-vs-table
+    fetch('http://127.0.0.1:7777/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'credit-active-sales-list',
+        runId: 'pre-fix',
+        hypothesisId: 'A',
+        location: 'CreditControlPage.js:summary-vs-table',
+        msg: '[DEBUG] Credit summary and active sales table counts recalculated',
+        data: {
+          user: String(auth.user?.name || auth.user?.username || ''),
+          role: String(auth.role || ''),
+          branchFilter: String(branchFilter || ''),
+          sourceFilter: String(sourceFilter || ''),
+          creditPackageFilter: String(creditPackageFilter || ''),
+          periodMode: String(periodMode || ''),
+          dateFrom: String(dateFrom || ''),
+          dateTo: String(dateTo || ''),
+          mergedSalesCount: mergedSales.length,
+          filteredSalesCount: filteredSales.length,
+          branchScopedSalesCount: branchScopedSales.length,
+          branchFilteredSalesCount: branchFilteredSales.length,
+          currentActiveSalesCount: currentActiveSales.length,
+          shownActiveSalesCount: shownActiveSales.length,
+          filteredActiveSalesCount: filteredActiveSales.length,
+          summaryActiveCount: creditSummary.activeCount,
+          sampleBranchScoped: currentActiveSales.slice(0, 10).map((row) => ({
+            id: String(row?._id || row?.saleId || ''),
+            branchId: String(row?.branchId || ''),
+            status: String(row?.status || ''),
+            posType: String(row?.posType || ''),
+            createdAt: row?.createdAt || row?.created_at || row?.saleDate || null,
+            dueDate: row?.due_date || null,
+            balance: Number(row?.balance || 0)
+          })),
+          sampleShown: shownActiveSales.slice(0, 10).map((row) => ({
+            id: String(row?._id || row?.saleId || ''),
+            branchId: String(row?.branchId || ''),
+            status: String(row?.status || ''),
+            posType: String(row?.posType || ''),
+            createdAt: row?.createdAt || row?.created_at || row?.saleDate || null,
+            dueDate: row?.due_date || null,
+            balance: Number(row?.balance || 0)
+          }))
+        },
+        ts: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
+  }, [auth.role, auth.user?.name, auth.user?.username, branchFilter, branchFilteredSales, branchScopedSales, creditPackageFilter, creditSummary.activeCount, currentActiveSales, dateFrom, dateTo, filteredActiveSales, filteredSales, mergedSales, periodMode, shownActiveSales, sourceFilter]);
 
   const exportCustomer = useMemo(() => (
     customers.find((row) => String(row._id || row.id || '') === String(exportCustomerId || '')) || null
