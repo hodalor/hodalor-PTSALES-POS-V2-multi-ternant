@@ -286,6 +286,31 @@ function UsersPage() {
     const safeCreateGrants = canManageAuditGrant ? baseScopedCreateGrants : stripAuditGrants(baseScopedCreateGrants);
     const assigned = forceAll || allBranches ? 'all' : (selectedBranches.length > 0 ? selectedBranches : [branchId]);
     const primaryBranch = allBranches ? 'main' : (assigned[0] || 'main');
+    // #region debug-point C:create-submit
+    fetch('http://127.0.0.1:7777/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'user-form-leak',
+        runId: 'pre-fix',
+        hypothesisId: 'C',
+        location: 'UsersPage.js:add',
+        msg: '[DEBUG] Create user submit prepared',
+        data: {
+          viewer: String(auth.user?.name || auth.user?.username || ''),
+          cleanName: String(cleanName || ''),
+          role: String(role || ''),
+          primaryBranch: String(primaryBranch || ''),
+          assignedBranches: assigned === 'all' ? 'all' : (Array.isArray(assigned) ? assigned.map(String) : []),
+          pinLength: String(cleanPin || '').length,
+          selectedBranchCount: Array.isArray(selectedBranches) ? selectedBranches.length : 0,
+          allBranches: Boolean(allBranches),
+          grantCount: safeCreateGrants.length
+        },
+        ts: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
     if (viewerRole === 'Admin' && role === 'SuperAdmin') {
       setCreateError('Admins cannot create SuperAdmin');
       toast.show('Admins cannot create SuperAdmin', { type: 'error' });
@@ -359,6 +384,31 @@ function UsersPage() {
   }
 
   function startEdit(u) {
+    // #region debug-point A:start-edit
+    fetch('http://127.0.0.1:7777/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'user-form-leak',
+        runId: 'pre-fix',
+        hypothesisId: 'A',
+        location: 'UsersPage.js:startEdit',
+        msg: '[DEBUG] Edit user modal opening',
+        data: {
+          viewer: String(auth.user?.name || auth.user?.username || ''),
+          editingUserId: String(u?.id || ''),
+          editingUserName: String(u?.name || ''),
+          editingUserRole: String(u?.role || ''),
+          previousCreateName: String(name || ''),
+          previousCreatePinLength: String(pin || '').length,
+          previousEditName: String(editName || ''),
+          previousEditPinLength: String(editPin || '').length,
+          previousEditingId: String(editingId || '')
+        },
+        ts: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
     if (viewerRole === 'Admin' && String(u.role) === 'SuperAdmin') {
       toast.show('Admins cannot edit SuperAdmin', { type: 'error' });
       return;
@@ -427,6 +477,37 @@ function UsersPage() {
     const baseScopedEditGrants = filterGrantsByTenantFlags(editGrants, settings).filter((key) => manageableGrantKeys.includes(key) && visibleGrantKeySet.has(key));
     const safeEditGrants = canManageAuditGrant ? baseScopedEditGrants : stripAuditGrants(baseScopedEditGrants);
     if (fields.pin) payload.pin = fields.pin;
+    // #region debug-point C:edit-submit
+    fetch('http://127.0.0.1:7777/event', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sessionId: 'user-form-leak',
+        runId: 'pre-fix',
+        hypothesisId: 'C',
+        location: 'UsersPage.js:saveEdit',
+        msg: '[DEBUG] Edit user submit prepared',
+        data: {
+          viewer: String(auth.user?.name || auth.user?.username || ''),
+          editingId: String(editingId || ''),
+          targetUserName: String(prevName || ''),
+          payloadName: String(payload.name || ''),
+          payloadRole: String(payload.role || ''),
+          payloadBranchId: String(payload.branchId || ''),
+          payloadAssignedBranches: payload.assignedBranches === 'all' ? 'all' : (Array.isArray(payload.assignedBranches) ? payload.assignedBranches.map(String) : []),
+          payloadActive: Boolean(payload.active),
+          hasPin: Boolean(payload.pin),
+          pinLength: String(payload.pin || '').length,
+          editNameState: String(editName || ''),
+          editRoleState: String(editRole || ''),
+          editBranchIdState: String(editBranchId || ''),
+          editSelectedBranchCount: Array.isArray(editSelectedBranches) ? editSelectedBranches.length : 0,
+          editGrantCount: safeEditGrants.length
+        },
+        ts: Date.now()
+      })
+    }).catch(() => {});
+    // #endregion
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) {
         toast.show('Offline: connect internet and try again.', { type: 'error' });
