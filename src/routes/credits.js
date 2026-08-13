@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
+import fs from 'node:fs';
+import path from 'node:path';
 import CreditRepayment from '../models/CreditRepayment.js';
 import CreditSale from '../models/CreditSale.js';
 import Customer from '../models/Customer.js';
@@ -13,6 +15,28 @@ import { archiveLiveDocument } from '../utils/superBin.js';
 const r = Router();
 
 r.use(requireAuth);
+
+function reportCreditDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  const envCandidates = [
+    path.resolve(process.cwd(), '.dbg', 'credit-active-sales-list.env'),
+    path.resolve(process.cwd(), '..', '.dbg', 'credit-active-sales-list.env')
+  ];
+  let url = 'http://127.0.0.1:7777/event';
+  let sessionId = 'credit-active-sales-list';
+  for (const candidate of envCandidates) {
+    try {
+      const text = fs.readFileSync(candidate, 'utf8');
+      url = text.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || url;
+      sessionId = text.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || sessionId;
+      break;
+    } catch {}
+  }
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, runId: 'pre-fix', hypothesisId, location, msg, data, ts: Date.now() })
+  }).catch(() => {});
+}
 
 async function getPendingRepaymentAmount(creditSaleId) {
   if (!creditSaleId) return 0;
@@ -104,6 +128,33 @@ r.get('/sales', async (req, res) => {
   if (req.query.posType) query.posType = String(req.query.posType);
   if (req.query.creditPackageName) query.creditPackageName = String(req.query.creditPackageName);
   const rows = await CreditSale.find(query).sort({ createdAt: -1 }).limit(500).lean();
+  // #region debug-point B:credit-sales-list
+  reportCreditDebug({
+    hypothesisId: 'B',
+    location: 'credits.js:get:sales',
+    msg: '[DEBUG] Credit sales list resolved',
+    data: {
+      user: String(req.user?.name || req.user?.username || ''),
+      role: String(req.user?.role || ''),
+      branchId: String(req.user?.branchId || ''),
+      assignedBranches: req.user?.assignedBranches ?? 'all',
+      accessibleBranchIds,
+      query,
+      count: rows.length,
+      sample: rows.slice(0, 20).map((row) => ({
+        id: String(row?._id || ''),
+        saleId: String(row?.saleId || ''),
+        branchId: String(row?.branchId || ''),
+        customerId: String(row?.customer_id || ''),
+        posType: String(row?.posType || ''),
+        status: String(row?.status || ''),
+        createdAt: row?.createdAt || row?.created_at || null,
+        dueDate: row?.due_date || null,
+        balance: Number(row?.balance || 0)
+      }))
+    }
+  });
+  // #endregion
   res.json(rows);
 });
 
