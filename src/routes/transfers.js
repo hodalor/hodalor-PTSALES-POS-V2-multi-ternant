@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
 import mongoose from 'mongoose';
 import TransferRequest from '../models/TransferRequest.js';
 import Product from '../models/Product.js';
@@ -7,10 +9,33 @@ import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import { normalizeTrackType, resolveInventoryTypeFromBranch, transferSerializedUnits } from '../utils/productUnits.js';
 import { getStockTarget, getMapQty, markInventoryModified, setMapQty } from '../utils/inventory.js';
-import { safeErrorMessage } from '../utils/safeError.js';
+import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
+import { assertOutgoingAvailability } from '../utils/inTransitLocks.js';
 
 const r = Router();
 r.use(requireAuth);
+
+function reportInTransitStockLockDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  const envCandidates = [
+    path.resolve(process.cwd(), '.dbg', 'in-transit-stock-lock.env'),
+    path.resolve(process.cwd(), '..', '.dbg', 'in-transit-stock-lock.env')
+  ];
+  let url = 'http://127.0.0.1:7777/event';
+  let sessionId = 'in-transit-stock-lock';
+  for (const candidate of envCandidates) {
+    try {
+      const text = fs.readFileSync(candidate, 'utf8');
+      url = text.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || url;
+      sessionId = text.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || sessionId;
+      break;
+    } catch {}
+  }
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, runId: 'pre-fix', hypothesisId, location, msg, data, ts: Date.now() })
+  }).catch(() => {});
+}
 
 function canDirectorApproveRetail(user, approvalArea = 'retail') {
   const role = String(user?.role || '').toLowerCase();
@@ -66,6 +91,22 @@ function normalizeItems(payload = {}) {
     .filter(item => item.productId && item.qty > 0);
 }
 
+function buildTransferExecutionError(err) {
+  const payload = {
+    error: safeErrorMessage(err, 'Failed to transfer stock')
+  };
+  if (Array.isArray(err?.unavailableUnitIds) && err.unavailableUnitIds.length > 0) {
+    payload.unavailableUnitIds = err.unavailableUnitIds.map(String);
+  }
+  if (Array.isArray(err?.unavailableUnitCodes) && err.unavailableUnitCodes.length > 0) {
+    payload.unavailableUnitCodes = err.unavailableUnitCodes.map(String);
+  }
+  if (Number.isFinite(Number(err?.currentStock))) payload.currentStock = Number(err.currentStock);
+  if (Number.isFinite(Number(err?.lockedQty))) payload.lockedQty = Number(err.lockedQty);
+  if (Number.isFinite(Number(err?.availableQty))) payload.availableQty = Number(err.availableQty);
+  return payload;
+}
+
 r.get('/requests', async (req, res) => {
   const role = String(req.user?.role || '').toLowerCase();
   const assigned = req.user?.assignedBranches ?? 'all';
@@ -119,6 +160,27 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
     initiatorName: payload.initiatorName || req.user?.name || 'unknown',
     initiatorRole: payload.initiatorRole || req.user?.role || ''
   });
+  // #region debug-point D:retail-transfer-created
+  reportInTransitStockLockDebug({
+    hypothesisId: 'D',
+    location: 'transfers.js:post:requests',
+    msg: '[DEBUG] Retail transfer created and awaiting stock movement approval',
+    data: {
+      transferId: String(doc?._id || ''),
+      clientId: String(doc?.clientId || ''),
+      fromBranchId: String(doc?.from || ''),
+      toBranchId: String(doc?.to || ''),
+      initiatedBy: String(req.user?.name || ''),
+      itemCount: Array.isArray(doc?.items) ? doc.items.length : 0,
+      items: (Array.isArray(doc?.items) ? doc.items : []).map((item) => ({
+        productId: String(item?.productId || ''),
+        variantId: String(item?.variantId || ''),
+        qty: Number(item?.qty || 0),
+        unitIds: Array.isArray(item?.unitIds) ? item.unitIds.map(String) : []
+      }))
+    }
+  });
+  // #endregion
   await Audit.create({
     actor: doc.initiatorName || 'unknown',
     actionType: 'transfer_initiated',
@@ -188,15 +250,49 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_t
         // #region debug-point C:legacy-transfer-serialized
         import('node:fs').then(({ default: fs }) => { let u = 'http://127.0.0.1:7777/event'; let s = 'warehouse-transfer-source-stock'; try { const e = fs.readFileSync('.dbg/warehouse-transfer-source-stock.env', 'utf8'); u = e.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || u; s = e.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || s; } catch {} return fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: s, runId: 'pre-fix', hypothesisId: 'C', location: 'transfers.js:legacy-transfer-serialized', msg: '[DEBUG] Legacy transfer serialized approval executing', data: { transferId: String(tr?._id || tr?.clientId || ''), fromBranchId: String(tr?.from || ''), toBranchId: String(tr?.to || ''), fromInventoryType, toInventoryType, productId: String(item?.productId || ''), variantId: String(item?.variantId || ''), qty: q, unitCount: Array.isArray(item?.unitIds) ? item.unitIds.length : 0 }, ts: Date.now() }) }).catch(() => {}); }).catch(() => {});
         // #endregion
-        await transferSerializedUnits({
-          productId: item.productId,
-          variantId: item.variantId || '',
-          fromBranchId: tr.from,
-          toBranchId: tr.to,
-          fromInventoryType,
-          toInventoryType,
-          unitIds: item.unitIds
-        });
+        try {
+          await assertOutgoingAvailability({
+            product: p,
+            productId: String(item.productId || ''),
+            variantId: String(item.variantId || ''),
+            branchId: String(tr.from || ''),
+            inventoryType: String(fromInventoryType || 'retail'),
+            qty: q,
+            unitIds: item.unitIds,
+            excludeTransferRequestId: String(tr?._id || ''),
+            purpose: 'transfer'
+          });
+          await transferSerializedUnits({
+            productId: item.productId,
+            variantId: item.variantId || '',
+            fromBranchId: tr.from,
+            toBranchId: tr.to,
+            fromInventoryType,
+            toInventoryType,
+            unitIds: item.unitIds
+          });
+        } catch (error) {
+          // #region debug-point B:retail-transfer-serialized-failed
+          reportInTransitStockLockDebug({
+            hypothesisId: 'B',
+            location: 'transfers.js:approve:serialized-failed',
+            msg: '[DEBUG] Retail transfer approval failed serialized availability check',
+            data: {
+              transferId: String(tr?._id || tr?.clientId || ''),
+              fromBranchId: String(tr?.from || ''),
+              toBranchId: String(tr?.to || ''),
+              fromInventoryType,
+              toInventoryType,
+              productId: String(item?.productId || ''),
+              variantId: String(item?.variantId || ''),
+              qty: q,
+              unitIds: Array.isArray(item?.unitIds) ? item.unitIds.map(String) : [],
+              error: String(error?.message || error || '')
+            }
+          });
+          // #endregion
+          throw error;
+        }
         lastProduct = p;
         continue;
       }
@@ -204,6 +300,34 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_t
       const toTarget = getStockTarget(p, item.variantId || '', toInventoryType);
       if (!fromTarget || !toTarget) return res.status(400).json({ error: 'Variant not found' });
       const curFrom = getMapQty(fromTarget.container, tr.from);
+      await assertOutgoingAvailability({
+        product: p,
+        productId: String(item.productId || ''),
+        variantId: String(item.variantId || ''),
+        branchId: String(tr.from || ''),
+        inventoryType: String(fromInventoryType || 'retail'),
+        qty: q,
+        excludeTransferRequestId: String(tr?._id || ''),
+        purpose: 'transfer'
+      });
+      // #region debug-point D:retail-transfer-stock-check
+      reportInTransitStockLockDebug({
+        hypothesisId: 'D',
+        location: 'transfers.js:approve:stock-check',
+        msg: '[DEBUG] Retail transfer approval checked source stock',
+        data: {
+          transferId: String(tr?._id || tr?.clientId || ''),
+          fromBranchId: String(tr?.from || ''),
+          toBranchId: String(tr?.to || ''),
+          fromInventoryType,
+          toInventoryType,
+          productId: String(item?.productId || ''),
+          variantId: String(item?.variantId || ''),
+          qty: q,
+          currentStock: curFrom
+        }
+      });
+      // #endregion
       if (curFrom < q) return res.status(400).json({ error: 'Insufficient stock for transfer' });
       const curTo = getMapQty(toTarget.container, tr.to);
       // #region debug-point D:legacy-transfer-before
@@ -220,7 +344,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_t
       lastProduct = p;
     }
   } catch (e) {
-    return res.status(500).json({ error: safeErrorMessage(e, 'Failed to transfer stock') });
+    return res.status(safeErrorStatus(e, 500)).json(buildTransferExecutionError(e));
   }
   tr.status = 'approved';
   tr.managerApproverName = approverName || req.user?.name || 'unknown';

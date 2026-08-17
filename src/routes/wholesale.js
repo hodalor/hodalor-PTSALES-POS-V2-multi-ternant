@@ -34,6 +34,28 @@ function reportTransferVisibilityDebug({ hypothesisId = 'A', location = '', msg 
   }).catch(() => {});
 }
 
+function reportInTransitStockLockDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  const envCandidates = [
+    path.resolve(process.cwd(), '.dbg', 'in-transit-stock-lock.env'),
+    path.resolve(process.cwd(), '..', '.dbg', 'in-transit-stock-lock.env')
+  ];
+  let url = 'http://127.0.0.1:7777/event';
+  let sessionId = 'in-transit-stock-lock';
+  for (const candidate of envCandidates) {
+    try {
+      const text = fs.readFileSync(candidate, 'utf8');
+      url = text.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || url;
+      sessionId = text.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || sessionId;
+      break;
+    } catch {}
+  }
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, runId: 'pre-fix', hypothesisId, location, msg, data, ts: Date.now() })
+  }).catch(() => {});
+}
+
 function permissionForOperation(type = '', area = '') {
   const key = String(type || '').toLowerCase();
   const scope = String(area || '').toLowerCase() === 'warehouse' ? 'warehouse' : 'wholesale';
@@ -193,6 +215,34 @@ r.post('/operations', requireRoleOrPerm(['Admin', 'Manager', 'Inventory Staff', 
     initiatedByRole: req.user?.role || '',
     status: 'pending_director'
   });
+  // #region debug-point D:workflow-operation-created
+  if (operationType === 'transfer' || (operationType === 'adjustment' && String(body.adjustmentType || '').toLowerCase() === 'decrease')) {
+    reportInTransitStockLockDebug({
+      hypothesisId: operationType === 'transfer' ? 'D' : 'C',
+      location: 'wholesale.js:post:operations',
+      msg: '[DEBUG] Workflow stock-locking operation created',
+      data: {
+        operationId: String(op?._id || ''),
+        operationType: String(operationType || ''),
+        operationArea: String(operationArea || ''),
+        branchId: String(body.branchId || ''),
+        fromBranchId: String(body.fromBranchId || ''),
+        toBranchId: String(body.toBranchId || ''),
+        fromInventoryType: String(body.fromInventoryType || operationArea || ''),
+        toInventoryType: String(body.toInventoryType || operationArea || ''),
+        initiatedBy: String(req.user?.name || ''),
+        itemCount: Array.isArray(items) ? items.length : 0,
+        items: (Array.isArray(items) ? items : []).map((item) => ({
+          productId: String(item?.productId || ''),
+          variantId: String(item?.variantId || ''),
+          qty: Number(item?.qty || 0),
+          unitIds: Array.isArray(item?.unitIds) ? item.unitIds.map(String) : [],
+          adjustmentType: String(item?.adjustmentType || body.adjustmentType || '')
+        }))
+      }
+    });
+  }
+  // #endregion
   const approval = await createApprovalForReference({
     actionType: `${operationArea}_${operationType}`,
     referenceModel: 'WholesaleOperation',

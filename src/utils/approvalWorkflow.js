@@ -1,4 +1,6 @@
 import Audit, { modelFor as AuditModelFor } from '../models/Audit.js';
+import fs from 'node:fs';
+import path from 'node:path';
 import Approval, { modelFor as ApprovalModelFor } from '../models/Approval.js';
 import CashReconciliation, { modelFor as CashReconciliationModelFor } from '../models/CashReconciliation.js';
 import CreditRepayment, { modelFor as CreditRepaymentModelFor } from '../models/CreditRepayment.js';
@@ -11,12 +13,35 @@ import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from './i
 import { makeInventoryLine, withInventoryAudit } from './inventoryAudit.js';
 import { refreshCreditSaleStatus, updateCustomerCreditMetrics } from './credit.js';
 import { adjustSerializedUnits, normalizeTrackType, transferSerializedUnits } from './productUnits.js';
+import { assertOutgoingAvailability } from './inTransitLocks.js';
 
 function productQuery(productId) {
   const pid = String(productId || '');
   const or = [{ id: pid }];
   if (mongoose.isValidObjectId(pid)) or.unshift({ _id: pid });
   return { $or: or };
+}
+
+function reportInTransitStockLockDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  const envCandidates = [
+    path.resolve(process.cwd(), '.dbg', 'in-transit-stock-lock.env'),
+    path.resolve(process.cwd(), '..', '.dbg', 'in-transit-stock-lock.env')
+  ];
+  let url = 'http://127.0.0.1:7777/event';
+  let sessionId = 'in-transit-stock-lock';
+  for (const candidate of envCandidates) {
+    try {
+      const text = fs.readFileSync(candidate, 'utf8');
+      url = text.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || url;
+      sessionId = text.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || sessionId;
+      break;
+    } catch {}
+  }
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, runId: 'pre-fix', hypothesisId, location, msg, data, ts: Date.now() })
+  }).catch(() => {});
 }
 
 function resolveWorkflowModels(db = null) {
@@ -193,6 +218,17 @@ async function applyWholesaleOperation(operation, actor) {
             err.status = 400;
             throw err;
           }
+          await assertOutgoingAvailability({
+            product,
+            productId: String(item.productId || ''),
+            variantId: String(item.variantId || ''),
+            branchId: String(operation.branchId || operation.fromBranchId || ''),
+            inventoryType: String(operation.fromInventoryType || 'wholesale'),
+            qty,
+            unitIds: item.unitIds,
+            excludeWholesaleOperationId: String(operation?._id || ''),
+            purpose: 'transfer'
+          });
           await adjustSerializedUnits({
             productId: item.productId,
             variantId: item.variantId || '',
@@ -226,6 +262,18 @@ async function applyWholesaleOperation(operation, actor) {
         throw err;
       }
       const branchId = operation.branchId || operation.fromBranchId;
+      if (String(item.adjustmentType || operation.adjustmentType || 'increase') === 'decrease') {
+        await assertOutgoingAvailability({
+          product,
+          productId: String(item.productId || ''),
+          variantId: String(item.variantId || ''),
+          branchId: String(branchId || ''),
+          inventoryType: String(operation.fromInventoryType || 'wholesale'),
+          qty,
+          excludeWholesaleOperationId: String(operation?._id || ''),
+          purpose: 'transfer'
+        });
+      }
       const current = getMapQty(target.container, branchId);
       const delta = String(item.adjustmentType || operation.adjustmentType || 'increase') === 'decrease' ? -qty : qty;
       if (current + delta < 0) {
@@ -256,15 +304,49 @@ async function applyWholesaleOperation(operation, actor) {
         // #region debug-point A:workflow-transfer-serialized
         import('node:fs').then(({ default: fs }) => { let u = 'http://127.0.0.1:7777/event'; let s = 'warehouse-transfer-source-stock'; try { const e = fs.readFileSync('.dbg/warehouse-transfer-source-stock.env', 'utf8'); u = e.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || u; s = e.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || s; } catch {} return fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: s, runId: 'pre-fix', hypothesisId: 'A', location: 'approvalWorkflow.js:transfer-serialized', msg: '[DEBUG] Workflow serialized transfer approval executing', data: { operationId: String(operation?._id || operation?.clientId || ''), operationArea: String(operation?.operationArea || ''), fromBranchId: String(operation?.fromBranchId || ''), toBranchId: String(operation?.toBranchId || ''), fromInventoryType: String(operation?.fromInventoryType || ''), toInventoryType: String(operation?.toInventoryType || ''), productId: String(item?.productId || ''), variantId: String(item?.variantId || ''), qty, unitCount: Array.isArray(item?.unitIds) ? item.unitIds.length : 0, actorName: String(actor?.name || '') }, ts: Date.now() }) }).catch(() => {}); }).catch(() => {});
         // #endregion
-        await transferSerializedUnits({
-          productId: item.productId,
-          variantId: item.variantId || '',
-          fromBranchId: operation.fromBranchId,
-          toBranchId: operation.toBranchId,
-          fromInventoryType: operation.fromInventoryType || 'wholesale',
-          toInventoryType: operation.toInventoryType || 'wholesale',
-          unitIds: item.unitIds
-        });
+        try {
+          await assertOutgoingAvailability({
+            product,
+            productId: String(item.productId || ''),
+            variantId: String(item.variantId || ''),
+            branchId: String(operation.fromBranchId || ''),
+            inventoryType: String(operation.fromInventoryType || 'wholesale'),
+            qty,
+            unitIds: item.unitIds,
+            excludeWholesaleOperationId: String(operation?._id || ''),
+            purpose: 'transfer'
+          });
+          await transferSerializedUnits({
+            productId: item.productId,
+            variantId: item.variantId || '',
+            fromBranchId: operation.fromBranchId,
+            toBranchId: operation.toBranchId,
+            fromInventoryType: operation.fromInventoryType || 'wholesale',
+            toInventoryType: operation.toInventoryType || 'wholesale',
+            unitIds: item.unitIds
+          });
+        } catch (error) {
+          // #region debug-point B:workflow-transfer-serialized-failed
+          reportInTransitStockLockDebug({
+            hypothesisId: 'B',
+            location: 'approvalWorkflow.js:transfer-serialized-failed',
+            msg: '[DEBUG] Workflow serialized transfer approval failed availability check',
+            data: {
+              operationId: String(operation?._id || operation?.clientId || ''),
+              fromBranchId: String(operation?.fromBranchId || ''),
+              toBranchId: String(operation?.toBranchId || ''),
+              fromInventoryType: String(operation?.fromInventoryType || ''),
+              toInventoryType: String(operation?.toInventoryType || ''),
+              productId: String(item?.productId || ''),
+              variantId: String(item?.variantId || ''),
+              qty,
+              unitIds: Array.isArray(item?.unitIds) ? item.unitIds.map(String) : [],
+              error: String(error?.message || error || '')
+            }
+          });
+          // #endregion
+          throw error;
+        }
         acceptedCount += 1;
         continue;
       }
@@ -276,6 +358,34 @@ async function applyWholesaleOperation(operation, actor) {
         throw err;
       }
       const fromCurrent = getMapQty(fromTarget.container, operation.fromBranchId);
+      await assertOutgoingAvailability({
+        product,
+        productId: String(item.productId || ''),
+        variantId: String(item.variantId || ''),
+        branchId: String(operation.fromBranchId || ''),
+        inventoryType: String(operation.fromInventoryType || 'wholesale'),
+        qty,
+        excludeWholesaleOperationId: String(operation?._id || ''),
+        purpose: 'transfer'
+      });
+      // #region debug-point D:workflow-transfer-stock-check
+      reportInTransitStockLockDebug({
+        hypothesisId: 'D',
+        location: 'approvalWorkflow.js:transfer-stock-check',
+        msg: '[DEBUG] Workflow quantity transfer approval checked source stock',
+        data: {
+          operationId: String(operation?._id || operation?.clientId || ''),
+          fromBranchId: String(operation?.fromBranchId || ''),
+          toBranchId: String(operation?.toBranchId || ''),
+          fromInventoryType: String(operation?.fromInventoryType || ''),
+          toInventoryType: String(operation?.toInventoryType || ''),
+          productId: String(item?.productId || ''),
+          variantId: String(item?.variantId || ''),
+          qty,
+          fromCurrent
+        }
+      });
+      // #endregion
       if (fromCurrent < qty) {
         const err = new Error('Insufficient stock for transfer');
         err.status = 400;

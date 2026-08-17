@@ -161,6 +161,22 @@ function normalizeWholesaleReviewItems(items = [], fallback = {}) {
     .filter((item) => item.productId && (item.qty > 0 || item.status === 'cancelled'));
 }
 
+function buildApprovalExecutionError(err) {
+  const payload = {
+    error: safeErrorMessage(err, 'Failed to execute approval')
+  };
+  if (Array.isArray(err?.unavailableUnitIds) && err.unavailableUnitIds.length > 0) {
+    payload.unavailableUnitIds = err.unavailableUnitIds.map(String);
+  }
+  if (Array.isArray(err?.unavailableUnitCodes) && err.unavailableUnitCodes.length > 0) {
+    payload.unavailableUnitCodes = err.unavailableUnitCodes.map(String);
+  }
+  if (Number.isFinite(Number(err?.currentStock))) payload.currentStock = Number(err.currentStock);
+  if (Number.isFinite(Number(err?.lockedQty))) payload.lockedQty = Number(err.lockedQty);
+  if (Number.isFinite(Number(err?.availableQty))) payload.availableQty = Number(err.availableQty);
+  return payload;
+}
+
 r.get('/', async (req, res) => {
   const query = {};
   if (req.query.status) query.status = String(req.query.status);
@@ -335,7 +351,7 @@ r.post('/:id/approve', async (req, res) => {
       const fresh = await Approval.findById(approval._id);
       return res.json(fresh);
     } catch (e) {
-      return res.status(safeErrorStatus(e, 400)).json({ error: safeErrorMessage(e, 'Failed to execute approval') });
+      return res.status(safeErrorStatus(e, 400)).json(buildApprovalExecutionError(e));
     }
   }
   return res.status(400).json({ error: `Cannot approve item in status ${approval.status}` });

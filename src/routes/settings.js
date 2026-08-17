@@ -19,6 +19,9 @@ const TENANT_ADMIN_ALLOWED_KEYS = new Set([
   'webRtcIceServers',
   'receiptHeader',
   'receiptFooter',
+  'receiptShowPaymentInfo',
+  'receiptShowTaxInfo',
+  'receiptShowQrSection',
   'businessPhone',
   'businessWebsite',
   'businessTpin',
@@ -80,6 +83,9 @@ function normalizeSettingsData(input = {}) {
   if (!String(next.chatNotificationSound || '').trim()) next.chatNotificationSound = 'bright';
   if (!String(next.callNotificationSound || '').trim()) next.callNotificationSound = 'bright';
   if (!String(next.webRtcIceServers || '').trim()) next.webRtcIceServers = 'stun:stun.l.google.com:19302';
+  next.receiptShowPaymentInfo = !!next.receiptShowPaymentInfo;
+  next.receiptShowTaxInfo = !!next.receiptShowTaxInfo;
+  next.receiptShowQrSection = !!next.receiptShowQrSection;
   next.systemUpgradeNoticeEnabled = !!next.systemUpgradeNoticeEnabled;
   if (!String(next.systemUpgradeNoticeTitle || '').trim()) {
     next.systemUpgradeNoticeTitle = 'Database Upgrade In Progress';

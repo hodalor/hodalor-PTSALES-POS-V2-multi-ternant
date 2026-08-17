@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
 import Sale from '../models/Sale.js';
 import Product from '../models/Product.js';
 import Audit from '../models/Audit.js';
@@ -9,6 +11,8 @@ import Branch from '../models/Branch.js';
 import Customer from '../models/Customer.js';
 import CreditSale from '../models/CreditSale.js';
 import ProductUnit from '../models/ProductUnit.js';
+import WholesaleOperation from '../models/WholesaleOperation.js';
+import TransferRequest from '../models/TransferRequest.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
 import { getMapQty, getStockTarget, markInventoryModified, resolveTierPrice, setMapQty } from '../utils/inventory.js';
@@ -18,10 +22,128 @@ import { normalizeTrackType, releaseSerializedUnits, sellSerializedUnits } from 
 import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
 import { archiveLiveDocument } from '../utils/superBin.js';
 import { enrichSalesWithAccounting } from '../utils/saleAccounting.js';
+import { assertOutgoingAvailability } from '../utils/inTransitLocks.js';
 
 const r = Router();
 
 r.use(requireAuth);
+
+function reportInTransitStockLockDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  const envCandidates = [
+    path.resolve(process.cwd(), '.dbg', 'in-transit-stock-lock.env'),
+    path.resolve(process.cwd(), '..', '.dbg', 'in-transit-stock-lock.env')
+  ];
+  let url = 'http://127.0.0.1:7777/event';
+  let sessionId = 'in-transit-stock-lock';
+  for (const candidate of envCandidates) {
+    try {
+      const text = fs.readFileSync(candidate, 'utf8');
+      url = text.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || url;
+      sessionId = text.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || sessionId;
+      break;
+    } catch {}
+  }
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, runId: 'pre-fix', hypothesisId, location, msg, data, ts: Date.now() })
+  }).catch(() => {});
+}
+
+async function summarizePendingInventoryLocks({ productId = '', variantId = '', branchId = '', inventoryType = 'retail', soldUnitIds = [] } = {}) {
+  const wholesaleOps = await WholesaleOperation.find({
+    status: { $in: ['pending_director', 'pending_manager'] },
+    $or: [
+      {
+        operationType: 'transfer',
+        fromBranchId: String(branchId || ''),
+        fromInventoryType: String(inventoryType || 'retail'),
+        items: { $elemMatch: { productId: String(productId || ''), variantId: String(variantId || ''), status: { $ne: 'cancelled' } } }
+      },
+      {
+        operationType: 'adjustment',
+        branchId: String(branchId || ''),
+        fromInventoryType: String(inventoryType || 'retail'),
+        items: { $elemMatch: { productId: String(productId || ''), variantId: String(variantId || ''), adjustmentType: 'decrease', status: { $ne: 'cancelled' } } }
+      }
+    ]
+  }, {
+    operationType: 1,
+    status: 1,
+    fromBranchId: 1,
+    toBranchId: 1,
+    branchId: 1,
+    fromInventoryType: 1,
+    toInventoryType: 1,
+    items: 1
+  }).limit(20).lean();
+  const retailTransfers = await TransferRequest.find({
+    status: { $in: ['pending_approval', 'pending_director', 'pending_manager'] },
+    from: String(branchId || ''),
+    items: { $elemMatch: { productId: String(productId || ''), variantId: String(variantId || ''), status: { $ne: 'cancelled' } } }
+  }, {
+    status: 1,
+    from: 1,
+    to: 1,
+    items: 1
+  }).limit(20).lean();
+  const serializedRows = soldUnitIds.length > 0
+    ? await ProductUnit.find({ _id: { $in: soldUnitIds.map(String) } }, { _id: 1, status: 1, reservationToken: 1, branchId: 1, inventoryType: 1, soldSaleId: 1, imei: 1, serialNumber: 1 }).lean()
+    : [];
+  return {
+    wholesaleOps: wholesaleOps.map((row) => ({
+      id: String(row?._id || ''),
+      operationType: String(row?.operationType || ''),
+      status: String(row?.status || ''),
+      fromBranchId: String(row?.fromBranchId || row?.branchId || ''),
+      toBranchId: String(row?.toBranchId || ''),
+      fromInventoryType: String(row?.fromInventoryType || ''),
+      lockedQty: (Array.isArray(row?.items) ? row.items : []).filter((item) => (
+        String(item?.productId || '') === String(productId || '')
+        && String(item?.variantId || '') === String(variantId || '')
+        && String(item?.status || 'accepted').toLowerCase() !== 'cancelled'
+        && (
+          String(row?.operationType || '') !== 'adjustment'
+          || String(item?.adjustmentType || '').toLowerCase() === 'decrease'
+        )
+      )).reduce((sum, item) => sum + Math.max(0, Number(item?.qty || 0)), 0),
+      lockedUnitIds: (Array.isArray(row?.items) ? row.items : []).flatMap((item) => (
+        String(item?.productId || '') === String(productId || '')
+          && String(item?.variantId || '') === String(variantId || '')
+          && String(item?.status || 'accepted').toLowerCase() !== 'cancelled'
+          ? (Array.isArray(item?.unitIds) ? item.unitIds.map(String) : [])
+          : []
+      ))
+    })),
+    retailTransfers: retailTransfers.map((row) => ({
+      id: String(row?._id || ''),
+      status: String(row?.status || ''),
+      fromBranchId: String(row?.from || ''),
+      toBranchId: String(row?.to || ''),
+      lockedQty: (Array.isArray(row?.items) ? row.items : []).filter((item) => (
+        String(item?.productId || '') === String(productId || '')
+        && String(item?.variantId || '') === String(variantId || '')
+        && String(item?.status || 'accepted').toLowerCase() !== 'cancelled'
+      )).reduce((sum, item) => sum + Math.max(0, Number(item?.qty || 0)), 0),
+      lockedUnitIds: (Array.isArray(row?.items) ? row.items : []).flatMap((item) => (
+        String(item?.productId || '') === String(productId || '')
+          && String(item?.variantId || '') === String(variantId || '')
+          && String(item?.status || 'accepted').toLowerCase() !== 'cancelled'
+          ? (Array.isArray(item?.unitIds) ? item.unitIds.map(String) : [])
+          : []
+      ))
+    })),
+    serializedRows: serializedRows.map((row) => ({
+      id: String(row?._id || ''),
+      status: String(row?.status || ''),
+      reservationToken: String(row?.reservationToken || ''),
+      branchId: String(row?.branchId || ''),
+      inventoryType: String(row?.inventoryType || ''),
+      soldSaleId: String(row?.soldSaleId || ''),
+      code: String(row?.imei || row?.serialNumber || '')
+    }))
+  };
+}
 
 function escapeRegex(text = '') {
   return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -407,6 +529,16 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
           }
           touchedSerializedUnits.push(String(row._id));
         });
+        await assertOutgoingAvailability({
+          product: p,
+          productId: String(p.id || p._id || it.productId),
+          variantId: String(it.variantId || ''),
+          branchId,
+          inventoryType,
+          qty: it.qty,
+          unitIds: it.soldUnitIds,
+          purpose: 'sale'
+        });
       }
       const target = getStockTarget(p, it.variantId, inventoryType);
       if (!target) {
@@ -415,6 +547,42 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
         throw err;
       }
       const prev = getMapQty(target.container, branchId);
+      const pendingLocks = await summarizePendingInventoryLocks({
+        productId: String(p.id || p._id || it.productId),
+        variantId: String(it.variantId || ''),
+        branchId,
+        inventoryType,
+        soldUnitIds: it.soldUnitIds
+      });
+      // #region debug-point A:sale-stock-check
+      reportInTransitStockLockDebug({
+        hypothesisId: 'A',
+        location: 'sales.js:post:stock-check',
+        msg: '[DEBUG] Sale stock check evaluated against pending transfer/adjustment locks',
+        data: {
+          seller: String(req.user?.name || req.user?.username || ''),
+          branchId: String(branchId || ''),
+          inventoryType: String(inventoryType || ''),
+          productId: String(p.id || p._id || ''),
+          productName: String(p.name || ''),
+          variantId: String(it.variantId || ''),
+          qtyRequested: Number(it.qty || 0),
+          currentStock: Number(prev || 0),
+          soldUnitIds: Array.isArray(it.soldUnitIds) ? it.soldUnitIds.map(String) : [],
+          pendingLocks
+        }
+      });
+      // #endregion
+      await assertOutgoingAvailability({
+        product: p,
+        productId: String(p.id || p._id || it.productId),
+        variantId: String(it.variantId || ''),
+        branchId,
+        inventoryType,
+        qty: it.qty,
+        unitIds: it.soldUnitIds,
+        purpose: 'sale'
+      });
       if (prev < it.qty) {
         const label = variant?.label ? `${p.name} (${variant.label})` : p.name;
         const err = new Error(`Insufficient ${inventoryType} stock for ${label} at ${branchCode}`);
