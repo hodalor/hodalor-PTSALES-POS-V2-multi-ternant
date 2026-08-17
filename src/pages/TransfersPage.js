@@ -42,6 +42,49 @@ function normalizeTransferReviewItemsForCompare(items = []) {
   }));
 }
 
+function asStringArray(values = []) {
+  return Array.from(new Set((Array.isArray(values) ? values : [values]).map((value) => String(value || '').trim()).filter(Boolean)));
+}
+
+function normalizeConflictCode(value = '') {
+  return String(value || '').trim().toLowerCase();
+}
+
+function buildReviewConflict(error) {
+  const data = error?.data && typeof error.data === 'object' ? error.data : {};
+  const unavailableUnitIds = asStringArray(data?.unavailableUnitIds);
+  const unavailableUnitCodes = asStringArray(data?.unavailableUnitCodes);
+  const hasQuantityConflict = Number.isFinite(Number(data?.availableQty)) || Number.isFinite(Number(data?.lockedQty));
+  if (unavailableUnitIds.length === 0 && unavailableUnitCodes.length === 0 && !hasQuantityConflict) return null;
+  return {
+    message: String(data?.error || error?.message || '').trim(),
+    unavailableUnitIds,
+    unavailableUnitCodes,
+    unavailableUnitIdSet: new Set(unavailableUnitIds.map(String)),
+    unavailableUnitCodeSet: new Set(unavailableUnitCodes.map((value) => normalizeConflictCode(value))),
+    currentStock: Number.isFinite(Number(data?.currentStock)) ? Number(data.currentStock) : null,
+    lockedQty: Number.isFinite(Number(data?.lockedQty)) ? Number(data.lockedQty) : null,
+    availableQty: Number.isFinite(Number(data?.availableQty)) ? Number(data.availableQty) : null
+  };
+}
+
+function getItemConflictState(item = {}, reviewConflict = null) {
+  if (!reviewConflict) return { hasConflict: false, selectedUnits: [], unitIdConflicts: 0 };
+  const selectedUnits = (Array.isArray(item?.selectedUnits) ? item.selectedUnits : []).map((unit) => {
+    const unitId = String(unit?.unitId || '').trim();
+    const code = normalizeConflictCode(unit?.imei || unit?.serialNumber || '');
+    const isConflict = (unitId && reviewConflict.unavailableUnitIdSet.has(unitId))
+      || (code && reviewConflict.unavailableUnitCodeSet.has(code));
+    return { ...unit, isConflict };
+  });
+  const unitIdConflicts = asStringArray(item?.unitIds).filter((id) => reviewConflict.unavailableUnitIdSet.has(String(id))).length;
+  return {
+    hasConflict: selectedUnits.some((unit) => unit.isConflict) || unitIdConflicts > 0,
+    selectedUnits,
+    unitIdConflicts
+  };
+}
+
 function TransfersPage() {
   const products = useSelector(s => s.products.products);
   const branches = useSelector(s => s.branches.branches);
@@ -82,6 +125,7 @@ function TransfersPage() {
   const [detail, setDetail] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [reviewItems, setReviewItems] = useState([]);
+  const [reviewConflict, setReviewConflict] = useState(null);
   const [decisionRemark, setDecisionRemark] = useState('');
   const [reviewing, setReviewing] = useState(false);
   const [auditDetail, setAuditDetail] = useState(null);
@@ -106,6 +150,13 @@ function TransfersPage() {
     const kind = String(branchTypeById.get(String(branchId)) || 'retail').toLowerCase();
     return kind === 'warehouse' ? 'warehouse' : kind === 'wholesale' ? 'wholesale' : 'retail';
   }, [branchTypeById]);
+  const hasWorkflowBranches = useMemo(
+    () => branches.some((branch) => {
+      const kind = String(branch?.branchType || 'retail').toLowerCase();
+      return kind === 'warehouse' || kind === 'wholesale';
+    }),
+    [branches]
+  );
   const has = useCallback((g) => {
     if (!g) return false;
     if (roleLower === 'superadmin') return true;
@@ -390,6 +441,7 @@ function TransfersPage() {
 
   function openDetail(row) {
     setDetail(row);
+    setReviewConflict(null);
     setDecisionRemark('');
     setReviewItems(
       Array.isArray(row.items) && row.items.length > 0
@@ -578,6 +630,10 @@ function TransfersPage() {
       const rows = await transfersApi.listRequests({ status: statusFilter, limit: 200 });
       dispatch(setTransferRequests(Array.isArray(rows) ? rows : []));
     } catch {}
+    if (!hasWorkflowBranches) {
+      setWholesaleInbound([]);
+      return;
+    }
     try {
       const rows = await wholesaleApi.listOperations({
         operationType: 'transfer',
@@ -587,8 +643,10 @@ function TransfersPage() {
         ? rows.filter(row => String(row.toInventoryType || '').toLowerCase() === 'retail')
         : [];
       setWholesaleInbound(filtered);
-    } catch {}
-  }, [dispatch, statusFilter]);
+    } catch (e) {
+      if (Number(e?.status) === 403) setWholesaleInbound([]);
+    }
+  }, [dispatch, hasWorkflowBranches, statusFilter]);
 
   useEffect(() => {
     let alive = true;
@@ -600,22 +658,28 @@ function TransfersPage() {
         if (alive) dispatch(setTransferRequests(Array.isArray(rows) ? rows : []));
       } catch {}
       try {
-        const rows = await wholesaleApi.listOperations({
-          operationType: 'transfer',
-          status: statusFilter
-        });
-        if (alive) {
-          const filtered = Array.isArray(rows)
-            ? rows.filter(row => String(row.toInventoryType || '').toLowerCase() === 'retail')
-            : [];
-          setWholesaleInbound(filtered);
+        if (!hasWorkflowBranches) {
+          if (alive) setWholesaleInbound([]);
+        } else {
+          const rows = await wholesaleApi.listOperations({
+            operationType: 'transfer',
+            status: statusFilter
+          });
+          if (alive) {
+            const filtered = Array.isArray(rows)
+              ? rows.filter(row => String(row.toInventoryType || '').toLowerCase() === 'retail')
+              : [];
+            setWholesaleInbound(filtered);
+          }
         }
-      } catch {}
+      } catch (e) {
+        if (alive && Number(e?.status) === 403) setWholesaleInbound([]);
+      }
       if (alive) setLoading(false);
     }
     load();
     return () => { alive = false; };
-  }, [tab, statusFilter, dispatch, requests.length, wholesaleInbound.length]);
+  }, [tab, statusFilter, dispatch, hasWorkflowBranches, requests.length, wholesaleInbound.length]);
 
   async function reviewAction(type) {
     if (!detail || reviewing) return;
@@ -702,9 +766,11 @@ function TransfersPage() {
         toast.show(t('Transfer rejected'), { type: 'success' });
       }
       setDetail(null);
+      setReviewConflict(null);
       setDecisionRemark('');
       await reloadApprovals();
     } catch (e) {
+      setReviewConflict(buildReviewConflict(e));
       toast.show(String(e?.message || (type === 'approve' ? t('Failed to approve') : t('Failed to reject'))), { type: 'error' });
     } finally {
       setReviewing(false);
@@ -1126,9 +1192,9 @@ function TransfersPage() {
         </div>
       </div>
       {detail && (
-        <Modal title={canActOnDetail ? t('Request Review') : t('Transfer Details')} onClose={() => { if (!reviewing) { setDetail(null); setDecisionRemark(''); } }} footer={
+        <Modal title={canActOnDetail ? t('Request Review') : t('Transfer Details')} onClose={() => { if (!reviewing) { setDetail(null); setReviewConflict(null); setDecisionRemark(''); } }} footer={
           <>
-            <button className="btn" onClick={() => { setDetail(null); setDecisionRemark(''); }} disabled={reviewing}>{t('Close')}</button>
+            <button className="btn" onClick={() => { setDetail(null); setReviewConflict(null); setDecisionRemark(''); }} disabled={reviewing}>{t('Close')}</button>
             {canActOnDetail && (
               <>
                 <button className="btn" onClick={() => reviewAction('reject')} disabled={reviewing}>{reviewing ? t('Working…') : t('Reject')}</button>
@@ -1158,6 +1224,23 @@ function TransfersPage() {
             <div className="detail-field"><div className="detail-label">{t('Manager Approval Date')}</div><div className="detail-value">{formatDateTime(detail.managerApproved_at || detail.managerApprovedAt)}</div></div>
             <div className="detail-field"><div className="detail-label">{t('Updated')}</div><div className="detail-value">{detail.updatedAt ? new Date(detail.updatedAt).toLocaleString() : '—'}</div></div>
           </div>
+          {reviewConflict && (
+            <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b' }}>
+              <div style={{ fontWeight: 700 }}>{reviewConflict.message || t('Some items are no longer available for transfer')}</div>
+              {reviewConflict.unavailableUnitCodes.length > 0 && (
+                <div style={{ marginTop: 6, fontSize: 13 }}>
+                  {t('Unavailable serials')}: {reviewConflict.unavailableUnitCodes.join(', ')}
+                </div>
+              )}
+              {reviewConflict.availableQty != null && (
+                <div style={{ marginTop: 6, fontSize: 13 }}>
+                  {t('Available now')}: {reviewConflict.availableQty}
+                  {reviewConflict.lockedQty != null ? ` • ${t('Locked')}: ${reviewConflict.lockedQty}` : ''}
+                  {reviewConflict.currentStock != null ? ` • ${t('Current stock')}: ${reviewConflict.currentStock}` : ''}
+                </div>
+              )}
+            </div>
+          )}
           {Array.isArray(reviewItems) && reviewItems.length > 0 && (
             <div style={{ marginTop: 12 }}>
               <div className="field-label">{t('Request Items')}</div>
@@ -1175,14 +1258,27 @@ function TransfersPage() {
                 <tbody>
                   {reviewItems.map((item, index) => {
                     const meta = getProductDisplayMeta(products, item.productId, item.variantId, item);
+                    const itemConflict = getItemConflictState(item, reviewConflict);
                     return (
-                      <tr key={item.lineId || index}>
+                      <tr key={item.lineId || index} style={itemConflict.hasConflict ? { background: '#fef2f2' } : undefined}>
                         <td>
                           <div>{meta.productName || item.productId}</div>
                           {meta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
-                          {Array.isArray(item.selectedUnits) && item.selectedUnits.length > 0 && (
-                            <div style={{ marginTop: 4, color: '#111827', fontSize: 12 }}>
-                              {item.selectedUnits.map(unit => unit.imei || unit.serialNumber || unit.unitId).filter(Boolean).join(', ')}
+                          {itemConflict.selectedUnits.length > 0 && (
+                            <div style={{ marginTop: 4, fontSize: 12, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                              {itemConflict.selectedUnits.map((unit, unitIndex) => (
+                                <span
+                                  key={`${unit.unitId || unit.imei || unit.serialNumber || unitIndex}`}
+                                  style={unit.isConflict ? { color: '#b91c1c', fontWeight: 700 } : { color: '#111827' }}
+                                >
+                                  {unit.imei || unit.serialNumber || unit.unitId}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {itemConflict.hasConflict && itemConflict.selectedUnits.length === 0 && itemConflict.unitIdConflicts > 0 && (
+                            <div style={{ marginTop: 4, color: '#b91c1c', fontSize: 12, fontWeight: 700 }}>
+                              {t('{count} selected serial(s) are no longer available', { count: itemConflict.unitIdConflicts })}
                             </div>
                           )}
                         </td>

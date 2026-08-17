@@ -159,6 +159,9 @@ export function buildBrandedReceiptHtml({ settings, sale }) {
   const vatVal = Number(sale.tax) || 0;
   const head = settings?.receiptHeader ? `<div class="center small">${settings.receiptHeader}</div>` : '';
   const foot = (settings?.receiptFooter || website) ? `<div class="center small" style="margin-top:8px">${[website, settings?.receiptFooter].filter(Boolean).join(' • ')}</div>` : '';
+  const showPaymentInfo = !!settings?.receiptShowPaymentInfo;
+  const showTaxInfo = !!settings?.receiptShowTaxInfo;
+  const showQrSection = !!settings?.receiptShowQrSection;
   const payments = (sale.payment_methods || []).map(p => {
     const label = String(p.type || 'cash').toUpperCase();
     return `<div class="sp"><span>${label}</span><span>${formatCurrency(p.amount || 0, settings)}</span></div>`;
@@ -212,6 +215,32 @@ export function buildBrandedReceiptHtml({ settings, sale }) {
     shareUrl = `${shareUrl}?d=${encoded}`;
   }
   const qrSvgStr = shareUrl ? generateQrSvg(shareUrl, 160) : '';
+  const paymentSection = showPaymentInfo ? `
+    <div class="hr"></div>
+    <div class="title">${t('Payment Info').toUpperCase()}</div>
+    ${payments}
+    ${hasEasyBuy ? `<div class="sp"><span>${escapeHtml(`${creditLabel} ${t('Paid')}`.toUpperCase())}</span><span>${formatCurrency(easyBuyPaidNow, settings)}</span></div>` : ''}
+    ${hasEasyBuy ? `<div class="sp"><span>${escapeHtml(`${creditLabel} ${t('Balance')}`.toUpperCase())}</span><span>${formatCurrency(easyBuyBalance, settings)}</span></div>` : ''}
+    ${hasEasyBuy && easyBuyDueDate ? `<div class="sp"><span>${escapeHtml(`${creditLabel} ${t('Due Date')}`.toUpperCase())}</span><span>${escapeHtml(new Date(easyBuyDueDate).toLocaleDateString())}</span></div>` : ''}
+    <div class="sp"><span>${t('Rounding').toUpperCase()}</span><span>${formatCurrency(0, settings)}</span></div>
+    <div class="sp"><span>${t('Change').toUpperCase()}</span><span>${formatCurrency(change, settings)}</span></div>
+    ${repaymentSection}
+  ` : '';
+  const taxSection = showTaxInfo ? `
+    <div class="hr"></div>
+    <div class="title">${t('Tax Info').toUpperCase()}</div>
+    <div class="sp"><span>${t('VAT Incl @ {rate}%', { rate })}</span><span></span></div>
+    <div class="sp"><span class="muted">${t('Taxable Value').toUpperCase()}</span><span>${formatCurrency(taxableVal, settings)}</span></div>
+    <div class="sp"><span class="muted">${t('VAT Value').toUpperCase()}</span><span>${formatCurrency(vatVal, settings)}</span></div>
+    ${settings?.businessTpin ? `<div class="sp"><span class="muted">${t('TIN/TPIN').toUpperCase()}</span><span>${settings.businessTpin}</span></div>` : ''}
+  ` : '';
+  const qrSection = showQrSection && shareUrl ? `
+    <div class="hr"></div>
+    <div class="title">${t('QR Code & Receipt Link').toUpperCase()}</div>
+    <div class="center small">${t('Scan to view online')}</div>
+    <div class="center qr" style="margin:6px 0">${qrSvgStr}</div>
+    <div class="center small" style="word-break: break-all">${shareUrl}</div>
+  ` : '';
   return `
     <div class="root">
     ${showPaidStamp ? `
@@ -231,6 +260,8 @@ export function buildBrandedReceiptHtml({ settings, sale }) {
     <div class="hr"></div>
     <div class="title">${t('Sale Info').toUpperCase()}</div>
     <div class="small">${t('Cashier').toUpperCase()}: ${cashier}</div>
+    ${sale?.receiptNumber ? `<div class="small">${t('Receipt').toUpperCase()}: ${sale.receiptNumber}</div>` : ''}
+    ${sale?.invoiceSerial ? `<div class="small">${t('Invoice').toUpperCase()}: ${sale.invoiceSerial}</div>` : ''}
     ${customerLine}
     ${customerBusinessLines}
     <div class="hr"></div>
@@ -246,30 +277,12 @@ export function buildBrandedReceiptHtml({ settings, sale }) {
         <tr><td class="muted">${t('Discount')}</td><td class="right">-${formatCurrency(sale.discount || 0, settings)}</td></tr>
         <tr><td class="muted">${t('Tax')}</td><td class="right">${formatCurrency(sale.tax || 0, settings)}</td></tr>
         <tr><td class="title">${t('Amount Due (VAT Incl)').toUpperCase()}</td><td class="right title">${formatCurrency(sale.total || 0, settings)}</td></tr>
+        <tr><td class="muted">${t('Total Items').toUpperCase()}</td><td class="right">${qtySum}</td></tr>
       </tbody>
     </table>
-    <div class="hr"></div>
-    <div class="title">${t('Payments').toUpperCase()}</div>
-    ${payments}
-    ${hasEasyBuy ? `<div class="sp"><span>${escapeHtml(`${creditLabel} ${t('Paid')}`.toUpperCase())}</span><span>${formatCurrency(easyBuyPaidNow, settings)}</span></div>` : ''}
-    ${hasEasyBuy ? `<div class="sp"><span>${escapeHtml(`${creditLabel} ${t('Balance')}`.toUpperCase())}</span><span>${formatCurrency(easyBuyBalance, settings)}</span></div>` : ''}
-    ${hasEasyBuy && easyBuyDueDate ? `<div class="sp"><span>${escapeHtml(`${creditLabel} ${t('Due Date')}`.toUpperCase())}</span><span>${escapeHtml(new Date(easyBuyDueDate).toLocaleDateString())}</span></div>` : ''}
-    <div class="sp"><span>${t('Rounding').toUpperCase()}</span><span>${formatCurrency(0, settings)}</span></div>
-    <div class="sp"><span>${t('Change').toUpperCase()}</span><span>${formatCurrency(change, settings)}</span></div>
-    <div class="sp"><span class="muted">${t('Total Items').toUpperCase()}:</span><span class="muted">${qtySum}</span></div>
-    ${repaymentSection}
-    <div class="hr"></div>
-    <div class="title">${t('Tax Invoice').toUpperCase()}</div>
-    <div class="sp"><span>${t('VAT Incl @ {rate}%', { rate })}</span><span></span></div>
-    <div class="sp"><span class="muted">${t('Taxable Value').toUpperCase()}</span><span>${formatCurrency(taxableVal, settings)}</span></div>
-    <div class="sp"><span class="muted">${t('VAT Value').toUpperCase()}</span><span>${formatCurrency(vatVal, settings)}</span></div>
-    ${settings?.businessTpin ? `<div class="sp"><span class="muted">${t('TIN/TPIN').toUpperCase()}</span><span>${settings.businessTpin}</span></div>` : ''}
-    ${sale?.receiptNumber ? `<div class="sp"><span class="muted">${t('Receipt').toUpperCase()}</span><span>${sale.receiptNumber}</span></div>` : ''}
-    ${sale?.invoiceSerial ? `<div class="sp"><span class="muted">${t('Invoice').toUpperCase()}</span><span>${sale.invoiceSerial}</span></div>` : ''}
-    <div class="hr"></div>
-    ${shareUrl ? `<div class="center small">${t('Scan to view online')}</div>` : ''}
-    ${shareUrl ? `<div class="center qr" style="margin:6px 0">${qrSvgStr}</div>` : ''}
-    ${shareUrl ? `<div class="center small" style="word-break: break-all">${shareUrl}</div>` : ''}
+    ${paymentSection}
+    ${taxSection}
+    ${qrSection}
     ${head}
     ${foot}
     </div>

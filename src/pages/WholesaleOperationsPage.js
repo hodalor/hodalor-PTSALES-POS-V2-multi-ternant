@@ -50,6 +50,52 @@ function normalizeReviewItemsForCompare(items = []) {
   }));
 }
 
+function asStringArray(values = []) {
+  return Array.from(new Set((Array.isArray(values) ? values : [values]).map((value) => String(value || '').trim()).filter(Boolean)));
+}
+
+function normalizeConflictCode(value = '') {
+  return String(value || '').trim().toLowerCase();
+}
+
+function buildReviewConflict(error) {
+  const data = error?.data && typeof error.data === 'object' ? error.data : {};
+  const unavailableUnitIds = asStringArray(data?.unavailableUnitIds);
+  const unavailableUnitCodes = asStringArray(data?.unavailableUnitCodes);
+  const hasQuantityConflict = Number.isFinite(Number(data?.availableQty)) || Number.isFinite(Number(data?.lockedQty));
+  if (unavailableUnitIds.length === 0 && unavailableUnitCodes.length === 0 && !hasQuantityConflict) return null;
+  return {
+    message: String(data?.error || error?.message || '').trim(),
+    unavailableUnitIds,
+    unavailableUnitCodes,
+    unavailableUnitIdSet: new Set(unavailableUnitIds.map(String)),
+    unavailableUnitCodeSet: new Set(unavailableUnitCodes.map((value) => normalizeConflictCode(value))),
+    currentStock: Number.isFinite(Number(data?.currentStock)) ? Number(data.currentStock) : null,
+    lockedQty: Number.isFinite(Number(data?.lockedQty)) ? Number(data.lockedQty) : null,
+    availableQty: Number.isFinite(Number(data?.availableQty)) ? Number(data.availableQty) : null
+  };
+}
+
+function getItemConflictState(item = {}, reviewConflict = null) {
+  if (!reviewConflict) return { hasConflict: false, selectedUnits: [], unitIdConflicts: 0 };
+  const selectedUnits = [
+    ...(Array.isArray(item?.selectedUnits) ? item.selectedUnits : []),
+    ...(Array.isArray(item?.serializedEntries) ? item.serializedEntries : [])
+  ].map((unit) => {
+    const unitId = String(unit?.unitId || '').trim();
+    const code = normalizeConflictCode(unit?.imei || unit?.serialNumber || '');
+    const isConflict = (unitId && reviewConflict.unavailableUnitIdSet.has(unitId))
+      || (code && reviewConflict.unavailableUnitCodeSet.has(code));
+    return { ...unit, isConflict };
+  });
+  const unitIdConflicts = asStringArray(item?.unitIds).filter((id) => reviewConflict.unavailableUnitIdSet.has(String(id))).length;
+  return {
+    hasConflict: selectedUnits.some((unit) => unit.isConflict) || unitIdConflicts > 0,
+    selectedUnits,
+    unitIdConflicts
+  };
+}
+
 function formatAdjustmentTypeLabel(value, t) {
   return String(value || '').toLowerCase() === 'decrease' ? t('Decrease') : t('Increase');
 }
@@ -144,6 +190,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const [selectedRow, setSelectedRow] = useState(null);
   const [decisionRemark, setDecisionRemark] = useState('');
   const [reviewing, setReviewing] = useState(false);
+  const [reviewConflict, setReviewConflict] = useState(null);
   const [items, setItems] = useState([]);
   const [reviewItems, setReviewItems] = useState([]);
   const [serializedUnits, setSerializedUnits] = useState([]);
@@ -477,6 +524,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
 
   function openReview(row) {
     setSelectedRow(row);
+    setReviewConflict(null);
     setDecisionRemark('');
     setReviewItems(
       Array.isArray(row.items) && row.items.length > 0
@@ -621,6 +669,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
       }
       setOperations(prev => prev.filter(item => String(item._id || item.clientId) !== String(selectedRow._id || selectedRow.clientId)));
       setSelectedRow(null);
+      setReviewConflict(null);
       setDecisionRemark('');
       void loadOperations({ force: true });
       if (type === 'approve' && nextStatus === 'approved') {
@@ -631,9 +680,11 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
       if (/404|not found/i.test(msg)) {
         void loadOperations({ force: true });
         setSelectedRow(null);
+        setReviewConflict(null);
         setDecisionRemark('');
         toast.show(t('Request was already processed. List refreshed.'), { type: 'warning' });
       } else {
+        setReviewConflict(buildReviewConflict(e));
         toast.show(msg || t(`Failed to ${type} request`), { type: 'error' });
       }
     } finally {
@@ -1233,10 +1284,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
       {selectedRow && (
         <Modal
           title={t('Request Review')}
-          onClose={() => { if (!reviewing) { setSelectedRow(null); setDecisionRemark(''); } }}
+          onClose={() => { if (!reviewing) { setSelectedRow(null); setReviewConflict(null); setDecisionRemark(''); } }}
           footer={(
             <>
-              <button className="btn" onClick={() => { setSelectedRow(null); setDecisionRemark(''); }} disabled={reviewing}>{t('Close')}</button>
+              <button className="btn" onClick={() => { setSelectedRow(null); setReviewConflict(null); setDecisionRemark(''); }} disabled={reviewing}>{t('Close')}</button>
               {canActOnSelectedRow && (
                 <>
                   <button className="btn" onClick={() => reviewAction('reject')} disabled={reviewing}>{reviewing ? t('Working…') : t('Reject')}</button>
@@ -1277,6 +1328,23 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
             </div>
             <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Reason')}</div><strong>{selectedRow.reason || '—'}</strong></div>
             <div><div style={{ color: '#94a3b8', fontSize: 12 }}>{t('Remark')}</div><strong>{selectedRow.remark || selectedRow.approvalRemark || selectedRow.rejectionRemark || '—'}</strong></div>
+            {reviewConflict && (
+              <div style={{ gridColumn: '1 / -1', padding: 12, borderRadius: 10, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b' }}>
+                <div style={{ fontWeight: 700 }}>{reviewConflict.message || t('Some items are no longer available for transfer')}</div>
+                {reviewConflict.unavailableUnitCodes.length > 0 && (
+                  <div style={{ marginTop: 6, fontSize: 13 }}>
+                    {t('Unavailable serials')}: {reviewConflict.unavailableUnitCodes.join(', ')}
+                  </div>
+                )}
+                {reviewConflict.availableQty != null && (
+                  <div style={{ marginTop: 6, fontSize: 13 }}>
+                    {t('Available now')}: {reviewConflict.availableQty}
+                    {reviewConflict.lockedQty != null ? ` • ${t('Locked')}: ${reviewConflict.lockedQty}` : ''}
+                    {reviewConflict.currentStock != null ? ` • ${t('Current stock')}: ${reviewConflict.currentStock}` : ''}
+                  </div>
+                )}
+              </div>
+            )}
             {/* #region debug-point D:value-breakdown */}
             {(() => { fetch('http://127.0.0.1:7777/event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'transfer-visibility-value', runId: 'pre-fix', hypothesisId: 'D', location: 'WholesaleOperationsPage.js:selectedRow:value-breakdown', msg: '[DEBUG] Transfer review value breakdown computed', data: { id: String(selectedRow?._id || selectedRow?.clientId || ''), operationType: String(selectedRow?.operationType || ''), qty: Number(selectedRow?.qty || 0), rowCost: Number(selectedRow?.cost || 0), requestedAmount: Number(selectedRow?.requestedAmount || 0), computedValue: computeOperationValue(selectedRow), items: (Array.isArray(selectedRow?.items) ? selectedRow.items : []).map((item) => ({ lineId: String(item?.lineId || ''), productId: String(item?.productId || ''), qty: Number(item?.qty || 0), cost: Number(item?.cost || 0), subtotal: Number(item?.qty || 0) * Number(item?.cost || 0) })).slice(0, 20) }, ts: Date.now() }) }).catch(() => {}); return null; })()}
             {/* #endregion */}
@@ -1296,19 +1364,27 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                 <tbody>
                   {reviewItems.map((item, index) => {
                     const meta = getProductDisplayMeta(products, item.productId, item.variantId, item);
+                    const itemConflict = getItemConflictState(item, reviewConflict);
                     return (
-                      <tr key={item.lineId || index}>
+                      <tr key={item.lineId || index} style={itemConflict.hasConflict ? { background: '#fef2f2' } : undefined}>
                         <td>
                           <div style={{ color: '#111827' }}>{meta.productName || item.productId}</div>
                           {meta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
-                          {Array.isArray(item.selectedUnits) && item.selectedUnits.length > 0 && (
-                            <div style={{ marginTop: 4, color: '#111827', fontSize: 12 }}>
-                              {item.selectedUnits.map(unit => unit.imei || unit.serialNumber || unit.unitId).filter(Boolean).join(', ')}
+                          {itemConflict.selectedUnits.length > 0 && (
+                            <div style={{ marginTop: 4, fontSize: 12, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                              {itemConflict.selectedUnits.map((unit, unitIndex) => (
+                                <span
+                                  key={`${unit.unitId || unit.imei || unit.serialNumber || unitIndex}`}
+                                  style={unit.isConflict ? { color: '#b91c1c', fontWeight: 700 } : { color: '#111827' }}
+                                >
+                                  {unit.imei || unit.serialNumber || unit.unitId}
+                                </span>
+                              ))}
                             </div>
                           )}
-                          {Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0 && (
-                            <div style={{ marginTop: 4, color: '#111827', fontSize: 12 }}>
-                              {item.serializedEntries.map(unit => unit.imei || unit.serialNumber).filter(Boolean).join(', ')}
+                          {itemConflict.hasConflict && itemConflict.selectedUnits.length === 0 && itemConflict.unitIdConflicts > 0 && (
+                            <div style={{ marginTop: 4, color: '#b91c1c', fontSize: 12, fontWeight: 700 }}>
+                              {t('{count} selected serial(s) are no longer available', { count: itemConflict.unitIdConflicts })}
                             </div>
                           )}
                         </td>

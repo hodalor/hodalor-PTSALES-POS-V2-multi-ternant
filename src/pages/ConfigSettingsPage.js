@@ -1,5 +1,5 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { setAppName, setFooterText, setCurrentBranch, setReceiptHeader, setReceiptFooter, setBusinessPhone, setBusinessWebsite, setBusinessTpin, setReceiptQrBaseUrl, setInvoicePrefix, setNextInvoiceNumber, setWholesaleInvoicePrefix, setNextWholesaleInvoiceNumber, setWarehouseInvoicePrefix, setNextWarehouseInvoiceNumber, setReceiptPrefix, setNextReceiptNumber, setDrawerOpenOnCash, setTaxRate, setCurrencyCode, setCurrencySymbol, setCurrencyPosition, setRefreshIntervalSec, addCurrency, removeCurrency, setActiveCurrency, setLoyaltyEnabled, setLoyaltyEarnAmount, setLoyaltyEarnPoints, setLoyaltyRedeemValue, setLoyaltyMinRedeemPoints, setLoyaltyMaxRedeemPercent, setClientAppName, setClientLogoUrl, setPreferredLanguage, setInvoiceCompanyAddress, setInvoiceFooter, setInvoiceDeclaration, setInvoiceSignatoryLabel, setInvoiceTitle, setInvoiceWordsLabel, setInvoiceGeneratedNote, setInvoiceNumberDigits, setInvoicePaidStampEnabled, setInvoicePaidStampLabel, setInvoicePaidStampThankYou, setInvoicePaidStampShowDate, setInvoicePaidStampColor, setReceiptBrandName, setAllSettings, addSettingsCategory, removeSettingsCategory } from '../store/settingsSlice';
+import { setAppName, setFooterText, setCurrentBranch, setReceiptHeader, setReceiptFooter, setReceiptShowPaymentInfo, setReceiptShowTaxInfo, setReceiptShowQrSection, setBusinessPhone, setBusinessWebsite, setBusinessTpin, setReceiptQrBaseUrl, setInvoicePrefix, setNextInvoiceNumber, setWholesaleInvoicePrefix, setNextWholesaleInvoiceNumber, setWarehouseInvoicePrefix, setNextWarehouseInvoiceNumber, setReceiptPrefix, setNextReceiptNumber, setDrawerOpenOnCash, setTaxRate, setCurrencyCode, setCurrencySymbol, setCurrencyPosition, setRefreshIntervalSec, addCurrency, removeCurrency, setActiveCurrency, setLoyaltyEnabled, setLoyaltyEarnAmount, setLoyaltyEarnPoints, setLoyaltyRedeemValue, setLoyaltyMinRedeemPoints, setLoyaltyMaxRedeemPercent, setClientAppName, setClientLogoUrl, setPreferredLanguage, setInvoiceCompanyAddress, setInvoiceFooter, setInvoiceDeclaration, setInvoiceSignatoryLabel, setInvoiceTitle, setInvoiceWordsLabel, setInvoiceGeneratedNote, setInvoiceNumberDigits, setInvoicePaidStampEnabled, setInvoicePaidStampLabel, setInvoicePaidStampThankYou, setInvoicePaidStampShowDate, setInvoicePaidStampColor, setReceiptBrandName, setAllSettings, addSettingsCategory, removeSettingsCategory } from '../store/settingsSlice';
 import { addBranch, removeBranch, setBranches, updateBranch } from '../store/branchesSlice';
 import * as branchesApi from '../api/branches';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
@@ -75,6 +75,9 @@ function ConfigSettingsPage() {
     'receiptBrandName',
     'receiptHeader',
     'receiptFooter',
+    'receiptShowPaymentInfo',
+    'receiptShowTaxInfo',
+    'receiptShowQrSection',
     'businessPhone',
     'businessWebsite',
     'businessTpin',
@@ -1202,6 +1205,7 @@ function ConfigSettingsPage() {
             </div>
           </div>
           <div className="card config-panel">
+          <h3 className="section-title" style={{ margin: '8px 0' }}>Receipt Settings</h3>
           <label style={{ display: 'block', marginTop: 0 }}>
             Business Phone
             <input className="input" value={settings.businessPhone || ''} onChange={e => dispatch(setBusinessPhone(e.target.value))} style={{ display: 'block', width: '100%', marginTop: 6 }} />
@@ -1228,6 +1232,24 @@ function ConfigSettingsPage() {
             Receipt Footer
             <input className="input" value={settings.receiptFooter} onChange={e => dispatch(setReceiptFooter(e.target.value))} style={{ display: 'block', width: '100%', marginTop: 6 }} />
           </label>
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 14, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+            <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Receipt Sections</div>
+            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
+              Section 1 stays on by default. Turn on the extra sections only when the tenant wants more receipt detail.
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <input type="checkbox" checked={!!settings.receiptShowPaymentInfo} onChange={e => dispatch(setReceiptShowPaymentInfo(e.target.checked))} />
+              <span>Show Section 2: Payment Info</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <input type="checkbox" checked={!!settings.receiptShowTaxInfo} onChange={e => dispatch(setReceiptShowTaxInfo(e.target.checked))} />
+              <span>Show Section 3: Tax Info</span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input type="checkbox" checked={!!settings.receiptShowQrSection} onChange={e => dispatch(setReceiptShowQrSection(e.target.checked))} />
+              <span>Show Section 4: QR Code and Receipt Link</span>
+            </label>
+          </div>
           {isMasterSuperAdmin && (
             <label style={{ display: 'block', marginTop: 12 }}>
               <input type="checkbox" checked={!!settings.drawerOpenOnCash} onChange={e => dispatch(setDrawerOpenOnCash(e.target.checked))} />
