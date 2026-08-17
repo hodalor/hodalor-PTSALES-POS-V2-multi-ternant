@@ -56,8 +56,28 @@ export function printReceiptHtml(html) {
     <head>
       <title>${t('Receipt')}</title>
       <style>
-        body { font-family: monospace; padding: 12px; color:#111; }
-        .root { position: relative; }
+        @page {
+          size: 80mm auto;
+          margin: 0;
+        }
+        html, body {
+          margin: 0;
+          padding: 0;
+          width: 80mm;
+          min-width: 80mm;
+          background: #fff;
+          color: #111;
+          font-family: monospace;
+        }
+        body {
+          padding: 6mm 4mm;
+          box-sizing: border-box;
+        }
+        .root {
+          position: relative;
+          width: 100%;
+          box-sizing: border-box;
+        }
         .paid-stamp { position: absolute; top: 4px; right: 4px; pointer-events: none; }
         .paid-stamp .circle {
           width: 110px; height: 110px; border: 4px solid currentColor;
@@ -79,6 +99,19 @@ export function printReceiptHtml(html) {
         .small { font-size: 12px; }
         .qr svg { width: 160px; height: 160px; }
         @media print {
+          html, body {
+            width: 80mm;
+            min-width: 80mm;
+            height: auto;
+            overflow: hidden;
+          }
+          body {
+            padding: 4mm 3mm;
+          }
+          .root {
+            page-break-after: avoid;
+            page-break-inside: avoid;
+          }
           img, svg { max-width: none; }
         }
       </style>
