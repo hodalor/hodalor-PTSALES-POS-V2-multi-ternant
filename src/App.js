@@ -537,7 +537,7 @@ function App() {
           canLoadSuppliers ? suppliersApi.list() : Promise.resolve([]),
           canLoadCustomers ? customersApi.list() : Promise.resolve([]),
           canLoadRefunds ? refundsApi.listRequests() : Promise.resolve([]),
-          canLoadSales ? salesApi.list() : Promise.resolve([])
+          canLoadSales ? salesApi.list({ all: true }) : Promise.resolve([])
         ]);
         if (alive && s.status === 'fulfilled' && Array.isArray(s.value)) dispatch(setSuppliers(s.value));
         if (alive && c.status === 'fulfilled' && Array.isArray(c.value)) dispatch(setCustomers(c.value));
@@ -659,7 +659,7 @@ function App() {
             (section('sections.retail') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']))
             || (section('sections.distribution') && allow('pages.distribution.refund', ['Admin','Manager','Inventory Staff','Cashier'], ['view_distribution_refunds','add_distribution_refunds']))
           ) ? refundsApi.listRequests() : Promise.resolve([]),
-          allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? salesApi.list() : Promise.resolve([]),
+          allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? salesApi.list({ all: true }) : Promise.resolve([]),
           section('sections.admin') && allow('admin.users', ['Admin'], ['view_users','see_users']) ? usersApi.list() : Promise.resolve([]),
           (((allow('admin.audit', ['Admin'], ['view_audit','see_audit']) || allow('sections.admin', ['Admin'], ['view_stock_records','see_stock_records'])) && !(roleLower === 'superadmin' && String(authTenantId || '').toLowerCase() === 'master'))) ? auditsApi.list(1000) : Promise.resolve([]),
           allow('modules.invoices', ['Admin','Manager','Cashier'], ['view_invoices','see_invoices','view_wholesale_invoices','view_warehouse_invoices']) ? invoicesApi.list() : Promise.resolve([]),

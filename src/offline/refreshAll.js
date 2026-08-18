@@ -65,7 +65,7 @@ export async function refreshAllData(dispatch, getState) {
     isFeatureEnabled(settings, 'pages.retail.transfers') && allow('pages.retail.transfers', ['Admin','Manager','Inventory Staff','Director'], ['approve_transfers','view_transfers','see_transfers']) ? transfersApi.listRequests({ status: 'pending_approval', limit: 200 }) : Promise.resolve([]),
     canUseExpenseApprovals ? expensesApi.listRequests() : Promise.resolve([]),
     canUseAdjustmentApprovals ? adjustmentsApi.listRequests() : Promise.resolve([]),
-    allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? salesApi.list() : Promise.resolve([]),
+    allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? salesApi.list({ all: true }) : Promise.resolve([]),
     isFeatureEnabled(settings, 'admin.users') && allow('admin.users', ['Admin'], ['view_users','see_users']) ? usersApi.list() : Promise.resolve([]),
     ((isFeatureEnabled(settings, 'admin.audit') && allow('admin.audit', ['Admin'], ['view_audit','see_audit'])) || (isFeatureEnabled(settings, 'sections.admin') && allow('sections.admin', ['Admin'], ['view_stock_records','see_stock_records']))) ? auditsApi.list(1000) : Promise.resolve([]),
     isFeatureEnabled(settings, 'modules.invoices') && allow('modules.invoices', ['Admin','Manager','Cashier'], ['view_invoices','see_invoices','view_wholesale_invoices','view_warehouse_invoices']) ? invoicesApi.list() : Promise.resolve([])

@@ -94,6 +94,7 @@ export function printReceiptHtml(html) {
         .hr { border-top:1px dashed #d1d5db; margin:8px 0; }
         table { width: 100%; border-collapse: collapse; }
         td { padding: 2px 0; vertical-align: top; }
+        .item-row td { padding: 4px 0; border-bottom: 1px dotted #d1d5db; }
         .right { text-align:right; }
         .title { font-weight:700; }
         .small { font-size: 12px; }
@@ -302,7 +303,7 @@ export function buildBrandedReceiptHtml({ settings, sale }) {
     <table>
       <tbody>
         ${sale.items.map(it => `
-          <tr>
+          <tr class="item-row">
             <td>${it.name}${it.spec ? ` [${it.spec}]` : ''} ${it.qty ? `x${it.qty}` : ''}${formatSerializedLine(it)}</td>
             <td class="right">${formatCurrency((Number(it.price)||0) * (Number(it.qty)||1), settings)}</td>
           </tr>`).join('')}
