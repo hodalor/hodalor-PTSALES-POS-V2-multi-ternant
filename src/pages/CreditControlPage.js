@@ -128,6 +128,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   const [dateTo, setDateTo] = useState(todayIso);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportCustomerId, setExportCustomerId] = useState('');
+  const [exportCustomerSearch, setExportCustomerSearch] = useState('');
   const [exportTypeFilter, setExportTypeFilter] = useState('all');
   const [exportSelectedSaleIds, setExportSelectedSaleIds] = useState([]);
 
@@ -432,6 +433,23 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   const exportCustomer = useMemo(() => (
     customers.find((row) => String(row._id || row.id || '') === String(exportCustomerId || '')) || null
   ), [customers, exportCustomerId]);
+  const exportCustomerMatches = useMemo(() => {
+    const q = String(exportCustomerSearch || '').trim().toLowerCase();
+    if (!q) return [];
+    return customers
+      .filter((row) => {
+        const fields = [
+          String(row.name || ''),
+          String(row.businessName || ''),
+          String(row.phone || ''),
+          String(row.businessPhone || ''),
+          String(row.customerCode || ''),
+          String(row.idCardNumber || '')
+        ].join(' ').toLowerCase();
+        return fields.includes(q);
+      })
+      .slice(0, 12);
+  }, [customers, exportCustomerSearch]);
   const exportSales = useMemo(() => {
     if (!exportCustomer) return [];
     const customerId = String(exportCustomer._id || exportCustomer.id || '');
@@ -487,6 +505,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
 
   function openExportModal() {
     setExportCustomerId(selectedCustomerId || '');
+    setExportCustomerSearch(String(selectedCustomer?.name || ''));
     setExportTypeFilter('all');
     setExportOpen(true);
   }
@@ -1212,14 +1231,40 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
               <label>
                 <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Customer</div>
-                <select className="select" value={exportCustomerId} onChange={e => setExportCustomerId(e.target.value)}>
-                  <option value="">Select customer</option>
-                  {[...customers].sort((a, b) => String(a?.name || '').localeCompare(String(b?.name || ''))).map((row) => (
-                    <option key={String(row._id || row.id || '')} value={String(row._id || row.id || '')}>
-                      {row.name}{row.businessName ? ` - ${row.businessName}` : ''}
-                    </option>
-                  ))}
-                </select>
+                <div style={{ position: 'relative' }}>
+                  <input
+                    className="input"
+                    placeholder="Search customer, business name, phone or code"
+                    value={exportCustomerSearch}
+                    onChange={(e) => {
+                      setExportCustomerSearch(e.target.value);
+                      if (!String(e.target.value || '').trim()) setExportCustomerId('');
+                    }}
+                  />
+                  {exportCustomerMatches.length > 0 && (
+                    <div style={{ position: 'absolute', top: 44, left: 0, right: 0, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden', zIndex: 20, maxHeight: 320, overflowY: 'auto' }}>
+                      {exportCustomerMatches.map((row) => (
+                        <button
+                          key={String(row._id || row.id || '')}
+                          className="btn"
+                          onClick={() => {
+                            setExportCustomerId(String(row._id || row.id || ''));
+                            setExportCustomerSearch(String(row.name || ''));
+                          }}
+                          style={{ width: '100%', justifyContent: 'space-between', borderRadius: 0 }}
+                        >
+                          <span style={{ textAlign: 'left' }}>
+                            <div style={{ fontWeight: 700 }}>{row.name}</div>
+                            <div style={{ color: '#64748b', fontSize: 12 }}>
+                              {row.businessName || '—'} {(row.phone || row.businessPhone) ? ` • ${row.phone || row.businessPhone}` : ''} {(row.customerCode || '') ? ` • ${row.customerCode}` : ''}
+                            </div>
+                          </span>
+                          <span>Select</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </label>
               <label>
                 <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Transaction Type</div>
@@ -1231,9 +1276,20 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
               </label>
             </div>
             {exportCustomer && (
-              <div style={{ color: '#64748b', fontSize: 12 }}>
-                Exporting for <strong style={{ color: '#0f172a' }}>{exportCustomer.name}</strong>
-                {exportCustomer.businessName ? ` • ${exportCustomer.businessName}` : ''}
+              <div style={{ color: '#64748b', fontSize: 12, display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <div>
+                  Exporting for <strong style={{ color: '#0f172a' }}>{exportCustomer.name}</strong>
+                  {exportCustomer.businessName ? ` • ${exportCustomer.businessName}` : ''}
+                </div>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    setExportCustomerId('');
+                    setExportCustomerSearch('');
+                  }}
+                >
+                  Clear
+                </button>
               </div>
             )}
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
