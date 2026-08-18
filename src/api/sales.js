@@ -28,6 +28,7 @@ export function list(params = {}) {
   const qs = new URLSearchParams();
   if (params.branchId) qs.set('branchId', String(params.branchId));
   if (params.limit) qs.set('limit', String(params.limit));
+  if (params.all) qs.set('all', '1');
   const query = qs.toString();
   return fetchJson(`/api/sales${query ? `?${query}` : ''}`);
 }

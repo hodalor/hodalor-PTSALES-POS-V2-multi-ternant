@@ -200,7 +200,7 @@ function SalesPage() {
       const branchScope = selectedBranchId ? selectedBranchId : '';
       try {
         setLoadingSales(true);
-        const rows = await salesApi.list(branchScope ? { branchId: branchScope, limit: 1000 } : { limit: 1000 });
+        const rows = await salesApi.list(branchScope ? { branchId: branchScope, all: true } : { all: true });
         if (!alive) return;
         dispatch(setSales(Array.isArray(rows) ? rows : []));
       } catch (e) {
@@ -421,7 +421,7 @@ function SalesPage() {
       setEditingSaleSaving(true);
       const saleId = String(editingSale.id || editingSale._id || editingSale.clientId || '');
       await salesApi.updateSaleDate(saleId, { saleDateTime: nextDate.toISOString() });
-      const branchScope = selectedBranchId ? { branchId: selectedBranchId, limit: 1000 } : { limit: 1000 };
+      const branchScope = selectedBranchId ? { branchId: selectedBranchId, all: true } : { all: true };
       const rows = await salesApi.list(branchScope);
       dispatch(setSales(Array.isArray(rows) ? rows : []));
       toast.show('Sale date updated', { type: 'success' });
@@ -459,7 +459,7 @@ function SalesPage() {
         creditPackageName: nextPackageName,
         creditPackageId: nextPackageName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
       });
-      const branchScope = selectedBranchId ? { branchId: selectedBranchId, limit: 1000 } : { limit: 1000 };
+      const branchScope = selectedBranchId ? { branchId: selectedBranchId, all: true } : { all: true };
       const rows = await salesApi.list(branchScope);
       dispatch(setSales(Array.isArray(rows) ? rows : []));
       toast.show('Credit package updated', { type: 'success' });
