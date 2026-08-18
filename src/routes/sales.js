@@ -274,8 +274,11 @@ r.get('/', requireRoleOrPerm(['Admin','Manager','Cashier'], ['view_sales','see_s
     if (allowedBranchIds && !allowedBranchIds.includes(requestedBranchId)) return res.json([]);
     query.branchId = requestedBranchId;
   }
-  const limit = Math.min(2000, Math.max(1, Number(req.query.limit || 500)));
-  const rows = await Sale.find(query).sort({ created_at: -1 }).limit(limit).lean();
+  const wantsAll = ['1', 'true', 'yes'].includes(String(req.query.all || '').trim().toLowerCase());
+  const limit = Math.min(50000, Math.max(1, Number(req.query.limit || 500)));
+  let salesQuery = Sale.find(query).sort({ created_at: -1 });
+  if (!wantsAll) salesQuery = salesQuery.limit(limit);
+  const rows = await salesQuery.lean();
   const enriched = await enrichSalesWithAccounting(rows.map(normalizeSaleFinancials));
   res.json(enriched);
 });
