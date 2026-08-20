@@ -22,6 +22,7 @@ const TENANT_ADMIN_ALLOWED_KEYS = new Set([
   'receiptShowPaymentInfo',
   'receiptShowTaxInfo',
   'receiptShowQrSection',
+  'distributionPosDefaultPrintMode',
   'businessPhone',
   'businessWebsite',
   'businessTpin',
@@ -86,6 +87,9 @@ function normalizeSettingsData(input = {}) {
   next.receiptShowPaymentInfo = !!next.receiptShowPaymentInfo;
   next.receiptShowTaxInfo = !!next.receiptShowTaxInfo;
   next.receiptShowQrSection = !!next.receiptShowQrSection;
+  next.distributionPosDefaultPrintMode = ['receipt', 'invoice', 'both'].includes(String(next.distributionPosDefaultPrintMode || '').trim().toLowerCase())
+    ? String(next.distributionPosDefaultPrintMode || '').trim().toLowerCase()
+    : 'receipt';
   next.systemUpgradeNoticeEnabled = !!next.systemUpgradeNoticeEnabled;
   if (!String(next.systemUpgradeNoticeTitle || '').trim()) {
     next.systemUpgradeNoticeTitle = 'Database Upgrade In Progress';
