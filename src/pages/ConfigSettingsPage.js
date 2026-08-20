@@ -1,5 +1,5 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { setAppName, setFooterText, setCurrentBranch, setReceiptHeader, setReceiptFooter, setReceiptShowPaymentInfo, setReceiptShowTaxInfo, setReceiptShowQrSection, setBusinessPhone, setBusinessWebsite, setBusinessTpin, setReceiptQrBaseUrl, setInvoicePrefix, setNextInvoiceNumber, setWholesaleInvoicePrefix, setNextWholesaleInvoiceNumber, setWarehouseInvoicePrefix, setNextWarehouseInvoiceNumber, setReceiptPrefix, setNextReceiptNumber, setDrawerOpenOnCash, setTaxRate, setCurrencyCode, setCurrencySymbol, setCurrencyPosition, setRefreshIntervalSec, addCurrency, removeCurrency, setActiveCurrency, setLoyaltyEnabled, setLoyaltyEarnAmount, setLoyaltyEarnPoints, setLoyaltyRedeemValue, setLoyaltyMinRedeemPoints, setLoyaltyMaxRedeemPercent, setClientAppName, setClientLogoUrl, setPreferredLanguage, setInvoiceCompanyAddress, setInvoiceFooter, setInvoiceDeclaration, setInvoiceSignatoryLabel, setInvoiceTitle, setInvoiceWordsLabel, setInvoiceGeneratedNote, setInvoiceNumberDigits, setInvoicePaidStampEnabled, setInvoicePaidStampLabel, setInvoicePaidStampThankYou, setInvoicePaidStampShowDate, setInvoicePaidStampColor, setReceiptBrandName, setAllSettings, addSettingsCategory, removeSettingsCategory } from '../store/settingsSlice';
+import { setAppName, setFooterText, setCurrentBranch, setReceiptHeader, setReceiptFooter, setReceiptShowPaymentInfo, setReceiptShowTaxInfo, setReceiptShowQrSection, setDistributionPosDefaultPrintMode, setBusinessPhone, setBusinessWebsite, setBusinessTpin, setReceiptQrBaseUrl, setInvoicePrefix, setNextInvoiceNumber, setWholesaleInvoicePrefix, setNextWholesaleInvoiceNumber, setWarehouseInvoicePrefix, setNextWarehouseInvoiceNumber, setReceiptPrefix, setNextReceiptNumber, setDrawerOpenOnCash, setTaxRate, setCurrencyCode, setCurrencySymbol, setCurrencyPosition, setRefreshIntervalSec, addCurrency, removeCurrency, setActiveCurrency, setLoyaltyEnabled, setLoyaltyEarnAmount, setLoyaltyEarnPoints, setLoyaltyRedeemValue, setLoyaltyMinRedeemPoints, setLoyaltyMaxRedeemPercent, setClientAppName, setClientLogoUrl, setPreferredLanguage, setInvoiceCompanyAddress, setInvoiceFooter, setInvoiceDeclaration, setInvoiceSignatoryLabel, setInvoiceTitle, setInvoiceWordsLabel, setInvoiceGeneratedNote, setInvoiceNumberDigits, setInvoicePaidStampEnabled, setInvoicePaidStampLabel, setInvoicePaidStampThankYou, setInvoicePaidStampShowDate, setInvoicePaidStampColor, setReceiptBrandName, setAllSettings, addSettingsCategory, removeSettingsCategory } from '../store/settingsSlice';
 import { addBranch, removeBranch, setBranches, updateBranch } from '../store/branchesSlice';
 import * as branchesApi from '../api/branches';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
@@ -78,6 +78,7 @@ function ConfigSettingsPage() {
     'receiptShowPaymentInfo',
     'receiptShowTaxInfo',
     'receiptShowQrSection',
+    'distributionPosDefaultPrintMode',
     'businessPhone',
     'businessWebsite',
     'businessTpin',
@@ -1249,6 +1250,22 @@ function ConfigSettingsPage() {
               <input type="checkbox" checked={!!settings.receiptShowQrSection} onChange={e => dispatch(setReceiptShowQrSection(e.target.checked))} />
               <span>Show Section 4: QR Code and Receipt Link</span>
             </label>
+          </div>
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 14, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+            <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Distribution POS Default Print</div>
+            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
+              Choose what should print automatically after a sale on Distribution POS. Retail POS keeps using the normal receipt flow.
+            </div>
+            <select
+              className="select"
+              value={settings.distributionPosDefaultPrintMode || 'receipt'}
+              onChange={e => dispatch(setDistributionPosDefaultPrintMode(e.target.value))}
+              style={{ display: 'block', width: '100%' }}
+            >
+              <option value="receipt">Receipt Only</option>
+              <option value="invoice">Invoice Only</option>
+              <option value="both">Both Receipt and Invoice</option>
+            </select>
           </div>
           {isMasterSuperAdmin && (
             <label style={{ display: 'block', marginTop: 12 }}>

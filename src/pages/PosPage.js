@@ -7,6 +7,7 @@ import { addInvoice } from '../store/invoicesSlice';
 import { addCustomer, updateCustomer } from '../store/customersSlice';
 import { buildBrandedReceiptHtml, printReceiptHtml } from '../utils/print';
 import { escposReceipt, escposOpenDrawer, downloadText } from '../utils/escpos';
+import { buildInvoiceA4Html, printInvoiceA4 } from '../utils/invoicePrint';
 import { useToast } from '../components/ToastProvider';
 import { formatCurrency } from '../utils/currency';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -188,6 +189,10 @@ function PosPage({ mode = 'retail' }) {
     try { return localStorage.getItem('ptSales:heldQuery') || ''; } catch { return ''; }
   });
   const toast = useToast();
+  const distributionDefaultPrintMode = useMemo(() => {
+    const next = String(settings?.distributionPosDefaultPrintMode || '').trim().toLowerCase();
+    return ['receipt', 'invoice', 'both'].includes(next) ? next : 'receipt';
+  }, [settings?.distributionPosDefaultPrintMode]);
   const canBackdateSales = useMemo(() => (
     roleLower === 'superadmin' || roleLower === 'admin' || (Array.isArray(auth.grants) && auth.grants.includes('backdate_sales'))
   ), [auth.grants, roleLower]);
@@ -1213,6 +1218,7 @@ function PosPage({ mode = 'retail' }) {
         }
       });
       dispatch(recordSale(saleForUi));
+      let invoiceForPrint = null;
       try {
       const payTerms = (saleForUi.payment_methods || [])
         .map(p => {
@@ -1264,6 +1270,7 @@ function PosPage({ mode = 'retail' }) {
         destination: '',
         termsOfDelivery: ''
       };
+        invoiceForPrint = inv;
         dispatch(addInvoice(inv));
       } catch {}
       if (navigator.onLine && checkoutCustomer && saleForUi.customerPointsAfter != null) {
@@ -1314,7 +1321,18 @@ function PosPage({ mode = 'retail' }) {
       });
         downloadText('receipt-escpos.txt', (settings.drawerOpenOnCash && payments.some(p => p.type === 'cash')) ? (escposOpenDrawer() + '\n' + text) : text);
       } else {
-        printReceiptHtml(receiptHtml);
+        if (isWholesale) {
+          if (distributionDefaultPrintMode === 'invoice' && invoiceForPrint) {
+            printInvoiceA4(buildInvoiceA4Html({ settings, invoice: invoiceForPrint }));
+          } else if (distributionDefaultPrintMode === 'both' && invoiceForPrint) {
+            printInvoiceA4(buildInvoiceA4Html({ settings, invoice: invoiceForPrint }));
+            printReceiptHtml(receiptHtml);
+          } else {
+            printReceiptHtml(receiptHtml);
+          }
+        } else {
+          printReceiptHtml(receiptHtml);
+        }
       }
       if (navigator.onLine) {
         try {
