@@ -128,11 +128,14 @@ async function adjustVariantStock(productId, variantId, branchId, delta, invento
 
 r.get('/requests', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_adjustments', 'approve_retail_director', 'approve_retail_manager']), async (req, res) => {
   const statusRaw = String(req.query.status || '').trim().toLowerCase();
-  const limit = Math.min(2000, Math.max(1, Number(req.query.limit) || 200));
+  const wantsAll = ['1', 'true', 'yes'].includes(String(req.query.all || '').trim().toLowerCase());
+  const limit = Math.min(50000, Math.max(1, Number(req.query.limit) || 200));
   const map = { pending: 'pending_approval', pending_director: 'pending_director', pending_manager: 'pending_manager', approved: 'approved', rejected: 'rejected' };
   const q = {};
   if (map[statusRaw]) q.status = map[statusRaw];
-  const rows = await AdjustmentRequest.find(q).sort({ createdAt: -1 }).limit(limit).lean();
+  let rowsQuery = AdjustmentRequest.find(q).sort({ createdAt: -1 });
+  if (!wantsAll) rowsQuery = rowsQuery.limit(limit);
+  const rows = await rowsQuery.lean();
   res.json(rows);
 });
 
