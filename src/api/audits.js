@@ -1,8 +1,16 @@
 import { fetchJson } from './client';
 
-export function list(limit = 500, filters = {}) {
+export function list(limitOrFilters = 500, maybeFilters = {}) {
+  const filters = (limitOrFilters && typeof limitOrFilters === 'object' && !Array.isArray(limitOrFilters))
+    ? limitOrFilters
+    : (maybeFilters || {});
+  const explicitLimit = (typeof limitOrFilters === 'number' || /^\d+$/.test(String(limitOrFilters || '')))
+    ? Number(limitOrFilters)
+    : Number(filters.limit || 0);
+  const wantsAll = !!filters.all;
   const params = new URLSearchParams();
-  params.set('limit', String(limit));
+  if (!wantsAll && Number.isFinite(explicitLimit) && explicitLimit > 0) params.set('limit', String(explicitLimit));
+  if (wantsAll) params.set('all', '1');
   if (filters.tenantId) params.set('tenantId', String(filters.tenantId));
   if (filters.from) params.set('from', String(filters.from));
   if (filters.to) params.set('to', String(filters.to));

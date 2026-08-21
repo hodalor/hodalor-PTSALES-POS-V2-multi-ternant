@@ -294,6 +294,7 @@ export function buildBrandedReceiptHtml({ settings, sale }) {
     <div class="hr"></div>
     <div class="title">${t('Sale Info').toUpperCase()}</div>
     <div class="small">${t('Cashier').toUpperCase()}: ${cashier}</div>
+    <div class="small">${t('Sale Date').toUpperCase()}: ${escapeHtml(formatDateTime(sale.created_at))}</div>
     ${sale?.receiptNumber ? `<div class="small">${t('Receipt').toUpperCase()}: ${sale.receiptNumber}</div>` : ''}
     ${sale?.invoiceSerial ? `<div class="small">${t('Invoice').toUpperCase()}: ${sale.invoiceSerial}</div>` : ''}
     ${customerLine}
