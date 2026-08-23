@@ -1,8 +1,32 @@
 import mongoose from 'mongoose';
+import fs from 'node:fs';
+import path from 'node:path';
 import Product from '../models/Product.js';
 import ProductUnit from '../models/ProductUnit.js';
 import Branch from '../models/Branch.js';
 import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from './inventory.js';
+
+function reportQueuedSalesImeiDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  const envCandidates = [
+    path.resolve(process.cwd(), '.dbg', 'queued-sales-imei.env'),
+    path.resolve(process.cwd(), '..', '.dbg', 'queued-sales-imei.env')
+  ];
+  let url = 'http://127.0.0.1:7777/event';
+  let sessionId = 'queued-sales-imei';
+  for (const candidate of envCandidates) {
+    try {
+      const text = fs.readFileSync(candidate, 'utf8');
+      url = text.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || url;
+      sessionId = text.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || sessionId;
+      break;
+    } catch {}
+  }
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, runId: 'pre-fix', hypothesisId, location, msg, data, ts: Date.now() })
+  }).catch(() => {});
+}
 
 export function normalizeTrackType(value) {
   return String(value || '').toLowerCase() === 'serialized' ? 'serialized' : 'quantity';
@@ -253,7 +277,7 @@ export async function reserveSerializedUnit({ code, unitId = '', productId = '',
   return updated;
 }
 
-export async function listSerializedUnits({ productId = '', variantId = '', branchId = '', inventoryType = '', status = '', reservationToken = '', query = '', page = 1, pageSize = 30 }) {
+export async function listSerializedUnits({ productId = '', variantId = '', branchId = '', inventoryType = '', status = '', reservationToken = '', query = '', page = 1, pageSize = 30, all = false }) {
   const filter = {};
   if (productId) filter.productId = String(productId);
   if (variantId) filter.variantId = String(variantId);
@@ -297,6 +321,7 @@ export async function listSerializedUnits({ productId = '', variantId = '', bran
     }
   }
   const skip = Math.max(0, (Number(page || 1) - 1) * Number(pageSize || 30));
+  const limit = all ? 0 : Math.max(1, Number(pageSize || 30));
   const [rows, total] = await Promise.all([
     ProductUnit.find(filter, {
       productId: 1,
@@ -312,7 +337,7 @@ export async function listSerializedUnits({ productId = '', variantId = '', bran
       soldSaleId: 1,
       createdAt: 1,
       updatedAt: 1
-    }).sort({ createdAt: -1 }).skip(skip).limit(Math.max(1, Number(pageSize || 30))).lean(),
+    }).sort({ createdAt: -1 }).skip(all ? 0 : skip).limit(limit).lean(),
     ProductUnit.countDocuments(filter)
   ]);
   const productIds = Array.from(new Set(rows.map((row) => String(row.productId || '')).filter(Boolean)));
@@ -369,6 +394,31 @@ export async function releaseSerializedUnits({ unitIds = [], reservationToken = 
 
 export async function sellSerializedUnits({ unitIds = [], reservationToken = '', saleId }) {
   const rows = await ProductUnit.find({ _id: { $in: unitIds } });
+  // #region debug-point C:sell-serialized-load
+  reportQueuedSalesImeiDebug({
+    hypothesisId: 'C',
+    location: 'productUnits.js:sellSerializedUnits:loaded',
+    msg: '[DEBUG] Serialized units loaded for final sale marking',
+    data: {
+      saleId: String(saleId || ''),
+      reservationToken: String(reservationToken || ''),
+      requestedUnitIds: unitIds.map(String),
+      foundCount: rows.length,
+      rows: rows.map((row) => ({
+        unitId: String(row?._id || ''),
+        productId: String(row?.productId || ''),
+        variantId: String(row?.variantId || ''),
+        branchId: String(row?.branchId || ''),
+        inventoryType: String(row?.inventoryType || ''),
+        status: String(row?.status || ''),
+        soldSaleId: String(row?.soldSaleId || ''),
+        reservationToken: String(row?.reservationToken || ''),
+        imei: String(row?.imei || ''),
+        serialNumber: String(row?.serialNumber || '')
+      }))
+    }
+  });
+  // #endregion
   if (rows.length !== unitIds.length) {
     const err = new Error('Some serialized units were not found');
     err.status = 404;
@@ -394,6 +444,26 @@ export async function sellSerializedUnits({ unitIds = [], reservationToken = '',
     row.reservedAt = null;
     await row.save();
   }
+  // #region debug-point C:sell-serialized-saved
+  reportQueuedSalesImeiDebug({
+    hypothesisId: 'C',
+    location: 'productUnits.js:sellSerializedUnits:saved',
+    msg: '[DEBUG] Serialized units saved as sold',
+    data: {
+      saleId: String(saleId || ''),
+      reservationToken: String(reservationToken || ''),
+      rows: rows.map((row) => ({
+        unitId: String(row?._id || ''),
+        branchId: String(row?.branchId || ''),
+        inventoryType: String(row?.inventoryType || ''),
+        status: String(row?.status || ''),
+        soldSaleId: String(row?.soldSaleId || ''),
+        imei: String(row?.imei || ''),
+        serialNumber: String(row?.serialNumber || '')
+      }))
+    }
+  });
+  // #endregion
   return rows;
 }
 

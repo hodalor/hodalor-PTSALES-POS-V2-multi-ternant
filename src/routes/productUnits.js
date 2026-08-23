@@ -21,7 +21,8 @@ r.get('/', async (req, res) => {
     reservationToken: req.query.reservationToken || '',
     query: req.query.query || '',
     page: Number(req.query.page || 1),
-    pageSize: Math.min(100, Math.max(1, Number(req.query.pageSize || 30)))
+    pageSize: Math.min(5000, Math.max(1, Number(req.query.pageSize || 30))),
+    all: String(req.query.all || '') === '1'
   });
   res.json(result);
 });

@@ -50,6 +50,28 @@ function reportInTransitStockLockDebug({ hypothesisId = 'A', location = '', msg 
   }).catch(() => {});
 }
 
+function reportQueuedSalesImeiDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  const envCandidates = [
+    path.resolve(process.cwd(), '.dbg', 'queued-sales-imei.env'),
+    path.resolve(process.cwd(), '..', '.dbg', 'queued-sales-imei.env')
+  ];
+  let url = 'http://127.0.0.1:7777/event';
+  let sessionId = 'queued-sales-imei';
+  for (const candidate of envCandidates) {
+    try {
+      const text = fs.readFileSync(candidate, 'utf8');
+      url = text.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || url;
+      sessionId = text.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || sessionId;
+      break;
+    } catch {}
+  }
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, runId: 'pre-fix', hypothesisId, location, msg, data, ts: Date.now() })
+  }).catch(() => {});
+}
+
 async function summarizePendingInventoryLocks({ productId = '', variantId = '', branchId = '', inventoryType = 'retail', soldUnitIds = [] } = {}) {
   const wholesaleOps = await WholesaleOperation.find({
     status: { $in: ['pending_director', 'pending_manager'] },
@@ -413,7 +435,27 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
   const clientId = String(payload.clientId || '').trim();
   if (clientId) {
     const existing = await Sale.findOne({ clientId });
-    if (existing) return res.json(existing);
+    if (existing) {
+      // #region debug-point D:sale-request-deduped
+      reportQueuedSalesImeiDebug({
+        hypothesisId: 'D',
+        location: 'sales.js:post:dedupe-existing-sale',
+        msg: '[DEBUG] Backend sale replay deduped to existing sale',
+        data: {
+          clientId,
+          saleId: String(existing?._id || ''),
+          branchId: String(existing?.branchId || branchId || ''),
+          status: String(existing?.status || ''),
+          creditSaleId: String(existing?.creditSaleId || ''),
+          hasSerializedItems: Array.isArray(existing?.items) && existing.items.some((item) => Array.isArray(item?.soldUnitIds) && item.soldUnitIds.length > 0),
+          serializedUnitCount: Array.isArray(existing?.items)
+            ? existing.items.reduce((sum, item) => sum + (Array.isArray(item?.soldUnitIds) ? item.soldUnitIds.length : 0), 0)
+            : 0
+        }
+      });
+      // #endregion
+      return res.json(existing);
+    }
   }
   const cleaned = items.map(it => ({
     productId: it.productId,
@@ -429,6 +471,27 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
   if (cleaned.some(it => !it.productId || !Number.isFinite(it.qty) || it.qty <= 0)) {
     return res.status(400).json({ error: 'Each item must include productId and positive qty' });
   }
+  // #region debug-point B:sale-request-received
+  reportQueuedSalesImeiDebug({
+    hypothesisId: 'B',
+    location: 'sales.js:post:request-received',
+    msg: '[DEBUG] Backend sale request received',
+    data: {
+      clientId,
+      branchId: String(branchId || ''),
+      posType: String(posType || ''),
+      inventoryType: String(inventoryType || ''),
+      reservationToken: String(payload?.reservationToken || ''),
+      itemCount: cleaned.length,
+      items: cleaned.map((item) => ({
+        productId: String(item?.productId || ''),
+        variantId: String(item?.variantId || ''),
+        qty: Number(item?.qty || 0),
+        soldUnitIds: Array.isArray(item?.soldUnitIds) ? item.soldUnitIds.map(String) : []
+      }))
+    }
+  });
+  // #endregion
 
   let customerId = String(payload.customerId || '').trim();
   let customerCode = String(payload.customerCode || '').trim();
@@ -632,6 +695,8 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
   }
 
   let sale;
+  let saleCreatePhase = 'before-sale-create';
+  let serializedFinalizePhase = 'not-started';
   let customerPointsAfter = null;
   let creditSale = null;
   try {
@@ -764,12 +829,49 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       isBackdated: saleTimes.isBackdated,
       backdatedByName: saleTimes.backdatedByName
     });
+    saleCreatePhase = 'sale-created';
+    // #region debug-point B:sale-created-before-serialized-finalize
+    reportQueuedSalesImeiDebug({
+      hypothesisId: 'B',
+      location: 'sales.js:post:sale-created',
+      msg: '[DEBUG] Backend sale document created before serialized finalize',
+      data: {
+        saleId: String(sale?._id || ''),
+        clientId,
+        branchId: String(branchId || ''),
+        reservationToken: String(payload?.reservationToken || ''),
+        touchedSerializedUnits: touchedSerializedUnits.map(String)
+      }
+    });
+    // #endregion
     if (touchedSerializedUnits.length > 0) {
+      serializedFinalizePhase = 'started';
       const soldRows = await sellSerializedUnits({
         unitIds: touchedSerializedUnits,
         reservationToken: String(payload.reservationToken || ''),
         saleId: String(sale._id)
       });
+      serializedFinalizePhase = 'completed';
+      // #region debug-point B:sale-serialized-finalized
+      reportQueuedSalesImeiDebug({
+        hypothesisId: 'B',
+        location: 'sales.js:post:sold-serialized-units',
+        msg: '[DEBUG] Backend serialized units finalized for sale',
+        data: {
+          saleId: String(sale?._id || ''),
+          clientId,
+          soldRows: soldRows.map((row) => ({
+            unitId: String(row?._id || ''),
+            status: String(row?.status || ''),
+            branchId: String(row?.branchId || ''),
+            inventoryType: String(row?.inventoryType || ''),
+            soldSaleId: String(row?.soldSaleId || ''),
+            imei: String(row?.imei || ''),
+            serialNumber: String(row?.serialNumber || '')
+          }))
+        }
+      });
+      // #endregion
       const soldById = new Map(soldRows.map(row => [String(row._id), row]));
       sale.items = sale.items.map(item => ({
         ...(item?.toObject ? item.toObject() : item),
@@ -821,6 +923,24 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       customerPointsAfter = updated ? Number(updated.loyaltyPoints || 0) : null;
     }
   } catch (e) {
+    // #region debug-point E:sale-create-failed
+    reportQueuedSalesImeiDebug({
+      hypothesisId: 'E',
+      location: 'sales.js:post:failed',
+      msg: '[DEBUG] Backend sale creation failed',
+      data: {
+        clientId,
+        branchId: String(branchId || ''),
+        reservationToken: String(payload?.reservationToken || ''),
+        message: String(e?.message || ''),
+        touchedSerializedUnits: touchedSerializedUnits.map(String),
+        saleCreatePhase,
+        serializedFinalizePhase,
+        saleId: String(sale?._id || ''),
+        creditSaleId: String(creditSale?._id || '')
+      }
+    });
+    // #endregion
     try {
       for (let i = touched.length - 1; i >= 0; i--) {
         const t = touched[i];
@@ -829,39 +949,68 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
         await t.target.product.save();
       }
       if (touchedSerializedUnits.length > 0) {
-        await releaseSerializedUnits({ unitIds: touchedSerializedUnits, reservationToken: String(payload.reservationToken || '') });
+        if (serializedFinalizePhase === 'completed' && sale?._id) {
+          await ProductUnit.updateMany(
+            {
+              _id: { $in: touchedSerializedUnits.map(String) },
+              soldSaleId: String(sale._id)
+            },
+            {
+              $set: {
+                status: 'in_stock',
+                reservationToken: '',
+                reservedAt: null,
+                soldAt: null,
+                soldSaleId: ''
+              }
+            }
+          );
+        } else {
+          await releaseSerializedUnits({ unitIds: touchedSerializedUnits, reservationToken: String(payload.reservationToken || '') });
+        }
+      }
+      if (creditSale?._id) {
+        await CreditSale.deleteOne({ _id: creditSale._id });
+        if (customerId) {
+          await updateCustomerCreditMetrics(customerId);
+        }
+      }
+      if (sale?._id) {
+        await Sale.deleteOne({ _id: sale._id });
       }
     } catch {}
     return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to create sale') });
   }
 
-  await Audit.create({
-    actor: sale.sellerName || 'unknown',
-    actionType: posType === 'wholesale' ? 'stock_wholesale_sale_deduct' : 'stock_sale_deduct',
-    details: withInventoryAudit(
-      {
-        items: sale.items.map(i => ({ sku: i.sku, qty: i.qty, productId: i.productId || null, variantId: i.variantId || null, priceTier: i.priceTier || defaultPriceTier })),
-        invoiceSerial,
-        receiptNumber,
-        saleCapturedAt: sale.saleCapturedAt || null,
-        saleEffectiveAt: sale.created_at || null,
-        isBackdated: !!sale.isBackdated,
-        inventoryType,
-        posType
-      },
-      sale.items.map((item) => makeInventoryLine({
-        productId: item.productId || '',
-        productName: item.name || item.productId || '',
-        variantId: item.variantId || '',
-        branchId: sale.branchId,
-        inventoryType,
-        delta: -Math.abs(Number(item.qty || 0)),
-        remark: receiptNumber
-      }))
-    ),
-    branchId: sale.branchId,
-    ts: new Date()
-  });
+  try {
+    await Audit.create({
+      actor: sale.sellerName || 'unknown',
+      actionType: posType === 'wholesale' ? 'stock_wholesale_sale_deduct' : 'stock_sale_deduct',
+      details: withInventoryAudit(
+        {
+          items: sale.items.map(i => ({ sku: i.sku, qty: i.qty, productId: i.productId || null, variantId: i.variantId || null, priceTier: i.priceTier || defaultPriceTier })),
+          invoiceSerial,
+          receiptNumber,
+          saleCapturedAt: sale.saleCapturedAt || null,
+          saleEffectiveAt: sale.created_at || null,
+          isBackdated: !!sale.isBackdated,
+          inventoryType,
+          posType
+        },
+        sale.items.map((item) => makeInventoryLine({
+          productId: item.productId || '',
+          productName: item.name || item.productId || '',
+          variantId: item.variantId || '',
+          branchId: sale.branchId,
+          inventoryType,
+          delta: -Math.abs(Number(item.qty || 0)),
+          remark: receiptNumber
+        }))
+      ),
+      branchId: sale.branchId,
+      ts: new Date()
+    });
+  } catch {}
   try {
     await ServerLog.create({
       level: 'info',
