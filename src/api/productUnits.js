@@ -4,6 +4,22 @@ const CACHE_KEY = 'ptsales:serialized-units-cache:v1';
 const REQUEST_CACHE_TTL_MS = 4000;
 const listRequestCache = new Map();
 
+function reportQueuedSalesImeiDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  fetch('http://127.0.0.1:7777/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'queued-sales-imei',
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      msg,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {});
+}
+
 function readCacheData() {
   try {
     const raw = localStorage.getItem(CACHE_KEY);
@@ -60,6 +76,7 @@ function rowMatchesScope(row, params = {}) {
 }
 
 function shouldReconcileScope(params = {}, total = 0) {
+  if (params.all) return true;
   const page = Math.max(1, Number(params.page || 1));
   const pageSize = Math.max(1, Number(params.pageSize || 30));
   if (page !== 1) return false;
@@ -242,6 +259,24 @@ export function markSoldProductUnits(unitIds = []) {
   const next = readCache().map(row => unitIds.map(String).includes(String(row._id)) ? { ...row, status: 'sold', reservationToken: '', reservedAt: null, soldAt: new Date().toISOString(), offlineCached: true } : row);
   writeCache(next);
   invalidateListRequestCache();
+  // #region debug-point A:frontend-mark-sold-cache
+  reportQueuedSalesImeiDebug({
+    hypothesisId: 'A',
+    location: 'productUnits.js:markSoldProductUnits',
+    msg: '[DEBUG] Frontend serialized cache marked units sold locally',
+    data: {
+      soldUnitIds: unitIds.map(String),
+      affectedRows: next.filter((row) => unitIds.map(String).includes(String(row?._id || ''))).map((row) => ({
+        unitId: String(row?._id || ''),
+        productId: String(row?.productId || ''),
+        variantId: String(row?.variantId || ''),
+        branchId: String(row?.branchId || ''),
+        inventoryType: String(row?.inventoryType || ''),
+        status: String(row?.status || '')
+      }))
+    }
+  });
+  // #endregion
 }
 
 export function listProductUnits(params = {}) {
@@ -263,6 +298,33 @@ export function listProductUnits(params = {}) {
     reconcileScopeRows(params, result?.rows || [], Number(result?.total || 0));
     const rows = overlayRows(result?.rows || [], params);
     const data = { ...result, rows, total: params.status ? rows.length : Number(result?.total || rows.length) };
+    // #region debug-point D:frontend-list-product-units
+    reportQueuedSalesImeiDebug({
+      hypothesisId: 'D',
+      location: 'productUnits.js:listProductUnits:online-result',
+      msg: '[DEBUG] Frontend serialized unit list resolved',
+      data: {
+        productId: String(params?.productId || ''),
+        variantId: String(params?.variantId || ''),
+        branchId: String(params?.branchId || ''),
+        inventoryType: String(params?.inventoryType || ''),
+        status: String(params?.status || ''),
+        query: String(params?.query || ''),
+        reservationToken: String(params?.reservationToken || ''),
+        serverRowCount: Array.isArray(result?.rows) ? result.rows.length : 0,
+        overlayRowCount: Array.isArray(rows) ? rows.length : 0,
+        total: Number(data?.total || 0),
+        sample: (Array.isArray(rows) ? rows : []).slice(0, 5).map((row) => ({
+          unitId: String(row?._id || ''),
+          status: String(row?.status || ''),
+          imei: String(row?.imei || ''),
+          serialNumber: String(row?.serialNumber || ''),
+          branchId: String(row?.branchId || ''),
+          inventoryType: String(row?.inventoryType || '')
+        }))
+      }
+    });
+    // #endregion
     listRequestCache.set(qs, { data, expiresAt: Date.now() + REQUEST_CACHE_TTL_MS });
     return data;
   }).finally(() => {

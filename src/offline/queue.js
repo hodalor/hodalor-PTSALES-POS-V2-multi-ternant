@@ -5,6 +5,22 @@ const STORE = 'queue';
 
 let syncing = false;
 
+function reportQueuedSalesImeiDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  fetch('http://127.0.0.1:7777/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'queued-sales-imei',
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      msg,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {});
+}
+
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
@@ -108,6 +124,9 @@ export async function attemptSync(syncHandler) {
     let failed = 0;
     const errors = [];
     for (const item of items) {
+      const isSaleItem = item?.type === 'sale'
+        || String(item?.payload?.collection || '') === 'sales'
+        || String(item?.payload?.path || '') === '/api/sales';
       let ok = false;
       let attempt = 0;
       const maxAttempts = 3;
@@ -129,11 +148,43 @@ export async function attemptSync(syncHandler) {
         }
       }
       if (ok) {
+        if (isSaleItem) {
+          // #region debug-point E:queue-sale-remove
+          reportQueuedSalesImeiDebug({
+            hypothesisId: 'E',
+            location: 'queue.js:attemptSync:remove-success',
+            msg: '[DEBUG] Queue item removed after successful sale sync',
+            data: {
+              queueId: Number(item?.id || 0),
+              fingerprint: String(item?.fingerprint || ''),
+              collection: String(item?.payload?.collection || ''),
+              path: String(item?.payload?.path || '/api/sales')
+            }
+          });
+          // #endregion
+        }
         await removeByFingerprint(item.fingerprint || buildFingerprint(item.type, item.payload));
       } else {
         allOk = false;
         failed += 1;
         const failedItem = (await getAll()).find((entry) => entry.id === item.id) || item;
+        if (isSaleItem) {
+          // #region debug-point E:queue-sale-retained
+          reportQueuedSalesImeiDebug({
+            hypothesisId: 'E',
+            location: 'queue.js:attemptSync:retain-failed',
+            msg: '[DEBUG] Queue item retained after failed sale sync',
+            data: {
+              queueId: Number(item?.id || 0),
+              fingerprint: String(item?.fingerprint || ''),
+              attempts: Number(failedItem?.attempts || 0),
+              lastError: String(failedItem?.lastError || ''),
+              collection: String(item?.payload?.collection || ''),
+              path: String(item?.payload?.path || '/api/sales')
+            }
+          });
+          // #endregion
+        }
         errors.push(`Failed item id=${item.id}: ${failedItem.lastError || 'Unknown sync error'}`);
       }
     }

@@ -3,9 +3,48 @@ import { createSale } from '../api/sales';
 import { ensureOnlineJwt, reauthIf401 } from './reAuth';
 import { addImeiConflict } from './imeiConflicts';
 
+function reportQueuedSalesImeiDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  fetch('http://127.0.0.1:7777/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'queued-sales-imei',
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      msg,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {});
+}
+
 export async function syncQueuedItem(item) {
   if (!item) return;
   const hasSerialized = !!(item?.payload?.body?.items || item?.payload?.items || []).some(line => Array.isArray(line?.soldUnitIds) && line.soldUnitIds.length > 0);
+  const isSalesPath = String(item?.payload?.path || '') === '/api/sales';
+  const isSaleReplay = item?.type === 'sale' || (item?.type === 'http' && isSalesPath);
+  const salePayload = item?.type === 'http' ? (item?.payload?.body || {}) : (item?.payload || {});
+  if (isSaleReplay) {
+    // #region debug-point A:sync-sale-start
+    reportQueuedSalesImeiDebug({
+      hypothesisId: 'A',
+      location: 'syncHandlers.js:syncQueuedItem:start',
+      msg: '[DEBUG] Queued sale replay starting',
+      data: {
+        queueId: Number(item?.id || 0),
+        itemType: String(item?.type || ''),
+        path: String(item?.payload?.path || '/api/sales'),
+        clientId: String(salePayload?.clientId || ''),
+        branchId: String(salePayload?.branchId || ''),
+        reservationToken: String(salePayload?.reservationToken || ''),
+        itemCount: Array.isArray(salePayload?.items) ? salePayload.items.length : 0,
+        soldUnitIds: (Array.isArray(salePayload?.items) ? salePayload.items : []).flatMap((line) => Array.isArray(line?.soldUnitIds) ? line.soldUnitIds.map(String) : []),
+        hasSerialized
+      }
+    });
+    // #endregion
+  }
   if (item.type === 'http') {
     const p = item.payload || {};
     const method = String(p.method || 'POST').toUpperCase();
@@ -17,11 +56,58 @@ export async function syncQueuedItem(item) {
     await ensureOnlineJwt();
     try {
       await fetchJson(path, opts);
+      if (isSaleReplay) {
+        // #region debug-point B:sync-sale-success
+        reportQueuedSalesImeiDebug({
+          hypothesisId: 'B',
+          location: 'syncHandlers.js:syncQueuedItem:http-success',
+          msg: '[DEBUG] Queued sale replay completed successfully',
+          data: {
+            queueId: Number(item?.id || 0),
+            clientId: String(body?.clientId || ''),
+            branchId: String(body?.branchId || ''),
+            soldUnitIds: (Array.isArray(body?.items) ? body.items : []).flatMap((line) => Array.isArray(line?.soldUnitIds) ? line.soldUnitIds.map(String) : [])
+          }
+        });
+        // #endregion
+      }
     } catch (e) {
       const retried = await reauthIf401(e);
       if (retried) {
         await fetchJson(path, opts);
+        if (isSaleReplay) {
+          // #region debug-point B:sync-sale-success-after-reauth
+          reportQueuedSalesImeiDebug({
+            hypothesisId: 'B',
+            location: 'syncHandlers.js:syncQueuedItem:http-success-after-reauth',
+            msg: '[DEBUG] Queued sale replay succeeded after reauth',
+            data: {
+              queueId: Number(item?.id || 0),
+              clientId: String(body?.clientId || ''),
+              branchId: String(body?.branchId || ''),
+              soldUnitIds: (Array.isArray(body?.items) ? body.items : []).flatMap((line) => Array.isArray(line?.soldUnitIds) ? line.soldUnitIds.map(String) : [])
+            }
+          });
+          // #endregion
+        }
         return;
+      }
+      if (isSaleReplay) {
+        // #region debug-point E:sync-sale-error
+        reportQueuedSalesImeiDebug({
+          hypothesisId: 'E',
+          location: 'syncHandlers.js:syncQueuedItem:http-error',
+          msg: '[DEBUG] Queued sale replay failed',
+          data: {
+            queueId: Number(item?.id || 0),
+            clientId: String(body?.clientId || ''),
+            branchId: String(body?.branchId || ''),
+            message: String(e?.message || ''),
+            soldUnitIds: (Array.isArray(body?.items) ? body.items : []).flatMap((line) => Array.isArray(line?.soldUnitIds) ? line.soldUnitIds.map(String) : []),
+            hasSerialized
+          }
+        });
+        // #endregion
       }
       if (path === '/api/sales' && hasSerialized) {
         addImeiConflict({
@@ -39,7 +125,35 @@ export async function syncQueuedItem(item) {
   if (item.type === 'sale') {
     try {
       await createSale(item.payload);
+      // #region debug-point B:sync-sale-direct-success
+      reportQueuedSalesImeiDebug({
+        hypothesisId: 'B',
+        location: 'syncHandlers.js:syncQueuedItem:direct-success',
+        msg: '[DEBUG] Legacy queued sale replay completed successfully',
+        data: {
+          queueId: Number(item?.id || 0),
+          clientId: String(item?.payload?.clientId || ''),
+          branchId: String(item?.payload?.branchId || ''),
+          soldUnitIds: (Array.isArray(item?.payload?.items) ? item.payload.items : []).flatMap((line) => Array.isArray(line?.soldUnitIds) ? line.soldUnitIds.map(String) : [])
+        }
+      });
+      // #endregion
     } catch (e) {
+      // #region debug-point E:sync-sale-direct-error
+      reportQueuedSalesImeiDebug({
+        hypothesisId: 'E',
+        location: 'syncHandlers.js:syncQueuedItem:direct-error',
+        msg: '[DEBUG] Legacy queued sale replay failed',
+        data: {
+          queueId: Number(item?.id || 0),
+          clientId: String(item?.payload?.clientId || ''),
+          branchId: String(item?.payload?.branchId || ''),
+          message: String(e?.message || ''),
+          soldUnitIds: (Array.isArray(item?.payload?.items) ? item.payload.items : []).flatMap((line) => Array.isArray(line?.soldUnitIds) ? line.soldUnitIds.map(String) : []),
+          hasSerialized
+        }
+      });
+      // #endregion
       if (hasSerialized) {
         addImeiConflict({
           queueId: item.id,

@@ -1,7 +1,7 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 import { addItem, removeItem, removeItemByUnitId, setQuantity, updateItemPricing, clearCart, setDiscount, addHeld, removeHeld, replaceCart, updateHeld } from '../store/cartSlice';
-import { adjustStock, setStock } from '../store/productsSlice';
+import { adjustStock } from '../store/productsSlice';
 import { recordSale } from '../store/salesSlice';
 import { addInvoice } from '../store/invoicesSlice';
 import { addCustomer, updateCustomer } from '../store/customersSlice';
@@ -30,6 +30,22 @@ import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { useAppLanguage } from '../utils/localization';
 import { getBranchStock } from '../utils/branchStock';
 import { getProductBrand, getProductSearchText } from '../utils/productSearch';
+
+function reportQueuedSalesImeiDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  fetch('http://127.0.0.1:7777/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'queued-sales-imei',
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      msg,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {});
+}
 
 function createReservationToken() {
   return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `RES-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -553,7 +569,14 @@ function PosPage({ mode = 'retail' }) {
     if (serializedStockCountMap.has(key)) {
       return Number(serializedStockCountMap.get(key) || 0);
     }
-    return Number(getAvailableStockForBranch(p) || 0);
+    const exactCount = productUnitsApi.getEffectiveCachedProductUnitCount({
+      productId: p.productId || p.id,
+      variantId: p.variantId || '',
+      branchId: activeBranchId,
+      inventoryType: isWholesale ? 'wholesale' : 'retail',
+      reservationToken
+    });
+    return exactCount?.hasCache ? Number(exactCount.count || 0) : 0;
   }
 
   function visibleStockForProduct(p) {
@@ -646,6 +669,19 @@ function PosPage({ mode = 'retail' }) {
     }, likelyExactCode ? 40 : 90);
     return () => clearTimeout(timer);
   }, [query, activeBranchId, isWholesale, reservationToken]);
+
+  useEffect(() => {
+    if (!activeBranchId) return;
+    const inventoryType = isWholesale ? 'wholesale' : 'retail';
+    productUnitsApi.listProductUnits({
+      branchId: activeBranchId,
+      inventoryType,
+      status: 'available',
+      all: true,
+      page: 1,
+      pageSize: 5000
+    }).catch(() => {});
+  }, [activeBranchId, isWholesale]);
 
   const subtotal = cart.items.reduce((sum, i) => sum + (i.price || 0) * (i.quantity || 1), 0);
   const serializedPickerCartItems = useMemo(() => {
@@ -863,7 +899,6 @@ function PosPage({ mode = 'retail' }) {
   async function addToCart(p) {
     const available = getAvailableStockForBranch(p);
     const visible = visibleStockForProduct(p);
-    const serializedVisible = String(p.trackType || 'quantity') === 'serialized' ? getSerializedVisibleStockForBranch(p) : null;
     const decisionAvailable = String(p.trackType || 'quantity') === 'serialized' ? visible : available;
     const inCart = cart.items
       .filter((item) =>
@@ -1193,6 +1228,7 @@ function PosPage({ mode = 'retail' }) {
       saleDateTime: canBackdateSales && saleDateTimeTouched ? selectedSaleAt : undefined,
       reservationToken
       };
+      const soldUnitIdsForDebug = cart.items.map((item) => item.unitId).filter(Boolean).map(String);
       let saleForUi = null;
       if (!navigator.onLine) {
         const offlineId = `offline-sale-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -1200,6 +1236,20 @@ function PosPage({ mode = 'retail' }) {
         const ref = `OFF-${String(Date.now()).padStart(6, '0').slice(-6)}`;
         try {
           await enqueueHttp({ collection: 'sales', label: 'Sale', path: '/api/sales', method: 'POST', body: sale });
+          // #region debug-point A:pos-offline-queued
+          reportQueuedSalesImeiDebug({
+            hypothesisId: 'A',
+            location: 'PosPage.js:completeSale:offline-queued',
+            msg: '[DEBUG] POS sale queued offline before local sold mark',
+            data: {
+              clientId: String(sale?.clientId || ''),
+              branchId: String(activeBranchId || ''),
+              reservationToken: String(sale?.reservationToken || ''),
+              soldUnitIds: soldUnitIdsForDebug,
+              hasSerialized: soldUnitIdsForDebug.length > 0
+            }
+          });
+          // #endregion
         } catch (e) {
           toast.show(String(e?.message || 'Failed to save offline'), { type: 'error' });
           return;
@@ -1340,13 +1390,42 @@ function PosPage({ mode = 'retail' }) {
           if (saved && (saved.invoiceSerial || saved.receiptNumber)) {
             // no-op: printed already; server holds the official refs
           }
-          productUnitsApi.markSoldProductUnits(cart.items.map(item => item.unitId).filter(Boolean));
+          // #region debug-point B:pos-online-sale-saved
+          reportQueuedSalesImeiDebug({
+            hypothesisId: 'B',
+            location: 'PosPage.js:completeSale:online-create-success',
+            msg: '[DEBUG] POS online sale saved before local serialized cache mark',
+            data: {
+              clientId: String(sale?.clientId || ''),
+              serverSaleId: String(saved?._id || saved?.id || ''),
+              branchId: String(activeBranchId || ''),
+              soldUnitIds: soldUnitIdsForDebug,
+              hasSerialized: soldUnitIdsForDebug.length > 0
+            }
+          });
+          // #endregion
+          productUnitsApi.markSoldProductUnits(soldUnitIdsForDebug);
           void refreshAffectedProducts(dispatch, affectedProductIds);
           toast.show('Sale recorded', { type: 'success' });
         } catch (e) {
           try {
             await enqueueHttp({ collection: 'sales', label: 'Sale', path: '/api/sales', method: 'POST', body: { ...sale, clientId: sale.clientId } });
-            productUnitsApi.markSoldProductUnits(cart.items.map(item => item.unitId).filter(Boolean));
+            // #region debug-point A:pos-online-fallback-queued
+            reportQueuedSalesImeiDebug({
+              hypothesisId: 'A',
+              location: 'PosPage.js:completeSale:online-fallback-queued',
+              msg: '[DEBUG] POS online sale fell back to queue before local serialized cache mark',
+              data: {
+                clientId: String(sale?.clientId || ''),
+                branchId: String(activeBranchId || ''),
+                reservationToken: String(sale?.reservationToken || ''),
+                createSaleError: String(e?.message || ''),
+                soldUnitIds: soldUnitIdsForDebug,
+                hasSerialized: soldUnitIdsForDebug.length > 0
+              }
+            });
+            // #endregion
+            productUnitsApi.markSoldProductUnits(soldUnitIdsForDebug);
             toast.show(sale.items.some(item => Array.isArray(item.soldUnitIds) && item.soldUnitIds.length > 0) ? 'Saved offline. Serialized IMEI sale will sync later and conflicts will be flagged if found.' : 'Network issue: saved offline and will sync later', { type: 'warning' });
           } catch (err) {
             await releaseSerializedCartItems(cart.items);
@@ -1359,7 +1438,21 @@ function PosPage({ mode = 'retail' }) {
           }
         }
       } else {
-        productUnitsApi.markSoldProductUnits(cart.items.map(item => item.unitId).filter(Boolean));
+        // #region debug-point A:pos-offline-local-sold
+        reportQueuedSalesImeiDebug({
+          hypothesisId: 'A',
+          location: 'PosPage.js:completeSale:offline-local-mark-sold',
+          msg: '[DEBUG] POS offline sale marking serialized units sold locally',
+          data: {
+            clientId: String(sale?.clientId || ''),
+            branchId: String(activeBranchId || ''),
+            reservationToken: String(sale?.reservationToken || ''),
+            soldUnitIds: soldUnitIdsForDebug,
+            hasSerialized: soldUnitIdsForDebug.length > 0
+          }
+        });
+        // #endregion
+        productUnitsApi.markSoldProductUnits(soldUnitIdsForDebug);
         toast.show('Saved offline. Will backup when online.', { type: 'success' });
       }
     } finally {
