@@ -19,12 +19,47 @@ function reportQueuedSalesImeiDebug({ hypothesisId = 'A', location = '', msg = '
   }).catch(() => {});
 }
 
+function reportTenantQueueSkewDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  fetch('http://127.0.0.1:7777/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'tenant-queue-skew',
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      msg,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {});
+}
+
 export async function syncQueuedItem(item) {
   if (!item) return;
   const hasSerialized = !!(item?.payload?.body?.items || item?.payload?.items || []).some(line => Array.isArray(line?.soldUnitIds) && line.soldUnitIds.length > 0);
   const isSalesPath = String(item?.payload?.path || '') === '/api/sales';
   const isSaleReplay = item?.type === 'sale' || (item?.type === 'http' && isSalesPath);
   const salePayload = item?.type === 'http' ? (item?.payload?.body || {}) : (item?.payload || {});
+  const tenantId = (() => {
+    try { return String(localStorage.getItem('ptSales:tenantId') || 'default'); } catch { return 'default'; }
+  })();
+  // #region debug-point C:sync-handler-active-tenant
+  reportTenantQueueSkewDebug({
+    hypothesisId: 'C',
+    location: 'syncHandlers.js:syncQueuedItem',
+    msg: '[DEBUG] Queue sync handler resolved active tenant before replay',
+    data: {
+      tenantId,
+      queueId: Number(item?.id || 0),
+      itemType: String(item?.type || ''),
+      path: String(item?.payload?.path || ''),
+      clientId: String(salePayload?.clientId || ''),
+      branchId: String(salePayload?.branchId || ''),
+      hasSerialized
+    }
+  });
+  // #endregion
   if (isSaleReplay) {
     // #region debug-point A:sync-sale-start
     reportQueuedSalesImeiDebug({

@@ -21,6 +21,22 @@ function reportQueuedSalesImeiDebug({ hypothesisId = 'A', location = '', msg = '
   }).catch(() => {});
 }
 
+function reportTenantQueueSkewDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  fetch('http://127.0.0.1:7777/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'tenant-queue-skew',
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      msg,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {});
+}
+
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
@@ -65,6 +81,27 @@ export async function enqueue(type, payload) {
     lastError: '',
     lastAttemptAt: 0
   };
+  const tenantId = (() => {
+    try { return String(localStorage.getItem('ptSales:tenantId') || 'default'); } catch { return 'default'; }
+  })();
+  const saleBody = payload?.body || payload || {};
+  // #region debug-point A:queue-enqueue-tenant
+  reportTenantQueueSkewDebug({
+    hypothesisId: 'A',
+    location: 'queue.js:enqueue',
+    msg: '[DEBUG] Offline queue item saved under active tenant context',
+    data: {
+      tenantId,
+      queueType: String(type || ''),
+      collection: String(payload?.collection || ''),
+      path: String(payload?.path || ''),
+      fingerprint,
+      dedupedToExistingId: existing?.id != null ? Number(existing.id) : null,
+      clientId: String(saleBody?.clientId || ''),
+      branchId: String(saleBody?.branchId || '')
+    }
+  });
+  // #endregion
   if (existing?.id != null) {
     await db.put(STORE, { ...existing, ...record, id: existing.id });
     return existing.id;
@@ -127,6 +164,28 @@ export async function attemptSync(syncHandler) {
       const isSaleItem = item?.type === 'sale'
         || String(item?.payload?.collection || '') === 'sales'
         || String(item?.payload?.path || '') === '/api/sales';
+      const tenantId = (() => {
+        try { return String(localStorage.getItem('ptSales:tenantId') || 'default'); } catch { return 'default'; }
+      })();
+      const body = item?.payload?.body || item?.payload || {};
+      // #region debug-point B:queue-sync-item-tenant
+      reportTenantQueueSkewDebug({
+        hypothesisId: 'B',
+        location: 'queue.js:attemptSync:item-start',
+        msg: '[DEBUG] Offline queue item is about to sync under active tenant context',
+        data: {
+          tenantId,
+          queueId: Number(item?.id || 0),
+          queueType: String(item?.type || ''),
+          collection: String(item?.payload?.collection || ''),
+          path: String(item?.payload?.path || ''),
+          attempts: Number(item?.attempts || 0),
+          clientId: String(body?.clientId || ''),
+          branchId: String(body?.branchId || ''),
+          fingerprint: String(item?.fingerprint || '')
+        }
+      });
+      // #endregion
       let ok = false;
       let attempt = 0;
       const maxAttempts = 3;
