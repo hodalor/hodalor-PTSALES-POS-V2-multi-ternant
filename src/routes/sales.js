@@ -425,12 +425,14 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
   if (!branchId) return res.status(400).json({ error: 'Missing branchId' });
   const items = Array.isArray(payload.items) ? payload.items : [];
   if (items.length === 0) return res.status(400).json({ error: 'Sale must include items' });
-  const posType = String(payload.posType || 'retail').toLowerCase() === 'wholesale' ? 'wholesale' : 'retail';
-  const inventoryType = String(payload.inventoryType || (posType === 'wholesale' ? 'wholesale' : 'retail')).toLowerCase() === 'wholesale' ? 'wholesale' : 'retail';
-  const allowedPriceTiers = new Set(['retail', 'wholesale', 'agent']);
+  const requestedPosType = String(payload.posType || 'retail').trim().toLowerCase();
+  const posType = ['retail', 'wholesale', 'warehouse'].includes(requestedPosType) ? requestedPosType : 'retail';
+  const requestedInventoryType = String(payload.inventoryType || posType || 'retail').trim().toLowerCase();
+  const inventoryType = ['retail', 'wholesale', 'warehouse'].includes(requestedInventoryType) ? requestedInventoryType : posType;
+  const allowedPriceTiers = new Set(['retail', 'wholesale', 'warehouse', 'agent']);
   const defaultPriceTier = allowedPriceTiers.has(String(payload.defaultPriceTier || '').toLowerCase())
     ? String(payload.defaultPriceTier || '').toLowerCase()
-    : (posType === 'wholesale' ? 'wholesale' : 'retail');
+    : (posType === 'wholesale' ? 'wholesale' : posType === 'warehouse' ? 'warehouse' : 'retail');
   const creditPayload = payload.creditSale && payload.creditSale.enabled ? payload.creditSale : null;
   const clientId = String(payload.clientId || '').trim();
   if (clientId) {
@@ -532,15 +534,28 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
   let receiptPrefix = 'RCPT';
   let settingsData = {};
   try {
+    const invoiceCounterField = posType === 'wholesale'
+      ? 'data.nextWholesaleInvoiceNumber'
+      : posType === 'warehouse'
+        ? 'data.nextWarehouseInvoiceNumber'
+        : 'data.nextInvoiceNumber';
     const updated = await Settings.findOneAndUpdate(
       { key: 'default' },
-      { $inc: { 'data.nextInvoiceNumber': 1, 'data.nextReceiptNumber': 1 } },
+      { $inc: { [invoiceCounterField]: 1, 'data.nextReceiptNumber': 1 } },
       { new: true, upsert: true }
     );
     settingsData = updated?.data || {};
-    invoicePrefix = String(settingsData.invoicePrefix || 'INV');
+    invoicePrefix = posType === 'wholesale'
+      ? String(settingsData.wholesaleInvoicePrefix || 'WINV')
+      : posType === 'warehouse'
+        ? String(settingsData.warehouseInvoicePrefix || 'WHINV')
+        : String(settingsData.invoicePrefix || 'INV');
     receiptPrefix = String(settingsData.receiptPrefix || 'RCPT');
-    invoiceNum = Math.max(1, Number(settingsData.nextInvoiceNumber || 1) - 1);
+    invoiceNum = Math.max(1, Number(posType === 'wholesale'
+      ? settingsData.nextWholesaleInvoiceNumber
+      : posType === 'warehouse'
+        ? settingsData.nextWarehouseInvoiceNumber
+        : settingsData.nextInvoiceNumber || 1) - 1);
     receiptNum = Math.max(1, Number(settingsData.nextReceiptNumber || 1) - 1);
   } catch {
     // keep defaults
@@ -788,7 +803,7 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       }
     }
 
-    const defaultCreditPackageName = posType === 'wholesale' ? 'Credit Sale' : 'Credit';
+    const defaultCreditPackageName = posType === 'retail' ? 'Credit' : 'Credit Sale';
     const creditPackageId = creditPayload ? String(payload.creditPackageId || '').trim() : '';
     const creditPackageName = creditPayload
       ? (String(payload.creditPackageName || '').trim() || defaultCreditPackageName)
@@ -809,7 +824,7 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       total: revenueTotal,
       payment_methods: payments,
       creditMode: creditPayload
-        ? (posType === 'wholesale' ? 'distribution_credit' : 'retail_easybuy')
+        ? (posType === 'retail' ? 'retail_easybuy' : 'distribution_credit')
         : 'none',
       creditPackageId,
       creditPackageName,
@@ -985,7 +1000,7 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
   try {
     await Audit.create({
       actor: sale.sellerName || 'unknown',
-      actionType: posType === 'wholesale' ? 'stock_wholesale_sale_deduct' : 'stock_sale_deduct',
+      actionType: posType === 'wholesale' ? 'stock_wholesale_sale_deduct' : posType === 'warehouse' ? 'stock_warehouse_sale_deduct' : 'stock_sale_deduct',
       details: withInventoryAudit(
         {
           items: sale.items.map(i => ({ sku: i.sku, qty: i.qty, productId: i.productId || null, variantId: i.variantId || null, priceTier: i.priceTier || defaultPriceTier })),
@@ -1039,7 +1054,7 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       number: sale.invoiceSerial || '',
       date: sale.created_at || new Date(),
       saleId: String(sale._id),
-      source: posType === 'wholesale' ? 'wholesale-pos' : 'pos',
+      source: posType === 'wholesale' ? 'wholesale-pos' : posType === 'warehouse' ? 'warehouse-pos' : 'pos',
       paymentStatus: creditSale ? (Number(creditSale.balance || 0) > 0 ? 'active' : 'paid') : 'paid',
       customer: {
         name: sale.customerName || '',

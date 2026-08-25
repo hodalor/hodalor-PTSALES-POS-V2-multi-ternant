@@ -33,7 +33,7 @@ const InvoiceSchema = new mongoose.Schema({
   number: { type: String, index: true },
   date: { type: Date, default: Date.now },
   saleId: { type: String, index: true },
-  source: { type: String, enum: ['manual','pos','wholesale-pos','wholesale-manual','warehouse-manual'], default: 'manual' },
+  source: { type: String, enum: ['manual','pos','wholesale-pos','warehouse-pos','wholesale-manual','warehouse-manual'], default: 'manual' },
   paymentStatus: { type: String, enum: ['paid','unpaid'], default: 'unpaid' },
   customer: { type: InvoiceCustomerSchema, default: {} },
   items: { type: [InvoiceItemSchema], default: [] },
