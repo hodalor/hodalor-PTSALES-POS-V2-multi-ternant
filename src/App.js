@@ -711,6 +711,7 @@ function App() {
             <Route path="/dashboard" element={<ProtectedRoute feature="modules.dashboard" roles={['Admin','Manager']} grant={['view_dashboard','see_dashboard']}><DashboardPage /></ProtectedRoute>} />
             <Route path="/pos" element={<ProtectedRoute feature="pages.retail.pos" roles={['Admin','Manager','Cashier']} grant={['view_pos','see_pos']}><PosPage mode="retail" /></ProtectedRoute>} />
             <Route path="/wholesale-pos" element={<ProtectedRoute feature="pages.distribution.pos" roles={['Admin','Manager','Cashier']} grant={['view_wholesale_pos']}><PosPage mode="wholesale" /></ProtectedRoute>} />
+            <Route path="/warehouse-pos" element={<ProtectedRoute feature="pages.warehouse.pos" roles={['Admin','Manager','Cashier']} grant={['view_warehouse_pos']}><PosPage mode="warehouse" /></ProtectedRoute>} />
             <Route path="/wholesale-goods" element={<ProtectedRoute feature="pages.distribution.goods" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['view_distribution_products']}><WholesaleGoodsPage /></ProtectedRoute>} />
             <Route path="/wholesale-invoices" element={<ProtectedRoute feature="pages.distribution.invoices" roles={['Admin','Manager','Cashier']} grant={['view_wholesale_invoices']}><WholesaleInvoicesPage /></ProtectedRoute>} />
             <Route path="/wholesale-purchase" element={<ProtectedRoute feature="pages.distribution.purchase" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['add_wholesale_purchases']}><WholesalePurchasePage /></ProtectedRoute>} />

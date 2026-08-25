@@ -106,11 +106,16 @@ function PosPage({ mode = 'retail' }) {
   const settings = useSelector(s => s.settings);
   const auth = useSelector(s => s.auth);
   const { t } = useAppLanguage();
-  const isWholesale = String(mode || '').toLowerCase() === 'wholesale';
-  const creditModeLabel = isWholesale ? t('Credit Sale') : t('Credit');
-  const modeLabel = isWholesale ? t('Distribution POS') : t('POS');
-  const reservationStorageKey = `ptsales:pos-reservation-token:${String(mode || 'retail').toLowerCase()}`;
-  const initialPriceTier = isWholesale ? 'wholesale' : 'retail';
+  const modeLower = String(mode || '').toLowerCase();
+  const isWholesale = modeLower === 'wholesale';
+  const isWarehouse = modeLower === 'warehouse';
+  const isNonRetail = isWholesale || isWarehouse;
+  const inventoryType = isWholesale ? 'wholesale' : isWarehouse ? 'warehouse' : 'retail';
+  const creditModeLabel = isNonRetail ? t('Credit Sale') : t('Credit');
+  const modeLabel = isWholesale ? t('Distribution POS') : isWarehouse ? t('Warehouse POS') : t('POS');
+  const reservationStorageKey = `ptsales:pos-reservation-token:${modeLower || 'retail'}`;
+  const initialPriceTier = isWholesale ? 'wholesale' : isWarehouse ? 'warehouse' : 'retail';
+  const defaultCustomerType = isNonRetail ? 'distribution' : 'retail';
   const roleLower = String(auth.role || '').toLowerCase();
   const isFixedBranchUser = !['admin', 'manager', 'branch manager', 'superadmin'].includes(roleLower);
   const assignedBranchIds = useMemo(() => {
@@ -124,7 +129,7 @@ function PosPage({ mode = 'retail' }) {
       ? (String(auth.user?.branchId || '').trim() || assignedBranchIds[0] || branchId)
       : branchId;
     const currentBranch = (branches || []).find(branch => String(branch.id) === String(preferredBranchId));
-    const expectedType = isWholesale ? 'wholesale' : 'retail';
+    const expectedType = inventoryType;
     if (String(currentBranch?.branchType || 'retail').toLowerCase() === expectedType) return preferredBranchId;
     const allowedIds = new Set((isFixedBranchUser ? [preferredBranchId, ...assignedBranchIds] : [preferredBranchId]).filter(Boolean).map(String));
     const fallback = (branches || []).find(branch => {
@@ -133,7 +138,7 @@ function PosPage({ mode = 'retail' }) {
       return allowedIds.has(String(branch.id));
     });
     return fallback?.id || preferredBranchId || branchId;
-  }, [assignedBranchIds, auth.user?.branchId, branchId, branches, isFixedBranchUser, isWholesale]);
+  }, [assignedBranchIds, auth.user?.branchId, branchId, branches, inventoryType, isFixedBranchUser]);
   const activeBranch = useMemo(() => (branches || []).find(branch => String(branch.id) === String(activeBranchId)) || null, [activeBranchId, branches]);
   const branchNameById = useMemo(() => new Map((branches || []).map(branch => [String(branch.id), branch.name])), [branches]);
   const stockBranchId = useMemo(() => (
@@ -195,7 +200,7 @@ function PosPage({ mode = 'retail' }) {
   const [saving, setSaving] = useState(false);
   const [customerQuery, setCustomerQuery] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
-  const [quickCustomerForm, setQuickCustomerForm] = useState({ name: '', phone: '', address: '', customerType: isWholesale ? 'distribution' : 'retail' });
+  const [quickCustomerForm, setQuickCustomerForm] = useState({ name: '', phone: '', address: '', customerType: defaultCustomerType });
   const [redeemPoints, setRedeemPoints] = useState('');
   const [heldOpen, setHeldOpen] = useState(false);
   const [heldSort, setHeldSort] = useState(() => {
@@ -209,6 +214,11 @@ function PosPage({ mode = 'retail' }) {
     const next = String(settings?.distributionPosDefaultPrintMode || '').trim().toLowerCase();
     return ['receipt', 'invoice', 'both'].includes(next) ? next : 'receipt';
   }, [settings?.distributionPosDefaultPrintMode]);
+  const warehouseDefaultPrintMode = useMemo(() => {
+    const next = String(settings?.warehousePosDefaultPrintMode || '').trim().toLowerCase();
+    return ['receipt', 'invoice', 'both'].includes(next) ? next : 'receipt';
+  }, [settings?.warehousePosDefaultPrintMode]);
+  const posDefaultPrintMode = isWholesale ? distributionDefaultPrintMode : isWarehouse ? warehouseDefaultPrintMode : 'receipt';
   const canBackdateSales = useMemo(() => (
     roleLower === 'superadmin' || roleLower === 'admin' || (Array.isArray(auth.grants) && auth.grants.includes('backdate_sales'))
   ), [auth.grants, roleLower]);
@@ -248,7 +258,7 @@ function PosPage({ mode = 'retail' }) {
   useEffect(() => {
     setSelectedPriceTier(getPreferredPriceTier(allowedPriceTiers, initialPriceTier));
     setView('grid');
-  }, [allowedPriceTiers, initialPriceTier, isWholesale]);
+  }, [allowedPriceTiers, initialPriceTier]);
   const sellables = useMemo(() => {
     const out = [];
     products.forEach(p => {
@@ -263,6 +273,7 @@ function PosPage({ mode = 'retail' }) {
           const prices = {
             retail: getDisplayPrice({ ...p, ...v, price: v.price != null ? v.price : p.price, retailPrice: v.retailPrice, wholesalePrice: v.wholesalePrice, agentPrice: v.agentPrice }, 'retail'),
             wholesale: getDisplayPrice({ ...p, ...v, price: v.price != null ? v.price : p.price, retailPrice: v.retailPrice, wholesalePrice: v.wholesalePrice, agentPrice: v.agentPrice }, 'wholesale'),
+            warehouse: getDisplayPrice({ ...p, ...v, price: v.price != null ? v.price : p.price, retailPrice: v.retailPrice, wholesalePrice: v.wholesalePrice, warehousePrice: v.warehousePrice, agentPrice: v.agentPrice }, 'warehouse'),
             agent: getDisplayPrice({ ...p, ...v, price: v.price != null ? v.price : p.price, retailPrice: v.retailPrice, wholesalePrice: v.wholesalePrice, agentPrice: v.agentPrice }, 'agent')
           };
           out.push({
@@ -279,8 +290,12 @@ function PosPage({ mode = 'retail' }) {
             prices,
             image: v.image || p.image,
             category: p.category || '',
-            stockByBranch: isWholesale ? (v.wholesaleStockByBranch || {}) : (v.stockByBranch || {}),
-            lowStock: isWholesale ? Number(p.wholesaleLowStock != null ? p.wholesaleLowStock : (p.lowStock || 0)) : Number(p.lowStock || 0),
+            stockByBranch: inventoryType === 'wholesale' ? (v.wholesaleStockByBranch || {}) : inventoryType === 'warehouse' ? (v.warehouseStockByBranch || {}) : (v.stockByBranch || {}),
+            lowStock: inventoryType === 'wholesale'
+              ? Number(p.wholesaleLowStock != null ? p.wholesaleLowStock : (p.lowStock || 0))
+              : inventoryType === 'warehouse'
+                ? Number(p.warehouseLowStock != null ? p.warehouseLowStock : (p.lowStock || 0))
+                : Number(p.lowStock || 0),
             attributes: p.attributes,
             unitKind: p.unitKind, unitValue: p.unitValue, unitSymbol: p.unitSymbol, sizeLabel: p.sizeLabel, shoeSize: p.shoeSize,
             allowCredit: p.allowCredit !== false,
@@ -293,15 +308,19 @@ function PosPage({ mode = 'retail' }) {
           brand: getProductBrand(p),
           price: basePrices[selectedPriceTier] ?? basePrices[getPreferredPriceTier(allowedPriceTiers, initialPriceTier)] ?? basePrices.retail,
           prices: basePrices,
-          stockByBranch: isWholesale ? (p.wholesaleStockByBranch || {}) : (p.stockByBranch || {}),
-          lowStock: isWholesale ? Number(p.wholesaleLowStock != null ? p.wholesaleLowStock : (p.lowStock || 0)) : Number(p.lowStock || 0),
+          stockByBranch: inventoryType === 'wholesale' ? (p.wholesaleStockByBranch || {}) : inventoryType === 'warehouse' ? (p.warehouseStockByBranch || {}) : (p.stockByBranch || {}),
+          lowStock: inventoryType === 'wholesale'
+            ? Number(p.wholesaleLowStock != null ? p.wholesaleLowStock : (p.lowStock || 0))
+            : inventoryType === 'warehouse'
+              ? Number(p.warehouseLowStock != null ? p.warehouseLowStock : (p.lowStock || 0))
+              : Number(p.lowStock || 0),
           allowCredit: p.allowCredit !== false,
           minimumCreditPercentage: Number(p.minimumCreditPercentage || 0)
         });
       }
     });
     return out;
-  }, [allowedPriceTiers, initialPriceTier, isWholesale, products, selectedPriceTier]);
+  }, [allowedPriceTiers, initialPriceTier, inventoryType, products, selectedPriceTier]);
   const serializedStockRefreshKey = `${cart.items.length}:${liveSerializedUnits.length}:${reservingSerializedKeys.length}`;
   const categoryOptions = useMemo(() => (
     Array.from(new Set(sellables.map((item) => String(item.category || '').trim()).filter(Boolean)))
@@ -334,7 +353,6 @@ function PosPage({ mode = 'retail' }) {
   }, [brandFilter, brandOptions]);
   const serializedStockCountMap = useMemo(() => {
     void serializedStockRefreshKey;
-    const inventoryType = isWholesale ? 'wholesale' : 'retail';
     const cached = productUnitsApi.getCachedProductUnits({
       branchId: activeBranchId,
       inventoryType,
@@ -350,7 +368,7 @@ function PosPage({ mode = 'retail' }) {
       map.set(key, Number(map.get(key) || 0) + 1);
     });
     return map;
-  }, [activeBranchId, isWholesale, reservationToken, serializedStockRefreshKey]);
+  }, [activeBranchId, inventoryType, reservationToken, serializedStockRefreshKey]);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return sellables.filter((p) => {
@@ -404,7 +422,7 @@ function PosPage({ mode = 'retail' }) {
         spec: item?.spec || '',
         quantity: Math.max(1, Number(item?.qty || 1)),
         price: Math.max(0, Number(item?.rate || 0)),
-        priceTier: item?.priceTier || (isWholesale ? 'wholesale' : 'retail')
+        priceTier: item?.priceTier || initialPriceTier
       }));
       const shortages = normalizedItems.filter((item) => {
         const product = products.find((row) => String(row.id || '') === String(item.productId || '')) || products.find((row) => String(row.sku || '') === String(item.sku || ''));
@@ -412,7 +430,7 @@ function PosPage({ mode = 'retail' }) {
           ? product.variants.find((row) => String(row.id || '') === String(item.variantId || ''))
           : null;
         if (!product && !variant) return false;
-        const availableQty = getBranchStock(variant || product, stockBranchId, isWholesale ? 'wholesale' : 'retail');
+        const availableQty = getBranchStock(variant || product, stockBranchId, inventoryType);
         return Number(item.quantity || 0) > Math.max(0, Number(availableQty || 0));
       });
       let nextItems = normalizedItems;
@@ -437,16 +455,16 @@ function PosPage({ mode = 'retail' }) {
         name: String(invoiceCustomer?.name || ''),
         phone: String(invoiceCustomer?.phone || invoiceCustomer?.businessPhone || ''),
         address: String(invoiceCustomer?.address || invoiceCustomer?.businessAddress || ''),
-        customerType: isWholesale ? 'distribution' : 'retail'
+        customerType: defaultCustomerType
       });
-      setSelectedPriceTier(String(invoice?.items?.[0]?.priceTier || (isWholesale ? 'wholesale' : 'retail')));
+      setSelectedPriceTier(String(invoice?.items?.[0]?.priceTier || initialPriceTier));
       setQuery('');
       if (!cancelled) toast.show(`Invoice ${invoice?.number || ''} loaded into POS`, { type: 'success' });
     })();
     return () => {
       cancelled = true;
     };
-  }, [branchLabel, customers, dispatch, isWholesale, location.state, products, stockBranchId, toast]);
+  }, [branchLabel, customers, defaultCustomerType, dispatch, initialPriceTier, inventoryType, location.state, products, stockBranchId, toast]);
 
   const customerMatches = useMemo(() => {
     const q = customerQuery.trim().toLowerCase();
@@ -524,7 +542,7 @@ function PosPage({ mode = 'retail' }) {
       name: String(quickCustomerForm.name || '').trim(),
       phone: String(quickCustomerForm.phone || '').trim(),
       address: String(quickCustomerForm.address || '').trim(),
-      customerType: isWholesale ? 'distribution' : 'retail',
+      customerType: defaultCustomerType,
       registrationBranchId: String(stockBranchId || '').trim(),
       registrationBranchName: String(branchLabel || '').trim()
     };
@@ -573,7 +591,7 @@ function PosPage({ mode = 'retail' }) {
       productId: p.productId || p.id,
       variantId: p.variantId || '',
       branchId: activeBranchId,
-      inventoryType: isWholesale ? 'wholesale' : 'retail',
+      inventoryType,
       reservationToken
     });
     return exactCount?.hasCache ? Number(exactCount.count || 0) : 0;
@@ -587,7 +605,7 @@ function PosPage({ mode = 'retail' }) {
   }
 
   function getAvailableStockForBranch(p) {
-    return getBranchStock(p, stockBranchId, isWholesale ? 'wholesale' : 'retail');
+    return getBranchStock(p, stockBranchId, inventoryType);
   }
 
   function onChangeHeldSort(v) {
@@ -607,7 +625,6 @@ function PosPage({ mode = 'retail' }) {
       return;
     }
     const requestId = ++liveSerializedSearchSeqRef.current;
-    const inventoryType = isWholesale ? 'wholesale' : 'retail';
     const cached = productUnitsApi.getCachedProductUnits({
       branchId: activeBranchId,
       inventoryType,
@@ -668,11 +685,10 @@ function PosPage({ mode = 'retail' }) {
       }
     }, likelyExactCode ? 40 : 90);
     return () => clearTimeout(timer);
-  }, [query, activeBranchId, isWholesale, reservationToken]);
+  }, [query, activeBranchId, inventoryType, reservationToken]);
 
   useEffect(() => {
     if (!activeBranchId) return;
-    const inventoryType = isWholesale ? 'wholesale' : 'retail';
     productUnitsApi.listProductUnits({
       branchId: activeBranchId,
       inventoryType,
@@ -681,7 +697,7 @@ function PosPage({ mode = 'retail' }) {
       page: 1,
       pageSize: 5000
     }).catch(() => {});
-  }, [activeBranchId, isWholesale]);
+  }, [activeBranchId, inventoryType]);
 
   const subtotal = cart.items.reduce((sum, i) => sum + (i.price || 0) * (i.quantity || 1), 0);
   const serializedPickerCartItems = useMemo(() => {
@@ -728,14 +744,14 @@ function PosPage({ mode = 'retail' }) {
   const customerCreditScore = Number(selectedCustomer?.creditScore || 0);
   const creditPackageOptions = useMemo(() => {
     const configured = Array.isArray(settings.creditPackages) ? settings.creditPackages : [];
-    const defaultLabel = isWholesale ? 'Credit Sale' : 'Credit';
+    const defaultLabel = isNonRetail ? 'Credit Sale' : 'Credit';
     return Array.from(new Set([defaultLabel, ...configured.map((item) => String(item || '').trim()).filter(Boolean)]));
-  }, [isWholesale, settings.creditPackages]);
+  }, [isNonRetail, settings.creditPackages]);
   const activeCreditPackageName = useMemo(() => {
     const selected = String(selectedCreditPackageName || '').trim();
     if (selected) return selected;
-    return creditPackageOptions[0] || (isWholesale ? 'Credit Sale' : 'Credit');
-  }, [creditPackageOptions, isWholesale, selectedCreditPackageName]);
+    return creditPackageOptions[0] || (isNonRetail ? 'Credit Sale' : 'Credit');
+  }, [creditPackageOptions, isNonRetail, selectedCreditPackageName]);
 
   useEffect(() => {
     if (selectedCreditPackageName && !creditPackageOptions.includes(selectedCreditPackageName)) {
@@ -752,7 +768,7 @@ function PosPage({ mode = 'retail' }) {
       productId: product.productId || product.id,
       variantId: product.variantId || '',
       branchId: activeBranchId,
-      inventoryType: isWholesale ? 'wholesale' : 'retail',
+      inventoryType,
       status: 'available',
       reservationToken,
       query: search,
@@ -769,7 +785,7 @@ function PosPage({ mode = 'retail' }) {
         productId: product.productId || product.id,
         variantId: product.variantId || '',
         branchId: activeBranchId,
-        inventoryType: isWholesale ? 'wholesale' : 'retail',
+        inventoryType,
         status: 'available',
         reservationToken,
         query: search,
@@ -845,13 +861,13 @@ function PosPage({ mode = 'retail' }) {
         productId: product.productId || product.id,
         variantId: product.variantId || '',
         branchId: activeBranchId,
-        inventoryType: isWholesale ? 'wholesale' : 'retail',
+        inventoryType,
         reservationToken
       }) : productUnitsApi.scanProductUnit({
         productId: product.productId || product.id,
         variantId: product.variantId || '',
         branchId: activeBranchId,
-        inventoryType: isWholesale ? 'wholesale' : 'retail',
+        inventoryType,
         reservationToken,
         imei: unit?.imei || unit?.serialNumber || ''
       }));
@@ -929,7 +945,7 @@ function PosPage({ mode = 'retail' }) {
       sku: p.sku,
       price: p.price,
       priceTier: selectedPriceTier,
-      prices: p.prices || { retail: p.price, wholesale: p.price, agent: p.price },
+      prices: p.prices || { retail: p.price, wholesale: p.price, warehouse: p.warehousePrice || 0, agent: p.price },
       allowCredit: p.allowCredit !== false,
       minimumCreditPercentage: Number(p.minimumCreditPercentage || 0),
       spec,
@@ -992,7 +1008,7 @@ function PosPage({ mode = 'retail' }) {
     rotateReservationToken();
     setSelectedCustomerId('');
     setCustomerQuery('');
-    setQuickCustomerForm({ name: '', phone: '', address: '', customerType: isWholesale ? 'distribution' : 'retail' });
+    setQuickCustomerForm({ name: '', phone: '', address: '', customerType: defaultCustomerType });
     setRedeemPoints('');
     setTaxOverridePct('');
     setTaxOverrideRemark('');
@@ -1016,7 +1032,7 @@ function PosPage({ mode = 'retail' }) {
     rotateReservationToken();
     setSelectedCustomerId('');
     setCustomerQuery('');
-    setQuickCustomerForm({ name: '', phone: '', address: '', customerType: isWholesale ? 'distribution' : 'retail' });
+    setQuickCustomerForm({ name: '', phone: '', address: '', customerType: defaultCustomerType });
     setRedeemPoints('');
     setTaxOverridePct('');
     setTaxOverrideRemark('');
@@ -1040,7 +1056,7 @@ function PosPage({ mode = 'retail' }) {
     dispatch(replaceCart({ items: Array.isArray(h.items) ? h.items : [], discount: h.discount || 0, notes: h.notes || '' }));
     setSelectedCustomerId(h.selectedCustomerId || '');
     setCustomerQuery(h.selectedCustomerId ? '' : String(h.quickCustomerForm?.name || ''));
-    setQuickCustomerForm(h.quickCustomerForm || { name: '', phone: '', address: '', customerType: isWholesale ? 'distribution' : 'retail' });
+    setQuickCustomerForm(h.quickCustomerForm || { name: '', phone: '', address: '', customerType: defaultCustomerType });
     setRedeemPoints(h.redeemPoints || '');
     setTaxOverridePct(h.taxOverridePct ?? '');
     setTaxOverrideRemark(h.taxOverrideRemark ?? '');
@@ -1173,8 +1189,8 @@ function PosPage({ mode = 'retail' }) {
       customerBusinessName: checkoutCustomer ? (checkoutCustomer.businessName || '') : '',
       customerBusinessAddress: checkoutCustomer ? (checkoutCustomer.businessAddress || '') : '',
       customerTaxId: checkoutCustomer ? (checkoutCustomer.taxId || '') : '',
-      posType: isWholesale ? 'wholesale' : 'retail',
-      inventoryType: isWholesale ? 'wholesale' : 'retail',
+      posType: modeLower,
+      inventoryType,
       defaultPriceTier: selectedPriceTier,
       loyaltyPointsRedeemed: (settings.loyaltyEnabled && checkoutCustomer) ? redeemable : 0,
       items: cart.items.map(i => ({
@@ -1195,7 +1211,7 @@ function PosPage({ mode = 'retail' }) {
       tax,
       total,
       payment_methods: payments.map(p => ({ type: p.type, amount: Number(p.amount) || 0 })),
-      creditMode: easyBuyEnabled ? (isWholesale ? 'distribution_credit' : 'retail_easybuy') : 'none',
+      creditMode: easyBuyEnabled ? (isNonRetail ? 'distribution_credit' : 'retail_easybuy') : 'none',
       creditPackageId: easyBuyEnabled ? creditPackageName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : '',
       creditPackageName,
       creditDueDate: easyBuyEnabled ? easyBuyDueDate : undefined,
@@ -1264,7 +1280,7 @@ function PosPage({ mode = 'retail' }) {
       const affectedProductIds = Array.from(new Set(cart.items.map(i => i.productId).filter(Boolean)));
       cart.items.forEach(i => {
         if (i.productId) {
-          dispatch(adjustStock({ productId: i.productId, variantId: i.variantId || null, branchId: activeBranchId, inventoryType: isWholesale ? 'wholesale' : 'retail', delta: -i.quantity }));
+          dispatch(adjustStock({ productId: i.productId, variantId: i.variantId || null, branchId: activeBranchId, inventoryType, delta: -i.quantity }));
         }
       });
       dispatch(recordSale(saleForUi));
@@ -1280,13 +1296,23 @@ function PosPage({ mode = 'retail' }) {
           return t ? (t[0].toUpperCase() + t.slice(1)) : 'Cash';
         })
         .join(', ');
-      const invNumber = saleForUi.invoiceSerial || `${settings.invoicePrefix || 'INV'}-${String(settings.nextInvoiceNumber || 1).padStart(Number(settings.invoiceNumberDigits || 6), '0')}`;
+      const invoicePrefix = isWholesale
+        ? (settings.wholesaleInvoicePrefix || 'WINV')
+        : isWarehouse
+          ? (settings.warehouseInvoicePrefix || 'WHINV')
+          : (settings.invoicePrefix || 'INV');
+      const nextInvoiceNumber = isWholesale
+        ? Number(settings.nextWholesaleInvoiceNumber || 1)
+        : isWarehouse
+          ? Number(settings.nextWarehouseInvoiceNumber || 1)
+          : Number(settings.nextInvoiceNumber || 1);
+      const invNumber = saleForUi.invoiceSerial || `${invoicePrefix}-${String(nextInvoiceNumber).padStart(Number(settings.invoiceNumberDigits || 6), '0')}`;
       const inv = {
         number: invNumber,
         date: saleForUi.created_at || new Date().toISOString(),
         saleId: saleForUi.id || saleForUi._id || '',
         paymentStatus: easyBuyEnabled ? 'active' : 'paid',
-        source: isWholesale ? 'wholesale-pos' : 'pos',
+        source: isWholesale ? 'wholesale-pos' : isWarehouse ? 'warehouse-pos' : 'pos',
         customer: checkoutCustomer ? {
           name: checkoutCustomer.name || '',
           phone: checkoutCustomer.phone || '',
@@ -1328,8 +1354,8 @@ function PosPage({ mode = 'retail' }) {
       }
       dispatch(addAudit({
       actor: auth.user?.name || 'unknown',
-      actionType: isWholesale ? 'stock_wholesale_sale_deduct' : 'stock_sale_deduct',
-      details: { items: sale.items.map(it => ({ sku: it.sku, qty: it.qty, priceTier: it.priceTier || selectedPriceTier })), branchId: activeBranchId, mode: isWholesale ? 'wholesale' : 'retail' },
+      actionType: isWholesale ? 'stock_wholesale_sale_deduct' : isWarehouse ? 'stock_warehouse_sale_deduct' : 'stock_sale_deduct',
+      details: { items: sale.items.map(it => ({ sku: it.sku, qty: it.qty, priceTier: it.priceTier || selectedPriceTier })), branchId: activeBranchId, mode: modeLower },
       branchId: activeBranchId,
       offline: !navigator.onLine
     }));
@@ -1346,7 +1372,7 @@ function PosPage({ mode = 'retail' }) {
       dispatch(addAudit({
       actor: auth.user?.name || 'unknown',
       actionType: easyBuyEnabled ? 'credit_sale_complete' : 'sale_complete',
-      details: { total: sale.total, items: sale.items.length, mode: isWholesale ? 'wholesale' : 'retail', easyBuy: easyBuyEnabled, branchId: activeBranchId },
+      details: { total: sale.total, items: sale.items.length, mode: modeLower, easyBuy: easyBuyEnabled, branchId: activeBranchId },
       branchId: activeBranchId,
       offline: !navigator.onLine
     }));
@@ -1354,7 +1380,7 @@ function PosPage({ mode = 'retail' }) {
       rotateReservationToken();
       setSelectedCustomerId('');
       setCustomerQuery('');
-      setQuickCustomerForm({ name: '', phone: '', address: '', customerType: isWholesale ? 'distribution' : 'retail' });
+      setQuickCustomerForm({ name: '', phone: '', address: '', customerType: defaultCustomerType });
       setRedeemPoints('');
       setEasyBuyEnabled(false);
       setEasyBuyAmountPaidNow('');
@@ -1371,10 +1397,10 @@ function PosPage({ mode = 'retail' }) {
       });
         downloadText('receipt-escpos.txt', (settings.drawerOpenOnCash && payments.some(p => p.type === 'cash')) ? (escposOpenDrawer() + '\n' + text) : text);
       } else {
-        if (isWholesale) {
-          if (distributionDefaultPrintMode === 'invoice' && invoiceForPrint) {
+        if (isNonRetail) {
+          if (posDefaultPrintMode === 'invoice' && invoiceForPrint) {
             printInvoiceA4(buildInvoiceA4Html({ settings, invoice: invoiceForPrint }));
-          } else if (distributionDefaultPrintMode === 'both' && invoiceForPrint) {
+          } else if (posDefaultPrintMode === 'both' && invoiceForPrint) {
             printInvoiceA4(buildInvoiceA4Html({ settings, invoice: invoiceForPrint }));
             printReceiptHtml(receiptHtml);
           } else {
@@ -1431,7 +1457,7 @@ function PosPage({ mode = 'retail' }) {
             await releaseSerializedCartItems(cart.items);
             cart.items.forEach(i => {
               if (i.productId) {
-                dispatch(adjustStock({ productId: i.productId, variantId: i.variantId || null, branchId: activeBranchId, inventoryType: isWholesale ? 'wholesale' : 'retail', delta: i.quantity, syncPending: false }));
+                dispatch(adjustStock({ productId: i.productId, variantId: i.variantId || null, branchId: activeBranchId, inventoryType, delta: i.quantity, syncPending: false }));
               }
             });
             toast.show(String(e?.message || 'Failed to record sale'), { type: 'error' });
@@ -1493,7 +1519,7 @@ function PosPage({ mode = 'retail' }) {
           toast.show(`Serialized item exists in ${unitBranch?.name || 'another branch'}, not in the current branch`, { type: 'error' });
           return;
         }
-        const expectedInventoryType = isWholesale ? 'wholesale' : 'retail';
+        const expectedInventoryType = inventoryType;
         if (String(lookedUp.inventoryType || 'retail') !== expectedInventoryType) {
           toast.show(`Serialized item exists under ${String(lookedUp.inventoryType || 'retail')} inventory, not ${expectedInventoryType}`, { type: 'error' });
           return;
@@ -1516,7 +1542,7 @@ function PosPage({ mode = 'retail' }) {
         }
         const result = await productUnitsApi.listProductUnits({
           branchId: activeBranchId,
-          inventoryType: isWholesale ? 'wholesale' : 'retail',
+          inventoryType,
           status: 'in_stock',
           query: q,
           page: 1,
@@ -1590,12 +1616,14 @@ function PosPage({ mode = 'retail' }) {
               <div style={{ color: '#64748b', fontSize: 12 }}>
                 {isWholesale
                   ? `${t('Distribution inventory')}${branchLabel ? ` • ${branchLabel}` : ''}`
-                  : `${t('Retail inventory')}${branchLabel ? ` • ${branchLabel}` : ''} ${t('with Credit support')}`}
+                  : isWarehouse
+                    ? `${t('Warehouse inventory')}${branchLabel ? ` • ${branchLabel}` : ''}`
+                    : `${t('Retail inventory')}${branchLabel ? ` • ${branchLabel}` : ''} ${t('with Credit support')}`}
               </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 8, marginLeft: 'auto', flexWrap: 'nowrap' }}>
               <OfflineQueueIndicator collection="sales" label={t('Sales queued')} />
-              {isWholesale ? (
+              {isNonRetail ? (
                 <div className="filter-actions" style={{ flexWrap: 'nowrap' }}>
                   <button className={`btn-toggle ${view === 'grid' ? 'active' : ''}`} onClick={() => setView('grid')} aria-label={t('Card view')} title={t('Card view')}>
                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" stroke="currentColor" strokeWidth="2"/></svg>
@@ -1633,12 +1661,12 @@ function PosPage({ mode = 'retail' }) {
               allLabel={t('All Types')}
               searchPlaceholder={t('Type product type')}
             />
-            {isWholesale && (
+            {isNonRetail && (
             <select className="select pos-toolbar-tier" value={selectedPriceTier} onChange={e => setSelectedPriceTier(e.target.value)}>
               {allowedPriceTiers.map(tier => <option key={tier} value={tier}>{getPriceTierLabel(tier)}</option>)}
             </select>
             )}
-            {!isWholesale ? (
+            {!isNonRetail ? (
               <div className="filter-actions pos-toolbar-actions">
                 <button className={`btn-toggle ${view === 'grid' ? 'active' : ''}`} onClick={() => setView('grid')} aria-label={t('Card view')} title={t('Card view')}>
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z" stroke="currentColor" strokeWidth="2"/></svg>
@@ -1926,7 +1954,7 @@ function PosPage({ mode = 'retail' }) {
                 disabled={!!item.unitId}
               />
               <div style={{ display: 'grid', gap: 6 }}>
-                {isWholesale ? (
+                {isNonRetail ? (
                 <>
                 <select
                   className="select"
@@ -1952,7 +1980,7 @@ function PosPage({ mode = 'retail' }) {
                   style={{ width: 110 }}
                 />
                 <span style={{ fontSize: 12, color: '#64748b' }}>
-                  R: {formatCurrency(item.prices?.retail ?? item.price, settings)} • W: {formatCurrency(item.prices?.wholesale ?? item.price, settings)} • A: {formatCurrency(item.prices?.agent ?? item.price, settings)}
+                  R: {formatCurrency(item.prices?.retail ?? item.price, settings)} • W: {formatCurrency(item.prices?.wholesale ?? item.price, settings)} • WH: {formatCurrency(item.prices?.warehouse ?? item.price, settings)} • A: {formatCurrency(item.prices?.agent ?? item.price, settings)}
                 </span>
                 </>
                 ) : (

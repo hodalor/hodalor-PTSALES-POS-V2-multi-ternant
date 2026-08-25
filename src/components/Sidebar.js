@@ -281,6 +281,7 @@ function Sidebar({ collapsed, onNavigate }) {
         )}
         {sectionEnabled('sections.warehouse') && (
           (isFeatureEnabled(settings, 'pages.warehouse.goods') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_warehouse_products'])) ||
+          (isFeatureEnabled(settings, 'pages.warehouse.pos') && can(['Admin','Manager','Cashier','SuperAdmin'], ['view_warehouse_pos'])) ||
           (isFeatureEnabled(settings, 'pages.warehouse.invoices') && can(['Admin','Manager','Cashier','SuperAdmin'], ['view_warehouse_invoices'])) ||
           (isFeatureEnabled(settings, 'pages.warehouse.purchase') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_warehouse_purchases'])) ||
           (isFeatureEnabled(settings, 'pages.warehouse.transfer') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_warehouse_transfers'])) ||
@@ -318,6 +319,9 @@ function Sidebar({ collapsed, onNavigate }) {
                   {warehouseLowStock}
                 </span>
               )}
+            </NavLink>)}
+            {isFeatureEnabled(settings, 'pages.warehouse.pos') && can(['Admin','Manager','Cashier','SuperAdmin'], ['view_warehouse_pos']) && (<NavLink to="/warehouse-pos" className="sidebar-link" title={t('Warehouse POS')}>
+              <span className="sidebar-text">{t('Warehouse POS')}</span>
             </NavLink>)}
             {isFeatureEnabled(settings, 'pages.warehouse.invoices') && can(['Admin','Manager','Cashier','SuperAdmin'], ['view_warehouse_invoices']) && (<NavLink to="/warehouse-invoices" className="sidebar-link" title={t('Warehouse Invoices')}>
               <span className="sidebar-text">{t('Warehouse Invoices')}</span>

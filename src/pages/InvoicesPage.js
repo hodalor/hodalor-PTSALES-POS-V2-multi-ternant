@@ -15,7 +15,7 @@ import { getAllowedPriceTiers, getDisplayPrice, getPreferredPriceTier, getPriceT
 import { getProductBrand, getProductSearchText } from '../utils/productSearch';
 import { confirmDialog } from '../utils/dialogs';
 
-const MANUAL_INVOICE_PRICE_TIERS = ['retail', 'wholesale', 'agent'];
+const MANUAL_INVOICE_PRICE_TIERS = ['retail', 'wholesale', 'warehouse', 'agent'];
 
 function InvoicesPage({ mode = 'retail' }) {
   const dispatch = useDispatch();
@@ -66,7 +66,7 @@ function InvoicesPage({ mode = 'retail' }) {
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);
   const modeLower = String(mode || 'retail').toLowerCase();
   const allowedPriceTiers = useMemo(() => getAllowedPriceTiers(auth), [auth]);
-  const preferredModeTier = modeLower === 'retail' ? 'retail' : 'wholesale';
+  const preferredModeTier = modeLower === 'retail' ? 'retail' : modeLower === 'warehouse' ? 'warehouse' : 'wholesale';
   const activeInvoiceTier = useMemo(() => getPreferredPriceTier(allowedPriceTiers, preferredModeTier), [allowedPriceTiers, preferredModeTier]);
   const selectableInvoiceTiers = useMemo(() => (
     modeLower === 'retail'
@@ -86,7 +86,7 @@ function InvoicesPage({ mode = 'retail' }) {
   }, []);
   const canInvoiceConvertToSale = useCallback((inv) => {
     const source = String(inv?.source || 'manual').trim().toLowerCase();
-    return isInvoiceEditable(inv) && ['manual', 'wholesale-manual'].includes(source);
+    return isInvoiceEditable(inv) && ['manual', 'wholesale-manual', 'warehouse-manual'].includes(source);
   }, [isInvoiceEditable]);
   const invoicePrefix = modeLower === 'wholesale'
     ? (settings.wholesaleInvoicePrefix || 'WINV')
@@ -495,14 +495,14 @@ function InvoicesPage({ mode = 'retail' }) {
       toast.show('Only unpaid generated invoices can be converted to sale', { type: 'error' });
       return;
     }
-    const isWarehouseInvoice = String(inv?.source || '').toLowerCase() === 'warehouse-manual';
-    if (isWarehouseInvoice) {
-      toast.show('Warehouse invoices cannot be converted to sale from this flow yet', { type: 'error' });
-      return;
-    }
     const shouldContinue = await confirmDialog('Open this invoice in POS and preload its items for conversion to sale?');
     if (!shouldContinue) return;
-    const targetPath = ['wholesale-manual', 'wholesale-pos'].includes(String(inv?.source || '').toLowerCase()) ? '/wholesale-pos' : '/pos';
+    const source = String(inv?.source || '').toLowerCase();
+    const targetPath = ['wholesale-manual', 'wholesale-pos'].includes(source)
+      ? '/wholesale-pos'
+      : ['warehouse-manual', 'warehouse-pos'].includes(source)
+        ? '/warehouse-pos'
+        : '/pos';
     navigate(targetPath, { state: { preloadInvoice: inv } });
   }
 
@@ -728,7 +728,7 @@ function InvoicesPage({ mode = 'retail' }) {
                 } else if (invoiceKind === 'wholesale') {
                   if (inv.source && !['wholesale-pos', 'wholesale-manual'].includes(inv.source)) return false;
                 } else if (invoiceKind === 'warehouse') {
-                  if (inv.source && !['warehouse-manual'].includes(inv.source)) return false;
+                  if (inv.source && !['warehouse-pos', 'warehouse-manual'].includes(inv.source)) return false;
                 }
                 const q = searchTerm.trim().toLowerCase();
                 if (!q) return true;

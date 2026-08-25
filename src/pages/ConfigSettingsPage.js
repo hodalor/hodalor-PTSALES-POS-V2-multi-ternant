@@ -1,5 +1,5 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { setAppName, setFooterText, setCurrentBranch, setReceiptHeader, setReceiptFooter, setReceiptShowPaymentInfo, setReceiptShowTaxInfo, setReceiptShowQrSection, setDistributionPosDefaultPrintMode, setBusinessPhone, setBusinessWebsite, setBusinessTpin, setReceiptQrBaseUrl, setInvoicePrefix, setNextInvoiceNumber, setWholesaleInvoicePrefix, setNextWholesaleInvoiceNumber, setWarehouseInvoicePrefix, setNextWarehouseInvoiceNumber, setReceiptPrefix, setNextReceiptNumber, setDrawerOpenOnCash, setTaxRate, setCurrencyCode, setCurrencySymbol, setCurrencyPosition, setRefreshIntervalSec, addCurrency, removeCurrency, setActiveCurrency, setLoyaltyEnabled, setLoyaltyEarnAmount, setLoyaltyEarnPoints, setLoyaltyRedeemValue, setLoyaltyMinRedeemPoints, setLoyaltyMaxRedeemPercent, setClientAppName, setClientLogoUrl, setPreferredLanguage, setInvoiceCompanyAddress, setInvoiceFooter, setInvoiceDeclaration, setInvoiceSignatoryLabel, setInvoiceTitle, setInvoiceWordsLabel, setInvoiceGeneratedNote, setInvoiceNumberDigits, setInvoicePaidStampEnabled, setInvoicePaidStampLabel, setInvoicePaidStampThankYou, setInvoicePaidStampShowDate, setInvoicePaidStampColor, setReceiptBrandName, setAllSettings, addSettingsCategory, removeSettingsCategory } from '../store/settingsSlice';
+import { setAppName, setFooterText, setCurrentBranch, setReceiptHeader, setReceiptFooter, setReceiptShowPaymentInfo, setReceiptShowTaxInfo, setReceiptShowQrSection, setDistributionPosDefaultPrintMode, setWarehousePosDefaultPrintMode, setBusinessPhone, setBusinessWebsite, setBusinessTpin, setReceiptQrBaseUrl, setInvoicePrefix, setNextInvoiceNumber, setWholesaleInvoicePrefix, setNextWholesaleInvoiceNumber, setWarehouseInvoicePrefix, setNextWarehouseInvoiceNumber, setReceiptPrefix, setNextReceiptNumber, setDrawerOpenOnCash, setTaxRate, setCurrencyCode, setCurrencySymbol, setCurrencyPosition, setRefreshIntervalSec, addCurrency, removeCurrency, setActiveCurrency, setLoyaltyEnabled, setLoyaltyEarnAmount, setLoyaltyEarnPoints, setLoyaltyRedeemValue, setLoyaltyMinRedeemPoints, setLoyaltyMaxRedeemPercent, setClientAppName, setClientLogoUrl, setPreferredLanguage, setInvoiceCompanyAddress, setInvoiceFooter, setInvoiceDeclaration, setInvoiceSignatoryLabel, setInvoiceTitle, setInvoiceWordsLabel, setInvoiceGeneratedNote, setInvoiceNumberDigits, setInvoicePaidStampEnabled, setInvoicePaidStampLabel, setInvoicePaidStampThankYou, setInvoicePaidStampShowDate, setInvoicePaidStampColor, setReceiptBrandName, setAllSettings, addSettingsCategory, removeSettingsCategory } from '../store/settingsSlice';
 import { addBranch, removeBranch, setBranches, updateBranch } from '../store/branchesSlice';
 import * as branchesApi from '../api/branches';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
@@ -79,6 +79,7 @@ function ConfigSettingsPage() {
     'receiptShowTaxInfo',
     'receiptShowQrSection',
     'distributionPosDefaultPrintMode',
+    'warehousePosDefaultPrintMode',
     'businessPhone',
     'businessWebsite',
     'businessTpin',
@@ -1260,6 +1261,22 @@ function ConfigSettingsPage() {
               className="select"
               value={settings.distributionPosDefaultPrintMode || 'receipt'}
               onChange={e => dispatch(setDistributionPosDefaultPrintMode(e.target.value))}
+              style={{ display: 'block', width: '100%' }}
+            >
+              <option value="receipt">Receipt Only</option>
+              <option value="invoice">Invoice Only</option>
+              <option value="both">Both Receipt and Invoice</option>
+            </select>
+          </div>
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 14, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
+            <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>Warehouse POS Default Print</div>
+            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
+              Choose what should print automatically after a sale on Warehouse POS. Retail POS keeps using the normal receipt flow.
+            </div>
+            <select
+              className="select"
+              value={settings.warehousePosDefaultPrintMode || 'receipt'}
+              onChange={e => dispatch(setWarehousePosDefaultPrintMode(e.target.value))}
               style={{ display: 'block', width: '100%' }}
             >
               <option value="receipt">Receipt Only</option>

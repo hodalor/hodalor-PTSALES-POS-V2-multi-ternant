@@ -11,6 +11,7 @@ const initialState = {
   receiptShowTaxInfo: false,
   receiptShowQrSection: false,
   distributionPosDefaultPrintMode: 'receipt',
+  warehousePosDefaultPrintMode: 'receipt',
   businessPhone: '0243984046',
   businessWebsite: '',
   businessTpin: '',
@@ -105,7 +106,8 @@ const settingsSlice = createSlice({
         nextWholesaleInvoiceNumber: initialState.nextWholesaleInvoiceNumber,
         warehouseInvoicePrefix: initialState.warehouseInvoicePrefix,
         nextWarehouseInvoiceNumber: initialState.nextWarehouseInvoiceNumber,
-        distributionPosDefaultPrintMode: initialState.distributionPosDefaultPrintMode
+        distributionPosDefaultPrintMode: initialState.distributionPosDefaultPrintMode,
+        warehousePosDefaultPrintMode: initialState.warehousePosDefaultPrintMode
       };
       Object.keys(backfill).forEach(k => {
         const v = state[k];
@@ -119,6 +121,9 @@ const settingsSlice = createSlice({
       state.distributionPosDefaultPrintMode = ['receipt', 'invoice', 'both'].includes(String(state.distributionPosDefaultPrintMode || '').trim().toLowerCase())
         ? String(state.distributionPosDefaultPrintMode || '').trim().toLowerCase()
         : initialState.distributionPosDefaultPrintMode;
+      state.warehousePosDefaultPrintMode = ['receipt', 'invoice', 'both'].includes(String(state.warehousePosDefaultPrintMode || '').trim().toLowerCase())
+        ? String(state.warehousePosDefaultPrintMode || '').trim().toLowerCase()
+        : initialState.warehousePosDefaultPrintMode;
       const currencies = Array.isArray(state.currencies)
         ? state.currencies
             .map((entry) => ({
@@ -208,6 +213,10 @@ const settingsSlice = createSlice({
     setDistributionPosDefaultPrintMode(state, action) {
       const next = String(action.payload || '').trim().toLowerCase();
       state.distributionPosDefaultPrintMode = ['receipt', 'invoice', 'both'].includes(next) ? next : 'receipt';
+    },
+    setWarehousePosDefaultPrintMode(state, action) {
+      const next = String(action.payload || '').trim().toLowerCase();
+      state.warehousePosDefaultPrintMode = ['receipt', 'invoice', 'both'].includes(next) ? next : 'receipt';
     },
     setClientAppName(state, action) {
       state.clientAppName = String(action.payload || '');
@@ -385,5 +394,5 @@ const settingsSlice = createSlice({
   }
 });
 
-export const { setAllSettings, setUserGrants, setUserGrant, setAppName, setFooterText, setCurrentBranch, setReceiptLogoUrl, setReceiptHeader, setReceiptFooter, setReceiptShowPaymentInfo, setReceiptShowTaxInfo, setReceiptShowQrSection, setDistributionPosDefaultPrintMode, setClientAppName, setClientLogoUrl, setPreferredLanguage, setCategories, addSettingsCategory, removeSettingsCategory, setBusinessPhone, setBusinessWebsite, setBusinessTpin, setReceiptQrBaseUrl, setInvoicePrefix, setNextInvoiceNumber, setWholesaleInvoicePrefix, setNextWholesaleInvoiceNumber, setWarehouseInvoicePrefix, setNextWarehouseInvoiceNumber, setReceiptPrefix, setNextReceiptNumber, setDrawerOpenOnCash, setTaxRate, setCurrencyCode, setCurrencySymbol, setCurrencyPosition, addCurrency, removeCurrency, setActiveCurrency, setRefreshIntervalSec, setLoyaltyEnabled, setLoyaltyEarnAmount, setLoyaltyEarnPoints, setLoyaltyRedeemValue, setLoyaltyMinRedeemPoints, setLoyaltyMaxRedeemPercent, setInvoiceCompanyAddress, setInvoiceFooter, setInvoiceDeclaration, setInvoiceSignatoryLabel, setInvoiceTitle, setInvoiceWordsLabel, setInvoiceGeneratedNote, setInvoiceNumberDigits, setInvoicePaidStampEnabled, setInvoicePaidStampLabel, setInvoicePaidStampThankYou, setInvoicePaidStampShowDate, setInvoicePaidStampColor, setReceiptBrandName, setSettingsHydrated } = settingsSlice.actions;
+export const { setAllSettings, setUserGrants, setUserGrant, setAppName, setFooterText, setCurrentBranch, setReceiptLogoUrl, setReceiptHeader, setReceiptFooter, setReceiptShowPaymentInfo, setReceiptShowTaxInfo, setReceiptShowQrSection, setDistributionPosDefaultPrintMode, setWarehousePosDefaultPrintMode, setClientAppName, setClientLogoUrl, setPreferredLanguage, setCategories, addSettingsCategory, removeSettingsCategory, setBusinessPhone, setBusinessWebsite, setBusinessTpin, setReceiptQrBaseUrl, setInvoicePrefix, setNextInvoiceNumber, setWholesaleInvoicePrefix, setNextWholesaleInvoiceNumber, setWarehouseInvoicePrefix, setNextWarehouseInvoiceNumber, setReceiptPrefix, setNextReceiptNumber, setDrawerOpenOnCash, setTaxRate, setCurrencyCode, setCurrencySymbol, setCurrencyPosition, addCurrency, removeCurrency, setActiveCurrency, setRefreshIntervalSec, setLoyaltyEnabled, setLoyaltyEarnAmount, setLoyaltyEarnPoints, setLoyaltyRedeemValue, setLoyaltyMinRedeemPoints, setLoyaltyMaxRedeemPercent, setInvoiceCompanyAddress, setInvoiceFooter, setInvoiceDeclaration, setInvoiceSignatoryLabel, setInvoiceTitle, setInvoiceWordsLabel, setInvoiceGeneratedNote, setInvoiceNumberDigits, setInvoicePaidStampEnabled, setInvoicePaidStampLabel, setInvoicePaidStampThankYou, setInvoicePaidStampShowDate, setInvoicePaidStampColor, setReceiptBrandName, setSettingsHydrated } = settingsSlice.actions;
 export default settingsSlice.reducer;

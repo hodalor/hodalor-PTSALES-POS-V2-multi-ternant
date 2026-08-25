@@ -6,8 +6,10 @@ export const TENANT_GRANT_CATALOG = [
   { key: 'view_dashboard_branch_comparison_all', label: 'Dashboard Branch Comparison (All Branches)' },
   { key: 'view_pos', label: 'Use POS' },
   { key: 'view_wholesale_pos', label: 'Use Distribution POS' },
+  { key: 'view_warehouse_pos', label: 'Use Warehouse POS' },
   { key: 'view_retail_price', label: 'See Retail Prices' },
   { key: 'view_wholesale_price', label: 'See Wholesale Prices' },
+  { key: 'view_warehouse_price', label: 'See Warehouse Prices' },
   { key: 'view_agent_price', label: 'See Agent Prices' },
   { key: 'view_sales', label: 'Open Sales' },
   { key: 'add_sales', label: 'Create Sales' },
@@ -248,6 +250,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
     description: 'Matches the Warehouse sidebar group with warehouse-specific approvals.',
     items: [
       { label: 'Warehouse Goods', keys: ['pages.warehouse.goods', 'modules.wholesalePos', 'modules.products', 'grants.view_warehouse_products'] },
+      { label: 'Warehouse POS', keys: ['pages.warehouse.pos', 'modules.wholesalePos', 'grants.view_warehouse_pos'] },
       { label: 'Warehouse Invoices', keys: ['pages.warehouse.invoices', 'modules.invoices', 'grants.view_warehouse_invoices'] },
       { label: 'Warehouse Purchase', keys: ['pages.warehouse.purchase', 'modules.wholesalePos', 'grants.view_warehouse_products', 'grants.add_warehouse_purchases'] },
       { label: 'Warehouse Transfer', keys: ['pages.warehouse.transfer', 'modules.wholesalePos', 'grants.view_warehouse_products', 'grants.add_warehouse_transfers'] },
@@ -388,11 +391,11 @@ export const TENANT_FEATURE_CATALOG = [
 
   ...TENANT_GRANT_CATALOG.map((item) => {
     let group = 'Permissions / Retail Actions';
-    if (['view_retail_price', 'view_wholesale_price', 'view_agent_price', 'view_revenue', 'view_profit', 'view_financials', 'view_dashboard_cashier_assigned', 'view_dashboard_cashier_all', 'view_dashboard_branch_comparison_assigned', 'view_dashboard_branch_comparison_all'].includes(item.key)) {
+    if (['view_retail_price', 'view_wholesale_price', 'view_warehouse_price', 'view_agent_price', 'view_revenue', 'view_profit', 'view_financials', 'view_dashboard_cashier_assigned', 'view_dashboard_cashier_all', 'view_dashboard_branch_comparison_assigned', 'view_dashboard_branch_comparison_all'].includes(item.key)) {
       group = 'Permissions / Pricing & Visibility';
     } else if (['view_chat', 'send_chat_messages', 'view_pt_ai'].includes(item.key)) {
       group = 'Permissions / Communication';
-    } else if (['view_wholesale_pos', 'view_purchases', 'add_purchases', 'add_wholesale_purchases', 'add_warehouse_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'add_wholesale_transfers', 'add_warehouse_transfers', 'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'add_wholesale_adjustments', 'add_warehouse_adjustments', 'edit_adjustments', 'approve_adjustments', 'view_credit_control', 'approve_credit_director', 'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_distribution_director', 'approve_distribution_manager', 'approve_warehouse_director', 'approve_warehouse_manager', 'view_wholesale_invoices', 'view_warehouse_invoices', 'view_warehouse_approvals'].includes(item.key)) {
+    } else if (['view_wholesale_pos', 'view_warehouse_pos', 'view_purchases', 'add_purchases', 'add_wholesale_purchases', 'add_warehouse_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'add_wholesale_transfers', 'add_warehouse_transfers', 'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'add_wholesale_adjustments', 'add_warehouse_adjustments', 'edit_adjustments', 'approve_adjustments', 'view_credit_control', 'approve_credit_director', 'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_distribution_director', 'approve_distribution_manager', 'approve_warehouse_director', 'approve_warehouse_manager', 'view_wholesale_invoices', 'view_warehouse_invoices', 'view_warehouse_approvals'].includes(item.key)) {
       group = 'Permissions / Distribution Actions';
     } else if (['view_users', 'view_config', 'view_audit', 'view_super_bin', 'view_stock_records', 'view_inventory_consistency', 'view_cashdrawer', 'view_imei_conflicts', 'export_tenant_data', 'import_tenant_data'].includes(item.key)) {
       group = 'Permissions / Admin Actions';
