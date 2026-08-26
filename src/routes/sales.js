@@ -72,6 +72,28 @@ function reportQueuedSalesImeiDebug({ hypothesisId = 'A', location = '', msg = '
   }).catch(() => {});
 }
 
+function reportEbkTmpReceiptDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  const envCandidates = [
+    path.resolve(process.cwd(), '.dbg', 'ebk-tmp-receipt.env'),
+    path.resolve(process.cwd(), '..', '.dbg', 'ebk-tmp-receipt.env')
+  ];
+  let url = 'http://127.0.0.1:7777/event';
+  let sessionId = 'ebk-tmp-receipt';
+  for (const candidate of envCandidates) {
+    try {
+      const text = fs.readFileSync(candidate, 'utf8');
+      url = text.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || url;
+      sessionId = text.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || sessionId;
+      break;
+    } catch {}
+  }
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, runId: 'pre-fix', hypothesisId, location, msg, data, ts: Date.now() })
+  }).catch(() => {});
+}
+
 async function summarizePendingInventoryLocks({ productId = '', variantId = '', branchId = '', inventoryType = 'retail', soldUnitIds = [] } = {}) {
   const wholesaleOps = await WholesaleOperation.find({
     status: { $in: ['pending_director', 'pending_manager'] },
@@ -473,6 +495,22 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
   if (cleaned.some(it => !it.productId || !Number.isFinite(it.qty) || it.qty <= 0)) {
     return res.status(400).json({ error: 'Each item must include productId and positive qty' });
   }
+  // #region debug-point B:backend-request-received
+  reportEbkTmpReceiptDebug({
+    hypothesisId: 'B',
+    location: 'sales.js:post:request-received',
+    msg: '[DEBUG] Backend sales route received a sale request',
+    data: {
+      clientId,
+      branchId: String(branchId || ''),
+      posType: String(posType || ''),
+      inventoryType: String(inventoryType || ''),
+      reservationToken: String(payload?.reservationToken || ''),
+      itemCount: cleaned.length,
+      hasSerialized: cleaned.some((item) => Array.isArray(item?.soldUnitIds) && item.soldUnitIds.length > 0)
+    }
+  });
+  // #endregion
   // #region debug-point B:sale-request-received
   reportQueuedSalesImeiDebug({
     hypothesisId: 'B',
@@ -938,6 +976,24 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       customerPointsAfter = updated ? Number(updated.loyaltyPoints || 0) : null;
     }
   } catch (e) {
+    // #region debug-point E:backend-create-failed
+    reportEbkTmpReceiptDebug({
+      hypothesisId: 'E',
+      location: 'sales.js:post:failed',
+      msg: '[DEBUG] Backend sale creation failed during EBK temp receipt trace',
+      data: {
+        clientId,
+        branchId: String(branchId || ''),
+        reservationToken: String(payload?.reservationToken || ''),
+        message: String(e?.message || ''),
+        touchedSerializedUnits: touchedSerializedUnits.map(String),
+        saleCreatePhase,
+        serializedFinalizePhase,
+        saleId: String(sale?._id || ''),
+        creditSaleId: String(creditSale?._id || '')
+      }
+    });
+    // #endregion
     // #region debug-point E:sale-create-failed
     reportQueuedSalesImeiDebug({
       hypothesisId: 'E',
@@ -1071,6 +1127,20 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       despatchedThrough: 'In person'
     });
   } catch {}
+  // #region debug-point C:backend-response-success
+  reportEbkTmpReceiptDebug({
+    hypothesisId: 'C',
+    location: 'sales.js:post:response-success',
+    msg: '[DEBUG] Backend sale creation completed successfully',
+    data: {
+      clientId,
+      saleId: String(out?._id || out?.id || sale?._id || ''),
+      branchId: String(out?.branchId || branchId || ''),
+      receiptNumber: String(out?.receiptNumber || ''),
+      invoiceSerial: String(out?.invoiceSerial || '')
+    }
+  });
+  // #endregion
   res.json(out);
 });
 
