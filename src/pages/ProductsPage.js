@@ -46,6 +46,8 @@ function createVariantDraft(overrides = {}) {
     sku: '',
     image: '',
     price: '',
+    wholesalePrice: '',
+    warehousePrice: '',
     costPrice: '',
     quantity: '',
     ...overrides
@@ -98,15 +100,31 @@ function getProductPricingValidationMessage({
       && !String(variant.sku || '').trim()
       && !String(variant.image || '').trim()
       && !hasValue(variant.price)
+      && !hasValue(variant.wholesalePrice)
+      && !hasValue(variant.warehousePrice)
       && !hasValue(variant.costPrice);
     if (isEmpty) continue;
     const variantCostPrice = hasValue(variant.costPrice) ? toFiniteNumber(variant.costPrice, 0) : unitCostPrice;
     const variantSellingPrice = hasValue(variant.price) ? toFiniteNumber(variant.price, 0) : retailSellingPrice;
+    const variantWholesalePrice = hasValue(variant.wholesalePrice) ? toFiniteNumber(variant.wholesalePrice, 0) : toFiniteNumber(wholesalePrice, retailSellingPrice);
+    const variantWarehousePrice = hasValue(variant.warehousePrice) ? toFiniteNumber(variant.warehousePrice, 0) : toFiniteNumber(warehousePrice, 0);
     if (variantCostPrice > 0 && variantSellingPrice > 0 && variantCostPrice > variantSellingPrice) {
       const variantLabel = String(variant.label || '').trim();
       return variantLabel
         ? `Variant "${variantLabel}" cost price cannot be greater than its selling price`
         : `Variant #${index + 1} cost price cannot be greater than its selling price`;
+    }
+    if (variantCostPrice > 0 && variantWholesalePrice > 0 && variantCostPrice > variantWholesalePrice) {
+      const variantLabel = String(variant.label || '').trim();
+      return variantLabel
+        ? `Variant "${variantLabel}" cost price cannot be greater than its distribution selling price`
+        : `Variant #${index + 1} cost price cannot be greater than its distribution selling price`;
+    }
+    if (variantCostPrice > 0 && variantWarehousePrice > 0 && variantCostPrice > variantWarehousePrice) {
+      const variantLabel = String(variant.label || '').trim();
+      return variantLabel
+        ? `Variant "${variantLabel}" cost price cannot be greater than its warehouse selling price`
+        : `Variant #${index + 1} cost price cannot be greater than its warehouse selling price`;
     }
   }
   return '';
@@ -464,6 +482,8 @@ function ProductsPage() {
       sku: v.sku || '',
       image: v.image || '',
       price: v.price != null ? String(v.price) : '',
+      wholesalePrice: v.wholesalePrice != null ? String(v.wholesalePrice) : String(p.wholesalePrice != null ? p.wholesalePrice : (p.price || 0)),
+      warehousePrice: v.warehousePrice != null ? String(v.warehousePrice) : String(p.warehousePrice != null ? p.warehousePrice : 0),
       costPrice: v.costPrice != null ? String(v.costPrice) : '',
       quantity: String(getVariantQuantityForContext(v, currentBranchId, currentInventoryType) || '')
     })) : [createVariantDraft()]);
@@ -776,6 +796,8 @@ function ProductsPage() {
                     sku: v.sku?.trim() || '',
                     image: v.image || '',
                     price: v.price !== '' ? Number(v.price) : undefined,
+                    wholesalePrice: v.wholesalePrice !== '' ? Number(v.wholesalePrice) : undefined,
+                    warehousePrice: v.warehousePrice !== '' ? Number(v.warehousePrice) : undefined,
                     costPrice: v.costPrice !== '' ? Number(v.costPrice) : undefined,
                     stockByBranch: stockMaps.stockByBranch,
                     wholesaleStockByBranch: stockMaps.wholesaleStockByBranch,
@@ -870,6 +892,8 @@ function ProductsPage() {
               sku: v.sku?.trim() || '',
               image: v.image || '',
               price: v.price !== '' ? Number(v.price) : undefined,
+              wholesalePrice: v.wholesalePrice !== '' ? Number(v.wholesalePrice) : undefined,
+              warehousePrice: v.warehousePrice !== '' ? Number(v.warehousePrice) : undefined,
               costPrice: v.costPrice !== '' ? Number(v.costPrice) : undefined,
               stockByBranch: prev?.stockByBranch || {},
               wholesaleStockByBranch: prev?.wholesaleStockByBranch || {},
@@ -1941,18 +1965,20 @@ function ProductsPage() {
                         {t('Use variants when one product has different options with their own SKU/price/stock (e.g. colors, sizes, 500mL vs 1L).')}
                       </div>
                       <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
-                        <div style={{ minWidth: 1160, display: 'grid', gap: 8 }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '140px minmax(220px, 1.2fr) minmax(220px, 1fr) 170px 170px 170px 110px', gap: 8, color: '#94a3b8', fontSize: 12, fontWeight: 700, padding: '0 4px' }}>
+                        <div style={{ minWidth: 1500, display: 'grid', gap: 8 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '140px minmax(220px, 1.2fr) minmax(220px, 1fr) 150px 150px 150px 150px 170px 110px', gap: 8, color: '#94a3b8', fontSize: 12, fontWeight: 700, padding: '0 4px' }}>
                             <div>{t('Image')}</div>
                             <div>{t('Label')}</div>
                             <div>{t('SKU')}</div>
-                            <div>{t('Price')}</div>
+                            <div>{t('Retail Price')}</div>
+                            <div>{t('Distribution Price')}</div>
+                            <div>{t('Warehouse Price')}</div>
                             <div>{t('Cost Price')}</div>
                             <div>{t('Quantity')}</div>
                             <div>{t('Action')}</div>
                           </div>
                           {variants.map((row, idx) => (
-                            <div key={idx} style={{ display: 'grid', gridTemplateColumns: '140px minmax(220px, 1.2fr) minmax(220px, 1fr) 170px 170px 170px 110px', gap: 8, alignItems: 'start', minWidth: 1160 }}>
+                            <div key={idx} style={{ display: 'grid', gridTemplateColumns: '140px minmax(220px, 1.2fr) minmax(220px, 1fr) 150px 150px 150px 150px 170px 110px', gap: 8, alignItems: 'start', minWidth: 1500 }}>
                               <div style={{ display: 'grid', gap: 6 }}>
                                 {row.image ? (
                                   <img src={row.image} alt={row.label || `variant-${idx + 1}`} style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 10, border: '1px solid #334155' }} />
@@ -1977,6 +2003,14 @@ function ProductsPage() {
                               <input className="input" type="number" placeholder={t('Price (e.g. 25.00)')} value={row.price} onChange={e => {
                                 const v = e.target.value;
                                 setVariants(prev => prev.map((r, i) => i === idx ? { ...r, price: v } : r));
+                              }} style={{ width: '100%' }} />
+                              <input className="input" type="number" placeholder={t('Distribution price')} value={row.wholesalePrice} onChange={e => {
+                                const v = e.target.value;
+                                setVariants(prev => prev.map((r, i) => i === idx ? { ...r, wholesalePrice: v } : r));
+                              }} style={{ width: '100%' }} />
+                              <input className="input" type="number" placeholder={t('Warehouse price')} value={row.warehousePrice} onChange={e => {
+                                const v = e.target.value;
+                                setVariants(prev => prev.map((r, i) => i === idx ? { ...r, warehousePrice: v } : r));
                               }} style={{ width: '100%' }} />
                               <input className="input" type="number" placeholder={t('Cost Price')} value={row.costPrice} onChange={e => {
                                 const v = e.target.value;

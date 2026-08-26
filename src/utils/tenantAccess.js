@@ -231,31 +231,31 @@ export const TENANT_SIDEBAR_SECTIONS = [
     id: 'distribution',
     sectionKey: 'sections.distribution',
     title: 'Distribution',
-    description: 'Matches the Distribution sidebar group and includes approval capabilities by default.',
+    description: 'Matches the Distribution sidebar group. Distribution items stay separate from Warehouse items.',
     items: [
-      { label: 'Distribution Goods', keys: ['pages.distribution.goods', 'modules.wholesalePos', 'modules.products', 'grants.view_distribution_products'] },
-      { label: 'Distribution POS', keys: ['pages.distribution.pos', 'modules.wholesalePos', 'grants.view_wholesale_pos'] },
-      { label: 'Distribution Invoices', keys: ['pages.distribution.invoices', 'modules.invoices', 'grants.view_wholesale_invoices'] },
-      { label: 'Distribution Purchase', keys: ['pages.distribution.purchase', 'modules.wholesalePos', 'grants.view_distribution_products', 'grants.add_wholesale_purchases'] },
-      { label: 'Distribution Transfer', keys: ['pages.distribution.transfer', 'modules.wholesalePos', 'grants.view_distribution_products', 'grants.add_wholesale_transfers'] },
-      { label: 'Distribution Adjustment', keys: ['pages.distribution.adjustment', 'modules.wholesalePos', 'grants.view_distribution_products', 'grants.add_wholesale_adjustments'] },
-      { label: 'Distribution Refunds', keys: ['pages.distribution.refund', 'modules.wholesalePos', 'grants.view_distribution_products', 'grants.view_distribution_refunds', 'grants.add_distribution_refunds'] },
-      { label: 'Director / Manager Approvals', keys: ['pages.distribution.approvals', 'modules.wholesalePos', 'modules.approvalsCenter', 'grants.approve_distribution_director', 'grants.approve_distribution_manager'] }
+      { label: 'Distribution Goods', keys: ['pages.distribution.goods', 'modules.wholesalePos', 'modules.products', 'grants.view_distribution_products'], checkedKeys: ['pages.distribution.goods', 'grants.view_distribution_products'] },
+      { label: 'Distribution POS', keys: ['pages.distribution.pos', 'modules.wholesalePos', 'grants.view_wholesale_pos'], checkedKeys: ['pages.distribution.pos', 'grants.view_wholesale_pos'] },
+      { label: 'Distribution Invoices', keys: ['pages.distribution.invoices', 'modules.invoices', 'grants.view_wholesale_invoices'], checkedKeys: ['pages.distribution.invoices', 'grants.view_wholesale_invoices'] },
+      { label: 'Distribution Purchase', keys: ['pages.distribution.purchase', 'modules.wholesalePos', 'grants.view_distribution_products', 'grants.add_wholesale_purchases'], checkedKeys: ['pages.distribution.purchase', 'grants.view_distribution_products', 'grants.add_wholesale_purchases'] },
+      { label: 'Distribution Transfer', keys: ['pages.distribution.transfer', 'modules.wholesalePos', 'grants.view_distribution_products', 'grants.add_wholesale_transfers'], checkedKeys: ['pages.distribution.transfer', 'grants.view_distribution_products', 'grants.add_wholesale_transfers'] },
+      { label: 'Distribution Adjustment', keys: ['pages.distribution.adjustment', 'modules.wholesalePos', 'grants.view_distribution_products', 'grants.add_wholesale_adjustments'], checkedKeys: ['pages.distribution.adjustment', 'grants.view_distribution_products', 'grants.add_wholesale_adjustments'] },
+      { label: 'Distribution Refunds', keys: ['pages.distribution.refund', 'modules.wholesalePos', 'grants.view_distribution_products', 'grants.view_distribution_refunds', 'grants.add_distribution_refunds'], checkedKeys: ['pages.distribution.refund', 'grants.view_distribution_products', 'grants.view_distribution_refunds', 'grants.add_distribution_refunds'] },
+      { label: 'Director / Manager Approvals', keys: ['pages.distribution.approvals', 'modules.wholesalePos', 'modules.approvalsCenter', 'grants.approve_distribution_director', 'grants.approve_distribution_manager'], checkedKeys: ['pages.distribution.approvals', 'grants.approve_distribution_director', 'grants.approve_distribution_manager'] }
     ]
   },
   {
     id: 'warehouse',
     sectionKey: 'sections.warehouse',
     title: 'Warehouse',
-    description: 'Matches the Warehouse sidebar group with warehouse-specific approvals.',
+    description: 'Matches the Warehouse sidebar group with warehouse-specific approvals that stay separate from Distribution.',
     items: [
-      { label: 'Warehouse Goods', keys: ['pages.warehouse.goods', 'modules.wholesalePos', 'modules.products', 'grants.view_warehouse_products'] },
-      { label: 'Warehouse POS', keys: ['pages.warehouse.pos', 'modules.wholesalePos', 'grants.view_warehouse_pos'] },
-      { label: 'Warehouse Invoices', keys: ['pages.warehouse.invoices', 'modules.invoices', 'grants.view_warehouse_invoices'] },
-      { label: 'Warehouse Purchase', keys: ['pages.warehouse.purchase', 'modules.wholesalePos', 'grants.view_warehouse_products', 'grants.add_warehouse_purchases'] },
-      { label: 'Warehouse Transfer', keys: ['pages.warehouse.transfer', 'modules.wholesalePos', 'grants.view_warehouse_products', 'grants.add_warehouse_transfers'] },
-      { label: 'Warehouse Adjustment', keys: ['pages.warehouse.adjustment', 'modules.wholesalePos', 'grants.view_warehouse_products', 'grants.add_warehouse_adjustments'] },
-      { label: 'Warehouse Approvals', keys: ['pages.warehouse.approvals', 'modules.wholesalePos', 'modules.approvalsCenter', 'grants.view_warehouse_approvals', 'grants.approve_warehouse_director', 'grants.approve_warehouse_manager'] }
+      { label: 'Warehouse Goods', keys: ['pages.warehouse.goods', 'modules.wholesalePos', 'modules.products', 'grants.view_warehouse_products'], checkedKeys: ['pages.warehouse.goods', 'grants.view_warehouse_products'] },
+      { label: 'Warehouse POS', keys: ['pages.warehouse.pos', 'modules.wholesalePos', 'grants.view_warehouse_pos'], checkedKeys: ['pages.warehouse.pos', 'grants.view_warehouse_pos'] },
+      { label: 'Warehouse Invoices', keys: ['pages.warehouse.invoices', 'modules.invoices', 'grants.view_warehouse_invoices'], checkedKeys: ['pages.warehouse.invoices', 'grants.view_warehouse_invoices'] },
+      { label: 'Warehouse Purchase', keys: ['pages.warehouse.purchase', 'modules.wholesalePos', 'grants.view_warehouse_products', 'grants.add_warehouse_purchases'], checkedKeys: ['pages.warehouse.purchase', 'grants.view_warehouse_products', 'grants.add_warehouse_purchases'] },
+      { label: 'Warehouse Transfer', keys: ['pages.warehouse.transfer', 'modules.wholesalePos', 'grants.view_warehouse_products', 'grants.add_warehouse_transfers'], checkedKeys: ['pages.warehouse.transfer', 'grants.view_warehouse_products', 'grants.add_warehouse_transfers'] },
+      { label: 'Warehouse Adjustment', keys: ['pages.warehouse.adjustment', 'modules.wholesalePos', 'grants.view_warehouse_products', 'grants.add_warehouse_adjustments'], checkedKeys: ['pages.warehouse.adjustment', 'grants.view_warehouse_products', 'grants.add_warehouse_adjustments'] },
+      { label: 'Warehouse Approvals', keys: ['pages.warehouse.approvals', 'modules.wholesalePos', 'modules.approvalsCenter', 'grants.view_warehouse_approvals', 'grants.approve_warehouse_director', 'grants.approve_warehouse_manager'], checkedKeys: ['pages.warehouse.approvals', 'grants.view_warehouse_approvals', 'grants.approve_warehouse_director', 'grants.approve_warehouse_manager'] }
     ]
   },
   {

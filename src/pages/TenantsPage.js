@@ -754,7 +754,8 @@ function TenantsPage() {
                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
                               {(section.items || []).map((item) => {
                                 const itemKeys = item.keys || [];
-                                const checked = hasPlanAll(selectedPlan.key, itemKeys);
+                                const itemCheckedKeys = item.checkedKeys || itemKeys;
+                                const checked = hasPlanAll(selectedPlan.key, itemCheckedKeys);
                                 return (
                                   <label key={`${section.id}:${item.label}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', border: checked ? '1px solid #1d4ed8' : '1px solid #e2e8f0', borderRadius: 10, background: checked ? '#eff6ff' : '#fff' }}>
                                     <input type="checkbox" checked={checked} onChange={(e) => togglePlanKeys(selectedPlan.key, itemKeys, e.target.checked)} />
@@ -1360,7 +1361,7 @@ function TenantsPage() {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
                       {section.items.map((item) => (
                         <label key={`${section.id}:${item.label}`} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', color: '#0f172a', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 12, padding: 10 }}>
-                          <input type="checkbox" checked={hasAll(item.keys || [])} onChange={(e) => toggleKeys(item.keys || [], e.target.checked)} />
+                          <input type="checkbox" checked={hasAll(item.checkedKeys || item.keys || [])} onChange={(e) => toggleKeys(item.keys || [], e.target.checked)} />
                           <span style={{ color: '#0f172a' }}>{item.label}</span>
                         </label>
                       ))}

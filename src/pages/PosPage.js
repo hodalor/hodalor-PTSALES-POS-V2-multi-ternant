@@ -47,6 +47,22 @@ function reportQueuedSalesImeiDebug({ hypothesisId = 'A', location = '', msg = '
   }).catch(() => {});
 }
 
+function reportEbkTmpReceiptDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  fetch('http://127.0.0.1:7777/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'ebk-tmp-receipt',
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      msg,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {});
+}
+
 function createReservationToken() {
   return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `RES-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -602,6 +618,18 @@ function PosPage({ mode = 'retail' }) {
       return getSerializedVisibleStockForBranch(p);
     }
     return getAvailableStockForBranch(p);
+  }
+
+  function getVisibleStockBadge(p) {
+    const visible = Number(visibleStockForProduct(p) || 0);
+    const lowStock = Number(p.lowStock ?? 0);
+    if (visible <= 0) {
+      return { text: t('Out of stock'), color: '#ef4444' };
+    }
+    if (lowStock > 0 && visible <= lowStock) {
+      return { text: `${t('Stock')}: ${visible} • ${t('Low')}`, color: '#ef4444' };
+    }
+    return { text: `${t('Stock')}: ${visible}`, color: undefined };
   }
 
   function getAvailableStockForBranch(p) {
@@ -1276,6 +1304,23 @@ function PosPage({ mode = 'retail' }) {
         const tmpRef = `TMP-${String(Date.now()).padStart(6, '0').slice(-6)}`;
         saleForUi = { ...sale, id: sale.clientId, invoiceSerial: tmpRef, receiptNumber: tmpRef, branchName };
       }
+      // #region debug-point A:tmp-receipt-generated
+      reportEbkTmpReceiptDebug({
+        hypothesisId: 'A',
+        location: 'PosPage.js:completeSale:tmp-receipt-generated',
+        msg: '[DEBUG] POS generated local receipt references before remote sale confirmation',
+        data: {
+          clientId: String(sale?.clientId || ''),
+          branchId: String(activeBranchId || ''),
+          offline: !navigator.onLine,
+          inventoryType: String(inventoryType || ''),
+          receiptNumber: String(saleForUi?.receiptNumber || ''),
+          invoiceSerial: String(saleForUi?.invoiceSerial || ''),
+          itemCount: Array.isArray(sale?.items) ? sale.items.length : 0,
+          hasSerialized: soldUnitIdsForDebug.length > 0
+        }
+      });
+      // #endregion
       const receiptHtml = buildBrandedReceiptHtml({ settings, sale: saleForUi });
       const affectedProductIds = Array.from(new Set(cart.items.map(i => i.productId).filter(Boolean)));
       cart.items.forEach(i => {
@@ -1397,6 +1442,21 @@ function PosPage({ mode = 'retail' }) {
       });
         downloadText('receipt-escpos.txt', (settings.drawerOpenOnCash && payments.some(p => p.type === 'cash')) ? (escposOpenDrawer() + '\n' + text) : text);
       } else {
+        // #region debug-point B:before-receipt-print
+        reportEbkTmpReceiptDebug({
+          hypothesisId: 'B',
+          location: 'PosPage.js:completeSale:before-receipt-print',
+          msg: '[DEBUG] POS is about to print local receipt before online sale confirmation',
+          data: {
+            clientId: String(sale?.clientId || ''),
+            branchId: String(activeBranchId || ''),
+            receiptNumber: String(saleForUi?.receiptNumber || ''),
+            invoiceSerial: String(saleForUi?.invoiceSerial || ''),
+            printMode: String(posDefaultPrintMode || 'receipt'),
+            isNonRetail: !!isNonRetail
+          }
+        });
+        // #endregion
         if (isNonRetail) {
           if (posDefaultPrintMode === 'invoice' && invoiceForPrint) {
             printInvoiceA4(buildInvoiceA4Html({ settings, invoice: invoiceForPrint }));
@@ -1416,6 +1476,21 @@ function PosPage({ mode = 'retail' }) {
           if (saved && (saved.invoiceSerial || saved.receiptNumber)) {
             // no-op: printed already; server holds the official refs
           }
+          // #region debug-point C:online-save-succeeded
+          reportEbkTmpReceiptDebug({
+            hypothesisId: 'C',
+            location: 'PosPage.js:completeSale:online-save-succeeded',
+            msg: '[DEBUG] POS online sale save completed after local print path',
+            data: {
+              clientId: String(sale?.clientId || ''),
+              serverSaleId: String(saved?._id || saved?.id || ''),
+              serverReceiptNumber: String(saved?.receiptNumber || ''),
+              serverInvoiceSerial: String(saved?.invoiceSerial || ''),
+              branchId: String(activeBranchId || ''),
+              hasSerialized: soldUnitIdsForDebug.length > 0
+            }
+          });
+          // #endregion
           // #region debug-point B:pos-online-sale-saved
           reportQueuedSalesImeiDebug({
             hypothesisId: 'B',
@@ -1436,6 +1511,20 @@ function PosPage({ mode = 'retail' }) {
         } catch (e) {
           try {
             await enqueueHttp({ collection: 'sales', label: 'Sale', path: '/api/sales', method: 'POST', body: { ...sale, clientId: sale.clientId } });
+            // #region debug-point D:online-save-fell-back-to-queue
+            reportEbkTmpReceiptDebug({
+              hypothesisId: 'D',
+              location: 'PosPage.js:completeSale:online-save-fell-back-to-queue',
+              msg: '[DEBUG] POS online sale save failed after print and fell back to queue',
+              data: {
+                clientId: String(sale?.clientId || ''),
+                branchId: String(activeBranchId || ''),
+                reservationToken: String(sale?.reservationToken || ''),
+                error: String(e?.message || ''),
+                hasSerialized: soldUnitIdsForDebug.length > 0
+              }
+            });
+            // #endregion
             // #region debug-point A:pos-online-fallback-queued
             reportQueuedSalesImeiDebug({
               hypothesisId: 'A',
@@ -1454,6 +1543,20 @@ function PosPage({ mode = 'retail' }) {
             productUnitsApi.markSoldProductUnits(soldUnitIdsForDebug);
             toast.show(sale.items.some(item => Array.isArray(item.soldUnitIds) && item.soldUnitIds.length > 0) ? 'Saved offline. Serialized IMEI sale will sync later and conflicts will be flagged if found.' : 'Network issue: saved offline and will sync later', { type: 'warning' });
           } catch (err) {
+            // #region debug-point E:online-save-and-queue-both-failed
+            reportEbkTmpReceiptDebug({
+              hypothesisId: 'E',
+              location: 'PosPage.js:completeSale:online-save-and-queue-both-failed',
+              msg: '[DEBUG] POS online sale save failed after print and queue fallback also failed',
+              data: {
+                clientId: String(sale?.clientId || ''),
+                branchId: String(activeBranchId || ''),
+                createSaleError: String(e?.message || ''),
+                queueError: String(err?.message || ''),
+                hasSerialized: soldUnitIdsForDebug.length > 0
+              }
+            });
+            // #endregion
             await releaseSerializedCartItems(cart.items);
             cart.items.forEach(i => {
               if (i.productId) {
@@ -1760,8 +1863,8 @@ function PosPage({ mode = 'retail' }) {
                 {productSpec(p) && <div className="product-sku" style={{ color: '#64748b' }}>{productSpec(p)}</div>}
                 <div className="product-sku">{p.sku}</div>
                 <div className="product-price">{formatCurrency(p.price, settings)}</div>
-                <div className="product-stock" style={{ color: (p.lowStock ?? 0) > 0 && visibleStockForProduct(p) <= (p.lowStock ?? 0) ? '#ef4444' : undefined }}>
-                  {t('Stock')}: {visibleStockForProduct(p)}{(p.lowStock ?? 0) > 0 && visibleStockForProduct(p) <= (p.lowStock ?? 0) ? ` • ${t('Low')}` : ''}
+                <div className="product-stock" style={{ color: getVisibleStockBadge(p).color }}>
+                  {getVisibleStockBadge(p).text}
                 </div>
               </button>
             ))}
@@ -1779,8 +1882,8 @@ function PosPage({ mode = 'retail' }) {
                     {productSpec(p) && <div className="sku" style={{ color: '#64748b' }}>{productSpec(p)}</div>}
                     <div className="sku">{p.sku}</div>
                   </div>
-                  <div className="stock" style={{ color: (p.lowStock ?? 0) > 0 && visibleStockForProduct(p) <= (p.lowStock ?? 0) ? '#ef4444' : undefined }}>
-                    {t('Stock')}: {visibleStockForProduct(p)}{(p.lowStock ?? 0) > 0 && visibleStockForProduct(p) <= (p.lowStock ?? 0) ? ` • ${t('Low')}` : ''}
+                  <div className="stock" style={{ color: getVisibleStockBadge(p).color }}>
+                    {getVisibleStockBadge(p).text}
                   </div>
                 </div>
                 <div className="price">{formatCurrency(p.price, settings)}</div>
