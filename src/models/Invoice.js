@@ -34,7 +34,7 @@ const InvoiceSchema = new mongoose.Schema({
   date: { type: Date, default: Date.now },
   saleId: { type: String, index: true },
   source: { type: String, enum: ['manual','pos','wholesale-pos','warehouse-pos','wholesale-manual','warehouse-manual'], default: 'manual' },
-  paymentStatus: { type: String, enum: ['paid','unpaid'], default: 'unpaid' },
+  paymentStatus: { type: String, enum: ['paid','unpaid','active'], default: 'unpaid' },
   customer: { type: InvoiceCustomerSchema, default: {} },
   items: { type: [InvoiceItemSchema], default: [] },
   subtotal: { type: Number, default: 0 },
