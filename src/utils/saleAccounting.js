@@ -79,7 +79,11 @@ export function getSaleActivityType(sale, creditSale = null) {
   const saleType = String(sale?.posType || sale?.inventoryType || 'retail').trim().toLowerCase();
   const creditMode = resolveCreditMode(sale, creditSale);
   if (creditMode === 'retail_easybuy') return 'retail_credit';
-  if (creditMode === 'distribution_credit') return 'wholesale_credit';
+  if (creditMode === 'distribution_credit') {
+    if (saleType === 'warehouse') return 'warehouse_credit';
+    return 'wholesale_credit';
+  }
+  if (saleType === 'warehouse') return 'warehouse_sales';
   return saleType === 'wholesale' ? 'wholesale_sales' : 'retail_sales';
 }
 
@@ -88,13 +92,15 @@ export function matchesActivityFilter(sale, activityFilter = 'all', creditSale =
   const activityType = getSaleActivityType(sale, creditSale);
   switch (filter) {
     case 'all_sales':
-      return activityType === 'retail_sales' || activityType === 'wholesale_sales';
+      return activityType === 'retail_sales' || activityType === 'wholesale_sales' || activityType === 'warehouse_sales';
     case 'all_credit':
-      return activityType === 'retail_credit' || activityType === 'wholesale_credit';
+      return activityType === 'retail_credit' || activityType === 'wholesale_credit' || activityType === 'warehouse_credit';
     case 'retail_sales':
     case 'retail_credit':
     case 'wholesale_sales':
     case 'wholesale_credit':
+    case 'warehouse_sales':
+    case 'warehouse_credit':
       return activityType === filter;
     case 'all':
     default:
@@ -106,9 +112,9 @@ function resolveCreditMode(sale, creditSale = null) {
   const explicitMode = String(sale?.creditMode || '').trim().toLowerCase();
   if (explicitMode === 'retail_easybuy' || explicitMode === 'distribution_credit') return explicitMode;
   if (creditSale || isCreditSaleRecord(sale)) {
-    return String(sale?.posType || sale?.inventoryType || 'retail').trim().toLowerCase() === 'wholesale'
-      ? 'distribution_credit'
-      : 'retail_easybuy';
+    return String(sale?.posType || sale?.inventoryType || 'retail').trim().toLowerCase() === 'retail'
+      ? 'retail_easybuy'
+      : 'distribution_credit';
   }
   return 'non_credit';
 }
