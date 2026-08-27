@@ -7,6 +7,22 @@ import InlineSpinner from '../components/InlineSpinner';
 import LoadingDots from '../components/LoadingDots';
 import { getProductBrand } from '../utils/productSearch';
 
+function reportQueuedSaleRetryDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  fetch('http://127.0.0.1:7777/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'queued-sale-retry',
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      msg,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {});
+}
+
 function SerializedInventoryPage() {
   const toast = useToast();
   const products = useSelector(s => s.products.products || []);
@@ -117,6 +133,22 @@ function SerializedInventoryPage() {
     if (!row?._id || String(row.status || '') !== 'reserved') return;
     try {
       setRestoringId(String(row._id));
+      // #region debug-point B:restore-reserved-unit-start
+      reportQueuedSaleRetryDebug({
+        hypothesisId: 'B',
+        location: 'SerializedInventoryPage.js:restoreReservedUnit:start',
+        msg: '[DEBUG] Reserved serialized unit restore requested',
+        data: {
+          unitId: String(row?._id || ''),
+          productId: String(row?.productId || ''),
+          branchId: String(row?.branchId || ''),
+          inventoryType: String(row?.inventoryType || ''),
+          reservationToken: String(row?.reservationToken || ''),
+          imei: String(row?.imei || ''),
+          serialNumber: String(row?.serialNumber || '')
+        }
+      });
+      // #endregion
       await productUnitsApi.releaseProductUnits({ unitIds: [String(row._id)] });
       const nextStatus = status === 'reserved' ? null : 'in_stock';
       setRows(prev => prev
@@ -126,8 +158,35 @@ function SerializedInventoryPage() {
       if (status === 'reserved') {
         setTotal(prev => Math.max(0, Number(prev || 0) - 1));
       }
+      // #region debug-point B:restore-reserved-unit-success
+      reportQueuedSaleRetryDebug({
+        hypothesisId: 'B',
+        location: 'SerializedInventoryPage.js:restoreReservedUnit:success',
+        msg: '[DEBUG] Reserved serialized unit restored to in stock',
+        data: {
+          unitId: String(row?._id || ''),
+          branchId: String(row?.branchId || ''),
+          inventoryType: String(row?.inventoryType || ''),
+          imei: String(row?.imei || ''),
+          serialNumber: String(row?.serialNumber || '')
+        }
+      });
+      // #endregion
       toast.show('Reserved serialized item restored to in stock', { type: 'success' });
     } catch (e) {
+      // #region debug-point B:restore-reserved-unit-failed
+      reportQueuedSaleRetryDebug({
+        hypothesisId: 'B',
+        location: 'SerializedInventoryPage.js:restoreReservedUnit:failed',
+        msg: '[DEBUG] Reserved serialized unit restore failed',
+        data: {
+          unitId: String(row?._id || ''),
+          message: String(e?.message || ''),
+          status: Number(e?.status || 0),
+          errorData: e?.data || null
+        }
+      });
+      // #endregion
       toast.show(String(e?.message || 'Failed to restore reserved serialized item'), { type: 'error' });
     } finally {
       setRestoringId('');

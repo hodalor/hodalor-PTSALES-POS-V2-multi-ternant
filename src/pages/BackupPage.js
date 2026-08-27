@@ -1,18 +1,53 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useSelector, useStore } from 'react-redux';
 import { useToast } from '../components/ToastProvider';
-import { attemptSync, removeMany } from '../offline/queue';
+import { attemptSync, removeByFingerprint, removeMany, updateMeta } from '../offline/queue';
 import { COLLECTIONS, getQueueSummary, listQueuedByCollection } from '../offline/offlineBackup';
 import { syncQueuedItem } from '../offline/syncHandlers';
 import { ensureOnlineJwt } from '../offline/reAuth';
 import { refreshAllData } from '../offline/refreshAll';
 import { useDispatch } from 'react-redux';
-import { listImeiConflicts } from '../offline/imeiConflicts';
+import { listImeiConflicts, removeImeiConflict } from '../offline/imeiConflicts';
 import { setQueueSummary } from '../store/offlineQueueSlice';
+import { adjustStock } from '../store/productsSlice';
+import { removeSales } from '../store/salesSlice';
+import { removeInvoices } from '../store/invoicesSlice';
 import * as tenantsApi from '../api/tenants';
+import * as productUnitsApi from '../api/productUnits';
 import Modal from '../components/Modal';
 import { formatDurationMs, importTenantTransferInSteps, parseTenantTransferFile, summarizeTenantImportResults } from '../utils/tenantTransfer';
+import { formatCurrency } from '../utils/currency';
+import { confirmDialog } from '../utils/dialogs';
+
+function getQueuedSalePayload(item) {
+  if (!item) return null;
+  if (String(item?.payload?.path || '') === '/api/sales') return item?.payload?.body || null;
+  if (String(item?.type || '') === 'sale') return item?.payload || null;
+  return null;
+}
+
+function isQueuedSale(item) {
+  return !!getQueuedSalePayload(item);
+}
+
+function getSaleItems(sale) {
+  return Array.isArray(sale?.items) ? sale.items : [];
+}
+
+function getSaleUnitIds(sale) {
+  return getSaleItems(sale).flatMap((line) => Array.isArray(line?.soldUnitIds) ? line.soldUnitIds.map(String) : []);
+}
+
+function getQueuedSaleRecordIds(sale) {
+  return [
+    sale?.clientId,
+    sale?.id,
+    sale?._id,
+    sale?.invoiceSerial,
+    sale?.receiptNumber
+  ].filter(Boolean).map(String);
+}
 
 function BackupPage() {
   const toast = useToast();
@@ -34,6 +69,8 @@ function BackupPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [transferBusy, setTransferBusy] = useState('');
   const [lastImportSummary, setLastImportSummary] = useState(null);
+  const [retryingId, setRetryingId] = useState('');
+  const [undoingId, setUndoingId] = useState('');
   const fileInputRef = useRef(null);
   const roleLower = String(auth.role || '').toLowerCase();
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
@@ -149,6 +186,123 @@ function BackupPage() {
       toast.show(String(e?.message || 'Failed to delete queue items'), { type: 'error' });
     } finally {
       setLoading(false);
+    }
+  }
+
+  function getQueueBusyState(queueId) {
+    const id = String(queueId || '');
+    return retryingId === id || undoingId === id || loading;
+  }
+
+  function describeQueuedSale(item) {
+    const sale = getQueuedSalePayload(item);
+    const items = getSaleItems(sale);
+    return {
+      sale,
+      items,
+      branchName: String(sale?.branchName || sale?.branchId || '').trim() || 'Branch not set',
+      customerName: String(sale?.customerName || '').trim() || 'Walk-in customer',
+      total: Number(sale?.total || 0),
+      subtotal: Number(sale?.subtotal || 0),
+      discount: Number(sale?.discount || 0),
+      tax: Number(sale?.tax || 0),
+      receiptNumber: String(sale?.receiptNumber || sale?.invoiceSerial || sale?.clientId || '').trim(),
+      saleId: String(sale?.clientId || sale?.id || sale?._id || item?.id || '').trim()
+    };
+  }
+
+  async function rollbackQueuedSaleLocally(item) {
+    const sale = getQueuedSalePayload(item);
+    if (!sale) return;
+    const inventoryType = String(sale?.inventoryType || sale?.posType || 'retail');
+    const branchId = String(sale?.branchId || '');
+    const soldUnitIds = getSaleUnitIds(sale);
+    if (soldUnitIds.length > 0) {
+      try {
+        await productUnitsApi.releaseProductUnits({
+          unitIds: soldUnitIds,
+          reservationToken: String(sale?.reservationToken || '')
+        });
+      } catch {}
+      productUnitsApi.restoreProductUnitsToStock(soldUnitIds);
+    }
+    getSaleItems(sale).forEach((line) => {
+      const productId = String(line?.productId || '').trim();
+      if (!productId || !branchId) return;
+      dispatch(adjustStock({
+        productId,
+        variantId: line?.variantId || null,
+        branchId,
+        inventoryType,
+        delta: Math.max(0, Number(line?.qty || 0)),
+        syncPending: false
+      }));
+    });
+    const idsToRemove = getQueuedSaleRecordIds(sale);
+    dispatch(removeSales(idsToRemove));
+    dispatch(removeInvoices(idsToRemove));
+  }
+
+  async function onRetryItem(item) {
+    const queueId = String(item?.id || '');
+    if (!queueId || getQueueBusyState(queueId)) return;
+    if (!navigator.onLine) {
+      toast.show('Connect internet to retry this queued sale', { type: 'error' });
+      return;
+    }
+    setRetryingId(queueId);
+    try {
+      const sale = getQueuedSalePayload(item);
+      await ensureOnlineJwt();
+      await syncQueuedItem(item);
+      if (sale) {
+        dispatch(removeSales(getQueuedSaleRecordIds(sale)));
+        dispatch(removeInvoices(getQueuedSaleRecordIds(sale)));
+        productUnitsApi.markSoldProductUnits(getSaleUnitIds(sale));
+      }
+      if (item?.fingerprint) await removeByFingerprint(item.fingerprint);
+      else await removeMany([item?.id]);
+      removeImeiConflict(queueId);
+      await refreshQueueState();
+      try {
+        await refreshAllData(dispatch, store.getState);
+      } catch {}
+      toast.show('Queued sale pushed successfully', { type: 'success' });
+    } catch (e) {
+      await updateMeta(item?.id, {
+        attempts: Number(item?.attempts || 0) + 1,
+        lastError: String(e?.message || 'Retry failed'),
+        lastAttemptAt: Date.now()
+      });
+      await refreshQueueState();
+      toast.show(String(e?.message || 'Retry failed'), { type: 'error' });
+    } finally {
+      setRetryingId('');
+    }
+  }
+
+  async function onUndoItem(item) {
+    const queueId = String(item?.id || '');
+    if (!queueId || getQueueBusyState(queueId)) return;
+    const sale = getQueuedSalePayload(item);
+    if (!sale) {
+      toast.show('Undo is available for queued sales only', { type: 'error' });
+      return;
+    }
+    const ok = await confirmDialog('Undo this queued sale and restore the stock locally? This will remove it from the queue and release serialized units for sale again.');
+    if (!ok) return;
+    setUndoingId(queueId);
+    try {
+      await rollbackQueuedSaleLocally(item);
+      if (item?.fingerprint) await removeByFingerprint(item.fingerprint);
+      else await removeMany([item?.id]);
+      removeImeiConflict(queueId);
+      await refreshQueueState();
+      toast.show('Queued sale undone and stock restored locally', { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to undo queued sale'), { type: 'error' });
+    } finally {
+      setUndoingId('');
     }
   }
 
@@ -358,26 +512,99 @@ function BackupPage() {
                 <th align="left">Target</th>
                 <th align="left">Status</th>
                 <th align="left">Reason</th>
+                <th align="left">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {rows.map(it => (
-                <tr key={it.id}>
-                  {String(auth.role || '').toLowerCase() === 'superadmin' ? (
-                    <td>
-                      <input type="checkbox" checked={selectedIds.includes(it.id)} onChange={(e) => setSelectedIds((prev) => e.target.checked ? [...prev, it.id] : prev.filter((id) => id !== it.id))} />
-                    </td>
-                  ) : null}
-                  <td>{new Date(it.ts || Date.now()).toLocaleString()}</td>
-                  <td>{it?.payload?.label || it.type}</td>
-                  <td><code style={{ fontSize: 12 }}>{it?.payload?.path || ''}</code></td>
-                  <td><span style={{ color: it.lastError ? '#dc2626' : '#f59e0b', fontWeight: 700 }}>{it.lastError ? 'failed' : 'pending'}</span></td>
-                  <td style={{ color: '#64748b', fontSize: 12 }}>{it.lastError || '-'}</td>
-                </tr>
-              ))}
+              {rows.map((it) => {
+                const saleMeta = describeQueuedSale(it);
+                const isSale = isQueuedSale(it);
+                const isBusy = getQueueBusyState(it?.id);
+                const colspan = String(auth.role || '').toLowerCase() === 'superadmin' ? 7 : 6;
+                return (
+                  <Fragment key={it.id}>
+                    <tr>
+                      {String(auth.role || '').toLowerCase() === 'superadmin' ? (
+                        <td>
+                          <input type="checkbox" checked={selectedIds.includes(it.id)} onChange={(e) => setSelectedIds((prev) => e.target.checked ? [...prev, it.id] : prev.filter((id) => id !== it.id))} />
+                        </td>
+                      ) : null}
+                      <td>{new Date(it.ts || Date.now()).toLocaleString()}</td>
+                      <td>{it?.payload?.label || it.type}</td>
+                      <td><code style={{ fontSize: 12 }}>{it?.payload?.path || ''}</code></td>
+                      <td><span style={{ color: it.lastError ? '#dc2626' : '#f59e0b', fontWeight: 700 }}>{it.lastError ? 'failed' : 'pending'}</span></td>
+                      <td style={{ color: '#64748b', fontSize: 12 }}>{it.lastError || '-'}</td>
+                      <td>
+                        {isSale ? (
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <button className="btn btn-primary" type="button" onClick={() => onRetryItem(it)} disabled={isBusy || !navigator.onLine}>
+                              {retryingId === String(it?.id || '') ? 'Retrying…' : 'Retry Push'}
+                            </button>
+                            <button className="btn" type="button" onClick={() => onUndoItem(it)} disabled={isBusy}>
+                              {undoingId === String(it?.id || '') ? 'Undoing…' : 'Undo Sale'}
+                            </button>
+                          </div>
+                        ) : (
+                          <span style={{ color: '#94a3b8', fontSize: 12 }}>-</span>
+                        )}
+                      </td>
+                    </tr>
+                    {isSale ? (
+                      <tr>
+                        <td colSpan={colspan} style={{ background: '#f8fafc', padding: 12 }}>
+                          <div style={{ display: 'grid', gap: 10 }}>
+                            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', color: '#475569', fontSize: 13 }}>
+                              <span><strong>Sale Ref:</strong> {saleMeta.saleId || '-'}</span>
+                              <span><strong>Receipt:</strong> {saleMeta.receiptNumber || '-'}</span>
+                              <span><strong>Branch:</strong> {saleMeta.branchName}</span>
+                              <span><strong>Customer:</strong> {saleMeta.customerName}</span>
+                              <span><strong>Total:</strong> {formatCurrency(saleMeta.total, settings)}</span>
+                            </div>
+                            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', color: '#64748b', fontSize: 12 }}>
+                              <span>Subtotal: {formatCurrency(saleMeta.subtotal, settings)}</span>
+                              <span>Discount: {formatCurrency(saleMeta.discount, settings)}</span>
+                              <span>Tax: {formatCurrency(saleMeta.tax, settings)}</span>
+                              <span>Type: {String(saleMeta.sale?.posType || saleMeta.sale?.inventoryType || 'retail')}</span>
+                            </div>
+                            <div style={{ display: 'grid', gap: 8 }}>
+                              {saleMeta.items.map((line, index) => {
+                                const unitCodes = Array.isArray(line?.soldUnits)
+                                  ? line.soldUnits.map((unit) => String(unit?.imei || unit?.serialNumber || unit?.unitId || '').trim()).filter(Boolean)
+                                  : [];
+                                return (
+                                  <div key={`${it.id}-${index}`} style={{ padding: '10px 12px', border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+                                      <div style={{ fontWeight: 700 }}>
+                                        {line?.name || line?.sku || line?.productId || 'Item'}
+                                        {line?.variantId ? ` (${line.variantId})` : ''}
+                                      </div>
+                                      <div style={{ fontWeight: 700 }}>{Number(line?.qty || 0)} x {formatCurrency(Number(line?.price || 0), settings)}</div>
+                                    </div>
+                                    <div style={{ color: '#64748b', fontSize: 12, marginTop: 4 }}>
+                                      SKU: {line?.sku || '-'}{line?.priceTier ? ` || Price Tier: ${line.priceTier}` : ''}{line?.productId ? ` || Product ID: ${line.productId}` : ''}
+                                    </div>
+                                    {unitCodes.length > 0 ? (
+                                      <div style={{ color: '#0f172a', fontSize: 12, marginTop: 6 }}>
+                                        Serialized: {unitCodes.join(' || ')}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                );
+                              })}
+                              {saleMeta.items.length === 0 ? (
+                                <div style={{ color: '#94a3b8', fontSize: 12 }}>No sale lines found in this queued record.</div>
+                              ) : null}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : null}
+                  </Fragment>
+                );
+              })}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={String(auth.role || '').toLowerCase() === 'superadmin' ? 6 : 5} style={{ padding: 12, color: '#94a3b8' }}>No pending offline records</td>
+                  <td colSpan={String(auth.role || '').toLowerCase() === 'superadmin' ? 7 : 6} style={{ padding: 12, color: '#94a3b8' }}>No pending offline records</td>
                 </tr>
               )}
             </tbody>

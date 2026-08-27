@@ -39,9 +39,13 @@ const invoicesSlice = createSlice({
         const tb = new Date(b.created_at || b.date || 0).getTime();
         return tb - ta;
       });
+    },
+    removeInvoices(state, action) {
+      const ids = new Set((Array.isArray(action.payload) ? action.payload : []).map(String));
+      state.invoices = state.invoices.filter((invoice) => !ids.has(String(invoice?.id || invoice?.saleId || invoice?.clientId || invoice?.number || '')));
     }
   }
 });
 
-export const { addInvoice, setInvoices } = invoicesSlice.actions;
+export const { addInvoice, setInvoices, removeInvoices } = invoicesSlice.actions;
 export default invoicesSlice.reducer;

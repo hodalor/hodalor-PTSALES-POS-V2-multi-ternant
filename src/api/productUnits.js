@@ -279,6 +279,26 @@ export function markSoldProductUnits(unitIds = []) {
   // #endregion
 }
 
+export function restoreProductUnitsToStock(unitIds = []) {
+  if (!Array.isArray(unitIds) || unitIds.length === 0) return;
+  const ids = new Set(unitIds.map(String).filter(Boolean));
+  const next = readCache().map((row) => (
+    ids.has(String(row?._id || ''))
+      ? {
+          ...row,
+          status: 'in_stock',
+          reservationToken: '',
+          reservedAt: null,
+          soldAt: null,
+          soldSaleId: '',
+          offlineCached: true
+        }
+      : row
+  ));
+  writeCache(next);
+  invalidateListRequestCache();
+}
+
 export function listProductUnits(params = {}) {
   const query = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {

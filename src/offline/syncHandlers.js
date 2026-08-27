@@ -35,6 +35,22 @@ function reportTenantQueueSkewDebug({ hypothesisId = 'A', location = '', msg = '
   }).catch(() => {});
 }
 
+function reportQueuedSaleRetryDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  fetch('http://127.0.0.1:7777/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'queued-sale-retry',
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      msg,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {});
+}
+
 export async function syncQueuedItem(item) {
   if (!item) return;
   const hasSerialized = !!(item?.payload?.body?.items || item?.payload?.items || []).some(line => Array.isArray(line?.soldUnitIds) && line.soldUnitIds.length > 0);
@@ -128,6 +144,28 @@ export async function syncQueuedItem(item) {
         return;
       }
       if (isSaleReplay) {
+        // #region debug-point A:queued-sale-retry-http-error
+        reportQueuedSaleRetryDebug({
+          hypothesisId: 'A',
+          location: 'syncHandlers.js:syncQueuedItem:http-error',
+          msg: '[DEBUG] Queued sale replay failed during HTTP sync',
+          data: {
+            queueId: Number(item?.id || 0),
+            clientId: String(body?.clientId || ''),
+            branchId: String(body?.branchId || ''),
+            status: Number(e?.status || 0),
+            message: String(e?.message || ''),
+            errorData: e?.data || null,
+            reservationToken: String(body?.reservationToken || ''),
+            soldUnitIds: (Array.isArray(body?.items) ? body.items : []).flatMap((line) => Array.isArray(line?.soldUnitIds) ? line.soldUnitIds.map(String) : []),
+            soldUnits: (Array.isArray(body?.items) ? body.items : []).flatMap((line) => Array.isArray(line?.soldUnits) ? line.soldUnits : []).map((unit) => ({
+              unitId: String(unit?.unitId || ''),
+              imei: String(unit?.imei || ''),
+              serialNumber: String(unit?.serialNumber || '')
+            }))
+          }
+        });
+        // #endregion
         // #region debug-point E:sync-sale-error
         reportQueuedSalesImeiDebug({
           hypothesisId: 'E',
@@ -174,6 +212,23 @@ export async function syncQueuedItem(item) {
       });
       // #endregion
     } catch (e) {
+      // #region debug-point A:queued-sale-retry-direct-error
+      reportQueuedSaleRetryDebug({
+        hypothesisId: 'A',
+        location: 'syncHandlers.js:syncQueuedItem:direct-error',
+        msg: '[DEBUG] Legacy queued sale replay failed',
+        data: {
+          queueId: Number(item?.id || 0),
+          clientId: String(item?.payload?.clientId || ''),
+          branchId: String(item?.payload?.branchId || ''),
+          status: Number(e?.status || 0),
+          message: String(e?.message || ''),
+          errorData: e?.data || null,
+          reservationToken: String(item?.payload?.reservationToken || ''),
+          soldUnitIds: (Array.isArray(item?.payload?.items) ? item.payload.items : []).flatMap((line) => Array.isArray(line?.soldUnitIds) ? line.soldUnitIds.map(String) : [])
+        }
+      });
+      // #endregion
       // #region debug-point E:sync-sale-direct-error
       reportQueuedSalesImeiDebug({
         hypothesisId: 'E',
