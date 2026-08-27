@@ -656,6 +656,7 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
           inventoryType,
           qty: it.qty,
           unitIds: it.soldUnitIds,
+          reservationToken: String(payload.reservationToken || ''),
           purpose: 'sale'
         });
       }
@@ -700,6 +701,7 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
         inventoryType,
         qty: it.qty,
         unitIds: it.soldUnitIds,
+        reservationToken: String(payload.reservationToken || ''),
         purpose: 'sale'
       });
       if (prev < it.qty) {

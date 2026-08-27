@@ -106,6 +106,7 @@ export async function assertOutgoingSerializedAvailability({
   branchId = '',
   inventoryType = 'retail',
   unitIds = [],
+  reservationToken = '',
   excludeWholesaleOperationId = '',
   excludeTransferRequestId = '',
   purpose = 'transfer'
@@ -121,16 +122,21 @@ export async function assertOutgoingSerializedAvailability({
     excludeTransferRequestId
   });
   const lockedSet = new Set(locks.unitIdsLocked.map(String));
-  const rows = await ProductUnit.find({ _id: { $in: requestedIds } }, { _id: 1, imei: 1, serialNumber: 1, branchId: 1, inventoryType: 1, status: 1 }).lean();
+  const rows = await ProductUnit.find({ _id: { $in: requestedIds } }, { _id: 1, imei: 1, serialNumber: 1, branchId: 1, inventoryType: 1, status: 1, reservationToken: 1 }).lean();
   const rowById = new Map(rows.map((row) => [String(row?._id || ''), row]));
   const unavailableIds = [];
   const unavailableRows = [];
   requestedIds.forEach((id) => {
     const row = rowById.get(String(id));
+    const sameReservation =
+      purpose === 'sale'
+      && String(row?.status || '') === 'reserved'
+      && String(row?.reservationToken || '') !== ''
+      && String(row?.reservationToken || '') === String(reservationToken || '');
     const invalid = !row
       || String(row?.branchId || '') !== String(branchId || '')
       || String(row?.inventoryType || '') !== String(inventoryType || 'retail')
-      || String(row?.status || '') !== 'in_stock'
+      || (!sameReservation && String(row?.status || '') !== 'in_stock')
       || lockedSet.has(String(id));
     if (!invalid) return;
     unavailableIds.push(String(id));
@@ -205,6 +211,7 @@ export async function assertOutgoingAvailability({
   inventoryType = 'retail',
   qty = 0,
   unitIds = [],
+  reservationToken = '',
   excludeWholesaleOperationId = '',
   excludeTransferRequestId = '',
   purpose = 'transfer'
@@ -216,6 +223,7 @@ export async function assertOutgoingAvailability({
       branchId,
       inventoryType,
       unitIds,
+      reservationToken,
       excludeWholesaleOperationId,
       excludeTransferRequestId,
       purpose
