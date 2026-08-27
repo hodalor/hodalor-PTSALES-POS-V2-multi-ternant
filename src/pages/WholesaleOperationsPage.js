@@ -14,6 +14,7 @@ import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { ensureSupplierByName } from '../utils/suppliers';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
+import { filterBranchesByType } from '../utils/branchTypes';
 import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
 
 function labelForArea(area, op, t) {
@@ -161,9 +162,23 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   }, [assigned, auth.user?.branchId, roleLower]);
   const normalizedArea = String(operationArea || 'wholesale').toLowerCase() === 'warehouse' ? 'warehouse' : 'wholesale';
   const scopedBranchOptions = useMemo(
-    () => branchOptions.filter(branch => String(branch.branchType || 'retail').toLowerCase() === normalizedArea),
+    () => filterBranchesByType(branchOptions, normalizedArea),
     [branchOptions, normalizedArea]
   );
+  const hasScopedBranches = scopedBranchOptions.length > 0;
+  const createBlockedMessage = useMemo(() => {
+    if (!hasScopedBranches) {
+      return normalizedArea === 'warehouse'
+        ? t('Create at least one warehouse branch before recording warehouse purchases, transfers, or adjustments.')
+        : t('Create at least one distribution branch before recording distribution purchases, transfers, or adjustments.');
+    }
+    if (operationType === 'transfer' && scopedBranchOptions.length < 2) {
+      return normalizedArea === 'warehouse'
+        ? t('Create at least two warehouse branches before making warehouse-to-warehouse transfers.')
+        : t('Create at least two distribution branches before making distribution-to-distribution transfers.');
+    }
+    return '';
+  }, [hasScopedBranches, normalizedArea, operationType, scopedBranchOptions.length, t]);
 
   const branchNameById = useMemo(() => {
     const map = new Map();
@@ -209,9 +224,9 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const [productId, setProductId] = useState('');
   const [productQuery, setProductQuery] = useState('');
   const [variantId, setVariantId] = useState('');
-  const [branchId, setBranchId] = useState(currentBranchId || scopedBranchOptions[0]?.id || branchOptions[0]?.id || '');
-  const [fromBranchId, setFromBranchId] = useState(currentBranchId || scopedBranchOptions[0]?.id || branchOptions[0]?.id || '');
-  const [toBranchId, setToBranchId] = useState(branches.find(branch => String(branch.id) !== String(currentBranchId || ''))?.id || branches[0]?.id || '');
+  const [branchId, setBranchId] = useState(scopedBranchOptions[0]?.id || '');
+  const [fromBranchId, setFromBranchId] = useState(scopedBranchOptions[0]?.id || '');
+  const [toBranchId, setToBranchId] = useState(scopedBranchOptions.find(branch => String(branch.id) !== String(scopedBranchOptions[0]?.id || ''))?.id || '');
   const [qty, setQty] = useState(1);
   const [cost, setCost] = useState('');
   const [requestedAmount, setRequestedAmount] = useState('');
@@ -269,16 +284,16 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     if (operationType === 'refund') return grants.includes('add_distribution_refunds');
     return false;
   }, [grants, normalizedArea, operationType, roleLower]);
-  const defaultBranchIdRef = useRef(currentBranchId || scopedBranchOptions[0]?.id || branchOptions[0]?.id || '');
-  const defaultTransferToBranchIdRef = useRef(branches.find(branch => String(branch.id) !== String(currentBranchId || scopedBranchOptions[0]?.id || ''))?.id || branches[0]?.id || '');
+  const defaultBranchIdRef = useRef(scopedBranchOptions[0]?.id || '');
+  const defaultTransferToBranchIdRef = useRef(scopedBranchOptions.find(branch => String(branch.id) !== String(scopedBranchOptions[0]?.id || ''))?.id || '');
   const serializedScanInputRef = useRef(null);
   const transferFromBranchOptions = useMemo(
     () => scopedBranchOptions,
     [scopedBranchOptions]
   );
   const transferToBranchOptions = useMemo(
-    () => branches.filter(branch => String(branch.id) !== String(fromBranchId || '')),
-    [branches, fromBranchId]
+    () => scopedBranchOptions.filter(branch => String(branch.id) !== String(fromBranchId || '')),
+    [fromBranchId, scopedBranchOptions]
   );
   useEffect(() => {
     if (!isCreateOpen || operationType !== 'transfer') return;
@@ -307,37 +322,55 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   }, [selectedTrackType, serializedEntries.length, usesSerializedSelection]);
 
   useEffect(() => {
-    defaultBranchIdRef.current = currentBranchId || scopedBranchOptions[0]?.id || branchOptions[0]?.id || '';
-    defaultTransferToBranchIdRef.current = branches.find(branch => String(branch.id) !== String(currentBranchId || scopedBranchOptions[0]?.id || ''))?.id || branches[0]?.id || '';
-  }, [branchOptions, branches, currentBranchId, scopedBranchOptions]);
+    defaultBranchIdRef.current = scopedBranchOptions[0]?.id || '';
+    defaultTransferToBranchIdRef.current = scopedBranchOptions.find(branch => String(branch.id) !== String(scopedBranchOptions[0]?.id || ''))?.id || '';
+  }, [scopedBranchOptions]);
 
   useEffect(() => {
-    if (operationType !== 'transfer' && scopedBranchOptions.length > 0 && !scopedBranchOptions.some(branch => branch.id === branchId)) {
-      setBranchId(scopedBranchOptions[0].id);
+    if (operationType !== 'transfer') {
+      if (scopedBranchOptions.length === 0) {
+        if (branchId) setBranchId('');
+        return;
+      }
+      if (!scopedBranchOptions.some(branch => branch.id === branchId)) {
+        setBranchId(scopedBranchOptions[0].id);
+      }
     }
   }, [branchId, operationType, scopedBranchOptions]);
 
   useEffect(() => {
-    if (operationType === 'transfer' && transferFromBranchOptions.length > 0 && !transferFromBranchOptions.some(branch => branch.id === fromBranchId)) {
-      setFromBranchId(transferFromBranchOptions[0].id);
+    if (operationType === 'transfer') {
+      if (transferFromBranchOptions.length === 0) {
+        if (fromBranchId) setFromBranchId('');
+        return;
+      }
+      if (!transferFromBranchOptions.some(branch => branch.id === fromBranchId)) {
+        setFromBranchId(transferFromBranchOptions[0].id);
+      }
     }
   }, [fromBranchId, operationType, transferFromBranchOptions]);
 
   useEffect(() => {
-    if (operationType === 'transfer' && transferToBranchOptions.length > 0 && !transferToBranchOptions.some(branch => branch.id === toBranchId)) {
-      setToBranchId(transferToBranchOptions[0].id);
+    if (operationType === 'transfer') {
+      if (transferToBranchOptions.length === 0) {
+        if (toBranchId) setToBranchId('');
+        return;
+      }
+      if (!transferToBranchOptions.some(branch => branch.id === toBranchId)) {
+        setToBranchId(transferToBranchOptions[0].id);
+      }
     }
   }, [operationType, toBranchId, transferToBranchOptions]);
 
   useEffect(() => {
-    if (!branchId && currentBranchId) setBranchId(currentBranchId);
-    if (!fromBranchId && (currentBranchId || scopedBranchOptions[0]?.id)) {
-      setFromBranchId(currentBranchId || scopedBranchOptions[0]?.id || '');
+    if (!branchId && scopedBranchOptions[0]?.id) setBranchId(scopedBranchOptions[0].id);
+    if (!fromBranchId && scopedBranchOptions[0]?.id) {
+      setFromBranchId(scopedBranchOptions[0].id || '');
     }
-    if (!toBranchId && branches[0]?.id) {
-      setToBranchId(branches.find(branch => String(branch.id) !== String(fromBranchId || currentBranchId || branches[0]?.id || ''))?.id || branches[0]?.id || '');
+    if (!toBranchId && transferToBranchOptions[0]?.id) {
+      setToBranchId(transferToBranchOptions[0].id || '');
     }
-  }, [branchId, branchOptions, branches, currentBranchId, fromBranchId, scopedBranchOptions, toBranchId]);
+  }, [branchId, fromBranchId, scopedBranchOptions, toBranchId, transferToBranchOptions]);
 
   useEffect(() => {
     setVariantId('');
@@ -693,6 +726,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   }
 
   function addCurrentItem() {
+    if (createBlockedMessage) {
+      toast.show(createBlockedMessage, { type: 'error' });
+      return;
+    }
     if (!productId) {
       toast.show(t('Select a product'), { type: 'error' });
       return;
@@ -743,6 +780,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
 
   async function submit() {
     if (saving) return;
+    if (createBlockedMessage) {
+      toast.show(createBlockedMessage, { type: 'error' });
+      return;
+    }
     const nextItems = items.length > 0 ? items : null;
     if (!nextItems && !productId) {
       toast.show(t('Select a product'), { type: 'error' });
@@ -886,7 +927,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
         </div>
         <div className="page-header-actions">
           <OfflineQueueIndicator collection="wholesaleoperations" label={`${normalizedArea === 'warehouse' ? t('Warehouse') : t('Distribution')} ${t('queued')}`} />
-          <button className="btn btn-primary" onClick={() => setIsCreateOpen(true)} disabled={!canCreateRequest}>
+          <button className="btn btn-primary" onClick={() => setIsCreateOpen(true)} disabled={!canCreateRequest || !!createBlockedMessage}>
             {t('New Request')}
           </button>
         </div>
@@ -903,6 +944,11 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                 ? (normalizedArea === 'warehouse' ? t('Open the request modal to initiate a new warehouse adjustment and then track director and manager approvals below.') : t('Open the request modal to initiate a new distribution adjustment and then track director and manager approvals below.'))
                 : t('Open the request modal to initiate a new request and then track director and manager approvals below.')}
         </div>
+        {createBlockedMessage ? (
+          <div style={{ color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: 12, fontWeight: 600 }}>
+            {createBlockedMessage}
+          </div>
+        ) : null}
       </div>
 
       <div className="card" style={{ display: 'grid', gap: 12 }}>
@@ -1016,13 +1062,18 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
           footer={(
             <>
               <button className="btn" onClick={() => setIsCreateOpen(false)} disabled={saving}>{t('Close')}</button>
-              <button className="btn" onClick={addCurrentItem} disabled={saving || !canCreateRequest}>{t('Add To List')}</button>
-              <button className="btn btn-primary" onClick={submit} disabled={saving || !canCreateRequest}>
+              <button className="btn" onClick={addCurrentItem} disabled={saving || !canCreateRequest || !!createBlockedMessage}>{t('Add To List')}</button>
+              <button className="btn btn-primary" onClick={submit} disabled={saving || !canCreateRequest || !!createBlockedMessage}>
                 {saving ? t('Saving…') : t('Submit For Approval')}
               </button>
             </>
           )}
         >
+          {createBlockedMessage ? (
+            <div style={{ marginBottom: 12, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: 12, fontWeight: 600 }}>
+              {createBlockedMessage}
+            </div>
+          ) : null}
           {selectedProduct && (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12, color: '#94a3b8', marginBottom: 12 }}>
               <div>

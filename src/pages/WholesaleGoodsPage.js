@@ -3,7 +3,9 @@ import { useSelector } from 'react-redux';
 import { formatCurrency } from '../utils/currency';
 import { getAllowedPriceTiers, getDisplayPrice, getPriceTierLabel } from '../utils/priceVisibility';
 import { useAppLanguage } from '../utils/localization';
-import { getProductBrand, getProductSearchText } from '../utils/productSearch';
+import { filterBranchesByType } from '../utils/branchTypes';
+import { getProductSearchText } from '../utils/productSearch';
+import { buildGoodsInventoryRows } from '../utils/goodsInventoryRows';
 
 function WholesaleGoodsPage() {
   const { t } = useAppLanguage();
@@ -19,32 +21,27 @@ function WholesaleGoodsPage() {
   const visiblePriceTiers = useMemo(() => getAllowedPriceTiers(auth), [auth]);
 
   const wholesaleBranches = useMemo(
-    () => branches.filter(branch => String(branch.branchType || 'retail').toLowerCase() === 'wholesale'),
+    () => filterBranchesByType(branches, 'wholesale'),
     [branches]
   );
   const defaultBranchId = useMemo(() => {
     const currentBranch = (branches || []).find(branch => String(branch.id) === String(currentBranchId));
     if (String(currentBranch?.branchType || 'retail').toLowerCase() === 'wholesale') return currentBranchId;
     const fallback = wholesaleBranches[0];
-    return fallback?.id || currentBranchId;
+    return fallback?.id || '';
   }, [branches, currentBranchId, wholesaleBranches]);
   const activeBranchId = selectedBranchId || defaultBranchId;
   const activeBranch = useMemo(() => wholesaleBranches.find(branch => String(branch.id) === String(activeBranchId)) || null, [activeBranchId, wholesaleBranches]);
 
   const rows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return products
-      .map(product => {
-        const wholesaleStock = Number(product.wholesaleStockByBranch?.[activeBranchId] || 0);
-        const wholesaleLowStock = Number(product.wholesaleLowStock != null ? product.wholesaleLowStock : (product.lowStock || 0));
-        return { ...product, brand: getProductBrand(product), wholesaleStock, wholesaleLowStock };
-      })
+    return buildGoodsInventoryRows(products, activeBranchId, 'wholesale')
       .filter(product => !q || getProductSearchText(product).includes(q))
-      .sort((a, b) => b.wholesaleStock - a.wholesaleStock || String(a.name || '').localeCompare(String(b.name || '')));
+      .sort((a, b) => b.stock - a.stock || String(a.name || '').localeCompare(String(b.name || '')));
   }, [activeBranchId, products, query]);
   const getStockStatus = (product) => {
-    const stock = Number(product?.wholesaleStock || 0);
-    const lowStock = Number(product?.wholesaleLowStock || 0);
+    const stock = Number(product?.stock || 0);
+    const lowStock = Number(product?.lowStock || 0);
     if (stock <= 0) return 'out';
     if (lowStock > 0 && stock <= lowStock) return 'low';
     return 'available';
@@ -54,7 +51,7 @@ function WholesaleGoodsPage() {
     availableProducts: rows.filter(product => getStockStatus(product) === 'available').length,
     lowStockProducts: rows.filter(product => getStockStatus(product) === 'low').length,
     outOfStockProducts: rows.filter(product => getStockStatus(product) === 'out').length,
-    totalUnits: rows.reduce((sum, product) => sum + Number(product.wholesaleStock || 0), 0)
+    totalUnits: rows.reduce((sum, product) => sum + Number(product.stock || 0), 0)
   }), [rows]);
   const lowStockRows = useMemo(() => rows.filter(product => getStockStatus(product) === 'low').slice(0, 8), [rows]);
 
@@ -81,6 +78,11 @@ function WholesaleGoodsPage() {
         </label>
         <div className="goods-filter-note" style={{ color: '#64748b', fontSize: 13 }}>{t('Active distribution branch')}: {activeBranch?.name || activeBranchId || t('None configured')}</div>
       </div>
+      {!activeBranchId && (
+        <div className="card" style={{ color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a' }}>
+          {t('Create a distribution branch first before recording or viewing distribution stock.')}
+        </div>
+      )}
 
       <div className="goods-stats-grid">
         <div className="goods-stat-card">
@@ -128,11 +130,13 @@ function WholesaleGoodsPage() {
               <div key={product.id} className="goods-low-row">
                 <div>
                   <div style={{ fontWeight: 700 }}>{product.name}</div>
-                  <div style={{ color: '#64748b', fontSize: 12 }}>{product.sku || t('No SKU')}</div>
+                  <div style={{ color: '#64748b', fontSize: 12 }}>
+                    {product.variantLabel ? `${product.variantLabel} • ` : ''}{product.sku || t('No SKU')}
+                  </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <div style={{ color: '#b91c1c', fontWeight: 700 }}>{t('{count} left', { count: product.wholesaleStock })}</div>
-                  <div style={{ color: '#64748b', fontSize: 12 }}>{t('Threshold')} {product.wholesaleLowStock}</div>
+                  <div style={{ color: '#b91c1c', fontWeight: 700 }}>{t('{count} left', { count: product.stock })}</div>
+                  <div style={{ color: '#64748b', fontSize: 12 }}>{t('Threshold')} {product.lowStock}</div>
                 </div>
               </div>
             ))}
@@ -150,13 +154,14 @@ function WholesaleGoodsPage() {
                 <div className="goods-item-empty">{t('No image')}</div>
               )}
               <div className="goods-item-title">{product.name}</div>
+              {product.variantLabel ? <div className="goods-item-meta">{product.variantLabel}</div> : null}
               {product.brand ? <div className="goods-item-meta">{product.brand}</div> : null}
               <div className="goods-item-meta">{product.sku || t('No SKU')}</div>
-              <div className="goods-item-line"><strong>{t('Distribution Stock')} ({activeBranch?.name || activeBranchId || t('Branch')}):</strong> {product.wholesaleStock}</div>
+              <div className="goods-item-line"><strong>{t('Distribution Stock')} ({activeBranch?.name || activeBranchId || t('Branch')}):</strong> {product.stock}</div>
               {visiblePriceTiers.map(tier => (
                 <div key={tier} className="goods-item-line price-line"><strong>{getPriceTierLabel(tier)}:</strong> <span className="price-accent">{formatCurrency(getDisplayPrice(product, tier), settings)}</span></div>
               ))}
-              <div className="goods-item-line"><strong>{t('Low Stock Threshold')}:</strong> {product.wholesaleLowStock}</div>
+              <div className="goods-item-line"><strong>{t('Low Stock Threshold')}:</strong> {product.lowStock}</div>
               <div className={`goods-status-pill ${getStockStatus(product) === 'out' ? 'low' : getStockStatus(product) === 'low' ? 'low' : 'ok'}`}>
                 {getStockStatus(product) === 'out' ? t('Out of stock') : getStockStatus(product) === 'low' ? t('Low stock') : t('Available')}
               </div>
@@ -171,6 +176,7 @@ function WholesaleGoodsPage() {
               <tr>
                 <th align="left">{t('Image')}</th>
                 <th align="left">{t('Product')}</th>
+                <th align="left">{t('Variant')}</th>
                 <th align="left">{t('SKU')}</th>
                 <th align="left">{t('Distribution Stock')} ({activeBranch?.name || activeBranchId || t('Branch')})</th>
                 <th align="left">{t('Low Stock At')}</th>
@@ -183,9 +189,10 @@ function WholesaleGoodsPage() {
                 <tr key={product.id}>
                   <td>{product.image ? <img src={product.image} alt={product.name} style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 8 }} /> : <span style={{ color: '#94a3b8' }}>—</span>}</td>
                   <td>{product.brand ? `${product.name} (${product.brand})` : product.name}</td>
+                  <td>{product.variantLabel || '—'}</td>
                   <td>{product.sku || '—'}</td>
-                  <td>{product.wholesaleStock}</td>
-                  <td>{product.wholesaleLowStock}</td>
+                  <td>{product.stock}</td>
+                  <td>{product.lowStock}</td>
                   {visiblePriceTiers.map(tier => <td key={tier}><span className="price-accent">{formatCurrency(getDisplayPrice(product, tier), settings)}</span></td>)}
                   <td>
                     <span style={{ display: 'inline-flex', padding: '4px 10px', borderRadius: 999, background: getStockStatus(product) === 'out' ? '#fecaca' : getStockStatus(product) === 'low' ? '#fee2e2' : '#dcfce7', color: getStockStatus(product) === 'out' ? '#991b1b' : getStockStatus(product) === 'low' ? '#b91c1c' : '#15803d', fontWeight: 700 }}>
@@ -194,7 +201,7 @@ function WholesaleGoodsPage() {
                   </td>
                 </tr>
               ))}
-              {rows.length === 0 && <tr><td colSpan={6 + visiblePriceTiers.length} style={{ padding: 12, color: '#64748b' }}>{t('No distribution goods found')}</td></tr>}
+              {rows.length === 0 && <tr><td colSpan={7 + visiblePriceTiers.length} style={{ padding: 12, color: '#64748b' }}>{t('No distribution goods found')}</td></tr>}
             </tbody>
           </table>
         </div>

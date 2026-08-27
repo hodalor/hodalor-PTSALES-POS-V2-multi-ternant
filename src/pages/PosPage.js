@@ -29,6 +29,7 @@ import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { useAppLanguage } from '../utils/localization';
 import { getBranchStock } from '../utils/branchStock';
+import { filterBranchesByType, normalizeBranchType } from '../utils/branchTypes';
 import { getProductBrand, getProductSearchText } from '../utils/productSearch';
 
 function reportQueuedSalesImeiDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
@@ -126,6 +127,12 @@ function buildCreditUpfrontTimeline(total, costTotal, upfrontAmount, paidAt) {
   }];
 }
 
+function getEffectiveTrackType(product) {
+  return String(product?.trackType || 'quantity').trim().toLowerCase() === 'serialized'
+    ? 'serialized'
+    : 'quantity';
+}
+
 function PosPage({ mode = 'retail' }) {
   const dispatch = useDispatch();
   const location = useLocation();
@@ -156,34 +163,35 @@ function PosPage({ mode = 'retail' }) {
       ? []
       : (Array.isArray(assignedRaw) ? assignedRaw : [assignedRaw]).map(v => String(v || '').trim()).filter(Boolean);
   }, [auth.user?.assignedBranches]);
+  const scopedBranches = useMemo(
+    () => filterBranchesByType(branches, inventoryType),
+    [branches, inventoryType]
+  );
   const activeBranchId = useMemo(() => {
     const preferredBranchId = isFixedBranchUser
       ? (String(auth.user?.branchId || '').trim() || assignedBranchIds[0] || branchId)
       : branchId;
     const currentBranch = (branches || []).find(branch => String(branch.id) === String(preferredBranchId));
     const expectedType = inventoryType;
-    if (String(currentBranch?.branchType || 'retail').toLowerCase() === expectedType) return preferredBranchId;
+    if (normalizeBranchType(currentBranch?.branchType) === expectedType) return preferredBranchId;
     const allowedIds = new Set((isFixedBranchUser ? [preferredBranchId, ...assignedBranchIds] : [preferredBranchId]).filter(Boolean).map(String));
-    const fallback = (branches || []).find(branch => {
-      if (String(branch.branchType || 'retail').toLowerCase() !== expectedType) return false;
+    const fallback = scopedBranches.find(branch => {
       if (!isFixedBranchUser) return true;
       return allowedIds.has(String(branch.id));
     });
-    return fallback?.id || preferredBranchId || branchId;
-  }, [assignedBranchIds, auth.user?.branchId, branchId, branches, inventoryType, isFixedBranchUser]);
-  const activeBranch = useMemo(() => (branches || []).find(branch => String(branch.id) === String(activeBranchId)) || null, [activeBranchId, branches]);
+    return fallback?.id || '';
+  }, [assignedBranchIds, auth.user?.branchId, branchId, branches, inventoryType, isFixedBranchUser, scopedBranches]);
+  const activeBranch = useMemo(() => scopedBranches.find(branch => String(branch.id) === String(activeBranchId)) || null, [activeBranchId, scopedBranches]);
   const branchNameById = useMemo(() => new Map((branches || []).map(branch => [String(branch.id), branch.name])), [branches]);
-  const stockBranchId = useMemo(() => (
-    String(isFixedBranchUser
-      ? (activeBranchId || auth.user?.branchId || branchId || assignedBranchIds[0] || '')
-      : (branchId || activeBranchId || '')).trim()
-  ), [activeBranchId, assignedBranchIds, auth.user?.branchId, branchId, isFixedBranchUser]);
-  const branchLabel = useMemo(() => (
-    branchNameById.get(String(stockBranchId || ''))
-    || activeBranch?.name
-    || branchNameById.get(String(branchId || ''))
-    || ''
-  ), [activeBranch?.name, branchId, branchNameById, stockBranchId]);
+  const stockBranchId = useMemo(() => String(activeBranchId || '').trim(), [activeBranchId]);
+  const branchLabel = useMemo(() => activeBranch?.name || '', [activeBranch?.name]);
+  const missingInventoryBranch = isNonRetail && !stockBranchId;
+  const missingInventoryBranchText = useMemo(() => {
+    if (!missingInventoryBranch) return '';
+    return inventoryType === 'warehouse'
+      ? t('No warehouse branch configured yet')
+      : t('No distribution branch configured yet');
+  }, [inventoryType, missingInventoryBranch, t]);
   const allowedPriceTiers = useMemo(() => getAllowedPriceTiers(auth), [auth]);
   const initialVisiblePriceTier = useMemo(() => getPreferredPriceTier(allowedPriceTiers, initialPriceTier), [allowedPriceTiers, initialPriceTier]);
   const [query, setQuery] = useState('');
@@ -314,7 +322,7 @@ function PosPage({ mode = 'retail' }) {
             variantId: v.id,
             variantLabel: v.label || '',
             productName: p.name,
-            trackType: p.trackType,
+            trackType: v.trackType || p.trackType || 'quantity',
             name: `${p.name} (${v.label})`,
             brand: getProductBrand(p),
             sku: v.sku || `${p.sku}-${v.label}`,
@@ -322,7 +330,9 @@ function PosPage({ mode = 'retail' }) {
             prices,
             image: v.image || p.image,
             category: p.category || '',
-            stockByBranch: inventoryType === 'wholesale' ? (v.wholesaleStockByBranch || {}) : inventoryType === 'warehouse' ? (v.warehouseStockByBranch || {}) : (v.stockByBranch || {}),
+            stockByBranch: v.stockByBranch || {},
+            wholesaleStockByBranch: v.wholesaleStockByBranch || {},
+            warehouseStockByBranch: v.warehouseStockByBranch || {},
             lowStock: inventoryType === 'wholesale'
               ? Number(p.wholesaleLowStock != null ? p.wholesaleLowStock : (p.lowStock || 0))
               : inventoryType === 'warehouse'
@@ -385,6 +395,7 @@ function PosPage({ mode = 'retail' }) {
   }, [brandFilter, brandOptions]);
   const serializedStockCountMap = useMemo(() => {
     void serializedStockRefreshKey;
+    if (!activeBranchId) return new Map();
     const cached = productUnitsApi.getCachedProductUnits({
       branchId: activeBranchId,
       inventoryType,
@@ -402,15 +413,16 @@ function PosPage({ mode = 'retail' }) {
     return map;
   }, [activeBranchId, inventoryType, reservationToken, serializedStockRefreshKey]);
   const filtered = useMemo(() => {
+    if (missingInventoryBranch) return [];
     const q = query.trim().toLowerCase();
     return sellables.filter((p) => {
       if (categoryFilter !== 'all' && String(p.category || '').trim() !== String(categoryFilter)) return false;
       if (brandFilter !== 'all' && String(p.brand || '').trim() !== String(brandFilter)) return false;
-      if (trackTypeFilter !== 'all' && String(p.trackType || 'quantity').trim() !== String(trackTypeFilter)) return false;
+      if (trackTypeFilter !== 'all' && getEffectiveTrackType(p) !== String(trackTypeFilter)) return false;
       if (!q) return true;
       return `${getProductSearchText(p)} ${productSpec(p)}`.toLowerCase().includes(q);
     });
-  }, [brandFilter, categoryFilter, query, sellables, trackTypeFilter]);
+  }, [brandFilter, categoryFilter, missingInventoryBranch, query, sellables, trackTypeFilter]);
   const liveSerializedMatches = useMemo(() => {
     const normalized = String(query || '').trim().toLowerCase();
     return liveSerializedUnits
@@ -630,7 +642,7 @@ function PosPage({ mode = 'retail' }) {
   }
 
   function visibleStockForProduct(p) {
-    if (String(p.trackType || 'quantity') === 'serialized') {
+    if (getEffectiveTrackType(p) === 'serialized') {
       return getSerializedVisibleStockForBranch(p);
     }
     return getAvailableStockForBranch(p);
@@ -663,7 +675,7 @@ function PosPage({ mode = 'retail' }) {
 
   useEffect(() => {
     const normalized = String(query || '').trim();
-    if (normalized.length < 4) {
+    if (normalized.length < 4 || !activeBranchId) {
       setLiveSerializedUnits([]);
       setLiveSerializedLoading(false);
       return;
@@ -959,7 +971,7 @@ function PosPage({ mode = 'retail' }) {
   async function addToCart(p) {
     const available = getAvailableStockForBranch(p);
     const visible = visibleStockForProduct(p);
-    const decisionAvailable = String(p.trackType || 'quantity') === 'serialized' ? visible : available;
+    const decisionAvailable = getEffectiveTrackType(p) === 'serialized' ? visible : available;
     const inCart = cart.items
       .filter((item) =>
         String(item.productId || '') === String(p.productId || p.id || '')
@@ -970,7 +982,7 @@ function PosPage({ mode = 'retail' }) {
       toast.show('Out of stock for current branch', { type: 'error' });
       return;
     }
-    if (String(p.trackType || 'quantity') === 'serialized') {
+    if (getEffectiveTrackType(p) === 'serialized') {
       setSerializedPickerProduct(p);
       serializedPickerKeyRef.current = `${p.productId || p.id || ''}:${p.variantId || ''}`;
       setSerializedUnitsQuery('');
@@ -1769,9 +1781,9 @@ function PosPage({ mode = 'retail' }) {
               <h2 style={{ marginBottom: 4 }}>{modeLabel}</h2>
               <div style={{ color: '#64748b', fontSize: 12 }}>
                 {isWholesale
-                  ? `${t('Distribution inventory')}${branchLabel ? ` • ${branchLabel}` : ''}`
+                  ? `${t('Distribution inventory')}${branchLabel ? ` • ${branchLabel}` : missingInventoryBranch ? ` • ${t(missingInventoryBranchText)}` : ''}`
                   : isWarehouse
-                    ? `${t('Warehouse inventory')}${branchLabel ? ` • ${branchLabel}` : ''}`
+                    ? `${t('Warehouse inventory')}${branchLabel ? ` • ${branchLabel}` : missingInventoryBranch ? ` • ${t(missingInventoryBranchText)}` : ''}`
                     : `${t('Retail inventory')}${branchLabel ? ` • ${branchLabel}` : ''} ${t('with Credit support')}`}
               </div>
             </div>
@@ -1833,7 +1845,14 @@ function PosPage({ mode = 'retail' }) {
           </div>
         </div>
         <div className="pos-products-scroll">
-        {query.trim().length >= 4 && (
+        {missingInventoryBranch && (
+          <div className="card" style={{ marginTop: 12, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a' }}>
+            {isWarehouse
+              ? t('Create a warehouse branch first before using Warehouse POS or recording warehouse stock.')
+              : t('Create a distribution branch first before using Distribution POS or recording distribution stock.')}
+          </div>
+        )}
+        {!missingInventoryBranch && query.trim().length >= 4 && (
           <div className="card" style={{ marginTop: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <strong>{t('Serialized Matches')}</strong>
