@@ -51,6 +51,22 @@ function reportQueuedSaleRetryDebug({ hypothesisId = 'A', location = '', msg = '
   }).catch(() => {});
 }
 
+function reportQuantityQueueTamaleDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  fetch('http://127.0.0.1:7777/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'quantity-queue-tamale',
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      msg,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {});
+}
+
 export async function syncQueuedItem(item) {
   if (!item) return;
   const hasSerialized = !!(item?.payload?.body?.items || item?.payload?.items || []).some(line => Array.isArray(line?.soldUnitIds) && line.soldUnitIds.length > 0);
@@ -144,6 +160,23 @@ export async function syncQueuedItem(item) {
         return;
       }
       if (isSaleReplay) {
+        // #region debug-point D:quantity-sale-retry-http-error
+        reportQuantityQueueTamaleDebug({
+          hypothesisId: 'D',
+          location: 'syncHandlers.js:syncQueuedItem:http-error',
+          msg: '[DEBUG] Queued sale replay failed during sync',
+          data: {
+            queueId: Number(item?.id || 0),
+            clientId: String(body?.clientId || ''),
+            branchId: String(body?.branchId || ''),
+            online: typeof navigator !== 'undefined' ? !!navigator.onLine : null,
+            status: Number(e?.status || 0),
+            message: String(e?.message || ''),
+            hasSerialized,
+            itemCount: Array.isArray(body?.items) ? body.items.length : 0
+          }
+        });
+        // #endregion
         // #region debug-point A:queued-sale-retry-http-error
         reportQueuedSaleRetryDebug({
           hypothesisId: 'A',

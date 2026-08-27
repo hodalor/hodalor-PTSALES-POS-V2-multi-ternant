@@ -2,6 +2,22 @@ import { loadState } from '../store/persist';
 
 const LS_KEY = 'apiBaseUrl';
 
+function reportQuantityQueueTamaleDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  fetch('http://127.0.0.1:7777/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'quantity-queue-tamale',
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      msg,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {});
+}
+
 function sanitizeClientErrorMessage(input, fallback = 'Request failed. Please try again.') {
   const raw = String(input || '').trim();
   if (!raw) return fallback;
@@ -77,6 +93,8 @@ export async function fetchJson(path, opts = {}) {
   const base = getApiBase();
   let url = `${base}${path.startsWith('/') ? path : `/${path}`}`;
   const method = (opts.method || 'GET').toUpperCase();
+  let requestBody = null;
+  try { requestBody = typeof opts?.body === 'string' ? JSON.parse(opts.body) : (opts?.body || null); } catch {}
   if (method === 'GET') {
     url += (url.includes('?') ? '&' : '?') + `_=${Date.now()}`;
   }
@@ -116,6 +134,27 @@ export async function fetchJson(path, opts = {}) {
     });
   } catch (e) {
     if (tid) clearTimeout(tid);
+    if (String(path || '') === '/api/sales') {
+      // #region debug-point A:client-sales-fetch-failed
+      reportQuantityQueueTamaleDebug({
+        hypothesisId: 'A',
+        location: 'client.js:fetchJson:fetch-error',
+        msg: '[DEBUG] Sales request failed before receiving an HTTP response',
+        data: {
+          path: String(path || ''),
+          method,
+          apiBase: String(base || ''),
+          online: typeof navigator !== 'undefined' ? !!navigator.onLine : null,
+          branchId: String(requestBody?.branchId || ''),
+          clientId: String(requestBody?.clientId || ''),
+          tenantId: String(roleHeader?.['X-Tenant-Id'] || ''),
+          role: String(roleHeader?.['X-Role'] || ''),
+          message: String(e?.message || ''),
+          isAbort: !!(e && (e.name === 'AbortError' || String(e.message || '').toLowerCase().includes('aborted')))
+        }
+      });
+      // #endregion
+    }
     if (e && (e.name === 'AbortError' || String(e.message || '').toLowerCase().includes('aborted'))) {
       throw new Error('Request timed out while processing. Refresh to confirm whether the operation completed.');
     }
@@ -135,6 +174,27 @@ export async function fetchJson(path, opts = {}) {
     const err = new Error(sanitizeClientErrorMessage(parsedError || text || `HTTP ${res.status}`, `Request failed (HTTP ${res.status})`));
     err.status = res.status;
     err.data = parsedBody;
+    if (String(path || '') === '/api/sales') {
+      // #region debug-point B:client-sales-http-error
+      reportQuantityQueueTamaleDebug({
+        hypothesisId: 'B',
+        location: 'client.js:fetchJson:http-error',
+        msg: '[DEBUG] Sales request received a non-OK HTTP response',
+        data: {
+          path: String(path || ''),
+          method,
+          status: Number(res?.status || 0),
+          online: typeof navigator !== 'undefined' ? !!navigator.onLine : null,
+          branchId: String(requestBody?.branchId || ''),
+          clientId: String(requestBody?.clientId || ''),
+          tenantId: String(roleHeader?.['X-Tenant-Id'] || ''),
+          role: String(roleHeader?.['X-Role'] || ''),
+          error: String(parsedError || text || ''),
+          errorData: parsedBody
+        }
+      });
+      // #endregion
+    }
     throw err;
   }
   const ct = res.headers.get('content-type') || '';

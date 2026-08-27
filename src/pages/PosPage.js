@@ -63,6 +63,22 @@ function reportEbkTmpReceiptDebug({ hypothesisId = 'A', location = '', msg = '',
   }).catch(() => {});
 }
 
+function reportQuantityQueueTamaleDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  fetch('http://127.0.0.1:7777/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'quantity-queue-tamale',
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      msg,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {});
+}
+
 function createReservationToken() {
   return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `RES-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -1509,8 +1525,43 @@ function PosPage({ mode = 'retail' }) {
           void refreshAffectedProducts(dispatch, affectedProductIds);
           toast.show('Sale recorded', { type: 'success' });
         } catch (e) {
+          // #region debug-point A:tamale-online-save-failed
+          reportQuantityQueueTamaleDebug({
+            hypothesisId: 'A',
+            location: 'PosPage.js:completeSale:online-save-failed-before-queue',
+            msg: '[DEBUG] POS online sale save failed before queue fallback decision',
+            data: {
+              clientId: String(sale?.clientId || ''),
+              branchId: String(activeBranchId || ''),
+              branchName: String(branchName || ''),
+              online: typeof navigator !== 'undefined' ? !!navigator.onLine : null,
+              status: Number(e?.status || 0),
+              error: String(e?.message || ''),
+              errorData: e?.data || null,
+              hasSerialized: soldUnitIdsForDebug.length > 0,
+              itemCount: Array.isArray(sale?.items) ? sale.items.length : 0
+            }
+          });
+          // #endregion
           try {
             await enqueueHttp({ collection: 'sales', label: 'Sale', path: '/api/sales', method: 'POST', body: { ...sale, clientId: sale.clientId } });
+            // #region debug-point A:tamale-queue-fallback
+            reportQuantityQueueTamaleDebug({
+              hypothesisId: 'A',
+              location: 'PosPage.js:completeSale:queued-after-save-failure',
+              msg: '[DEBUG] POS queued sale after online save failure',
+              data: {
+                clientId: String(sale?.clientId || ''),
+                branchId: String(activeBranchId || ''),
+                branchName: String(branchName || ''),
+                online: typeof navigator !== 'undefined' ? !!navigator.onLine : null,
+                createSaleStatus: Number(e?.status || 0),
+                createSaleError: String(e?.message || ''),
+                hasSerialized: soldUnitIdsForDebug.length > 0,
+                itemCount: Array.isArray(sale?.items) ? sale.items.length : 0
+              }
+            });
+            // #endregion
             // #region debug-point D:online-save-fell-back-to-queue
             reportEbkTmpReceiptDebug({
               hypothesisId: 'D',

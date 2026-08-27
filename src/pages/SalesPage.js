@@ -123,6 +123,29 @@ function getSaleRefundBadge(sale, approvedRefundInfoMap) {
   return info.hasFull ? 'fully_refunded' : 'part_refunded';
 }
 
+function isTemporaryReference(value) {
+  const text = String(value || '').trim().toUpperCase();
+  return text.startsWith('TMP-') || text.startsWith('OFF-');
+}
+
+function isTemporarySaleRecord(sale) {
+  return !!(
+    sale?.offline
+    || sale?.syncPending
+    || String(sale?.clientId || '').startsWith('offline-sale-')
+    || isTemporaryReference(sale?.invoiceSerial)
+    || isTemporaryReference(sale?.receiptNumber)
+  );
+}
+
+function getSaleRecordLabel(sale) {
+  return isTemporarySaleRecord(sale) ? 'Temporary / Queued' : 'Server Record';
+}
+
+function getSalePrimaryReference(sale) {
+  return sale?.invoiceSerial || sale?.receiptNumber || sale?.clientId || sale?.id || sale?._id || '—';
+}
+
 function SalesPage() {
   const dispatch = useDispatch();
   const sales = useSelector(s => s.sales.sales);
@@ -166,6 +189,7 @@ function SalesPage() {
   const [dateTo, setDateTo] = useState('');
   const [periodMode, setPeriodMode] = useState('range');
   const [settlementFilter, setSettlementFilter] = useState('all');
+  const [recordSourceFilter, setRecordSourceFilter] = useState('all');
   const [selectedBranchId, setSelectedBranchId] = useState('');
   const [selectedSaleIds, setSelectedSaleIds] = useState([]);
   const [bulkAction, setBulkAction] = useState('');
@@ -274,6 +298,11 @@ function SalesPage() {
     } else if (settlementFilter === 'completed') {
       list = list.filter((sale) => getSaleSettlementStatus(sale) === 'completed');
     }
+    if (recordSourceFilter === 'temporary') {
+      list = list.filter((sale) => isTemporarySaleRecord(sale));
+    } else if (recordSourceFilter === 'server') {
+      list = list.filter((sale) => !isTemporarySaleRecord(sale));
+    }
     const q = String(searchTerm || '').trim().toLowerCase();
     if (q) {
       list = list.filter((sale) => {
@@ -289,6 +318,9 @@ function SalesPage() {
         const fields = [
           String(sale.invoiceSerial || ''),
           String(sale.receiptNumber || ''),
+          String(sale.clientId || ''),
+          String(sale.id || sale._id || ''),
+          getSaleRecordLabel(sale),
           String(sale.sellerName || ''),
           String(sale.customerName || ''),
           String(sale.customerBusinessName || ''),
@@ -301,7 +333,7 @@ function SalesPage() {
     }
     list = list.filter((sale) => !isRefundSale(sale));
     return list;
-  }, [auth.user?.name, branchLabel, canUseCompetitionScope, creditKind, creditPackageFilter, dateFrom, dateTo, filteredByBranch, periodMode, productBrandById, roleLower, saleKind, searchTerm, settlementFilter]);
+  }, [auth.user?.name, branchLabel, canUseCompetitionScope, creditKind, creditPackageFilter, dateFrom, dateTo, filteredByBranch, periodMode, productBrandById, recordSourceFilter, roleLower, saleKind, searchTerm, settlementFilter]);
 
   const creditPackageOptions = useMemo(() => {
     return Array.from(new Set(
@@ -565,7 +597,7 @@ function SalesPage() {
           <div className="card" style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
             <label>
               <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Search</div>
-              <input className="input" value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setPage(1); }} placeholder="Invoice, customer, product, brand, SKU" />
+              <input className="input" value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setPage(1); }} placeholder="Invoice, receipt, temp ref, customer, product, brand, SKU" />
             </label>
             <label>
               <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Period</div>
@@ -617,6 +649,14 @@ function SalesPage() {
                 <option value="all">All Sales</option>
                 <option value="incomplete">Incomplete Sales</option>
                 <option value="completed">Completed Sales</option>
+              </select>
+            </label>
+            <label>
+              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Record Source</div>
+              <select className="select" value={recordSourceFilter} onChange={e => { setRecordSourceFilter(e.target.value); setPage(1); }}>
+                <option value="all">All Records</option>
+                <option value="temporary">Temporary / Queued</option>
+                <option value="server">Server Records</option>
               </select>
             </label>
           </div>
@@ -760,7 +800,7 @@ function SalesPage() {
             <th align="left">Type</th>
             <th align="left">Credit Mode</th>
             <th align="left">Seller</th>
-            <th align="left">Invoice</th>
+            <th align="left">Reference</th>
             <th align="left">Items</th>
             <th align="left">Customer</th>
             <th align="left">Total</th>
@@ -806,7 +846,13 @@ function SalesPage() {
                 </div>
               </td>
               <td>{sale.sellerName || '-'}</td>
-              <td>{sale.invoiceSerial || '—'}</td>
+              <td>
+                <div style={{ fontWeight: 700 }}>{getSalePrimaryReference(sale)}</div>
+                <div style={{ color: isTemporarySaleRecord(sale) ? '#b45309' : '#64748b', fontSize: 12 }}>
+                  {getSaleRecordLabel(sale)}
+                  {sale.receiptNumber && sale.invoiceSerial && sale.receiptNumber !== sale.invoiceSerial ? ` || Receipt: ${sale.receiptNumber}` : ''}
+                </div>
+              </td>
               <td>{sale.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}${i.spec ? ' ['+i.spec+']' : ''}x${i.qty}`).join(', ')}</td>
               <td>{sale.customerName || ''}</td>
               <td><span className="price-accent" style={amountCellStyle(getSaleDisplayTotal(sale))}>{formatCurrency(getSaleDisplayTotal(sale), settings)}</span></td>

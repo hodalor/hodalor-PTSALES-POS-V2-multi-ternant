@@ -17,6 +17,25 @@ import { confirmDialog } from '../utils/dialogs';
 
 const MANUAL_INVOICE_PRICE_TIERS = ['retail', 'wholesale', 'warehouse', 'agent'];
 
+function isTemporaryReference(value) {
+  const text = String(value || '').trim().toUpperCase();
+  return text.startsWith('TMP-') || text.startsWith('OFF-');
+}
+
+function isTemporaryInvoiceRecord(inv) {
+  return !!(
+    inv?.offline
+    || inv?.syncPending
+    || isTemporaryReference(inv?.number)
+    || isTemporaryReference(inv?.receiptNumber)
+    || String(inv?.saleId || '').startsWith('offline-sale-')
+  );
+}
+
+function getInvoiceRecordLabel(inv) {
+  return isTemporaryInvoiceRecord(inv) ? 'Temporary / Queued' : 'Server Record';
+}
+
 function InvoicesPage({ mode = 'retail' }) {
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -29,6 +48,7 @@ function InvoicesPage({ mode = 'retail' }) {
   const [query, setQuery] = useState('');
   const [tab, setTab] = useState('new');
   const [invoiceKind, setInvoiceKind] = useState(mode === 'retail' ? 'all' : mode); // all, retail, wholesale, warehouse
+  const [recordSourceFilter, setRecordSourceFilter] = useState('all');
   const showNewTab = isFeatureEnabled(settings, 'tabs.invoiceNew');
   const showRecordsTab = isFeatureEnabled(settings, 'tabs.invoiceRecords');
   useEffect(() => {
@@ -506,6 +526,35 @@ function InvoicesPage({ mode = 'retail' }) {
     navigate(targetPath, { state: { preloadInvoice: inv } });
   }
 
+  const filteredInvoiceRecords = useMemo(() => (
+    invoices.filter((inv) => {
+      if (invoiceKind === 'retail') {
+        if (inv.source && !['manual', 'pos'].includes(inv.source)) return false;
+      } else if (invoiceKind === 'wholesale') {
+        if (inv.source && !['wholesale-pos', 'wholesale-manual'].includes(inv.source)) return false;
+      } else if (invoiceKind === 'warehouse') {
+        if (inv.source && !['warehouse-pos', 'warehouse-manual'].includes(inv.source)) return false;
+      }
+      if (recordSourceFilter === 'temporary' && !isTemporaryInvoiceRecord(inv)) return false;
+      if (recordSourceFilter === 'server' && isTemporaryInvoiceRecord(inv)) return false;
+      const q = searchTerm.trim().toLowerCase();
+      if (!q) return true;
+      const fields = [
+        String(inv.number || ''),
+        String(inv.receiptNumber || ''),
+        String(inv.saleId || ''),
+        String(inv.customer?.name || ''),
+        String(inv.customer?.customerCode || ''),
+        getInvoiceRecordLabel(inv),
+        ...((inv.items || []).map((item) => `${item.name || ''} ${item.brand || ''} ${item.sku || ''}`)),
+        String(inv.buyerOrderNo || ''),
+        String(inv.supplierRef || ''),
+        String(inv.otherRef || '')
+      ].join(' ').toLowerCase();
+      return fields.includes(q);
+    })
+  ), [invoiceKind, invoices, recordSourceFilter, searchTerm]);
+
   return (
     <div style={{ padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
@@ -698,7 +747,7 @@ function InvoicesPage({ mode = 'retail' }) {
       <div className="card">
         <h2 className="section-title" style={{ margin: '8px 0' }}>Invoice Records</h2>
         <div className="toolbar" style={{ marginBottom: 8, display: 'flex', gap: 8 }}>
-          <input className="input" placeholder="Search by number, customer, order no., supplier/other refs" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={{ width: '100%' }} />
+          <input className="input" placeholder="Search by number, receipt, temp ref, customer, order no., supplier/other refs" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={{ width: '100%' }} />
           {modeLower === 'retail' && (
             <div style={{ display: 'inline-flex', gap: 4 }}>
               <button className={invoiceKind === 'all' ? 'btn btn-primary' : 'btn'} onClick={() => setInvoiceKind('all')}>All</button>
@@ -707,6 +756,11 @@ function InvoicesPage({ mode = 'retail' }) {
               <button className={invoiceKind === 'warehouse' ? 'btn btn-primary' : 'btn'} onClick={() => setInvoiceKind('warehouse')}>Warehouse</button>
             </div>
           )}
+          <div style={{ display: 'inline-flex', gap: 4 }}>
+            <button className={recordSourceFilter === 'all' ? 'btn btn-primary' : 'btn'} onClick={() => setRecordSourceFilter('all')}>All Records</button>
+            <button className={recordSourceFilter === 'temporary' ? 'btn btn-primary' : 'btn'} onClick={() => setRecordSourceFilter('temporary')}>Temporary / Queued</button>
+            <button className={recordSourceFilter === 'server' ? 'btn btn-primary' : 'btn'} onClick={() => setRecordSourceFilter('server')}>Server Records</button>
+          </div>
         </div>
         <table className="table">
           <thead>
@@ -716,32 +770,13 @@ function InvoicesPage({ mode = 'retail' }) {
               <th align="left">Date</th>
               <th align="left">Total</th>
               <th align="left">Status</th>
+              <th align="left">Record Source</th>
               <th align="left">Order No.</th>
               <th align="left"></th>
             </tr>
           </thead>
           <tbody>
-            {invoices
-              .filter(inv => {
-                if (invoiceKind === 'retail') {
-                  if (inv.source && !['manual', 'pos'].includes(inv.source)) return false;
-                } else if (invoiceKind === 'wholesale') {
-                  if (inv.source && !['wholesale-pos', 'wholesale-manual'].includes(inv.source)) return false;
-                } else if (invoiceKind === 'warehouse') {
-                  if (inv.source && !['warehouse-pos', 'warehouse-manual'].includes(inv.source)) return false;
-                }
-                const q = searchTerm.trim().toLowerCase();
-                if (!q) return true;
-                const fields = [
-                  String(inv.number || ''),
-                  String(inv.customer?.name || ''),
-                  ...((inv.items || []).map((item) => `${item.name || ''} ${item.brand || ''} ${item.sku || ''}`)),
-                  String(inv.buyerOrderNo || ''),
-                  String(inv.supplierRef || ''),
-                  String(inv.otherRef || '')
-                ].join(' ').toLowerCase();
-                return fields.includes(q);
-              })
+            {filteredInvoiceRecords
               .map(inv => (
                 <tr key={inv.id}>
                   <td>{inv.number}</td>
@@ -749,6 +784,7 @@ function InvoicesPage({ mode = 'retail' }) {
                   <td>{new Date(inv.date || inv.created_at).toLocaleString()}</td>
                   <td><span className="price-accent">{formatCurrency(inv.total || 0, settings)}</span></td>
                   <td>{inv.paymentStatus ? inv.paymentStatus.toUpperCase() : ''}</td>
+                  <td style={{ color: isTemporaryInvoiceRecord(inv) ? '#b45309' : '#64748b', fontWeight: 700 }}>{getInvoiceRecordLabel(inv)}</td>
                   <td>{inv.buyerOrderNo || ''}</td>
                   <td>
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
@@ -771,8 +807,8 @@ function InvoicesPage({ mode = 'retail' }) {
                   </td>
                 </tr>
               ))}
-            {invoices.length === 0 && (
-              <tr><td colSpan="7" style={{ color: '#64748b' }}>No invoices yet</td></tr>
+            {filteredInvoiceRecords.length === 0 && (
+              <tr><td colSpan="8" style={{ color: '#64748b' }}>No invoices found for this filter</td></tr>
             )}
           </tbody>
         </table>

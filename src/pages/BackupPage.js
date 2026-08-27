@@ -10,7 +10,6 @@ import { refreshAllData } from '../offline/refreshAll';
 import { useDispatch } from 'react-redux';
 import { listImeiConflicts, removeImeiConflict } from '../offline/imeiConflicts';
 import { setQueueSummary } from '../store/offlineQueueSlice';
-import { adjustStock } from '../store/productsSlice';
 import { removeSales } from '../store/salesSlice';
 import { removeInvoices } from '../store/invoicesSlice';
 import * as tenantsApi from '../api/tenants';
@@ -47,6 +46,22 @@ function getQueuedSaleRecordIds(sale) {
     sale?.invoiceSerial,
     sale?.receiptNumber
   ].filter(Boolean).map(String);
+}
+
+function reportQuantityQueueTamaleDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  fetch('http://127.0.0.1:7777/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'quantity-queue-tamale',
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      msg,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {});
 }
 
 function BackupPage() {
@@ -217,6 +232,23 @@ function BackupPage() {
     const inventoryType = String(sale?.inventoryType || sale?.posType || 'retail');
     const branchId = String(sale?.branchId || '');
     const soldUnitIds = getSaleUnitIds(sale);
+    // #region debug-point C:backup-rollback-start
+    reportQuantityQueueTamaleDebug({
+      hypothesisId: 'C',
+      location: 'BackupPage.js:rollbackQueuedSaleLocally:start',
+      msg: '[DEBUG] Queued sale rollback requested from backup page',
+      data: {
+        queueId: String(item?.id || ''),
+        clientId: String(sale?.clientId || ''),
+        branchId,
+        inventoryType,
+        hasSerialized: soldUnitIds.length > 0,
+        quantityItemCount: getSaleItems(sale).filter((line) => !Array.isArray(line?.soldUnitIds) || line.soldUnitIds.length === 0).length,
+        serializedUnitCount: soldUnitIds.length,
+        itemCount: getSaleItems(sale).length
+      }
+    });
+    // #endregion
     if (soldUnitIds.length > 0) {
       try {
         await productUnitsApi.releaseProductUnits({
@@ -226,18 +258,8 @@ function BackupPage() {
       } catch {}
       productUnitsApi.restoreProductUnitsToStock(soldUnitIds);
     }
-    getSaleItems(sale).forEach((line) => {
-      const productId = String(line?.productId || '').trim();
-      if (!productId || !branchId) return;
-      dispatch(adjustStock({
-        productId,
-        variantId: line?.variantId || null,
-        branchId,
-        inventoryType,
-        delta: Math.max(0, Number(line?.qty || 0)),
-        syncPending: false
-      }));
-    });
+    // For quantity items, do not manually change local stock here.
+    // We remove the queued placeholder sale and then refresh from the server.
     const idsToRemove = getQueuedSaleRecordIds(sale);
     dispatch(removeSales(idsToRemove));
     dispatch(removeInvoices(idsToRemove));
@@ -253,6 +275,21 @@ function BackupPage() {
     setRetryingId(queueId);
     try {
       const sale = getQueuedSalePayload(item);
+      // #region debug-point D:backup-retry-start
+      reportQuantityQueueTamaleDebug({
+        hypothesisId: 'D',
+        location: 'BackupPage.js:onRetryItem:start',
+        msg: '[DEBUG] Backup page retry requested for queued sale',
+        data: {
+          queueId,
+          clientId: String(sale?.clientId || ''),
+          branchId: String(sale?.branchId || ''),
+          online: typeof navigator !== 'undefined' ? !!navigator.onLine : null,
+          hasSerialized: getSaleUnitIds(sale).length > 0,
+          itemCount: getSaleItems(sale).length
+        }
+      });
+      // #endregion
       await ensureOnlineJwt();
       await syncQueuedItem(item);
       if (sale) {
@@ -289,16 +326,33 @@ function BackupPage() {
       toast.show('Undo is available for queued sales only', { type: 'error' });
       return;
     }
-    const ok = await confirmDialog('Undo this queued sale and restore the stock locally? This will remove it from the queue and release serialized units for sale again.');
+    const ok = await confirmDialog('Undo this queued sale? This will remove it from the queue, release serialized units if any, and refresh stock from the live server without manually changing quantity stock.');
     if (!ok) return;
     setUndoingId(queueId);
     try {
+      // #region debug-point C:backup-undo-confirmed
+      reportQuantityQueueTamaleDebug({
+        hypothesisId: 'C',
+        location: 'BackupPage.js:onUndoItem:confirmed',
+        msg: '[DEBUG] Backup page undo confirmed for queued sale',
+        data: {
+          queueId,
+          clientId: String(sale?.clientId || ''),
+          branchId: String(sale?.branchId || ''),
+          hasSerialized: getSaleUnitIds(sale).length > 0,
+          quantityItemCount: getSaleItems(sale).filter((line) => !Array.isArray(line?.soldUnitIds) || line.soldUnitIds.length === 0).length
+        }
+      });
+      // #endregion
       await rollbackQueuedSaleLocally(item);
       if (item?.fingerprint) await removeByFingerprint(item.fingerprint);
       else await removeMany([item?.id]);
       removeImeiConflict(queueId);
+      try {
+        await refreshAllData(dispatch, store.getState);
+      } catch {}
       await refreshQueueState();
-      toast.show('Queued sale undone and stock restored locally', { type: 'success' });
+      toast.show('Queued sale undone safely and stock refreshed from server', { type: 'success' });
     } catch (e) {
       toast.show(String(e?.message || 'Failed to undo queued sale'), { type: 'error' });
     } finally {

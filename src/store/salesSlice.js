@@ -4,6 +4,22 @@ const initialState = {
   sales: []
 };
 
+function isTemporaryReference(value) {
+  const text = String(value || '').trim().toUpperCase();
+  return text.startsWith('TMP-') || text.startsWith('OFF-');
+}
+
+function isTemporarySaleRecord(sale) {
+  if (!sale || typeof sale !== 'object') return false;
+  return !!(
+    sale.offline
+    || sale.syncPending
+    || String(sale?.clientId || '').startsWith('offline-sale-')
+    || isTemporaryReference(sale?.invoiceSerial)
+    || isTemporaryReference(sale?.receiptNumber)
+  );
+}
+
 const salesSlice = createSlice({
   name: 'sales',
   initialState,
@@ -14,8 +30,17 @@ const salesSlice = createSlice({
         const id = s?.id || s?._id || nanoid();
         return { ...s, id: String(id) };
       });
-      const offline = state.sales.filter(s => s && s.offline);
-      state.sales = server.concat(offline);
+      const serverIds = new Set(server.map((sale) => String(sale?.id || sale?._id || '')));
+      const serverClientIds = new Set(server.map((sale) => String(sale?.clientId || '')).filter(Boolean));
+      const localPending = state.sales.filter((sale) => {
+        if (!isTemporarySaleRecord(sale)) return false;
+        const saleId = String(sale?.id || sale?._id || '');
+        const clientId = String(sale?.clientId || '');
+        if (saleId && serverIds.has(saleId)) return false;
+        if (clientId && serverClientIds.has(clientId)) return false;
+        return true;
+      });
+      state.sales = server.concat(localPending);
     },
     recordSale: {
       reducer(state, action) {
