@@ -178,8 +178,8 @@ function SalesPage() {
     return allowedBranches[0]?.id || branches[0]?.id || '';
   }, [allowedBranches, branches, currentBranchId]);
   const [showAll, setShowAll] = useState(false);
-  const [saleKind, setSaleKind] = useState('all'); // all, retail, wholesale
-  const [creditKind, setCreditKind] = useState('all'); // all, non_credit, retail_easybuy, wholesale_credit
+  const [saleKind, setSaleKind] = useState('all'); // all, retail, wholesale, warehouse
+  const [creditKind, setCreditKind] = useState('all'); // all, non_credit, retail_easybuy, wholesale_credit, warehouse_credit
   const [creditPackageFilter, setCreditPackageFilter] = useState('all');
   const [tab, setTab] = useState('sales'); // sales, leaderboard, branches
   const [page, setPage] = useState(1);
@@ -280,13 +280,17 @@ function SalesPage() {
       list = list.filter(s => String(s.posType || 'retail') === 'retail');
     } else if (saleKind === 'wholesale') {
       list = list.filter(s => String(s.posType || 'retail') === 'wholesale');
+    } else if (saleKind === 'warehouse') {
+      list = list.filter(s => String(s.posType || 'retail') === 'warehouse');
     }
     if (creditKind === 'non_credit') {
       list = list.filter(s => !['retail_easybuy', 'distribution_credit'].includes(String(s.creditMode || '').trim().toLowerCase()));
     } else if (creditKind === 'retail_easybuy') {
       list = list.filter(s => String(s.creditMode || '').trim().toLowerCase() === 'retail_easybuy');
     } else if (creditKind === 'wholesale_credit') {
-      list = list.filter(s => String(s.creditMode || '').trim().toLowerCase() === 'distribution_credit');
+      list = list.filter(s => String(s.creditMode || '').trim().toLowerCase() === 'distribution_credit' && String(s.posType || 'retail') === 'wholesale');
+    } else if (creditKind === 'warehouse_credit') {
+      list = list.filter(s => String(s.creditMode || '').trim().toLowerCase() === 'distribution_credit' && String(s.posType || 'retail') === 'warehouse');
     }
     if (creditPackageFilter === 'non_credit') {
       list = list.filter((sale) => !String(sale.creditPackageName || '').trim());
@@ -352,7 +356,8 @@ function SalesPage() {
     const totalCost = summarySales.reduce((sum, sale) => sum + getSaleBookedCost(sale), 0);
     const itemsSold = summarySales.reduce((sum, sale) => sum + (Array.isArray(sale.items) ? sale.items.reduce((acc, item) => acc + (Number(item.qty) || 0), 0) : 0), 0);
     const easybuyCount = summarySales.filter(sale => String(sale.creditMode || '').trim().toLowerCase() === 'retail_easybuy').length;
-    const wholesaleCreditCount = summarySales.filter(sale => String(sale.creditMode || '').trim().toLowerCase() === 'distribution_credit').length;
+    const wholesaleCreditCount = summarySales.filter(sale => String(sale.creditMode || '').trim().toLowerCase() === 'distribution_credit' && String(sale.posType || 'retail') === 'wholesale').length;
+    const warehouseCreditCount = summarySales.filter(sale => String(sale.creditMode || '').trim().toLowerCase() === 'distribution_credit' && String(sale.posType || 'retail') === 'warehouse').length;
     const incompleteCount = summarySales.filter((sale) => getSaleSettlementStatus(sale) === 'incomplete').length;
     const creditOut = summarySales.reduce((sum, sale) => sum + Number(sale.outstandingTotal || sale.outstandingBalance || 0), 0);
     return {
@@ -363,6 +368,7 @@ function SalesPage() {
       itemsSold,
       easybuyCount,
       wholesaleCreditCount,
+      warehouseCreditCount,
       incompleteCount,
       creditOut
     };
@@ -624,6 +630,7 @@ function SalesPage() {
                 <option value="all">All Types</option>
                 <option value="retail">Retail</option>
                 <option value="wholesale">Distribution</option>
+                <option value="warehouse">Warehouse</option>
               </select>
             </label>
             <label>
@@ -633,6 +640,7 @@ function SalesPage() {
                 <option value="non_credit">Non Credit</option>
                 <option value="retail_easybuy">Retail Credit</option>
                 <option value="wholesale_credit">Distribution Credit Sale</option>
+                <option value="warehouse_credit">Warehouse Credit Sale</option>
               </select>
             </label>
             <label>
@@ -672,6 +680,7 @@ function SalesPage() {
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Incomplete Sales</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.incompleteCount}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Retail Credit</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.easybuyCount}</div></div>
             <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Distribution Credit</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.wholesaleCreditCount}</div></div>
+            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Warehouse Credit</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.warehouseCreditCount}</div></div>
           </div>
         </>
       )}
@@ -834,7 +843,7 @@ function SalesPage() {
                 </div>
               </td>
               <td>{branchLabel(sale)}</td>
-              <td>{String(sale.posType || 'retail') === 'wholesale' ? 'Distribution' : 'Retail'}</td>
+              <td>{String(sale.posType || 'retail') === 'wholesale' ? 'Distribution' : String(sale.posType || 'retail') === 'warehouse' ? 'Warehouse' : 'Retail'}</td>
               <td>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span>{getCreditModeLabel(sale)}</span>

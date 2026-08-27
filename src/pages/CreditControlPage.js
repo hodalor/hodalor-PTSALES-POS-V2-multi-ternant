@@ -57,13 +57,18 @@ function normalizeCreditSaleRow(row = {}) {
     : (status === 'overdue' && !Number.isNaN(dueTs)
         ? Math.max(0, Math.floor((nowTs - dueTs) / (24 * 3600 * 1000)))
         : 0);
+  const posType = String(row.posType || row.inventoryType || 'retail').toLowerCase() === 'warehouse'
+    ? 'warehouse'
+    : String(row.posType || row.inventoryType || 'retail').toLowerCase() === 'wholesale'
+      ? 'wholesale'
+      : 'retail';
   return {
     ...row,
     _id: row._id || row.saleId || row.id || row.clientId || '',
     saleId: row.saleId || row.id || row._id || row.clientId || '',
     customer_id: row.customer_id || row.customerId || '',
     branchId: row.branchId || '',
-    posType: String(row.posType || row.inventoryType || 'retail').toLowerCase() === 'wholesale' ? 'wholesale' : 'retail',
+    posType,
     items: Array.isArray(row.items) ? row.items : [],
     total_amount: totalAmount,
     amount_paid: amountPaid,
@@ -230,7 +235,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   }, [clientFilter, customers, goodClients, riskyClients]);
   const fallbackCreditSales = useMemo(() => {
     return saleRows
-      .filter(row => Array.isArray(row.payment_methods) && row.payment_methods.some(p => String(p.type || '').toLowerCase() === 'easybuy'))
+      .filter(row => isCreditSale(row))
       .map(row => ({
         _id: row.creditSaleId || row.id || row._id,
         saleId: row.id || row._id,
@@ -340,7 +345,11 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       const itemText = Array.isArray(row.items)
         ? row.items.map((item) => `${item?.name || ''} ${item?.sku || ''}`).join(' ')
         : '';
-      const sourceText = String(row.posType || 'retail') === 'wholesale' ? 'distribution credit sale wholesale' : 'retail credit';
+      const sourceText = String(row.posType || 'retail') === 'wholesale'
+        ? 'distribution credit sale wholesale'
+        : String(row.posType || 'retail') === 'warehouse'
+          ? 'warehouse credit sale warehouse'
+          : 'retail credit';
       return [
         getCustomerSearchText(row.customer_id),
         itemText,
@@ -364,12 +373,14 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
   const creditSummary = useMemo(() => {
     const easybuyRows = currentActiveSales.filter((row) => String(row.posType || 'retail') === 'retail');
     const wholesaleRows = currentActiveSales.filter((row) => String(row.posType || 'retail') === 'wholesale');
+    const warehouseRows = currentActiveSales.filter((row) => String(row.posType || 'retail') === 'warehouse');
     return {
       activeCount: currentActiveSales.length,
       overdueCount: currentOverdueSales.length,
       dueTodayCount: dueTodaySales.length,
       easybuyOutstanding: easybuyRows.reduce((sum, row) => sum + (Number(row.balance || 0) + Number(row.accumulated_penalty || 0)), 0),
       wholesaleOutstanding: wholesaleRows.reduce((sum, row) => sum + (Number(row.balance || 0) + Number(row.accumulated_penalty || 0)), 0),
+      warehouseOutstanding: warehouseRows.reduce((sum, row) => sum + (Number(row.balance || 0) + Number(row.accumulated_penalty || 0)), 0),
       pendingAmount: currentPendingAmountRows.reduce((sum, row) => sum + Math.max(0, Number(row.balance || 0)), 0),
       pendingAmountCount: currentPendingAmountRows.length,
       pendingRepaymentAmount: currentPendingRepayments.reduce((sum, row) => sum + (Number(row.amount || row.repayment_amount || 0) || 0), 0),
@@ -827,6 +838,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
               <option value="all">All Sources</option>
               <option value="retail">Retail Credit</option>
               <option value="wholesale">Distribution Credit Sale</option>
+              <option value="warehouse">Warehouse Credit Sale</option>
             </select>
           </label>
           <label>
@@ -855,6 +867,10 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
         <div>
           <div style={{ color: '#64748b', fontSize: 12 }}>Distribution Credit Balance</div>
           <div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(creditSummary.wholesaleOutstanding, settings)}</div>
+        </div>
+        <div>
+          <div style={{ color: '#64748b', fontSize: 12 }}>Warehouse Credit Balance</div>
+          <div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{formatCurrency(creditSummary.warehouseOutstanding, settings)}</div>
         </div>
         <div>
           <div style={{ color: '#64748b', fontSize: 12 }}>Pending Amount</div>
@@ -1028,7 +1044,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
               value={salesSearch}
               onChange={e => setSalesSearch(e.target.value)}
             />
-            <div style={{ color: '#64748b', fontSize: 12 }}>Filtered by {branchFilter ? 'selected branch' : 'all branches'}, {sourceFilter === 'all' ? 'all sources' : sourceFilter === 'retail' ? 'Retail Credit' : 'Distribution Credit Sale'}, and {creditPackageFilter === 'all' ? 'all credit packages' : creditPackageFilter}</div>
+            <div style={{ color: '#64748b', fontSize: 12 }}>Filtered by {branchFilter ? 'selected branch' : 'all branches'}, {sourceFilter === 'all' ? 'all sources' : sourceFilter === 'retail' ? 'Retail Credit' : sourceFilter === 'warehouse' ? 'Warehouse Credit Sale' : 'Distribution Credit Sale'}, and {creditPackageFilter === 'all' ? 'all credit packages' : creditPackageFilter}</div>
           </div>
         </div>
         {canDeleteCredit && (
@@ -1139,7 +1155,7 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
               value={repaymentsSearch}
               onChange={e => setRepaymentsSearch(e.target.value)}
             />
-            <div style={{ color: '#64748b', fontSize: 12 }}>Filtered by {branchFilter ? 'selected branch' : 'all branches'}, {sourceFilter === 'all' ? 'all sources' : sourceFilter === 'retail' ? 'Retail Credit' : 'Distribution Credit Sale'}, and {creditPackageFilter === 'all' ? 'all credit packages' : creditPackageFilter}</div>
+            <div style={{ color: '#64748b', fontSize: 12 }}>Filtered by {branchFilter ? 'selected branch' : 'all branches'}, {sourceFilter === 'all' ? 'all sources' : sourceFilter === 'retail' ? 'Retail Credit' : sourceFilter === 'warehouse' ? 'Warehouse Credit Sale' : 'Distribution Credit Sale'}, and {creditPackageFilter === 'all' ? 'all credit packages' : creditPackageFilter}</div>
           </div>
         </div>
         {canDeleteCredit && (

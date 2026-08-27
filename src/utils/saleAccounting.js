@@ -21,8 +21,15 @@ export function getSaleActivityType(sale) {
   const saleType = String(sale?.posType || sale?.inventoryType || 'retail').trim().toLowerCase();
   const creditMode = String(sale?.creditMode || '').trim().toLowerCase();
   if (creditMode === 'retail_easybuy') return 'retail_credit';
-  if (creditMode === 'distribution_credit') return 'wholesale_credit';
-  if (isCreditSale(sale)) return saleType === 'wholesale' ? 'wholesale_credit' : 'retail_credit';
+  if (creditMode === 'distribution_credit') {
+    if (saleType === 'warehouse') return 'warehouse_credit';
+    return 'wholesale_credit';
+  }
+  if (isCreditSale(sale)) {
+    if (saleType === 'warehouse') return 'warehouse_credit';
+    return saleType === 'wholesale' ? 'wholesale_credit' : 'retail_credit';
+  }
+  if (saleType === 'warehouse') return 'warehouse_sales';
   return saleType === 'wholesale' ? 'wholesale_sales' : 'retail_sales';
 }
 
@@ -43,7 +50,7 @@ export function getCreditModeLabel(sale) {
   const mode = String(sale?.creditMode || '').trim().toLowerCase();
   if (mode === 'retail_easybuy') return 'Credit';
   if (mode === 'distribution_credit') return 'Credit Sale';
-  if (isCreditSale(sale)) return String(sale?.posType || 'retail') === 'wholesale' ? 'Credit Sale' : 'Credit';
+  if (isCreditSale(sale)) return String(sale?.posType || 'retail') === 'retail' ? 'Credit' : 'Credit Sale';
   return 'Non Credit';
 }
 

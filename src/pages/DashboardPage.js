@@ -120,13 +120,15 @@ function matchesDashboardActivityFilter(sale, filter) {
   const activityType = getDashboardSaleActivityType(sale);
   switch (String(filter || 'all').trim().toLowerCase()) {
     case 'all_sales':
-      return activityType === 'retail_sales' || activityType === 'wholesale_sales';
+      return activityType === 'retail_sales' || activityType === 'wholesale_sales' || activityType === 'warehouse_sales';
     case 'all_credit':
-      return activityType === 'retail_credit' || activityType === 'wholesale_credit';
+      return activityType === 'retail_credit' || activityType === 'wholesale_credit' || activityType === 'warehouse_credit';
     case 'retail_sales':
     case 'retail_credit':
     case 'wholesale_sales':
     case 'wholesale_credit':
+    case 'warehouse_sales':
+    case 'warehouse_credit':
       return activityType === String(filter || '').trim().toLowerCase();
     case 'all':
     default:
@@ -136,7 +138,7 @@ function matchesDashboardActivityFilter(sale, filter) {
 
 function isCreditOnlyDashboardFilter(filter) {
   const normalized = String(filter || 'all').trim().toLowerCase();
-  return normalized === 'all_credit' || normalized === 'retail_credit' || normalized === 'wholesale_credit';
+  return normalized === 'all_credit' || normalized === 'retail_credit' || normalized === 'wholesale_credit' || normalized === 'warehouse_credit';
 }
 
 function enumerateDateKeys(fromKey, toKey) {
@@ -478,9 +480,11 @@ function DashboardPage() {
     let creditOut = 0;
     let retailCreditOut = 0;
     let wholesaleCreditOut = 0;
+    let warehouseCreditOut = 0;
     let totalCreditRecovered = 0;
     let retailCreditRecovered = 0;
     let wholesaleCreditRecovered = 0;
+    let warehouseCreditRecovered = 0;
     let approvedRefundAmountInRange = 0;
     let recognizedRefundRevenueImpact = 0;
     let approvedRefundProfit = 0;
@@ -546,6 +550,8 @@ function DashboardPage() {
       creditOut += outstandingCredit;
       if (creditMode === 'retail_easybuy') {
         retailCreditOut += outstandingCredit;
+      } else if (creditMode === 'distribution_credit' && String(sale.posType || sale.inventoryType || 'retail').trim().toLowerCase() === 'warehouse') {
+        warehouseCreditOut += outstandingCredit;
       } else if (creditMode === 'distribution_credit') {
         wholesaleCreditOut += outstandingCredit;
       }
@@ -556,6 +562,9 @@ function DashboardPage() {
       const creditMode = String(sale.creditMode || '').trim().toLowerCase();
       if (creditMode === 'retail_easybuy') {
         retailCreditRecovered += recognized.revenue;
+        totalCreditRecovered += recognized.revenue;
+      } else if (creditMode === 'distribution_credit' && String(sale.posType || sale.inventoryType || 'retail').trim().toLowerCase() === 'warehouse') {
+        warehouseCreditRecovered += recognized.revenue;
         totalCreditRecovered += recognized.revenue;
       } else if (creditMode === 'distribution_credit') {
         wholesaleCreditRecovered += recognized.revenue;
@@ -990,9 +999,11 @@ function DashboardPage() {
       creditOut,
       retailCreditOut,
       wholesaleCreditOut,
+      warehouseCreditOut,
       totalCreditRecovered,
       retailCreditRecovered,
       wholesaleCreditRecovered,
+      warehouseCreditRecovered,
       approvedRefundAmount: approvedRefundAmountInRange,
       recognizedRefundRevenueImpact,
       lineData,
@@ -1192,8 +1203,10 @@ function DashboardPage() {
     { key: 'deposited', label: t('Money Deposited'), value: maskRevenue(financeSummary.depositedAmount), subtitle: financeSummaryLoading ? t('Refreshing finance summary') : t('Approved reconciliations'), accent: '#14b8a6', tint: '#ccfbf1', badge: 'MD', loading: financeSummaryLoading, hidden: !canUseFinanceReconciliation },
     { key: 'retail_credit_out', label: t('Retail Credit Sales'), value: maskRevenue(metrics.retailCreditOut), subtitle: t('Outstanding retail credit balance'), accent: '#0ea5e9', tint: '#e0f2fe', badge: 'RE' },
     { key: 'wholesale_credit_out', label: t('Wholesale Credit Sales'), value: maskRevenue(metrics.wholesaleCreditOut), subtitle: t('Outstanding wholesale credit balance'), accent: '#7c2d12', tint: '#ffedd5', badge: 'WC' },
+    { key: 'warehouse_credit_out', label: t('Warehouse Credit Sales'), value: maskRevenue(metrics.warehouseCreditOut), subtitle: t('Outstanding warehouse credit balance'), accent: '#4338ca', tint: '#e0e7ff', badge: 'WHC' },
     { key: 'retail_credit_recovered', label: t('Retail Credit Repayment'), value: maskRevenue(metrics.retailCreditRecovered), subtitle: periodMode === 'all_time' ? t('All retail credit repayments received') : t('Retail credit repayments in selected range'), accent: '#22c55e', tint: '#dcfce7', badge: 'RR' },
     { key: 'wholesale_credit_recovered', label: t('Wholesale Credit Repayment'), value: maskRevenue(metrics.wholesaleCreditRecovered), subtitle: periodMode === 'all_time' ? t('All wholesale credit repayments received') : t('Wholesale credit repayments in selected range'), accent: '#a855f7', tint: '#f3e8ff', badge: 'WR' },
+    { key: 'warehouse_credit_recovered', label: t('Warehouse Credit Repayment'), value: maskRevenue(metrics.warehouseCreditRecovered), subtitle: periodMode === 'all_time' ? t('All warehouse credit repayments received') : t('Warehouse credit repayments in selected range'), accent: '#2563eb', tint: '#dbeafe', badge: 'WHR' },
     { key: 'transactions', label: t('Sales Count'), value: metrics.transactionCount, subtitle: t('Sales created in selected range'), accent: '#f59e0b', tint: '#fef3c7', badge: 'TX' },
     { key: 'margin', label: t('Margin'), value: maskProfitText(`${metrics.marginPct}%`), subtitle: t('Gross margin percentage'), accent: '#ec4899', tint: '#fce7f3', badge: 'MG' },
     { key: 'refunded', label: t('Refunded'), value: maskRevenue(metrics.approvedRefundAmount), subtitle: periodMode === 'all_time' ? t('Approved refunds for all time') : t('Approved refunds in selected range'), accent: '#dc2626', tint: '#fee2e2', badge: 'RF' }
@@ -1288,6 +1301,8 @@ function DashboardPage() {
               <option value="retail_credit">{t('Retail Credit')}</option>
               <option value="wholesale_sales">{t('Wholesale Sales')}</option>
               <option value="wholesale_credit">{t('Wholesale Credit')}</option>
+              <option value="warehouse_sales">{t('Warehouse Sales')}</option>
+              <option value="warehouse_credit">{t('Warehouse Credit')}</option>
             </select>
           </label>
           <label>
