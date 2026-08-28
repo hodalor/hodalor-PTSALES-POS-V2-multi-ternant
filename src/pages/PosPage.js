@@ -1,6 +1,6 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-import { addItem, removeItem, removeItemByUnitId, setQuantity, updateItemPricing, clearCart, setDiscount, addHeld, removeHeld, replaceCart, updateHeld } from '../store/cartSlice';
+import { addItem, removeItem, removeItemByUnitId, setQuantity, updateItemPricing, clearCart, setDiscount, addHeld, removeHeld, replaceCart, updateHeld, selectCartScope } from '../store/cartSlice';
 import { adjustStock } from '../store/productsSlice';
 import { recordSale } from '../store/salesSlice';
 import { addInvoice } from '../store/invoicesSlice';
@@ -136,7 +136,13 @@ function getEffectiveTrackType(product) {
 function PosPage({ mode = 'retail' }) {
   const dispatch = useDispatch();
   const location = useLocation();
-  const cart = useSelector(state => state.cart);
+  const modeLower = String(mode || '').toLowerCase();
+  const isWholesale = modeLower === 'wholesale';
+  const isWarehouse = modeLower === 'warehouse';
+  const isNonRetail = isWholesale || isWarehouse;
+  const inventoryType = isWholesale ? 'wholesale' : isWarehouse ? 'warehouse' : 'retail';
+  const cartScope = inventoryType;
+  const cart = useSelector(state => selectCartScope(state.cart, cartScope));
   const heldSales = useMemo(() => cart.heldSales || [], [cart.heldSales]);
   const products = useSelector(s => s.products.products);
   const customers = useSelector(s => s.customers.customers);
@@ -145,11 +151,6 @@ function PosPage({ mode = 'retail' }) {
   const settings = useSelector(s => s.settings);
   const auth = useSelector(s => s.auth);
   const { t } = useAppLanguage();
-  const modeLower = String(mode || '').toLowerCase();
-  const isWholesale = modeLower === 'wholesale';
-  const isWarehouse = modeLower === 'warehouse';
-  const isNonRetail = isWholesale || isWarehouse;
-  const inventoryType = isWholesale ? 'wholesale' : isWarehouse ? 'warehouse' : 'retail';
   const creditModeLabel = isNonRetail ? t('Credit Sale') : t('Credit');
   const modeLabel = isWholesale ? t('Distribution POS') : isWarehouse ? t('Warehouse POS') : t('POS');
   const reservationStorageKey = `ptsales:pos-reservation-token:${modeLower || 'retail'}`;
@@ -250,6 +251,17 @@ function PosPage({ mode = 'retail' }) {
     try { return localStorage.getItem('ptSales:heldQuery') || ''; } catch { return ''; }
   });
   const toast = useToast();
+  const addItemToCart = (payload) => dispatch(addItem({ ...payload, scope: cartScope }));
+  const removeItemFromCart = (id) => dispatch(removeItem({ id, scope: cartScope }));
+  const removeUnitFromCart = (unitId) => dispatch(removeItemByUnitId({ unitId, scope: cartScope }));
+  const setCartItemQuantity = (id, quantity) => dispatch(setQuantity({ id, quantity, scope: cartScope }));
+  const setCartItemPricing = (payload) => dispatch(updateItemPricing({ ...payload, scope: cartScope }));
+  const clearActiveCart = () => dispatch(clearCart({ scope: cartScope }));
+  const replaceActiveCart = (payload) => dispatch(replaceCart({ ...payload, scope: cartScope }));
+  const addHeldSale = (payload) => dispatch(addHeld({ ...payload, scope: cartScope }));
+  const removeHeldSale = (id) => dispatch(removeHeld({ id, scope: cartScope }));
+  const patchHeldSale = (payload) => dispatch(updateHeld({ ...payload, scope: cartScope }));
+  const setCartDiscountValue = (value) => dispatch(setDiscount({ value, scope: cartScope }));
   const distributionDefaultPrintMode = useMemo(() => {
     const next = String(settings?.distributionPosDefaultPrintMode || '').trim().toLowerCase();
     return ['receipt', 'invoice', 'both'].includes(next) ? next : 'receipt';
@@ -486,7 +498,7 @@ function PosPage({ mode = 'retail' }) {
           nextItems = normalizedItems.filter((item) => !shortageKeys.has(`${String(item.productId || '')}:${String(item.variantId || '')}:${String(item.sku || '')}`));
         }
       }
-      dispatch(replaceCart({ items: nextItems, discount: Number(invoice?.discount || 0), notes: String(invoice?.notes || '') }));
+      replaceActiveCart({ items: nextItems, discount: Number(invoice?.discount || 0), notes: String(invoice?.notes || '') });
       const invoiceCustomer = invoice?.customer || {};
       const matchedCustomer = String(invoiceCustomer?.customerId || '').trim()
         ? customers.find((row) => String(row.id || '') === String(invoiceCustomer.customerId || ''))
@@ -894,7 +906,7 @@ function PosPage({ mode = 'retail' }) {
       return;
     }
     if (reservationKey) setReservingSerializedKeys(prev => prev.includes(reservationKey) ? prev : [...prev, reservationKey]);
-    dispatch(addItem({
+    addItemToCart({
       name: product.name,
       brand: product.brand || getProductBrand(product),
       sku: product.sku,
@@ -909,7 +921,7 @@ function PosPage({ mode = 'retail' }) {
       unitId: optimisticUnitId,
       imei: unit?.imei || '',
       serialNumber: unit?.serialNumber || ''
-    }));
+    });
     setSerializedScanInput('');
     try {
       const reservedUnit = await (unit?._id ? productUnitsApi.reserveProductUnit({
@@ -929,8 +941,8 @@ function PosPage({ mode = 'retail' }) {
       }));
       const resolvedUnitId = String(reservedUnit?._id || '');
       if (resolvedUnitId && resolvedUnitId !== optimisticUnitId) {
-        dispatch(removeItemByUnitId(optimisticUnitId));
-        dispatch(addItem({
+        removeUnitFromCart(optimisticUnitId);
+        addItemToCart({
           name: product.name,
           brand: product.brand || getProductBrand(product),
           sku: product.sku,
@@ -945,11 +957,11 @@ function PosPage({ mode = 'retail' }) {
           unitId: resolvedUnitId,
           imei: reservedUnit?.imei || unit?.imei || '',
           serialNumber: reservedUnit?.serialNumber || unit?.serialNumber || ''
-        }));
+        });
       }
       toast.show(`Added unit ${optimisticCode}`, { type: 'success' });
     } catch (e) {
-      dispatch(removeItemByUnitId(optimisticUnitId));
+      removeUnitFromCart(optimisticUnitId);
       setSerializedPickerProduct(product);
       void loadSerializedUnits(product, serializedUnitsQuery, 1, serializedUnitsPageSize);
       toast.show(String(e?.message || 'Failed to reserve serialized unit'), { type: 'error' });
@@ -960,7 +972,7 @@ function PosPage({ mode = 'retail' }) {
 
   async function removeSerializedUnitFromCart(item) {
     if (!item) return;
-    dispatch(removeItem(item.id));
+    removeItemFromCart(item.id);
     setSerializedScanInput('');
     void releaseSerializedCartItems([item]);
     if (serializedPickerProduct) {
@@ -995,7 +1007,7 @@ function PosPage({ mode = 'retail' }) {
       return;
     }
     const spec = productSpec(p);
-    dispatch(addItem({
+    addItemToCart({
       name: p.name,
       brand: p.brand || getProductBrand(p),
       sku: p.sku,
@@ -1007,7 +1019,7 @@ function PosPage({ mode = 'retail' }) {
       spec,
       productId: p.productId || p.id,
       variantId: p.variantId || null
-    }));
+    });
   }
 
   function addPaymentRow() {
@@ -1059,8 +1071,8 @@ function PosPage({ mode = 'retail' }) {
       payments: payments.map(p => ({ type: p.type, amount: p.amount })),
       view
     };
-    dispatch(addHeld(payload));
-    dispatch(clearCart());
+    addHeldSale(payload);
+    clearActiveCart();
     rotateReservationToken();
     setSelectedCustomerId('');
     setCustomerQuery('');
@@ -1084,7 +1096,7 @@ function PosPage({ mode = 'retail' }) {
       if (!ok) return;
     }
     void releaseSerializedCartItems(cart.items);
-    dispatch(clearCart());
+    clearActiveCart();
     rotateReservationToken();
     setSelectedCustomerId('');
     setCustomerQuery('');
@@ -1109,7 +1121,7 @@ function PosPage({ mode = 'retail' }) {
     const resumedToken = h.reservationToken || createReservationToken();
     setReservationToken(resumedToken);
     try { localStorage.setItem(reservationStorageKey, resumedToken); } catch {}
-    dispatch(replaceCart({ items: Array.isArray(h.items) ? h.items : [], discount: h.discount || 0, notes: h.notes || '' }));
+    replaceActiveCart({ items: Array.isArray(h.items) ? h.items : [], discount: h.discount || 0, notes: h.notes || '' });
     setSelectedCustomerId(h.selectedCustomerId || '');
     setCustomerQuery(h.selectedCustomerId ? '' : String(h.quickCustomerForm?.name || ''));
     setQuickCustomerForm(h.quickCustomerForm || { name: '', phone: '', address: '', customerType: defaultCustomerType });
@@ -1127,7 +1139,7 @@ function PosPage({ mode = 'retail' }) {
     setSelectedPriceTier(h.selectedPriceTier || initialPriceTier);
     setPayments(Array.isArray(h.payments) && h.payments.length > 0 ? h.payments.map(p => ({ type: p.type, amount: p.amount })) : [{ type: 'cash', amount: '' }]);
     try { if (h.view) setView(h.view); } catch {}
-    dispatch(removeHeld(h.id));
+    removeHeldSale(h.id);
     setHeldOpen(false);
     toast.show('Held sale resumed', { type: 'success' });
   }
@@ -1138,7 +1150,7 @@ function PosPage({ mode = 'retail' }) {
     if (!ok) return;
     setDeletingHeldId(String(h.id || ''));
     void releaseSerializedCartItemsWithToken(h.items || [], h.reservationToken || reservationToken);
-    dispatch(removeHeld(h.id));
+    removeHeldSale(h.id);
     toast.show('Held sale removed', { type: 'success' });
     setDeletingHeldId('');
   }
@@ -1151,7 +1163,7 @@ function PosPage({ mode = 'retail' }) {
     if (next == null) return;
     const val = String(next).trim();
     if (!val) return;
-    dispatch(updateHeld({ id: h.id, label: val }));
+    patchHeldSale({ id: h.id, label: val });
     toast.show('Held sale renamed', { type: 'success' });
   }
 
@@ -1449,7 +1461,7 @@ function PosPage({ mode = 'retail' }) {
       branchId: activeBranchId,
       offline: !navigator.onLine
     }));
-      dispatch(clearCart());
+      clearActiveCart();
       rotateReservationToken();
       setSelectedCustomerId('');
       setCustomerQuery('');
@@ -2121,7 +2133,7 @@ function PosPage({ mode = 'retail' }) {
                 value={item.quantity}
                 onChange={e => {
                   if (item.unitId) return;
-                  dispatch(setQuantity({ id: item.id, quantity: Number(e.target.value) }));
+                  setCartItemQuantity(item.id, Number(e.target.value));
                 }}
                 style={{ width: 70 }}
                 disabled={!!item.unitId}
@@ -2135,7 +2147,7 @@ function PosPage({ mode = 'retail' }) {
                   onChange={e => {
                     const tier = e.target.value;
                     const nextPrice = Number(item.prices?.[tier] ?? item.price ?? 0);
-                    dispatch(updateItemPricing({ id: item.id, priceTier: tier, price: nextPrice }));
+                    setCartItemPricing({ id: item.id, priceTier: tier, price: nextPrice });
                   }}
                 >
                   <option value="retail">Retail</option>
@@ -2149,7 +2161,7 @@ function PosPage({ mode = 'retail' }) {
                   min="0"
                   step="0.01"
                   value={item.price}
-                  onChange={e => dispatch(updateItemPricing({ id: item.id, priceTier: item.priceTier || selectedPriceTier, price: Number(e.target.value) || 0 }))}
+                  onChange={e => setCartItemPricing({ id: item.id, priceTier: item.priceTier || selectedPriceTier, price: Number(e.target.value) || 0 })}
                   style={{ width: 110 }}
                 />
                 <span style={{ fontSize: 12, color: '#64748b' }}>
@@ -2168,7 +2180,7 @@ function PosPage({ mode = 'retail' }) {
                 <strong>{formatCurrency((Number(item.price) || 0) * (Number(item.quantity) || 0), settings)}</strong>
               </div>
               <button className="btn" onClick={() => {
-                dispatch(removeItem(item.id));
+                removeItemFromCart(item.id);
                 void releaseSerializedCartItems([item]);
               }}>
                 <svg viewBox="0 0 24 24" fill="none"><path d="M6 7h12M10 11v6M14 11v6M9 7l1-2h4l1 2M7 7l1 12h8l1-12" stroke="currentColor" strokeWidth="2"/></svg>
@@ -2180,7 +2192,7 @@ function PosPage({ mode = 'retail' }) {
         <div className="totals-box">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <label style={{ color: '#64748b' }}>{t('Manual discount')}</label>
-            <input className="input" type="number" min="0" value={manualDiscount} onChange={e => dispatch(setDiscount(Number(e.target.value)))} style={{ width: 140 }} />
+            <input className="input" type="number" min="0" value={manualDiscount} onChange={e => setCartDiscountValue(Number(e.target.value))} style={{ width: 140 }} />
           </div>
           {settings.loyaltyEnabled && selectedCustomer && (
             <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
@@ -2325,7 +2337,7 @@ function PosPage({ mode = 'retail' }) {
             <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>
             {saving ? t('Processing...') : t('Complete (ESC/POS)')}
           </button>
-          <button className="btn" onClick={() => { void releaseSerializedCartItems(cart.items); dispatch(clearCart()); rotateReservationToken(); }} style={{ marginLeft: 8 }} disabled={cart.items.length === 0}>
+          <button className="btn" onClick={() => { void releaseSerializedCartItems(cart.items); clearActiveCart(); rotateReservationToken(); }} style={{ marginLeft: 8 }} disabled={cart.items.length === 0}>
             <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M6 7l1 12h10l1-12M9 7l1-2h4l1 2" stroke="currentColor" strokeWidth="2"/></svg>
             {t('Clear')}
           </button>

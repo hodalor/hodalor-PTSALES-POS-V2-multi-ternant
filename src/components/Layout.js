@@ -127,7 +127,7 @@ function Layout({ bootstrapLoading = false }) {
     '/warehouse-'
   ];
   const isBranchScopedRoute = branchScopedPrefix.some((prefix) => String(location.pathname || '').startsWith(prefix));
-  const isPosRoute = ['/pos', '/wholesale-pos'].some((prefix) => String(location.pathname || '').startsWith(prefix));
+  const isPosRoute = ['/pos', '/wholesale-pos', '/warehouse-pos'].some((prefix) => String(location.pathname || '').startsWith(prefix));
   const outletKey = isBranchScopedRoute
     ? `branch:${String(currentBranchId || '')}:${String(location.pathname || '')}`
     : String(location.pathname || '');
