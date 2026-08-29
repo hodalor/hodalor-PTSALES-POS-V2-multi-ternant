@@ -1406,27 +1406,6 @@ function PosPage({ mode = 'retail' }) {
     toast.show('Sale held', { type: 'success' });
   }
 
-  async function startNewSale() {
-    if (cart.items.length > 0) {
-      const ok = await confirmDialog('Clear current cart and start a new sale?');
-      if (!ok) return;
-    }
-    void releaseSerializedCartItems(cart.items);
-    clearActiveCart();
-    rotateReservationToken();
-    setSelectedCustomerId('');
-    setCustomerQuery('');
-    setQuickCustomerForm({ name: '', phone: '', address: '', customerType: defaultCustomerType });
-    setRedeemPoints('');
-    setTaxOverridePct('');
-    setTaxOverrideRemark('');
-    setEasyBuyEnabled(false);
-    setEasyBuyAmountPaidNow('');
-    setEasyBuyDueDate('');
-    resetSaleDateTime();
-    setPayments([{ type: 'cash', amount: '' }]);
-  }
-
   async function resumeHeld(h) {
     if (!h) return;
     if (cart.items.length > 0) {
@@ -2312,10 +2291,6 @@ function PosPage({ mode = 'retail' }) {
               <button className="btn" onClick={() => { setHeldOpen(false); setDiscountOpen(o => !o); }}>
                 <svg viewBox="0 0 24 24" fill="none"><path d="M5 6h14v4H5z" stroke="currentColor" strokeWidth="2"/><path d="M8 10v8M16 10v8M5 18h14" stroke="currentColor" strokeWidth="2"/></svg>
                 {t('Discount')} ({discountRequestList.length})
-              </button>
-              <button className="btn" onClick={startNewSale}>
-                <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2"/></svg>
-                {t('New Sale')}
               </button>
             </div>
             {heldUiEnabled && heldOpen && (

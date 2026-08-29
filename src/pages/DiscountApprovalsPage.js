@@ -60,6 +60,57 @@ function buildStatusLabel(status = '') {
   return 'Completed';
 }
 
+function buildReviewResult(row = {}) {
+  const status = String(row?.status || '').trim().toLowerCase();
+  if (status === 'rejected' || status === 'cancelled' || row?.rejectedByName) {
+    return { label: 'Rejected', color: '#b91c1c', background: '#fee2e2', border: '#fecaca' };
+  }
+  if (status === 'approved' || (status === 'completed' && row?.approvedByName)) {
+    return { label: 'Approved', color: '#166534', background: '#dcfce7', border: '#bbf7d0' };
+  }
+  return { label: 'Pending', color: '#92400e', background: '#fef3c7', border: '#fde68a' };
+}
+
+function buildLifecycleBadge(status = '') {
+  const value = String(status || '').trim().toLowerCase();
+  if (value === 'completed') return { label: 'Completed', color: '#1e293b', background: '#e2e8f0', border: '#cbd5e1' };
+  if (value === 'cancelled') return { label: 'Cancelled', color: '#7c2d12', background: '#ffedd5', border: '#fdba74' };
+  if (value === 'approved') return { label: 'Approved', color: '#166534', background: '#dcfce7', border: '#bbf7d0' };
+  if (value === 'rejected') return { label: 'Rejected', color: '#b91c1c', background: '#fee2e2', border: '#fecaca' };
+  return { label: 'Under Review', color: '#92400e', background: '#fef3c7', border: '#fde68a' };
+}
+
+function isWithinDateRange(value, from, to) {
+  if (!from && !to) return true;
+  const stamp = new Date(value || 0).getTime();
+  if (!Number.isFinite(stamp)) return false;
+  const fromStamp = from ? new Date(from).getTime() : 0;
+  const toDate = to ? new Date(to) : null;
+  if (toDate) toDate.setHours(23, 59, 59, 999);
+  const toStamp = toDate ? toDate.getTime() : Number.MAX_SAFE_INTEGER;
+  return stamp >= fromStamp && stamp <= toStamp;
+}
+
+function statusPill({ label, color, background, border }) {
+  return (
+    <span style={{
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minWidth: 96,
+      padding: '4px 10px',
+      borderRadius: 999,
+      fontSize: 12,
+      fontWeight: 700,
+      color,
+      background,
+      border: `1px solid ${border}`
+    }}>
+      {label}
+    </span>
+  );
+}
+
 function requestUnitIds(row = {}) {
   const payloadItems = Array.isArray(row?.salePayload?.items) ? row.salePayload.items : [];
   return Array.from(new Set(
@@ -85,6 +136,11 @@ function DiscountApprovalsPage() {
   const [detail, setDetail] = useState(null);
   const [draftDiscount, setDraftDiscount] = useState('');
   const [draftRemark, setDraftRemark] = useState('');
+  const [search, setSearch] = useState('');
+  const [branchFilter, setBranchFilter] = useState('all');
+  const [resultFilter, setResultFilter] = useState('all');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
 
   const canComplete = useMemo(() => {
     const role = String(auth.role || '').toLowerCase();
@@ -233,9 +289,44 @@ function DiscountApprovalsPage() {
     }
   }
 
+  const branchOptions = useMemo(() => {
+    const local = new Map();
+    (Array.isArray(rows) ? rows : []).forEach((row) => {
+      const id = String(row?.branchId || '').trim();
+      if (!id) return;
+      local.set(id, branchMap.get(id) || row?.branchName || id);
+    });
+    return Array.from(local.entries()).sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+  }, [branchMap, rows]);
+
   const rowsForTable = useMemo(() => {
-    return (Array.isArray(rows) ? rows : []).slice().sort((a, b) => new Date(b?.updatedAt || b?.createdAt || 0).getTime() - new Date(a?.updatedAt || a?.createdAt || 0).getTime());
-  }, [rows]);
+    const term = String(search || '').trim().toLowerCase();
+    return (Array.isArray(rows) ? rows : [])
+      .filter((row) => {
+        if (branchFilter !== 'all' && String(row?.branchId || '') !== String(branchFilter)) return false;
+        const reviewResult = buildReviewResult(row).label.toLowerCase();
+        if (resultFilter !== 'all' && reviewResult !== String(resultFilter)) return false;
+        if (!isWithinDateRange(row?.createdAt, dateFrom, dateTo)) return false;
+        if (!term) return true;
+        const itemSummary = Array.isArray(row?.items) ? row.items.map((item) => `${item?.name || ''} ${item?.sku || ''} ${item?.productId || ''}`).join(' ') : '';
+        const haystack = [
+          row?.customerName,
+          row?.customerPhone,
+          row?.submittedByName,
+          row?.approvedByName,
+          row?.rejectedByName,
+          row?.completedByName,
+          row?.branchName,
+          branchMap.get(String(row?.branchId || '')),
+          row?.approvalRemark,
+          row?.rejectionRemark,
+          itemSummary
+        ].map((value) => String(value || '').toLowerCase()).join(' ');
+        return haystack.includes(term);
+      })
+      .slice()
+      .sort((a, b) => new Date(b?.updatedAt || b?.createdAt || 0).getTime() - new Date(a?.updatedAt || a?.createdAt || 0).getTime());
+  }, [branchFilter, branchMap, dateFrom, dateTo, resultFilter, rows, search]);
 
   function detailItems(row) {
     const items = Array.isArray(row?.items) && row.items.length > 0 ? row.items : (Array.isArray(row?.salePayload?.items) ? row.salePayload.items : []);
@@ -273,6 +364,26 @@ function DiscountApprovalsPage() {
           {t('Completed')}
         </button>
       </div>
+      <div className="card" style={{ marginBottom: 12 }}>
+        <div className="filter-actions" style={{ display: 'grid', gap: 10, gridTemplateColumns: 'minmax(220px, 1.4fr) repeat(4, minmax(140px, 1fr)) auto' }}>
+          <input className="input" placeholder={t('Search customer, item, approver, remark')} value={search} onChange={(e) => setSearch(e.target.value)} />
+          <select className="select" value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
+            <option value="all">{t('All Branches')}</option>
+            {branchOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <select className="select" value={resultFilter} onChange={(e) => setResultFilter(e.target.value)}>
+            <option value="all">{t('All Results')}</option>
+            <option value="pending">{t('Pending')}</option>
+            <option value="approved">{t('Approved')}</option>
+            <option value="rejected">{t('Rejected')}</option>
+          </select>
+          <input className="input" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+          <input className="input" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+          <button className="btn" onClick={() => { setSearch(''); setBranchFilter('all'); setResultFilter('all'); setDateFrom(''); setDateTo(''); }}>
+            {t('Clear Filters')}
+          </button>
+        </div>
+      </div>
       <div className="card">
         <div className="table-wrap">
           <table className="table">
@@ -287,6 +398,7 @@ function DiscountApprovalsPage() {
                 <th align="left">{t('Initiator')}</th>
                 <th align="left">{t('Approver')}</th>
                 <th align="left">{t('Completer')}</th>
+                <th align="left">{t('Review Result')}</th>
                 <th align="left">{t('Status')}</th>
                 <th align="right">{t('Action')}</th>
               </tr>
@@ -296,6 +408,8 @@ function DiscountApprovalsPage() {
                 const id = String(row?._id || '');
                 const itemSummary = Array.isArray(row?.items) ? row.items.map((item) => `${item.name || item.sku || item.productId} x${Number(item.qty || 0)}`).join(', ') : '';
                 const busy = workingId === id;
+                const reviewResult = buildReviewResult(row);
+                const lifecycleBadge = buildLifecycleBadge(row?.status);
                 return (
                   <tr key={id} onClick={() => openDetail(row)} style={{ cursor: 'pointer' }}>
                     <td>{row?.createdAt ? new Date(row.createdAt).toLocaleString() : '—'}</td>
@@ -307,7 +421,8 @@ function DiscountApprovalsPage() {
                     <td>{row?.submittedByName || '—'}</td>
                     <td>{row?.approvedByName || row?.rejectedByName || '—'}</td>
                     <td>{row?.completedByName || '—'}</td>
-                    <td>{buildStatusLabel(row?.status)}</td>
+                    <td>{statusPill(reviewResult)}</td>
+                    <td>{statusPill(lifecycleBadge)}</td>
                     <td align="right" onClick={(e) => e.stopPropagation()}>
                       {tab === 'under_review' && (
                         <>
@@ -332,7 +447,7 @@ function DiscountApprovalsPage() {
               })}
               {rowsForTable.length === 0 && (
                 <tr>
-                  <td colSpan={11} style={{ color: '#64748b' }}>
+                  <td colSpan={12} style={{ color: '#64748b' }}>
                     {loading ? t('Loading...') : t('No discount approvals found')}
                   </td>
                 </tr>
