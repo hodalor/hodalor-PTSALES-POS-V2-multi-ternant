@@ -8,7 +8,7 @@ export const TENANT_GRANT_KEYS = [
   'view_finance_reconciliation', 'add_finance_reconciliation', 'view_finance_reconciliation_all_branches', 'manage_finance_accounts', 'approve_finance_reconciliation_director', 'approve_finance_reconciliation_manager',
   'view_chat', 'send_chat_messages', 'view_pt_ai',
   'add_customers', 'edit_customers', 'view_credit_control', 'approve_credit_director',
-  'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals',
+  'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_discount_sales',
   'approve_retail_director', 'approve_retail_manager',
   'approve_distribution_director', 'approve_distribution_manager', 'approve_warehouse_director', 'approve_warehouse_manager', 'view_refunds', 'add_refunds', 'view_distribution_refunds', 'add_distribution_refunds',
   'approve_refunds', 'view_expenses', 'add_expenses', 'approve_expenses', 'view_reports', 'view_revenue', 'view_profit', 'view_financials',

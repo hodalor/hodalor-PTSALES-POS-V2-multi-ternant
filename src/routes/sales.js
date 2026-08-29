@@ -10,6 +10,7 @@ import Invoice from '../models/Invoice.js';
 import Branch from '../models/Branch.js';
 import Customer from '../models/Customer.js';
 import CreditSale from '../models/CreditSale.js';
+import DiscountApproval from '../models/DiscountApproval.js';
 import ProductUnit from '../models/ProductUnit.js';
 import WholesaleOperation from '../models/WholesaleOperation.js';
 import TransferRequest from '../models/TransferRequest.js';
@@ -200,6 +201,32 @@ function normalizeBranchIds(value) {
       .map((item) => String(item || '').trim())
       .filter(Boolean)
   ));
+}
+
+function getAccessibleBranchIds(user = {}) {
+  const role = String(user?.role || '').toLowerCase();
+  if (role === 'admin' || role === 'superadmin') return 'all';
+  const assigned = normalizeBranchIds(user?.assignedBranches);
+  if (assigned === 'all') return 'all';
+  return normalizeBranchIds([user?.branchId, ...(Array.isArray(assigned) ? assigned : [])]);
+}
+
+function canApproveDiscount(user = {}) {
+  const role = String(user?.role || '').toLowerCase();
+  const grants = Array.isArray(user?.grants) ? user.grants : [];
+  return role === 'admin' || role === 'superadmin' || grants.includes('approve_discount_sales');
+}
+
+function canAccessDiscountApproval(user = {}, row = {}) {
+  if (!row) return false;
+  const currentUserName = String(user?.name || '').trim();
+  if (currentUserName && String(row.submittedByName || '').trim() === currentUserName) return true;
+  if (canApproveDiscount(user)) {
+    const branches = getAccessibleBranchIds(user);
+    if (branches === 'all') return true;
+    return Array.isArray(branches) && branches.includes(String(row.branchId || ''));
+  }
+  return false;
 }
 
 function productLookupQuery(productId) {
@@ -451,11 +478,53 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
   const posType = ['retail', 'wholesale', 'warehouse'].includes(requestedPosType) ? requestedPosType : 'retail';
   const requestedInventoryType = String(payload.inventoryType || posType || 'retail').trim().toLowerCase();
   const inventoryType = ['retail', 'wholesale', 'warehouse'].includes(requestedInventoryType) ? requestedInventoryType : posType;
+  const requestedDiscount = Math.max(0, Number(payload.discount || 0));
+  const discountApprovalId = String(payload.discountApprovalId || '').trim();
   const allowedPriceTiers = new Set(['retail', 'wholesale', 'warehouse', 'agent']);
   const defaultPriceTier = allowedPriceTiers.has(String(payload.defaultPriceTier || '').toLowerCase())
     ? String(payload.defaultPriceTier || '').toLowerCase()
     : (posType === 'wholesale' ? 'wholesale' : posType === 'warehouse' ? 'warehouse' : 'retail');
   const creditPayload = payload.creditSale && payload.creditSale.enabled ? payload.creditSale : null;
+  let discountApproval = null;
+  if (requestedDiscount > 0 || discountApprovalId) {
+    if (!discountApprovalId) {
+      return res.status(403).json({ error: 'Discounted sales must be approved first' });
+    }
+    discountApproval = await DiscountApproval.findById(discountApprovalId);
+    if (!discountApproval) {
+      return res.status(404).json({ error: 'Discount approval request not found' });
+    }
+    if (!canAccessDiscountApproval(req.user, discountApproval)) {
+      return res.status(403).json({ error: 'You do not have access to this discount approval request' });
+    }
+    if (['completed', 'cancelled'].includes(String(discountApproval.status || ''))) {
+      return res.status(400).json({ error: 'Discount approval request has already been completed' });
+    }
+    if (String(discountApproval.branchId || '') !== String(branchId || '')) {
+      return res.status(400).json({ error: 'Discount approval branch does not match this sale' });
+    }
+    if (String(discountApproval.posType || 'retail') !== String(posType || 'retail')) {
+      return res.status(400).json({ error: 'Discount approval POS type does not match this sale' });
+    }
+    if (String(discountApproval.inventoryType || posType || 'retail') !== String(inventoryType || posType || 'retail')) {
+      return res.status(400).json({ error: 'Discount approval inventory type does not match this sale' });
+    }
+    const discountStatus = String(discountApproval.status || '');
+    if (discountStatus === 'approved') {
+      if (requestedDiscount <= 0) {
+        return res.status(400).json({ error: 'Approved discount sales must keep the approved discount amount' });
+      }
+      if (Math.abs(Number(discountApproval.discount || 0) - requestedDiscount) > 0.01) {
+        return res.status(400).json({ error: 'Discount amount does not match the approved request' });
+      }
+    } else if (discountStatus === 'rejected') {
+      if (requestedDiscount > 0.01) {
+        return res.status(400).json({ error: 'Rejected discount requests can only be completed without a discount' });
+      }
+    } else {
+      return res.status(400).json({ error: 'Discount approval is still pending review' });
+    }
+  }
   const clientId = String(payload.clientId || '').trim();
   if (clientId) {
     const existing = await Sale.findOne({ clientId });
@@ -878,6 +947,13 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       loyaltyPointsEarned: earned,
       loyaltyPointsRedeemed: redeemed,
       loyaltyDiscount: loyaltyDiscount,
+      discountApprovalId: discountApproval ? String(discountApproval._id || '') : '',
+      discountApprovedByName: discountApproval ? String(discountApproval.approvedByName || '') : '',
+      discountApprovedByRole: discountApproval ? String(discountApproval.approvedByRole || '') : '',
+      discountApprovedAt: discountApproval?.approvedAt || undefined,
+      discountCompletedByName: discountApproval ? String(req.user?.name || 'unknown') : '',
+      discountCompletedByRole: discountApproval ? String(req.user?.role || '') : '',
+      discountCompletedAt: discountApproval ? new Date() : undefined,
       recordedAt: saleTimes.recordedAt,
       saleCapturedAt: saleTimes.saleCapturedAt,
       created_at: saleTimes.effectiveSaleAt,
@@ -1129,6 +1205,32 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       despatchedThrough: 'In person'
     });
   } catch {}
+  if (discountApproval) {
+    try {
+      discountApproval.status = 'completed';
+      discountApproval.completedByName = String(req.user?.name || 'unknown');
+      discountApproval.completedByRole = String(req.user?.role || '');
+      discountApproval.completedAt = sale.discountCompletedAt || new Date();
+      discountApproval.completedSaleId = String(sale._id || '');
+      discountApproval.completedInvoiceSerial = String(sale.invoiceSerial || '');
+      discountApproval.completedReceiptNumber = String(sale.receiptNumber || '');
+      await discountApproval.save();
+      await Audit.create({
+        actor: String(req.user?.name || sale.sellerName || 'unknown').trim() || 'unknown',
+        actionType: 'discount_sale_completed',
+        details: {
+          discountApprovalId: String(discountApproval._id || ''),
+          saleId: String(sale._id || ''),
+          invoiceSerial: String(sale.invoiceSerial || ''),
+          receiptNumber: String(sale.receiptNumber || ''),
+          total: Number(sale.total || 0),
+          discount: Number(sale.discount || 0)
+        },
+        branchId: sale.branchId,
+        ts: new Date()
+      }).catch(() => {});
+    } catch {}
+  }
   // #region debug-point C:backend-response-success
   reportEbkTmpReceiptDebug({
     hypothesisId: 'C',
