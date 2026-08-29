@@ -79,6 +79,7 @@ import WarehouseInvoicesPage from './pages/WarehouseInvoicesPage';
 import TenantsPage from './pages/TenantsPage';
 import CommunicationChatPage from './pages/CommunicationChatPage';
 import AskPtAiPage from './pages/AskPtAiPage';
+import DiscountApprovalsPage from './pages/DiscountApprovalsPage';
 import * as authApi from './api/auth';
 import { resetTenantAppState } from './store';
 import * as tenantsApi from './api/tenants';
@@ -748,6 +749,7 @@ function App() {
             <Route path="/easybuy/defaulters" element={<ProtectedRoute feature="modules.creditControl" roles={['Admin','Manager','Cashier']} grant={['view_credit_control']}><EasyBuyDefaultersPage /></ProtectedRoute>} />
             <Route path="/easybuy/repayment-approvals" element={<ProtectedRoute feature="modules.creditControl" roles={['Admin','Manager','SuperAdmin']} grant={['approve_credit_director','approve_credit_manager','view_credit_control','view_credit_repayment_approvals']}><EasyBuyRepaymentApprovalsPage /></ProtectedRoute>} />
             <Route path="/approvals-center" element={<ProtectedRoute feature="modules.approvalsCenter" roles={['Admin','Manager','SuperAdmin']} grant={['view_approvals','approve_retail_director','approve_retail_manager','approve_distribution_director','approve_distribution_manager','approve_warehouse_director','approve_warehouse_manager','approve_credit_director','approve_credit_manager']}><ApprovalsPage /></ProtectedRoute>} />
+            <Route path="/discount-approvals" element={<ProtectedRoute feature="modules.approvalsCenter" roles={['Admin','Manager','Cashier','SuperAdmin']} grant={['approve_discount_sales']}><DiscountApprovalsPage /></ProtectedRoute>} />
             <Route path="/refunds" element={<ProtectedRoute feature="pages.retail.refunds" roles={['Admin','Manager','Cashier']} grant={['view_refunds','see_refunds']}><RefundsPage /></ProtectedRoute>} />
             <Route path="/refund-approvals" element={<ProtectedRoute feature="modules.refundApprovals" roles={['Admin','Manager','SuperAdmin']} grant="approve_refunds"><RefundApprovalsPage /></ProtectedRoute>} />
             <Route path="/stock-records" element={<ProtectedRoute feature="sections.admin" roles={['Admin','SuperAdmin']} grant={['view_stock_records','see_stock_records']}><StockRecordsPage /></ProtectedRoute>} />

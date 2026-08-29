@@ -577,6 +577,12 @@ function Sidebar({ collapsed, onNavigate }) {
           <span className="sidebar-text">{t('Approvals Center')}</span>
         </NavLink>
         )}
+        {isFeatureEnabled(settings, 'modules.approvalsCenter') && can(['Admin','Manager','Cashier','SuperAdmin'],['approve_discount_sales']) && (
+        <NavLink to="/discount-approvals" className="sidebar-link" title={t('Discount Approval')}>
+          <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16v12H4z" stroke="currentColor" strokeWidth="2"/><path d="M8 11h8M8 15h5" stroke="currentColor" strokeWidth="2"/><path d="M15 5l4 4" stroke="currentColor" strokeWidth="2"/></svg>
+          <span className="sidebar-text">{t('Discount Approval')}</span>
+        </NavLink>
+        )}
         {isFeatureEnabled(settings, 'modules.refundApprovals') && can(['Admin','Manager','SuperAdmin'],['approve_refunds']) && (
         <NavLink to="/refund-approvals" className="sidebar-link" title={t('Refund Approvals')} style={{ display: 'flex', alignItems: 'center' }}>
           <svg viewBox="0 0 24 24" fill="none"><path d="M5 3h14v18H5z" stroke="currentColor" strokeWidth="2"/><path d="M9 17V9M13 17v-7M17 17v-4" stroke="currentColor" strokeWidth="2"/></svg>

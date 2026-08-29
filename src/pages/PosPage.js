@@ -10,11 +10,12 @@ import { escposReceipt, escposOpenDrawer, downloadText } from '../utils/escpos';
 import { buildInvoiceA4Html, printInvoiceA4 } from '../utils/invoicePrint';
 import { useToast } from '../components/ToastProvider';
 import { formatCurrency } from '../utils/currency';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { addAudit } from '../store/auditSlice';
 import { setCurrentBranch } from '../store/settingsSlice';
 import { productSpec } from '../utils/productSpec';
 import { createSale } from '../api/sales';
+import { cancelDiscountApproval, listDiscountApprovals, requestDiscountApproval } from '../api/discountApprovals';
 import * as customersApi from '../api/customers';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
@@ -244,6 +245,10 @@ function PosPage({ mode = 'retail' }) {
   const [quickCustomerForm, setQuickCustomerForm] = useState({ name: '', phone: '', address: '', customerType: defaultCustomerType });
   const [redeemPoints, setRedeemPoints] = useState('');
   const [heldOpen, setHeldOpen] = useState(false);
+  const [discountOpen, setDiscountOpen] = useState(false);
+  const [discountRequests, setDiscountRequests] = useState([]);
+  const [discountLoading, setDiscountLoading] = useState(false);
+  const [discountWorkingId, setDiscountWorkingId] = useState('');
   const [heldSort, setHeldSort] = useState(() => {
     try { return localStorage.getItem('ptSales:heldSort') || 'newest'; } catch { return 'newest'; }
   });
@@ -560,6 +565,15 @@ function PosPage({ mode = 'retail' }) {
     }
     return list;
   }, [heldSales, heldSort, heldQuery, customers]);
+  const discountRequestList = useMemo(() => {
+    return (Array.isArray(discountRequests) ? discountRequests : [])
+      .filter((row) => !['completed', 'cancelled'].includes(String(row?.status || '')))
+      .sort((a, b) => {
+        const left = new Date(b?.updatedAt || b?.createdAt || 0).getTime() || 0;
+        const right = new Date(a?.updatedAt || a?.createdAt || 0).getTime() || 0;
+        return left - right;
+      });
+  }, [discountRequests]);
 
   const canQuickAddCustomer = useMemo(() => {
     const roleLower = String(auth.role || '').toLowerCase();
@@ -616,6 +630,307 @@ function PosPage({ mode = 'retail' }) {
     dispatch(addCustomer(created));
     setSelectedCustomerId(String(created?.id || created?._id || clientId));
     return created;
+  }
+
+  function resetCheckoutAfterSubmission() {
+    clearActiveCart();
+    rotateReservationToken();
+    setSelectedCustomerId('');
+    setCustomerQuery('');
+    setQuickCustomerForm({ name: '', phone: '', address: '', customerType: defaultCustomerType });
+    setRedeemPoints('');
+    setEasyBuyEnabled(false);
+    setEasyBuyAmountPaidNow('');
+    setEasyBuyDueDate('');
+    resetSaleDateTime();
+  }
+
+  const refreshDiscountRequests = useCallback(async () => {
+    if (!navigator.onLine || !activeBranchId) {
+      setDiscountRequests([]);
+      return;
+    }
+    setDiscountLoading(true);
+    try {
+      const rows = await listDiscountApprovals({
+        mine: true,
+        posType: modeLower,
+        branchId: activeBranchId
+      });
+      setDiscountRequests(Array.isArray(rows) ? rows : []);
+    } catch {
+      setDiscountRequests([]);
+    } finally {
+      setDiscountLoading(false);
+    }
+  }, [activeBranchId, modeLower]);
+  useEffect(() => {
+    void refreshDiscountRequests();
+  }, [refreshDiscountRequests]);
+
+  async function prepareSalePayload() {
+    if (!easyBuyEnabled && due > 0) {
+      throw new Error('Payment incomplete');
+    }
+    if (easyBuyEnabled) {
+      const creditPaymentsTotal = payments.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
+      const creditPaidNow = Math.max(0, Number(easyBuyAmountPaidNow || 0));
+      if (!easyBuyAllowed) throw new Error(`${creditModeLabel} requires items in cart`);
+      if (!selectedCustomer && !quickCustomerReady) throw new Error(`${creditModeLabel} requires customer name, phone, and address`);
+      if (easyBuyBlockedItem) throw new Error(`${easyBuyBlockedItem.name} is not allowed for ${creditModeLabel.toLowerCase()}`);
+      if (!easyBuyDueDate) throw new Error(`Select a due date for ${creditModeLabel}`);
+      const selectedSaleAt = buildSaleDateTimeValue(saleDate, saleTime);
+      const saleDay = toDateInputValue(selectedSaleAt);
+      if (saleDay && String(easyBuyDueDate || '') < saleDay) {
+        throw new Error(`${creditModeLabel} due date cannot be earlier than the sale date`);
+      }
+      if (creditPaidNow >= (Number(total || 0) - 0.005)) {
+        throw new Error(`${creditModeLabel} is selected but amount paid now covers the full sale. Please check again and use a normal sale if the customer is paying in full.`);
+      }
+      if ((Number(easyBuyAmountPaidNow || 0) + 0.0001) < Number(easyBuyMinimum || 0)) {
+        throw new Error(`Minimum upfront payment is ${formatCurrency(easyBuyMinimum, settings)}`);
+      }
+      if (Math.abs(creditPaymentsTotal - Number(easyBuyAmountPaidNow || 0)) > 0.005) {
+        throw new Error(`${creditModeLabel} payment breakdown must equal amount paid now`);
+      }
+      if (customerMaxCreditLimit > 0 && (customerOutstanding + due) > customerMaxCreditLimit) {
+        throw new Error('Customer exceeds the configured credit limit');
+      }
+    }
+    if (!navigator.onLine) {
+      if (!offlineBackupAllowed) throw new Error('Offline: connect internet and try again.');
+    }
+    if (canOverrideTax && taxOverridePct !== '' && String(Math.round((taxRate || 0) * 100)) !== String(Math.round((settings.taxRate || 0) * 100))) {
+      if (!taxOverrideRemark.trim()) throw new Error('Enter a remark for tax override');
+    }
+    let checkoutCustomer = selectedCustomer;
+    if (!checkoutCustomer && (easyBuyEnabled || quickCustomerHasAny)) {
+      checkoutCustomer = await ensureCheckoutCustomer();
+    }
+    const branchName = activeBranch?.name || activeBranchId;
+    const saleCapturedAt = new Date().toISOString();
+    const selectedSaleAt = buildSaleDateTimeValue(saleDate, saleTime).toISOString();
+    const effectiveSaleAt = canBackdateSales && saleDateTimeTouched ? selectedSaleAt : saleCapturedAt;
+    const creditPackageName = easyBuyEnabled ? activeCreditPackageName : '';
+    const sale = {
+      branchId: activeBranchId,
+      branchName,
+      sellerName: auth.user?.name || 'unknown',
+      sellerRole: auth.role || '',
+      customerId: checkoutCustomer ? checkoutCustomer.id : '',
+      customerCode: checkoutCustomer ? (checkoutCustomer.customerCode || '') : '',
+      customerName: checkoutCustomer ? (checkoutCustomer.name || '') : '',
+      customerPhone: checkoutCustomer ? (checkoutCustomer.phone || '') : '',
+      customerAddress: checkoutCustomer ? (checkoutCustomer.address || '') : '',
+      customerBusinessName: checkoutCustomer ? (checkoutCustomer.businessName || '') : '',
+      customerBusinessAddress: checkoutCustomer ? (checkoutCustomer.businessAddress || '') : '',
+      customerTaxId: checkoutCustomer ? (checkoutCustomer.taxId || '') : '',
+      posType: modeLower,
+      inventoryType,
+      defaultPriceTier: selectedPriceTier,
+      loyaltyPointsRedeemed: (settings.loyaltyEnabled && checkoutCustomer) ? redeemable : 0,
+      items: cart.items.map(i => ({
+        name: i.name,
+        brand: i.brand || '',
+        sku: i.sku,
+        spec: i.spec,
+        qty: i.quantity,
+        price: i.price,
+        priceTier: i.priceTier || selectedPriceTier,
+        productId: i.productId,
+        variantId: i.variantId || null,
+        soldUnitIds: i.unitId ? [i.unitId] : [],
+        soldUnits: i.unitId ? [{ unitId: i.unitId, imei: i.imei || '', serialNumber: i.serialNumber || '' }] : []
+      })),
+      subtotal,
+      discount,
+      tax,
+      total,
+      payment_methods: payments.map(p => ({ type: p.type, amount: Number(p.amount) || 0 })),
+      creditMode: easyBuyEnabled ? (isNonRetail ? 'distribution_credit' : 'retail_easybuy') : 'none',
+      creditPackageId: easyBuyEnabled ? creditPackageName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : '',
+      creditPackageName,
+      creditDueDate: easyBuyEnabled ? easyBuyDueDate : undefined,
+      creditAmountPaidNow: easyBuyEnabled ? Number(easyBuyAmountPaidNow || 0) : 0,
+      creditBalance: easyBuyEnabled ? due : 0,
+      outstandingBalance: easyBuyEnabled ? due : 0,
+      outstandingTotal: easyBuyEnabled ? due : 0,
+      settlementStatus: easyBuyEnabled && due > 0 ? 'incomplete' : 'completed',
+      paymentTimeline: easyBuyEnabled
+        ? buildCreditUpfrontTimeline(total, estimatedCostTotal, easyBuyAmountPaidNow, effectiveSaleAt)
+        : [{
+            source: 'sale',
+            amount: total,
+            principalAmount: total,
+            penaltyAmount: 0,
+            recognizedCost: Number(estimatedCostTotal || 0),
+            recognizedProfit: Number(total || 0) - Number(estimatedCostTotal || 0),
+            paidAt: effectiveSaleAt
+          }],
+      creditSale: easyBuyEnabled ? {
+        enabled: true,
+        amountPaidNow: Number(easyBuyAmountPaidNow || 0),
+        dueDate: easyBuyDueDate,
+        creditPackageId: creditPackageName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
+        creditPackageName
+      } : undefined,
+      status: 'completed',
+      created_at: effectiveSaleAt,
+      saleCapturedAt,
+      saleDateTime: canBackdateSales && saleDateTimeTouched ? selectedSaleAt : undefined,
+      reservationToken
+    };
+    return {
+      sale,
+      branchName,
+      checkoutCustomer,
+      soldUnitIdsForDebug: cart.items.map((item) => item.unitId).filter(Boolean).map(String),
+      affectedProductIds: Array.from(new Set(cart.items.map(i => i.productId).filter(Boolean)))
+    };
+  }
+
+  async function submitDiscountForReview() {
+    if (saving) return;
+    if (!requiresDiscountApproval) {
+      toast.show('Enter a discount first', { type: 'error' });
+      return;
+    }
+    if (!navigator.onLine) {
+      toast.show('Discount review requires internet connection', { type: 'error' });
+      return;
+    }
+    if (cart.items.length === 0) {
+      toast.show('Cart is empty', { type: 'error' });
+      return;
+    }
+    setSaving(true);
+    try {
+      const { sale } = await prepareSalePayload();
+      await requestDiscountApproval({
+        requestKey: `${modeLower}:${activeBranchId}:${auth.user?.name || 'unknown'}:${Date.now()}`,
+        salePayload: sale
+      });
+      resetCheckoutAfterSubmission();
+      setDiscountOpen(true);
+      await refreshDiscountRequests();
+      toast.show('Discount sale sent for review', { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to send discount for review'), { type: 'error' });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function computeReviewTaxRate(subtotalValue, discountValue, taxValue) {
+    const taxable = Math.max(0, Number(subtotalValue || 0) - Number(discountValue || 0));
+    if (taxable <= 0) return 0;
+    return Math.max(0, Number(taxValue || 0)) / taxable;
+  }
+
+  function adjustReviewPaymentMethods(paymentMethods = [], nextTotal = 0) {
+    const methods = Array.isArray(paymentMethods) ? paymentMethods.map((entry) => ({
+      ...entry,
+      amount: Math.max(0, Number(entry?.amount || 0))
+    })) : [];
+    const currentTotal = methods.reduce((sum, entry) => sum + Math.max(0, Number(entry?.amount || 0)), 0);
+    const delta = Number(nextTotal || 0) - currentTotal;
+    if (methods.length === 0) return [{ type: 'cash', amount: Math.max(0, Number(nextTotal || 0)) }];
+    const cashIndex = methods.findIndex((entry) => String(entry?.type || '').toLowerCase() === 'cash');
+    const targetIndex = cashIndex >= 0 ? cashIndex : methods.length - 1;
+    methods[targetIndex] = {
+      ...methods[targetIndex],
+      amount: Math.max(0, Number(methods[targetIndex]?.amount || 0) + delta)
+    };
+    return methods;
+  }
+
+  function buildDiscountCompletionPayload(row) {
+    const status = String(row?.status || '');
+    const basePayload = row?.salePayload && typeof row.salePayload === 'object' ? { ...row.salePayload } : {};
+    if (status !== 'rejected') return basePayload;
+    const subtotalValue = Math.max(0, Number(row?.subtotal || basePayload?.subtotal || 0));
+    const nextTaxRate = computeReviewTaxRate(subtotalValue, row?.discount || basePayload?.discount || 0, row?.tax || basePayload?.tax || 0);
+    const nextTax = Math.max(0, subtotalValue * nextTaxRate);
+    const nextTotal = Math.max(0, subtotalValue + nextTax);
+    return {
+      ...basePayload,
+      subtotal: subtotalValue,
+      discount: 0,
+      tax: nextTax,
+      total: nextTotal,
+      payment_methods: adjustReviewPaymentMethods(basePayload?.payment_methods, nextTotal)
+    };
+  }
+
+  function getDiscountRequestUnitIds(row) {
+    const payloadItems = Array.isArray(row?.salePayload?.items) ? row.salePayload.items : [];
+    return Array.from(new Set(
+      payloadItems.flatMap((item) => {
+        const soldUnitIds = Array.isArray(item?.soldUnitIds) ? item.soldUnitIds : [];
+        const soldUnits = Array.isArray(item?.soldUnits) ? item.soldUnits.map((unit) => unit?.unitId) : [];
+        return [...soldUnitIds, ...soldUnits].map(String).filter(Boolean);
+      })
+    ));
+  }
+
+  async function completeApprovedDiscountRequest(row) {
+    const id = String(row?._id || '');
+    if (!id || saving) return;
+    const status = String(row?.status || '');
+    if (!['approved', 'rejected'].includes(status)) return;
+    if (!navigator.onLine) {
+      toast.show('Connect internet to complete approved discounted sales', { type: 'error' });
+      return;
+    }
+    setDiscountWorkingId(id);
+    try {
+      const saved = await createSale({
+        ...buildDiscountCompletionPayload(row),
+        clientId: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `discount-sale-${Date.now()}`,
+        discountApprovalId: id
+      });
+      const saleForPrint = {
+        ...saved,
+        branchName: row?.branchName || activeBranch?.name || activeBranchId
+      };
+      dispatch(recordSale(saleForPrint));
+      const shouldPrint = await confirmDialog('Print receipt now?');
+      if (shouldPrint) {
+        printReceiptHtml(buildBrandedReceiptHtml({ settings, sale: saleForPrint }));
+      }
+      await refreshDiscountRequests();
+      void refreshAffectedProducts(dispatch, Array.from(new Set((row?.salePayload?.items || []).map((item) => item.productId).filter(Boolean))));
+      toast.show(status === 'rejected' ? 'Rejected discount sale completed without discount' : 'Approved discounted sale completed', { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to complete approved discounted sale'), { type: 'error' });
+    } finally {
+      setDiscountWorkingId('');
+    }
+  }
+
+  async function cancelRejectedDiscountRequest(row) {
+    const id = String(row?._id || '');
+    if (!id || saving) return;
+    if (String(row?.status || '') !== 'rejected') return;
+    const okay = await confirmDialog('Cancel this rejected discount sale?');
+    if (!okay) return;
+    setDiscountWorkingId(id);
+    try {
+      const unitIds = getDiscountRequestUnitIds(row);
+      if (unitIds.length > 0 && row?.salePayload?.reservationToken) {
+        await productUnitsApi.releaseProductUnits({
+          unitIds,
+          reservationToken: String(row.salePayload.reservationToken || '')
+        });
+      }
+      await cancelDiscountApproval(id, {});
+      await refreshDiscountRequests();
+      toast.show('Rejected discount sale cancelled', { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to cancel rejected discount sale'), { type: 'error' });
+    } finally {
+      setDiscountWorkingId('');
+    }
   }
 
   function isSerializedAlreadyInCart(unit) {
@@ -794,6 +1109,7 @@ function PosPage({ mode = 'retail' }) {
   const cap = (subtotal > 0 ? (subtotal * (maxRedeemPct / 100)) : 0);
   if (loyaltyDiscount > cap) loyaltyDiscount = cap;
   const discount = Math.max(0, Number(manualDiscount || 0) + Number(loyaltyDiscount || 0));
+  const requiresDiscountApproval = discount > 0;
   const tax = Math.max(0, (subtotal - discount) * taxRate);
   const total = Math.max(0, subtotal - discount + tax);
   const paid = easyBuyEnabled ? Math.max(0, Number(easyBuyAmountPaidNow || 0)) : payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
@@ -1987,12 +2303,16 @@ function PosPage({ mode = 'retail' }) {
                     <svg viewBox="0 0 24 24" fill="none"><path d="M6 6h12v12H6z" stroke="currentColor" strokeWidth="2"/><path d="M9 6v12M15 6v12" stroke="currentColor" strokeWidth="2"/></svg>
                     {t('Hold')}
                   </button>
-                  <button className="btn" onClick={() => setHeldOpen(o => !o)}>
+                  <button className="btn" onClick={() => { setDiscountOpen(false); setHeldOpen(o => !o); }}>
                     <svg viewBox="0 0 24 24" fill="none"><path d="M7 7h10M7 12h10M7 17h10" stroke="currentColor" strokeWidth="2"/></svg>
                     {t('Held')} ({heldSales.length})
                   </button>
                 </>
               )}
+              <button className="btn" onClick={() => { setHeldOpen(false); setDiscountOpen(o => !o); }}>
+                <svg viewBox="0 0 24 24" fill="none"><path d="M5 6h14v4H5z" stroke="currentColor" strokeWidth="2"/><path d="M8 10v8M16 10v8M5 18h14" stroke="currentColor" strokeWidth="2"/></svg>
+                {t('Discount')} ({discountRequestList.length})
+              </button>
               <button className="btn" onClick={startNewSale}>
                 <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2"/></svg>
                 {t('New Sale')}
@@ -2029,6 +2349,47 @@ function PosPage({ mode = 'retail' }) {
                     </div>
                   ))}
                   {heldList.length === 0 && <div style={{ padding: 12, color: '#64748b' }}>{t('No held sales')}</div>}
+                </div>
+              </div>
+            )}
+            {discountOpen && (
+              <div style={{ position: 'absolute', right: 0, marginTop: 6, width: 420, maxWidth: '92vw', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 10px 20px rgba(2,6,23,0.15)', zIndex: 30 }}>
+                <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', fontWeight: 700 }}>{t('Discount Sales')}</div>
+                <div style={{ maxHeight: 360, overflow: 'auto' }}>
+                  {discountLoading && <div style={{ padding: 12, color: '#64748b' }}>{t('Loading...')}</div>}
+                  {!discountLoading && discountRequestList.map((row) => {
+                    const id = String(row?._id || '');
+                    const isApproved = String(row?.status || '') === 'approved';
+                    const isRejected = String(row?.status || '') === 'rejected';
+                    const isWorking = discountWorkingId === id;
+                    return (
+                      <div key={id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, padding: 10, borderTop: '1px solid #f1f5f9', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontWeight: 700 }}>{row?.customerName || 'Walk-in customer'}</div>
+                          <div style={{ color: '#64748b', fontSize: 12 }}>
+                            {new Date(row?.createdAt || Date.now()).toLocaleString()} • {formatCurrency(row?.total || 0, settings)} • {String(row?.status || '').replace('_', ' ')}
+                          </div>
+                          <div style={{ color: '#64748b', fontSize: 12 }}>
+                            {t('Discount')}: {formatCurrency(row?.discount || 0, settings)}{row?.approvedByName ? ` • ${t('Approver')}: ${row.approvedByName}` : row?.rejectedByName ? ` • ${t('Approver')}: ${row.rejectedByName}` : ''}
+                          </div>
+                          {row?.rejectionRemark ? (
+                            <div style={{ color: '#b91c1c', fontSize: 12 }}>{t('Remark')}: {row.rejectionRemark}</div>
+                          ) : null}
+                        </div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <button className="btn btn-primary" onClick={() => completeApprovedDiscountRequest(row)} disabled={(!isApproved && !isRejected) || isWorking}>
+                            {isWorking ? t('Processing...') : t('Complete')}
+                          </button>
+                          {isRejected ? (
+                            <button className="btn" onClick={() => cancelRejectedDiscountRequest(row)} disabled={isWorking}>
+                              {isWorking ? t('Processing...') : t('Cancel')}
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {!discountLoading && discountRequestList.length === 0 && <div style={{ padding: 12, color: '#64748b' }}>{t('No discount requests')}</div>}
                 </div>
               </div>
             )}
@@ -2329,14 +2690,23 @@ function PosPage({ mode = 'retail' }) {
           )}
         </div>
         <div style={{ marginTop: 12 }}>
-          <button className="btn btn-primary" onClick={() => completeSale(false)} disabled={cart.items.length === 0 || saving}>
-            <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>
-            {saving ? t('Processing...') : t('Complete & Print')}
-          </button>
-          <button className="btn" onClick={() => completeSale(true)} style={{ marginLeft: 8 }} disabled={cart.items.length === 0 || saving}>
-            <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>
-            {saving ? t('Processing...') : t('Complete (ESC/POS)')}
-          </button>
+          {requiresDiscountApproval ? (
+            <button className="btn btn-primary" onClick={submitDiscountForReview} disabled={cart.items.length === 0 || saving}>
+              <svg viewBox="0 0 24 24" fill="none"><path d="M4 12h10" stroke="currentColor" strokeWidth="2"/><path d="M11 7l5 5-5 5" stroke="currentColor" strokeWidth="2"/><path d="M18 5h2v14h-2" stroke="currentColor" strokeWidth="2"/></svg>
+              {saving ? t('Processing...') : t('Send for Review')}
+            </button>
+          ) : (
+            <>
+              <button className="btn btn-primary" onClick={() => completeSale(false)} disabled={cart.items.length === 0 || saving}>
+                <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>
+                {saving ? t('Processing...') : t('Complete & Print')}
+              </button>
+              <button className="btn" onClick={() => completeSale(true)} style={{ marginLeft: 8 }} disabled={cart.items.length === 0 || saving}>
+                <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>
+                {saving ? t('Processing...') : t('Complete (ESC/POS)')}
+              </button>
+            </>
+          )}
           <button className="btn" onClick={() => { void releaseSerializedCartItems(cart.items); clearActiveCart(); rotateReservationToken(); }} style={{ marginLeft: 8 }} disabled={cart.items.length === 0}>
             <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M6 7l1 12h10l1-12M9 7l1-2h4l1 2" stroke="currentColor" strokeWidth="2"/></svg>
             {t('Clear')}

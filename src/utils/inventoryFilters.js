@@ -69,9 +69,9 @@ export function getItemSearchValues(row = {}, products = []) {
 }
 
 export function getProductDisplayMeta(products = [], productId, variantId = '', fallback = {}) {
-  const product = (Array.isArray(products) ? products : []).find((entry) => String(entry.id) === String(productId)) || null;
+  const product = (Array.isArray(products) ? products : []).find((entry) => String(entry.id || entry._id) === String(productId)) || null;
   const variant = variantId
-    ? ((product?.variants || []).find((entry) => String(entry.id) === String(variantId)) || null)
+    ? ((product?.variants || []).find((entry) => String(entry.id || entry._id) === String(variantId)) || null)
     : null;
   const productName = String(fallback?.productName || fallback?.name || product?.name || productId || '').trim();
   const variantLabel = String(fallback?.variantLabel || fallback?.variant || variant?.label || variantId || '').trim();

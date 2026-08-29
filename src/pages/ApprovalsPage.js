@@ -19,7 +19,11 @@ function ApprovalsPage() {
 
   const branchNameById = useMemo(() => {
     const map = new Map();
-    branches.forEach((branch) => map.set(String(branch.id), branch.name || branch.code || branch.id));
+    branches.forEach((branch) => {
+      const label = branch.name || branch.code || branch.id || branch._id;
+      if (branch.id) map.set(String(branch.id), label);
+      if (branch._id) map.set(String(branch._id), label);
+    });
     return map;
   }, [branches]);
 
@@ -59,6 +63,9 @@ function ApprovalsPage() {
             return (
               <div key={`${row._id}-item-${item?.lineId || index}`} style={{ color: '#111827' }}>
                 {meta.productName || item?.productId || '—'} x{Number(item?.qty || 0)}
+                {(!meta.productName || meta.productName === item?.productId) && (item?.name || item?.sku) ? (
+                  <div style={{ color: '#111827' }}>{item?.name || item?.sku}</div>
+                ) : null}
                 {meta.secondaryLabel ? <div style={{ color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
               </div>
             );
@@ -78,7 +85,7 @@ function ApprovalsPage() {
       const toLabel = branchNameById.get(String(row?.toBranchId || '')) || row?.toBranchId || '—';
       return `${fromLabel} -> ${toLabel}`;
     }
-    const branchLabel = branchNameById.get(String(row?.branchId || '')) || row?.branchId || '—';
+    const branchLabel = branchNameById.get(String(row?.branchId || '')) || row?.branchName || row?.transactionTitle || row?.branchId || '—';
     return branchLabel;
   }
 

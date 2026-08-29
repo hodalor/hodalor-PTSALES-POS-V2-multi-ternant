@@ -56,6 +56,7 @@ export const TENANT_GRANT_CATALOG = [
   { key: 'approve_credit_manager', label: 'Manager Credit Approval' },
   { key: 'view_credit_repayment_approvals', label: 'Open Credit Repayment Approvals' },
   { key: 'view_approvals', label: 'Open Approvals Center' },
+  { key: 'approve_discount_sales', label: 'Discount Approver' },
   { key: 'approve_retail_director', label: 'Director Retail Approval' },
   { key: 'approve_retail_manager', label: 'Manager Retail Approval' },
   { key: 'approve_distribution_director', label: 'Director Distribution Approval' },
@@ -204,6 +205,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
       { label: 'Serialized Inventory', keys: ['modules.inventory', 'grants.view_serialized_inventory'] },
       { label: 'Labels', keys: ['modules.labels', 'grants.view_labels'] },
       { label: 'Approvals Center', keys: ['modules.approvalsCenter', 'grants.view_approvals', 'grants.approve_credit_director', 'grants.approve_credit_manager', 'grants.approve_retail_director', 'grants.approve_retail_manager', 'grants.approve_distribution_director', 'grants.approve_distribution_manager', 'grants.approve_warehouse_director', 'grants.approve_warehouse_manager'] },
+      { label: 'Discount Approval', keys: ['modules.approvalsCenter', 'grants.approve_discount_sales'] },
       { label: 'Refund Approvals', keys: ['modules.refundApprovals', 'grants.approve_refunds'] },
       { label: 'Reports', keys: ['modules.reports', 'grants.view_reports'] },
       { label: 'Finance', keys: ['modules.finance', 'pages.finance.reconciliation', 'grants.view_finance_reconciliation', 'grants.add_finance_reconciliation', 'grants.view_finance_reconciliation_all_branches', 'grants.approve_finance_reconciliation_director', 'grants.approve_finance_reconciliation_manager'] },
@@ -395,7 +397,7 @@ export const TENANT_FEATURE_CATALOG = [
       group = 'Permissions / Pricing & Visibility';
     } else if (['view_chat', 'send_chat_messages', 'view_pt_ai'].includes(item.key)) {
       group = 'Permissions / Communication';
-    } else if (['view_wholesale_pos', 'view_warehouse_pos', 'view_purchases', 'add_purchases', 'add_wholesale_purchases', 'add_warehouse_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'add_wholesale_transfers', 'add_warehouse_transfers', 'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'add_wholesale_adjustments', 'add_warehouse_adjustments', 'edit_adjustments', 'approve_adjustments', 'view_credit_control', 'approve_credit_director', 'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_distribution_director', 'approve_distribution_manager', 'approve_warehouse_director', 'approve_warehouse_manager', 'view_wholesale_invoices', 'view_warehouse_invoices', 'view_warehouse_approvals'].includes(item.key)) {
+    } else if (['view_wholesale_pos', 'view_warehouse_pos', 'view_purchases', 'add_purchases', 'add_wholesale_purchases', 'add_warehouse_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'add_wholesale_transfers', 'add_warehouse_transfers', 'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'add_wholesale_adjustments', 'add_warehouse_adjustments', 'edit_adjustments', 'approve_adjustments', 'view_credit_control', 'approve_credit_director', 'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_discount_sales', 'approve_distribution_director', 'approve_distribution_manager', 'approve_warehouse_director', 'approve_warehouse_manager', 'view_wholesale_invoices', 'view_warehouse_invoices', 'view_warehouse_approvals'].includes(item.key)) {
       group = 'Permissions / Distribution Actions';
     } else if (['view_users', 'view_config', 'view_audit', 'view_super_bin', 'view_stock_records', 'view_inventory_consistency', 'view_cashdrawer', 'view_imei_conflicts', 'export_tenant_data', 'import_tenant_data'].includes(item.key)) {
       group = 'Permissions / Admin Actions';
