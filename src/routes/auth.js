@@ -20,6 +20,13 @@ const tenantMetaCache = new Map();
 const TENANT_META_TTL_MS = 30_000;
 const SUPPORTED_LANGUAGES = new Set(['en', 'tw', 'ga', 'ewe', 'dag', 'fr', 'zh']);
 
+function normalizeTenantScopedRole(rawRole, tenantId = '') {
+  const role = String(rawRole || '').trim();
+  const resolvedTenantId = String(tenantId || '').trim().toLowerCase();
+  if (role.toLowerCase() === 'superadmin' && resolvedTenantId && resolvedTenantId !== 'master') return 'Admin';
+  return role;
+}
+
 function normalizeLanguage(value) {
   const next = String(value || '').trim().toLowerCase();
   return SUPPORTED_LANGUAGES.has(next) ? next : '';
@@ -87,6 +94,7 @@ r.post('/login', async (req, res) => {
   if (!u || !u.active) return res.status(401).json({ error: 'Invalid credentials' });
   const ok = await verifyPin(String(pin), u.pinHash);
   if (!ok) return res.status(401).json({ error: 'Invalid credentials' });
+  const normalizedRole = normalizeTenantScopedRole(u.role, loginTenantId);
   const secret = process.env.JWT_SECRET || '';
   if (!secret) return res.status(500).json({ error: 'Server config error' });
   let jti = '';
@@ -125,7 +133,7 @@ r.post('/login', async (req, res) => {
   const payload = {
     sub: String(u._id),
     name: u.name,
-    role: u.role,
+    role: normalizedRole,
     jti,
     tenantId: loginTenantId,
     branchId: u.branchId || 'main',
@@ -136,9 +144,9 @@ r.post('/login', async (req, res) => {
   const token = jwt.sign(payload, secret, { expiresIn: '7d' });
   res.json({
     token,
-    role: u.role,
+    role: normalizedRole,
     grants,
-    landing: toLanding(u.role),
+    landing: toLanding(normalizedRole),
     user: {
       name: u.name,
       tenantId: loginTenantId,
@@ -293,7 +301,7 @@ r.get('/me', requireAuth, async (req, res) => {
     if (Array.isArray(arr)) grants = filterGrantsByFeatureFlags(arr, doc?.data?.featureFlags || {});
   } catch {}
   res.json({
-    role: u.role || null,
+    role: normalizeTenantScopedRole(u.role, authUser.tenantId || req.tenantId || 'master') || null,
     grants,
     user: {
       name: u.name,

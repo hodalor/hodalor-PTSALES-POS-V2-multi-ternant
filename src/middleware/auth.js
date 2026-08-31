@@ -2,6 +2,19 @@ import jwt from 'jsonwebtoken';
 import Settings from '../models/Settings.js';
 import { filterGrantsByFeatureFlags } from '../config/tenantAccess.js';
 
+function isMasterSuperAdmin(user = {}, tenantId = '') {
+  const role = String(user?.role || '').toLowerCase();
+  const resolvedTenantId = String(tenantId || user?.tenantId || '').toLowerCase();
+  return role === 'superadmin' && (!resolvedTenantId || resolvedTenantId === 'master');
+}
+
+function normalizeTenantScopedRole(rawRole, tenantId = '') {
+  const role = String(rawRole || '').trim();
+  const resolvedTenantId = String(tenantId || '').trim().toLowerCase();
+  if (role.toLowerCase() === 'superadmin' && resolvedTenantId && resolvedTenantId !== 'master') return 'Admin';
+  return role;
+}
+
 export function parseAuth(req, _res, next) {
   const auth = req.header('authorization') || req.header('Authorization') || '';
   const m = auth.match(/^Bearer\s+(.+)$/i);
@@ -9,7 +22,13 @@ export function parseAuth(req, _res, next) {
     try {
       const secret = process.env.JWT_SECRET || '';
       const decoded = jwt.verify(m[1], secret);
-      req.user = decoded || null;
+      const tenantId = String(decoded?.tenantId || req.tenantId || '').trim();
+      req.user = decoded
+        ? {
+            ...decoded,
+            role: normalizeTenantScopedRole(decoded.role, tenantId)
+          }
+        : null;
     } catch {
       req.user = null;
     }
@@ -24,14 +43,13 @@ export function requireAuth(req, res, next) {
 
 export function requireAdmin(req, res, next) {
   const role = String(req.user?.role || '').toLowerCase();
-  if (role === 'admin' || role === 'superadmin') return next();
+  if (role === 'admin' || isMasterSuperAdmin(req.user, req.tenantId)) return next();
   return res.status(403).json({ error: 'Forbidden' });
 }
 
 export function requireSuperAdmin(req, res, next) {
-  const role = String(req.user?.role || '').toLowerCase();
   const tenantId = String(req.user?.tenantId || req.tenantId || '').toLowerCase();
-  if (role === 'superadmin' && (!tenantId || tenantId === 'master')) return next();
+  if (isMasterSuperAdmin(req.user, tenantId)) return next();
   return res.status(403).json({ error: 'SuperAdmin only' });
 }
 
@@ -39,7 +57,7 @@ export function requireRole(roles = []) {
   const set = new Set((roles || []).map(r => String(r || '').toLowerCase()));
   return (req, res, next) => {
     const role = String(req.user?.role || '').toLowerCase();
-    if (role === 'superadmin') return next();
+    if (isMasterSuperAdmin(req.user, req.tenantId)) return next();
     if (set.has(role)) return next();
     return res.status(403).json({ error: 'Forbidden' });
   };
@@ -50,7 +68,7 @@ export function requireRoleOrPerm(roles = [], perm = '') {
   const perms = (Array.isArray(perm) ? perm : [perm]).map(p => String(p || '').trim()).filter(Boolean);
   return async (req, res, next) => {
     const role = String(req.user?.role || '').toLowerCase();
-    if (role === 'superadmin') return next();
+    if (isMasterSuperAdmin(req.user, req.tenantId)) return next();
     if (perms.length === 0 && set.has(role)) return next();
     if (perms.length > 0 && role === 'admin' && set.has(role)) return next();
     const grants = Array.isArray(req.user?.grants) ? req.user.grants : [];

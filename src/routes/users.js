@@ -17,6 +17,13 @@ import { archiveLiveDocument } from '../utils/superBin.js';
 const r = Router();
 const SUPPORTED_LANGUAGES = new Set(['en', 'tw', 'ga', 'ewe', 'dag', 'fr', 'zh']);
 
+function normalizeTenantScopedRole(rawRole, tenantId = '') {
+  const role = String(rawRole || '').trim();
+  const resolvedTenantId = String(tenantId || '').trim().toLowerCase();
+  if (role.toLowerCase() === 'superadmin' && resolvedTenantId && resolvedTenantId !== 'master') return 'Admin';
+  return role;
+}
+
 function reportUserFormLeakDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
   const envCandidates = [
     path.resolve(process.cwd(), '.dbg', 'user-form-leak.env'),
@@ -48,11 +55,12 @@ r.use(requireAuth);
 
 r.get('/', requireAdmin, async (req, res) => {
   const User = UserModelFor(req.db);
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master');
   const rows = await User.find().sort({ name: 1 }).lean();
   const mapped = rows.map(u => ({
     id: String(u._id),
     name: u.name,
-    role: u.role,
+    role: normalizeTenantScopedRole(u.role, tenantId),
     branchId: u.branchId || 'main',
     assignedBranches: u.assignedBranches ?? (u.branchId ? [u.branchId] : []),
     preferredLanguage: normalizeLanguage(u.preferredLanguage),
@@ -65,6 +73,8 @@ r.post('/', requireAdmin, async (req, res) => {
   const User = UserModelFor(req.db);
   const Audit = AuditModelFor(req.db);
   const { name, role, pin, branchId, assignedBranches, preferredLanguage } = req.body || {};
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master');
+  const normalizedRole = normalizeTenantScopedRole(role, tenantId);
   // #region debug-point C:user-create-payload
   reportUserFormLeakDebug({
     hypothesisId: 'C',
@@ -74,7 +84,7 @@ r.post('/', requireAdmin, async (req, res) => {
       actor: String(req.user?.name || ''),
       tenantId: String(req.user?.tenantId || req.tenantId || ''),
       name: String(name || ''),
-      role: String(role || ''),
+      role: normalizedRole,
       branchId: String(branchId || ''),
       assignedBranches: assignedBranches === 'all' ? 'all' : (Array.isArray(assignedBranches) ? assignedBranches.map(String) : [String(assignedBranches || '')].filter(Boolean)),
       preferredLanguage: String(preferredLanguage || ''),
@@ -85,7 +95,6 @@ r.post('/', requireAdmin, async (req, res) => {
   if (!name || !role || !/^\d{4,6}$/.test(String(pin || ''))) {
     return res.status(400).json({ error: 'Invalid input' });
   }
-  const tenantId = String(req.user?.tenantId || req.tenantId || 'master');
   if (tenantId.toLowerCase() !== 'master') {
     const master = await getMasterConnection();
     const TenantModel = TenantModelFor(master);
@@ -129,7 +138,7 @@ r.post('/', requireAdmin, async (req, res) => {
   }
   const doc = await User.create({
     name,
-    role,
+    role: normalizedRole,
     pinHash,
     assignedBranches: assigned,
     branchId: Array.isArray(assigned) ? (assigned[0] || branchId || 'main') : (branchId || 'main'),
@@ -139,7 +148,7 @@ r.post('/', requireAdmin, async (req, res) => {
   res.json({
     id: String(doc._id),
     name: doc.name,
-    role: doc.role,
+    role: normalizeTenantScopedRole(doc.role, tenantId),
     branchId: doc.branchId || 'main',
     assignedBranches: doc.assignedBranches,
     preferredLanguage: normalizeLanguage(doc.preferredLanguage),
@@ -148,7 +157,7 @@ r.post('/', requireAdmin, async (req, res) => {
   void Audit.create({
     actor: (req.user && req.user.name) || 'unknown',
     actionType: 'user_create',
-    details: { name: doc.name, role: doc.role, assignedBranches: doc.assignedBranches },
+    details: { name: doc.name, role: normalizeTenantScopedRole(doc.role, tenantId), assignedBranches: doc.assignedBranches },
     branchId: req.user?.branchId || ''
   }).catch(() => {});
   void ServerLog.create({
@@ -167,6 +176,8 @@ r.put('/:name', requireAdmin, async (req, res) => {
   const Audit = AuditModelFor(req.db);
   const name = req.params.name;
   const { name: newName, role, pin, branchId, assignedBranches, preferredLanguage, active } = req.body || {};
+  const tenantId = String(req.user?.tenantId || req.tenantId || 'master');
+  const normalizedRole = role !== undefined ? normalizeTenantScopedRole(role, tenantId) : undefined;
   // #region debug-point C:user-update-payload
   reportUserFormLeakDebug({
     hypothesisId: 'C',
@@ -177,7 +188,7 @@ r.put('/:name', requireAdmin, async (req, res) => {
       tenantId: String(req.user?.tenantId || req.tenantId || ''),
       targetName: String(name || ''),
       newName: String(newName || ''),
-      role: String(role || ''),
+      role: normalizedRole ?? '',
       branchId: String(branchId || ''),
       assignedBranches: assignedBranches === 'all' ? 'all' : (Array.isArray(assignedBranches) ? assignedBranches.map(String) : [String(assignedBranches || '')].filter(Boolean)),
       preferredLanguage: String(preferredLanguage || ''),
@@ -194,7 +205,7 @@ r.put('/:name', requireAdmin, async (req, res) => {
     if (exists) return res.status(409).json({ error: 'User already exists' });
     u.name = newName;
   }
-  if (role) u.role = role;
+  if (normalizedRole) u.role = normalizedRole;
   if (typeof active === 'boolean') u.active = active;
   if (assignedBranches !== undefined) {
     let assigned = assignedBranches;
@@ -223,7 +234,6 @@ r.put('/:name', requireAdmin, async (req, res) => {
     u.preferredLanguage = normalizeLanguage(preferredLanguage);
   }
   await u.save();
-  const tenantId = String(req.user?.tenantId || req.tenantId || 'master');
   if (tenantId.toLowerCase() !== 'master' && typeof active === 'boolean' && active === false) {
     try {
       const master = await getMasterConnection();
@@ -232,14 +242,14 @@ r.put('/:name', requireAdmin, async (req, res) => {
     } catch {}
   }
   const changed = [];
-  const payload = { name: newName, role, branchId, assignedBranches, preferredLanguage, active };
+  const payload = { name: newName, role: normalizedRole, branchId, assignedBranches, preferredLanguage, active };
   Object.keys(payload).forEach(k => {
     if (payload[k] !== undefined) changed.push(k);
   });
   res.json({
     id: String(u._id),
     name: u.name,
-    role: u.role,
+    role: normalizeTenantScopedRole(u.role, tenantId),
     branchId: u.branchId || 'main',
     assignedBranches: u.assignedBranches,
     preferredLanguage: normalizeLanguage(u.preferredLanguage),
