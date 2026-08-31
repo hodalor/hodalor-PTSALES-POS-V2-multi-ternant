@@ -316,6 +316,15 @@ function PosPage({ mode = 'retail' }) {
     setSelectedPriceTier(getPreferredPriceTier(allowedPriceTiers, initialPriceTier));
     setView('grid');
   }, [allowedPriceTiers, initialPriceTier]);
+  useEffect(() => {
+    if (!Array.isArray(cart.items) || cart.items.length === 0) return;
+    cart.items.forEach((item) => {
+      const nextTier = getPreferredPriceTier(allowedPriceTiers, item.priceTier || selectedPriceTier || initialPriceTier);
+      if (nextTier === (item.priceTier || '')) return;
+      const nextPrice = Number(item.prices?.[nextTier] ?? item.price ?? 0);
+      dispatch(updateItemPricing({ id: item.id, priceTier: nextTier, price: nextPrice, scope: cartScope }));
+    });
+  }, [allowedPriceTiers, cart.items, cartScope, dispatch, initialPriceTier, selectedPriceTier]);
   const sellables = useMemo(() => {
     const out = [];
     products.forEach(p => {
@@ -400,6 +409,12 @@ function PosPage({ mode = 'retail' }) {
     { value: 'quantity', label: t('Quantity') },
     { value: 'serialized', label: t('Serialized') }
   ]), [t]);
+  const priceTierOptions = useMemo(() => (
+    allowedPriceTiers.map((tier) => ({
+      value: tier,
+      label: t(getPriceTierLabel(tier))
+    }))
+  ), [allowedPriceTiers, t]);
   useEffect(() => {
     if (categoryFilter !== 'all' && !categoryOptions.some((item) => item.value === categoryFilter)) {
       setCategoryFilter('all');
@@ -2455,13 +2470,24 @@ function PosPage({ mode = 'retail' }) {
           {cart.items.map(item => (
             <li key={item.id} className="cart-item">
               <div className="cart-title">
-                <div>{item.name}</div>
-                {item.brand ? <small style={{ color: '#64748b' }}>{item.brand}</small> : null}
-                {item.spec && <small style={{ color: '#64748b' }}>{item.spec}</small>}
-                <small>{item.sku}</small>
+                <div style={{ paddingRight: 28 }}>{item.name}</div>
+                {!isWarehouse && item.brand ? <small style={{ color: '#64748b' }}>{item.brand}</small> : null}
+                {!isWarehouse && item.spec ? <small style={{ color: '#64748b' }}>{item.spec}</small> : null}
+                {!isWarehouse && item.sku ? <small>{item.sku}</small> : null}
                 {item.imei ? <small style={{ color: '#1d4ed8', fontWeight: 700 }}>IMEI: {item.imei}</small> : null}
                 {item.serialNumber ? <small style={{ color: '#64748b' }}>Serial: {item.serialNumber}</small> : null}
               </div>
+              <button
+                className="pos-cart-remove-btn"
+                onClick={() => {
+                  removeItemFromCart(item.id);
+                  void releaseSerializedCartItems([item]);
+                }}
+                aria-label={t('Remove')}
+                title={t('Remove')}
+              >
+                X
+              </button>
               <input
                 className="input"
                 type="number"
@@ -2479,17 +2505,17 @@ function PosPage({ mode = 'retail' }) {
                 <>
                 <select
                   className="select"
-                  value={item.priceTier || selectedPriceTier}
+                  value={getPreferredPriceTier(allowedPriceTiers, item.priceTier || selectedPriceTier)}
                   onChange={e => {
                     const tier = e.target.value;
                     const nextPrice = Number(item.prices?.[tier] ?? item.price ?? 0);
                     setCartItemPricing({ id: item.id, priceTier: tier, price: nextPrice });
                   }}
+                  disabled={priceTierOptions.length <= 1}
                 >
-                  <option value="retail">Retail</option>
-                  <option value="wholesale">Wholesale</option>
-                  <option value="warehouse">Warehouse</option>
-                  <option value="agent">Agent</option>
+                  {priceTierOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
                 </select>
                 <input
                   className="input"
@@ -2497,31 +2523,23 @@ function PosPage({ mode = 'retail' }) {
                   min="0"
                   step="0.01"
                   value={item.price}
-                  onChange={e => setCartItemPricing({ id: item.id, priceTier: item.priceTier || selectedPriceTier, price: Number(e.target.value) || 0 })}
+                  onChange={e => setCartItemPricing({ id: item.id, priceTier: getPreferredPriceTier(allowedPriceTiers, item.priceTier || selectedPriceTier), price: Number(e.target.value) || 0 })}
                   style={{ width: 110 }}
                 />
-                <span style={{ fontSize: 12, color: '#64748b' }}>
-                  R: {formatCurrency(item.prices?.retail ?? item.price, settings)} • W: {formatCurrency(item.prices?.wholesale ?? item.price, settings)} • WH: {formatCurrency(item.prices?.warehouse ?? item.price, settings)} • A: {formatCurrency(item.prices?.agent ?? item.price, settings)}
-                </span>
                 </>
                 ) : (
                 <span style={{ fontWeight: 700 }}>{formatCurrency(item.price, settings)}</span>
                 )}
-                <span style={{ fontSize: 12, color: '#64748b' }}>
-                  {t('Unit')}: {formatCurrency(item.price, settings)}
-                </span>
+                {!isWarehouse && (
+                  <span style={{ fontSize: 12, color: '#64748b' }}>
+                    {t('Unit')}: {formatCurrency(item.price, settings)}
+                  </span>
+                )}
               </div>
               <div style={{ minWidth: 120, textAlign: 'right' }}>
                 <div style={{ fontSize: 12, color: '#64748b' }}>{t('Line Total')}</div>
                 <strong>{formatCurrency((Number(item.price) || 0) * (Number(item.quantity) || 0), settings)}</strong>
               </div>
-              <button className="btn" onClick={() => {
-                removeItemFromCart(item.id);
-                void releaseSerializedCartItems([item]);
-              }}>
-                <svg viewBox="0 0 24 24" fill="none"><path d="M6 7h12M10 11v6M14 11v6M9 7l1-2h4l1 2M7 7l1 12h8l1-12" stroke="currentColor" strokeWidth="2"/></svg>
-                {t('Remove')}
-              </button>
             </li>
           ))}
         </ul>
