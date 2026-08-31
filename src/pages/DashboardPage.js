@@ -164,13 +164,15 @@ function DashboardPage() {
   const { t } = useAppLanguage();
   const roleLower = String(auth.role || '').toLowerCase();
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
-  const isPrivilegedDashboardViewer = roleLower === 'superadmin' || roleLower === 'admin';
+  const hasAllAssignedBranches = auth.user?.assignedBranches === 'all';
+  const isMasterSuperAdmin = roleLower === 'superadmin' && String(auth.user?.tenantId || '').toLowerCase() === 'master';
+  const isPrivilegedDashboardViewer = isMasterSuperAdmin || roleLower === 'admin';
   const canViewRevenue = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_revenue') || grants.includes('view_financials');
   const canViewProfit = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_profit') || grants.includes('view_financials');
-  const canViewCashierCompetitionAll = isPrivilegedDashboardViewer || grants.includes('view_dashboard_cashier_all');
-  const canViewCashierCompetitionAssigned = canViewCashierCompetitionAll || grants.includes('view_dashboard_cashier_assigned');
-  const canViewBranchCompetitionAll = isPrivilegedDashboardViewer || grants.includes('view_dashboard_branch_comparison_all');
-  const canViewBranchCompetitionAssigned = canViewBranchCompetitionAll || grants.includes('view_dashboard_branch_comparison_assigned');
+  const canViewCashierCompetitionAll = isPrivilegedDashboardViewer || (hasAllAssignedBranches && grants.includes('view_dashboard_cashier_all'));
+  const canViewCashierCompetitionAssigned = canViewCashierCompetitionAll || grants.includes('view_dashboard_cashier_assigned') || (!hasAllAssignedBranches && grants.includes('view_dashboard_cashier_all'));
+  const canViewBranchCompetitionAll = isPrivilegedDashboardViewer || (hasAllAssignedBranches && grants.includes('view_dashboard_branch_comparison_all'));
+  const canViewBranchCompetitionAssigned = canViewBranchCompetitionAll || grants.includes('view_dashboard_branch_comparison_assigned') || (!hasAllAssignedBranches && grants.includes('view_dashboard_branch_comparison_all'));
   const canUseScopedDashboardBranches = canViewCashierCompetitionAssigned || canViewBranchCompetitionAssigned;
   const canSelectAllDashboardBranches = isPrivilegedDashboardViewer || canUseScopedDashboardBranches;
   const canUseFinanceReconciliation = isFeatureEnabled(settings, 'modules.finance') && (
@@ -1310,7 +1312,7 @@ function DashboardPage() {
             <BranchSelect
               value={branchId}
               onChange={setBranchId}
-              includeAll={isPrivilegedDashboardViewer || canUseScopedDashboardBranches}
+              includeAll={canViewCashierCompetitionAll || canViewBranchCompetitionAll || (canUseScopedDashboardBranches && dashboardBranchOptions.length > 1)}
               allLabel={canViewCashierCompetitionAll || canViewBranchCompetitionAll ? t('All Branches') : t('Assigned Branches')}
               overrideBranches={dashboardBranchOptions}
             />

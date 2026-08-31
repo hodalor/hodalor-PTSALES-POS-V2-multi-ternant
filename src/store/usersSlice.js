@@ -1,9 +1,7 @@
 import { createSlice, nanoid } from '@reduxjs/toolkit';
 
 const initialState = {
-  users: [
-    { id: 'u1', name: 'superadmin', role: 'SuperAdmin', branchId: 'main', assignedBranches: 'all', active: true }
-  ],
+  users: [],
   roles: ['SuperAdmin', 'Admin', 'Branch Manager', 'Manager', 'Cashier', 'Inventory Staff', 'Auditor', 'Other']
 };
 
