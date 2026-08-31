@@ -2517,15 +2517,6 @@ function PosPage({ mode = 'retail' }) {
                     <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
                 </select>
-                <input
-                  className="input"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={item.price}
-                  onChange={e => setCartItemPricing({ id: item.id, priceTier: getPreferredPriceTier(allowedPriceTiers, item.priceTier || selectedPriceTier), price: Number(e.target.value) || 0 })}
-                  style={{ width: 110 }}
-                />
                 </>
                 ) : (
                 <span style={{ fontWeight: 700 }}>{formatCurrency(item.price, settings)}</span>
@@ -2536,8 +2527,7 @@ function PosPage({ mode = 'retail' }) {
                   </span>
                 )}
               </div>
-              <div style={{ minWidth: 120, textAlign: 'right' }}>
-                <div style={{ fontSize: 12, color: '#64748b' }}>{t('Line Total')}</div>
+              <div style={{ minWidth: 120, textAlign: 'right', paddingRight: 18 }}>
                 <strong>{formatCurrency((Number(item.price) || 0) * (Number(item.quantity) || 0), settings)}</strong>
               </div>
             </li>
