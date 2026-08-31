@@ -154,10 +154,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const assigned = auth.user?.assignedBranches || 'all';
 
   const branchOptions = useMemo(() => {
-    if (roleLower === 'superadmin' || roleLower === 'admin' || assigned === 'all') return branches;
-    const ids = new Set(Array.isArray(assigned) ? assigned : [assigned]);
-    return branches.filter(b => ids.has(b.id));
-  }, [assigned, branches, roleLower]);
+    // Stock operation creation should depend on whether the tenant has valid stock-holding
+    // branches, not on how many branches are assigned to the current user.
+    return Array.isArray(branches) ? branches : [];
+  }, [branches]);
   const allowedBranchIds = useMemo(() => {
     if (roleLower === 'superadmin' || roleLower === 'admin' || assigned === 'all') return null;
     return new Set(
