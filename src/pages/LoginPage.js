@@ -18,6 +18,13 @@ const COUNTRY_LABELS = {
   MW: 'Malawi'
 };
 
+const SOLUTION_SHOWCASE = [
+  { name: 'HR System' },
+  { name: 'Hospital Management System' },
+  { name: 'School Management System' },
+  { name: 'Church Management System' }
+];
+
 function detectCardBrand(input) {
   const digits = String(input || '').replace(/\D/g, '');
   if (/^4/.test(digits)) return 'Visa';
@@ -221,6 +228,7 @@ function LoginPage() {
   );
   const showProviderChooser = enabledProviders.length > 1;
   const providerCheckoutLabel = isPayPalProvider ? 'Continue Checkout' : isPaystackProvider ? 'Continue To Paystack Checkout' : 'Continue To DPO Checkout';
+  const heroAppName = String(appName || 'PrynoSync').trim() || 'PrynoSync';
 
   const regenerateCaptcha = useCallback(() => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -623,107 +631,155 @@ function LoginPage() {
 
   return (
     <div className="login-page">
-      <div className="login-card">
-        <div className="login-brand">
-          <img src="/logo512.png" alt="logo" />
-          <div>
-            <div className="brand-name">{appName}</div>
+      <div className="login-shell">
+        <section className="login-hero">
+          <div className="login-hero-badge">{t('Business Operating Platform')}</div>
+          <div className="login-brand login-brand--hero">
+            <img src="/logo512.png" alt="logo" />
+            <div>
+              <div className="brand-name brand-name--hero">{heroAppName}</div>
+              <div className="login-brand-subtitle">{t('Connected tools for modern teams')}</div>
+            </div>
           </div>
-        </div>
-        {loading ? (
-          <div style={{ minHeight: 320, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
-            <div style={{ display: 'grid', gap: 14, justifyItems: 'center', maxWidth: 420 }}>
-              <div className="brand-loader">
-                <div className="brand-loader-ring" />
-                <img className="brand-loader-logo" src="/logo512.png" alt="logo" />
+          <div className="login-hero-copy">
+            <h1>{t('One Platform. Multiple Solutions.')}</h1>
+          </div>
+          <div className="login-solution-panel">
+            <div className="login-solution-heading">
+              <div className="login-solution-kicker">{t('Our Solutions')}</div>
+            </div>
+            <div className="login-solution-grid">
+              {SOLUTION_SHOWCASE.map((item) => (
+                <button key={item.name} type="button" className="login-solution-card">
+                  <span className="login-solution-title">{t(item.name)}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="login-card login-card--premium">
+          <div className="login-card-header">
+            <div className="login-card-kicker">{t('Online Login')}</div>
+            <h2>{t('Welcome back')}</h2>
+          </div>
+          {loading ? (
+            <div className="login-loading-state">
+              <div style={{ display: 'grid', gap: 14, justifyItems: 'center', maxWidth: 420 }}>
+                <div className="brand-loader">
+                  <div className="brand-loader-ring" />
+                  <img className="brand-loader-logo" src="/logo512.png" alt="logo" />
+                </div>
+                <div className="brand-loader-copy brand-loader-copy-delay-1" style={{ fontSize: 22, fontWeight: 800 }}>{heroAppName}</div>
+                <div className="brand-loader-copy brand-loader-copy-delay-2" style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{t('Signing you in...')}</div>
+                <div className="brand-loader-copy brand-loader-copy-delay-3" style={{ color: '#64748b', fontSize: 14 }}>
+                  {t('Verifying tenant, credentials, and secure access.')}
+                </div>
               </div>
-              <div className="brand-loader-copy brand-loader-copy-delay-1" style={{ fontSize: 22, fontWeight: 800 }}>{appName}</div>
-              <div className="brand-loader-copy brand-loader-copy-delay-2" style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{t('Signing you in...')}</div>
-              <div className="brand-loader-copy brand-loader-copy-delay-3" style={{ color: '#64748b', fontSize: 14 }}>
-                {t('Verifying tenant, credentials, and secure access.')}
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="login-form">
+              <label className="login-field">
+                <input placeholder={t('tenant id')} value={tenantId} onChange={e => setTenantId(e.target.value)} />
+              </label>
+              <label className="login-field">
+                <input placeholder={t('username')} value={name} onChange={e => setName(e.target.value)} />
+              </label>
+              <label className="login-field">
+                <div className="login-password-field">
+                  <input placeholder={t('PIN (4-6 digits)')} type={pinVisible ? 'text' : 'password'} value={pin} onChange={e => setPin(e.target.value)} />
+                  <button
+                    type="button"
+                    className="login-password-toggle"
+                    onClick={() => setPinVisible((open) => !open)}
+                    aria-label={pinVisible ? t('Hide PIN') : t('Show PIN')}
+                    title={pinVisible ? t('Hide PIN') : t('Show PIN')}
+                  >
+                    {pinVisible ? (
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M3 3l18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        <path d="M10.58 10.58A3 3 0 0 0 13.42 13.42" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                        <path d="M9.88 5.09A10.94 10.94 0 0 1 12 4.9c5.05 0 9.27 3.11 10.5 7.1a11.32 11.32 0 0 1-3.02 4.52M6.1 6.1A11.38 11.38 0 0 0 1.5 12c1.23 3.99 5.45 7.1 10.5 7.1 1.94 0 3.77-.46 5.35-1.27" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                        <path d="M1.5 12C2.73 8.01 6.95 4.9 12 4.9S21.27 8.01 22.5 12C21.27 15.99 17.05 19.1 12 19.1S2.73 15.99 1.5 12Z" stroke="currentColor" strokeWidth="2" />
+                        <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+              </label>
+              <div className="login-field" data-no-localize="true">
+                <div className="captcha-row">
+                  <input placeholder={t('captcha')} value={captchaInput} onChange={e => setCaptchaInput(e.target.value)} />
+                  <div className="captcha-box">{captcha}</div>
+                  <button
+                    type="button"
+                    className="outline login-captcha-refresh"
+                    onClick={regenerateCaptcha}
+                    title={t('Refresh captcha')}
+                    aria-label={t('Refresh captcha')}
+                  >
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
+                      <path d="M20 12a8 8 0 0 1-13.66 5.66M4 12a8 8 0 0 1 13.66-5.66" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      <path d="M16 4h4v4M8 20H4v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                </div>
               </div>
-            </div>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="login-form">
-            <input placeholder={t('tenant id')} value={tenantId} onChange={e => setTenantId(e.target.value)} />
-            <input placeholder={t('username')} value={name} onChange={e => setName(e.target.value)} />
-            <div className="login-password-field">
-              <input placeholder={t('PIN (4-6 digits)')} type={pinVisible ? 'text' : 'password'} value={pin} onChange={e => setPin(e.target.value)} />
-              <button
-                type="button"
-                className="login-password-toggle"
-                onClick={() => setPinVisible((open) => !open)}
-                aria-label={pinVisible ? t('Hide PIN') : t('Show PIN')}
-                title={pinVisible ? t('Hide PIN') : t('Show PIN')}
-              >
-                {pinVisible ? (
-                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M3 3l18 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    <path d="M10.58 10.58A3 3 0 0 0 13.42 13.42" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    <path d="M9.88 5.09A10.94 10.94 0 0 1 12 4.9c5.05 0 9.27 3.11 10.5 7.1a11.32 11.32 0 0 1-3.02 4.52M6.1 6.1A11.38 11.38 0 0 0 1.5 12c1.23 3.99 5.45 7.1 10.5 7.1 1.94 0 3.77-.46 5.35-1.27" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  </svg>
-                ) : (
-                  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-                    <path d="M1.5 12C2.73 8.01 6.95 4.9 12 4.9S21.27 8.01 22.5 12C21.27 15.99 17.05 19.1 12 19.1S2.73 15.99 1.5 12Z" stroke="currentColor" strokeWidth="2" />
-                    <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="2" />
-                  </svg>
-                )}
+              <div className="login-meta-row">
+                <div style={{ fontSize: 12, color: '#64748b' }} data-no-localize="true">
+                  {t('Captcha refreshes in {count}s', { count: captchaSecondsLeft })}
+                </div>
+                <label className="remember-row">
+                  <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />
+                  <span>{t('remember PIN')}</span>
+                </label>
+              </div>
+              <button type="submit" className="primary" disabled={loading}>
+                {loading ? t('Logging in...') : t('Log In')}
               </button>
+            </form>
+          )}
+
+          {expiredTenantNotice ? (
+            <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: 13 }}>
+              <div style={{ fontWeight: 800, marginBottom: 4 }}>{t('Subscription Expired')}</div>
+              <div>{expiredTenantNotice}</div>
             </div>
-            <div className="captcha-row" data-no-localize="true">
-              <input placeholder={t('captcha')} value={captchaInput} onChange={e => setCaptchaInput(e.target.value)} />
-              <div className="captcha-box">{captcha}</div>
-              <button
-                type="button"
-                className="outline"
-                onClick={regenerateCaptcha}
-                title={t('Refresh captcha')}
-                aria-label={t('Refresh captcha')}
-                style={{ width: 42, minWidth: 42, padding: 0, display: 'inline-grid', placeItems: 'center' }}
-              >
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" aria-hidden="true">
-                  <path d="M20 12a8 8 0 0 1-13.66 5.66M4 12a8 8 0 0 1 13.66-5.66" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                  <path d="M16 4h4v4M8 20H4v-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-              </button>
+          ) : null}
+          {paymentSuccess ? (
+            <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: '#ecfdf5', border: '1px solid #86efac', color: '#166534', fontSize: 13 }}>
+              <div style={{ fontWeight: 800, marginBottom: 4 }}>{t('Payment Confirmed')}</div>
+              <div>{t('Activation Code')}: <strong>{paymentSuccess.activationCode}</strong></div>
+              <div>{t('Code Expires At')}: {paymentSuccess.activationCodeExpiresAt ? new Date(paymentSuccess.activationCodeExpiresAt).toLocaleString() : t('Not set')}</div>
+              <div>{t('Renewal Amount')}: {paymentInfo ? formatCurrency(paymentSuccess.amount) : paymentSuccess.amount}</div>
             </div>
-            <div style={{ fontSize: 12, color: '#64748b' }} data-no-localize="true">
-              {t('Captcha refreshes in {count}s', { count: captchaSecondsLeft })}
-            </div>
-            <label className="remember-row">
-              <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />
-              <span>{t('remember PIN')}</span>
-            </label>
-            <button type="submit" className="primary" disabled={loading}>
-              {loading ? t('Logging in...') : t('Log In')}
-            </button>
-          </form>
-        )}
-        {expiredTenantNotice ? (
-          <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', fontSize: 13 }}>
-            <div style={{ fontWeight: 800, marginBottom: 4 }}>{t('Subscription Expired')}</div>
-            <div>{expiredTenantNotice}</div>
-          </div>
-        ) : null}
-        {paymentSuccess ? (
-          <div style={{ marginTop: 12, padding: 12, borderRadius: 12, background: '#ecfdf5', border: '1px solid #86efac', color: '#166534', fontSize: 13 }}>
-            <div style={{ fontWeight: 800, marginBottom: 4 }}>{t('Payment Confirmed')}</div>
-            <div>{t('Activation Code')}: <strong>{paymentSuccess.activationCode}</strong></div>
-            <div>{t('Code Expires At')}: {paymentSuccess.activationCodeExpiresAt ? new Date(paymentSuccess.activationCodeExpiresAt).toLocaleString() : t('Not set')}</div>
-            <div>{t('Renewal Amount')}: {paymentInfo ? formatCurrency(paymentSuccess.amount) : paymentSuccess.amount}</div>
-          </div>
-        ) : null}
-        
-        {!loading ? <button className="outline" type="button" onClick={() => setResetOpen(true)}>{t('Reset PIN (Admin)')}</button> : null}
-        {expiredTenantNotice ? (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
-            <button className="outline" type="button" onClick={() => { setActivationTenantId(String(tenantId || '')); setActivationAdminName(String(name || '')); setActivationOpen(true); }}>{t('Activate Subscription')}</button>
-            {canShowPaymentActions ? (
-              <button className="outline" type="button" onClick={openPaymentModal} disabled={paymentLoading}>{t('Make Payment')}</button>
+          ) : null}
+
+          <div className="login-support-actions">
+            {!loading ? <button className="outline" type="button" onClick={() => setResetOpen(true)}>{t('Reset PIN (Admin)')}</button> : null}
+            {expiredTenantNotice ? (
+              <>
+                <button className="outline" type="button" onClick={() => { setActivationTenantId(String(tenantId || '')); setActivationAdminName(String(name || '')); setActivationOpen(true); }}>{t('Activate Subscription')}</button>
+                {canShowPaymentActions ? (
+                  <button className="outline" type="button" onClick={openPaymentModal} disabled={paymentLoading}>{t('Make Payment')}</button>
+                ) : null}
+              </>
             ) : null}
           </div>
-        ) : null}
+          <div className="login-visit-link-wrap">
+            <a
+              className="login-visit-link"
+              href="https://prynova.net"
+              target="_blank"
+              rel="noreferrer"
+            >
+              {t('Visit')}: prynova.net
+            </a>
+          </div>
+        </section>
       </div>
       {activationOpen && (
         <Modal
