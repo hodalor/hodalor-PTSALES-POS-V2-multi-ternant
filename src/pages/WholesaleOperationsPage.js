@@ -133,6 +133,12 @@ function computeOperationValue(row = {}) {
   return Number(row?.cost || 0) * Math.max(1, Number(row?.qty || 0));
 }
 
+function formatBranchInventoryLabel(branch = {}) {
+  const branchType = String(branch?.branchType || 'retail').toLowerCase();
+  const inventoryLabel = branchType === 'warehouse' ? 'Warehouse' : branchType === 'wholesale' ? 'Distribution' : 'Retail';
+  return `${branch?.name || branch?.code || branch?.id || 'Branch'} (${inventoryLabel})`;
+}
+
 function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' }) {
   const { t } = useAppLanguage();
   const toast = useToast();
@@ -166,19 +172,18 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     [branchOptions, normalizedArea]
   );
   const hasScopedBranches = scopedBranchOptions.length > 0;
+  const hasEnoughTransferBranches = branchOptions.length >= 2;
   const createBlockedMessage = useMemo(() => {
     if (!hasScopedBranches) {
       return normalizedArea === 'warehouse'
         ? t('Create at least one warehouse branch before recording warehouse purchases, transfers, or adjustments.')
         : t('Create at least one distribution branch before recording distribution purchases, transfers, or adjustments.');
     }
-    if (operationType === 'transfer' && scopedBranchOptions.length < 2) {
-      return normalizedArea === 'warehouse'
-        ? t('Create at least two warehouse branches before making warehouse-to-warehouse transfers.')
-        : t('Create at least two distribution branches before making distribution-to-distribution transfers.');
+    if (operationType === 'transfer' && !hasEnoughTransferBranches) {
+      return t('Create at least two branches before making transfers.');
     }
     return '';
-  }, [hasScopedBranches, normalizedArea, operationType, scopedBranchOptions.length, t]);
+  }, [hasEnoughTransferBranches, hasScopedBranches, normalizedArea, operationType, t]);
 
   const branchNameById = useMemo(() => {
     const map = new Map();
@@ -285,15 +290,15 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     return false;
   }, [grants, normalizedArea, operationType, roleLower]);
   const defaultBranchIdRef = useRef(scopedBranchOptions[0]?.id || '');
-  const defaultTransferToBranchIdRef = useRef(scopedBranchOptions.find(branch => String(branch.id) !== String(scopedBranchOptions[0]?.id || ''))?.id || '');
+  const defaultTransferToBranchIdRef = useRef(branchOptions.find(branch => String(branch.id) !== String(scopedBranchOptions[0]?.id || ''))?.id || '');
   const serializedScanInputRef = useRef(null);
   const transferFromBranchOptions = useMemo(
-    () => scopedBranchOptions,
-    [scopedBranchOptions]
+    () => branchOptions,
+    [branchOptions]
   );
   const transferToBranchOptions = useMemo(
-    () => scopedBranchOptions.filter(branch => String(branch.id) !== String(fromBranchId || '')),
-    [fromBranchId, scopedBranchOptions]
+    () => branchOptions.filter(branch => String(branch.id) !== String(fromBranchId || '')),
+    [branchOptions, fromBranchId]
   );
   useEffect(() => {
     if (!isCreateOpen || operationType !== 'transfer') return;
@@ -323,8 +328,8 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
 
   useEffect(() => {
     defaultBranchIdRef.current = scopedBranchOptions[0]?.id || '';
-    defaultTransferToBranchIdRef.current = scopedBranchOptions.find(branch => String(branch.id) !== String(scopedBranchOptions[0]?.id || ''))?.id || '';
-  }, [scopedBranchOptions]);
+    defaultTransferToBranchIdRef.current = branchOptions.find(branch => String(branch.id) !== String(scopedBranchOptions[0]?.id || ''))?.id || '';
+  }, [branchOptions, scopedBranchOptions]);
 
   useEffect(() => {
     if (operationType !== 'transfer') {
@@ -1125,13 +1130,13 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                 <label>
                   <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('From Branch')}</div>
                   <select className="select" value={fromBranchId} onChange={e => setFromBranchId(e.target.value)} style={{ width: '100%' }}>
-                    {transferFromBranchOptions.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                    {transferFromBranchOptions.map(branch => <option key={branch.id} value={branch.id}>{formatBranchInventoryLabel(branch)}</option>)}
                   </select>
                 </label>
                 <label>
                   <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('To Branch')}</div>
                   <select className="select" value={toBranchId} onChange={e => setToBranchId(e.target.value)} style={{ width: '100%' }}>
-                    {transferToBranchOptions.map(branch => <option key={branch.id} value={branch.id}>{branch.name}</option>)}
+                    {transferToBranchOptions.map(branch => <option key={branch.id} value={branch.id}>{formatBranchInventoryLabel(branch)}</option>)}
                   </select>
                 </label>
               </>
