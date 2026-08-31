@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
+import mongoose from 'mongoose';
 import connectDb from './config/db.js';
 import { runWithRequestContext } from './config/requestContext.js';
 import router from './routes/index.js';
@@ -98,6 +99,43 @@ function featureForApiPath(pathname) {
 
 app.get('/', (req, res) => {
   res.json({ ok: true, name: 'ptsales-backend' });
+});
+
+app.get('/healthz', (_req, res) => {
+  const states = (Array.isArray(mongoose.connections) ? mongoose.connections : [])
+    .map((conn) => Number(conn?.readyState || 0));
+  const hasHealthyDb = states.some((state) => state === 1);
+  res.json({
+    ok: true,
+    name: 'ptsales-backend',
+    uptimeSeconds: Math.round(process.uptime()),
+    dbConfigured: !!String(process.env.MONGODB_URI || '').trim(),
+    dbConnected: hasHealthyDb,
+    dbStates: states
+  });
+});
+
+app.get('/readyz', (_req, res) => {
+  const hasConfiguredDb = !!String(process.env.MONGODB_URI || '').trim();
+  const states = (Array.isArray(mongoose.connections) ? mongoose.connections : [])
+    .map((conn) => Number(conn?.readyState || 0));
+  const hasHealthyDb = states.some((state) => state === 1);
+  if (hasConfiguredDb && !hasHealthyDb) {
+    return res.status(503).json({
+      ok: false,
+      name: 'ptsales-backend',
+      dbConfigured: true,
+      dbConnected: false,
+      dbStates: states
+    });
+  }
+  res.json({
+    ok: true,
+    name: 'ptsales-backend',
+    dbConfigured: hasConfiguredDb,
+    dbConnected: hasHealthyDb,
+    dbStates: states
+  });
 });
 
 app.use('/api', router);

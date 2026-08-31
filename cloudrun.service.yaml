@@ -1,0 +1,44 @@
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: ptsales-backend
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "10"
+    spec:
+      containerConcurrency: 80
+      timeoutSeconds: 300
+      containers:
+        - image: REGION-docker.pkg.dev/PROJECT_ID/ptsales-backend/ptsales-backend:latest
+          ports:
+            - containerPort: 8080
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            failureThreshold: 12
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            failureThreshold: 3
+            periodSeconds: 10
+            timeoutSeconds: 3
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "8080"
+            - name: MONGODB_URI
+              value: SET_IN_CLOUD_RUN
+            - name: MONGODB_MASTER_DB
+              value: master
+            - name: JWT_SECRET
+              value: SET_IN_CLOUD_RUN

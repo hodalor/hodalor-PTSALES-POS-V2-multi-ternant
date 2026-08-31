@@ -1,0 +1,12 @@
+node_modules
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.env
+.env.*
+.git
+.gitignore
+.dbg
+render.yaml
+cloudbuild.yaml
+DEPLOY_CLOUD_RUN.md
