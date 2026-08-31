@@ -1,6 +1,11 @@
 import CreditSale from '../models/CreditSale.js';
 import CreditRepayment from '../models/CreditRepayment.js';
+import RefundRequest from '../models/RefundRequest.js';
 import Sale from '../models/Sale.js';
+
+function isMongoId(value) {
+  return /^[a-f0-9]{24}$/i.test(String(value || '').trim());
+}
 
 function toNumber(value) {
   const num = Number(value || 0);
@@ -35,6 +40,31 @@ function eventWithinRange(event, start, end) {
   if (start && paidAt.getTime() < start.getTime()) return false;
   if (end && paidAt.getTime() > end.getTime()) return false;
   return true;
+}
+
+function getRefundEventDate(refund) {
+  return toDate(refund?.approved_at || refund?.approvedAt || refund?.created_at || refund?.createdAt || null);
+}
+
+function getRefundReturnedValue(refund, originalSale = null) {
+  const requested = Math.abs(toNumber(refund?.requestedAmount));
+  if (requested > 0) return requested;
+  if (String(refund?.type || '').trim().toLowerCase() === 'full') {
+    return Math.max(0, toNumber(originalSale?.total));
+  }
+  return 0;
+}
+
+function getRefundCashImpact(refund, originalSale = null) {
+  const explicit = Math.abs(toNumber(refund?.cashRefundAmount));
+  const settlementMode = String(refund?.settlementMode || '').trim().toLowerCase();
+  if (explicit > 0 || ['cash_refund', 'credit_relief', 'mixed'].includes(settlementMode)) return explicit;
+  const returnedValue = getRefundReturnedValue(refund, originalSale);
+  if (!originalSale || !isCreditSaleRecord(originalSale)) return returnedValue;
+  const collectedToDate = Math.max(0, toNumber(originalSale?.creditSale?.amount_paid ?? originalSale?.creditAmountPaidNow));
+  const currentCreditTotal = Math.max(0, toNumber(originalSale?.creditSale?.total_amount ?? originalSale?.total));
+  const revisedCreditTotal = Math.max(0, currentCreditTotal - Math.min(returnedValue, currentCreditTotal));
+  return Math.max(0, collectedToDate - revisedCreditTotal);
 }
 
 function sortRepayments(rows = []) {
@@ -245,7 +275,11 @@ export async function enrichSalesWithAccounting(rows = []) {
 
 export function buildRecognizedDayTotals(rows = [], start, end, options = {}) {
   const totals = new Map();
-  for (const sale of Array.isArray(rows) ? rows : []) {
+  const saleList = Array.isArray(rows) ? rows : [];
+  const saleMap = options?.salesById instanceof Map
+    ? options.salesById
+    : new Map(saleList.map((sale) => [toId(sale?._id || sale?.id), sale]));
+  for (const sale of saleList) {
     const creditSale = sale?.creditSale || null;
     if (!matchesActivityFilter(sale, options?.activityFilter, creditSale)) continue;
     const paymentMethods = Array.isArray(sale?.payment_methods) ? sale.payment_methods : [];
@@ -287,12 +321,46 @@ export function buildRecognizedDayTotals(rows = [], start, end, options = {}) {
       }
     });
   }
+  for (const refund of Array.isArray(options?.refunds) ? options.refunds : []) {
+    if (String(refund?.status || '').trim().toLowerCase() !== 'approved') continue;
+    const paidAt = getRefundEventDate(refund);
+    if (!eventWithinRange({ paidAt }, start, end)) continue;
+    const branchId = toId(refund?.branchId);
+    const day = formatLocalDateKey(paidAt);
+    if (!branchId || !day) continue;
+    const originalSale = saleMap.get(toId(refund?.saleId)) || null;
+    const fallbackSale = originalSale || {
+      branchId,
+      posType: String(refund?.refundArea || '').trim().toLowerCase() === 'distribution' ? 'wholesale' : 'retail',
+      inventoryType: String(refund?.refundArea || '').trim().toLowerCase() === 'distribution' ? 'wholesale' : 'retail'
+    };
+    if (!matchesActivityFilter(fallbackSale, options?.activityFilter, originalSale?.creditSale || null)) continue;
+    const refundCashImpact = Math.max(0, getRefundCashImpact(refund, originalSale));
+    if (refundCashImpact <= 0) continue;
+    const key = `${branchId}:${day}`;
+    if (!totals.has(key)) {
+      totals.set(key, {
+        branchId,
+        date: day,
+        total: 0,
+        paymentBreakdown: {}
+      });
+    }
+    const row = totals.get(key);
+    row.total -= refundCashImpact;
+    row.paymentBreakdown.refund = (row.paymentBreakdown.refund || 0) - refundCashImpact;
+  }
   return totals;
 }
 
 export async function listRecognizedSalesTotalsByDay(branchIds = [], start, end, options = {}) {
   const normalizedBranchIds = Array.from(new Set((Array.isArray(branchIds) ? branchIds : [branchIds]).map(toId).filter(Boolean)));
   if (normalizedBranchIds.length === 0) return new Map();
+  const approvedRefunds = await RefundRequest.find({
+    branchId: { $in: normalizedBranchIds },
+    status: 'approved',
+    approved_at: { $gte: start, $lte: end }
+  }).lean();
   const regularRows = await Sale.find({
     branchId: { $in: normalizedBranchIds },
     $or: [
@@ -300,8 +368,23 @@ export async function listRecognizedSalesTotalsByDay(branchIds = [], start, end,
       { creditSaleId: { $exists: true, $ne: '' } }
     ]
   }).lean();
-  if (regularRows.length === 0) return new Map();
-  const saleIds = regularRows.map((row) => toId(row?._id)).filter(Boolean);
+  const seenSaleIds = new Set(regularRows.map((row) => toId(row?._id)).filter(Boolean));
+  const missingRefundSaleIds = Array.from(new Set(
+    approvedRefunds
+      .map((refund) => toId(refund?.saleId))
+      .filter((saleId) => saleId && !seenSaleIds.has(saleId) && isMongoId(saleId))
+  ));
+  const refundLinkedRows = missingRefundSaleIds.length > 0
+    ? await Sale.find({ _id: { $in: missingRefundSaleIds } }).lean()
+    : [];
+  const rowsById = new Map();
+  [...regularRows, ...refundLinkedRows].forEach((row) => {
+    const key = toId(row?._id);
+    if (key) rowsById.set(key, row);
+  });
+  const sourceRows = Array.from(rowsById.values());
+  if (sourceRows.length === 0 && approvedRefunds.length === 0) return new Map();
+  const saleIds = sourceRows.map((row) => toId(row?._id)).filter(Boolean);
   const creditSales = await CreditSale.find({ saleId: { $in: saleIds } }).lean();
   const creditSalesBySaleId = new Map(creditSales.map((row) => [toId(row?.saleId), row]));
   const creditSaleIds = creditSales.map((row) => toId(row?._id)).filter(Boolean);
@@ -315,7 +398,7 @@ export async function listRecognizedSalesTotalsByDay(branchIds = [], start, end,
     if (!repaymentsByCreditSaleId.has(key)) repaymentsByCreditSaleId.set(key, []);
     repaymentsByCreditSaleId.get(key).push(row);
   });
-  const salesWithCredit = regularRows.map((row) => {
+  const salesWithCredit = sourceRows.map((row) => {
     const creditSale = creditSalesBySaleId.get(toId(row?._id)) || null;
     return {
       ...row,
@@ -323,5 +406,6 @@ export async function listRecognizedSalesTotalsByDay(branchIds = [], start, end,
       approvedRepayments: creditSale ? (repaymentsByCreditSaleId.get(toId(creditSale?._id)) || []) : []
     };
   });
-  return buildRecognizedDayTotals(salesWithCredit, start, end, options);
+  const salesById = new Map(salesWithCredit.map((row) => [toId(row?._id || row?.id), row]));
+  return buildRecognizedDayTotals(salesWithCredit, start, end, { ...options, refunds: approvedRefunds, salesById });
 }
