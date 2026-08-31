@@ -55,12 +55,20 @@ export async function refreshAllData(dispatch, getState) {
     (isFeatureEnabled(settings, 'pages.retail.pos') && allow('pages.retail.pos', ['Admin','Manager','Cashier'], ['view_pos','see_pos']))
     || (isFeatureEnabled(settings, 'pages.distribution.pos') && allow('pages.distribution.pos', ['Admin','Manager','Cashier'], ['view_wholesale_pos']))
   );
+  const canLoadRefunds = (
+    (isFeatureEnabled(settings, 'pages.retail.refunds') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']))
+    || (isFeatureEnabled(settings, 'pages.distribution.refund') && allow('pages.distribution.refund', ['Admin','Manager','Inventory Staff','Cashier'], ['view_distribution_refunds','add_distribution_refunds']))
+    || allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales'])
+    || allow('modules.dashboard', ['Admin','Manager'], ['view_dashboard','see_dashboard'])
+    || allow('modules.reports', ['Admin','Manager','Auditor'], ['view_reports','see_reports'])
+    || allow('pages.finance.reconciliation', ['Admin','Manager','Cashier'], ['view_finance_reconciliation','add_finance_reconciliation','approve_finance_reconciliation_director','approve_finance_reconciliation_manager'])
+  );
   const results = await Promise.allSettled([
     (allow('modules.products', ['Admin','Manager','Inventory Staff'], ['view_products','see_products','view_distribution_products','view_warehouse_products']) || canLoadPosProducts) ? productsApi.list() : Promise.resolve([]),
     isFeatureEnabled(settings, 'modules.suppliers') && allow('modules.suppliers', ['Admin','Manager','Inventory Staff'], ['view_suppliers','see_suppliers']) ? suppliersApi.list() : Promise.resolve([]),
     isFeatureEnabled(settings, 'modules.customers') && allow('modules.customers', ['Admin','Manager','Cashier'], ['view_customers','see_customers']) ? customersApi.list() : Promise.resolve([]),
     branchesApi.list(),
-    isFeatureEnabled(settings, 'pages.retail.refunds') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']) ? refundsApi.listRequests() : Promise.resolve([]),
+    canLoadRefunds ? refundsApi.listRequests() : Promise.resolve([]),
     isFeatureEnabled(settings, 'pages.retail.purchases') && allow('pages.retail.purchases', ['Admin','Manager','Inventory Staff','Director'], ['approve_purchases','view_purchases','see_purchases']) ? purchasesApi.listRequests({ status: 'pending_approval', limit: 200 }) : Promise.resolve([]),
     isFeatureEnabled(settings, 'pages.retail.transfers') && allow('pages.retail.transfers', ['Admin','Manager','Inventory Staff','Director'], ['approve_transfers','view_transfers','see_transfers']) ? transfersApi.listRequests({ status: 'pending_approval', limit: 200 }) : Promise.resolve([]),
     canUseExpenseApprovals ? expensesApi.listRequests() : Promise.resolve([]),

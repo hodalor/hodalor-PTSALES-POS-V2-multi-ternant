@@ -518,8 +518,13 @@ function App() {
         const canLoadSuppliers = section('sections.partners') && allow('modules.suppliers', ['Admin','Manager','Inventory Staff'], ['view_suppliers','see_suppliers']);
         const canLoadRetailRefunds = section('sections.retail') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']);
         const canLoadDistributionRefunds = section('sections.distribution') && allow('pages.distribution.refund', ['Admin','Manager','Inventory Staff','Cashier'], ['view_distribution_refunds','add_distribution_refunds']);
-        const canLoadRefunds = canLoadRetailRefunds || canLoadDistributionRefunds;
         const canLoadSales = allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']);
+        const canLoadRefunds = canLoadRetailRefunds
+          || canLoadDistributionRefunds
+          || canLoadSales
+          || allow('modules.dashboard', ['Admin','Manager'], ['view_dashboard','see_dashboard'])
+          || allow('modules.reports', ['Admin','Manager','Auditor'], ['view_reports','see_reports'])
+          || allow('pages.finance.reconciliation', ['Admin','Manager','Cashier'], ['view_finance_reconciliation','add_finance_reconciliation','approve_finance_reconciliation_director','approve_finance_reconciliation_manager']);
 
         const [criticalProducts, criticalBranches] = await Promise.allSettled([
           (canLoadProducts || canLoadPosProducts) ? productsApi.list() : Promise.resolve([]),
@@ -659,6 +664,10 @@ function App() {
           (
             (section('sections.retail') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']))
             || (section('sections.distribution') && allow('pages.distribution.refund', ['Admin','Manager','Inventory Staff','Cashier'], ['view_distribution_refunds','add_distribution_refunds']))
+            || allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales'])
+            || allow('modules.dashboard', ['Admin','Manager'], ['view_dashboard','see_dashboard'])
+            || allow('modules.reports', ['Admin','Manager','Auditor'], ['view_reports','see_reports'])
+            || allow('pages.finance.reconciliation', ['Admin','Manager','Cashier'], ['view_finance_reconciliation','add_finance_reconciliation','approve_finance_reconciliation_director','approve_finance_reconciliation_manager'])
           ) ? refundsApi.listRequests() : Promise.resolve([]),
           allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? salesApi.list({ all: true }) : Promise.resolve([]),
           section('sections.admin') && allow('admin.users', ['Admin'], ['view_users','see_users']) ? usersApi.list() : Promise.resolve([]),

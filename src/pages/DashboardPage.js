@@ -1036,8 +1036,8 @@ function DashboardPage() {
   const creditOnlyDashboardView = useMemo(() => isCreditOnlyDashboardFilter(activityFilter), [activityFilter]);
   const pendingDepositValue = useMemo(() => {
     if (creditOnlyDashboardView) return 0;
-    return Math.max(0, financeSummary.awaitingAmount - metrics.recognizedRefundRevenueImpact);
-  }, [creditOnlyDashboardView, financeSummary.awaitingAmount, metrics.recognizedRefundRevenueImpact]);
+    return Math.max(0, Number(financeSummary.awaitingAmount || 0));
+  }, [creditOnlyDashboardView, financeSummary.awaitingAmount]);
 
   function maskRevenue(value) {
     return canViewRevenue ? formatCurrency(value, settings) : '******';
