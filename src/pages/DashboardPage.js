@@ -434,6 +434,12 @@ function DashboardPage() {
       const fallbackTotals = getSaleRangeTotals(sale, rangeFrom, rangeTo);
       return Number(fallbackTotals.revenue || 0) > 0 ? 1 : 0;
     };
+    const activitySaleSummaries = activitySales
+      .map((sale) => ({ sale, totals: getAdjustedSaleRangeTotals(sale) }))
+      .filter(({ totals }) => totals.revenue !== 0 || totals.profit !== 0 || totals.cost !== 0);
+    const competitionSaleSummaries = competitionSales
+      .map((sale) => ({ sale, totals: getAdjustedSaleRangeTotals(sale) }))
+      .filter(({ totals }) => totals.revenue !== 0 || totals.profit !== 0 || totals.cost !== 0);
     const buildNetRevenuePerDay = (rangeFrom = null, rangeTo = null) => {
       const totalsByDay = {};
       for (const sale of filteredSales) {
@@ -466,8 +472,7 @@ function DashboardPage() {
         wholesaleCreditOut += outstandingCredit;
       }
     }
-    for (const sale of activitySales) {
-      const recognized = getAdjustedSaleRangeTotals(sale);
+    for (const { sale, totals: recognized } of activitySaleSummaries) {
       if (recognized.revenue === 0 && recognized.profit === 0 && recognized.cost === 0) continue;
       const creditMode = String(sale.creditMode || '').trim().toLowerCase();
       if (creditMode === 'retail_easybuy') {
@@ -662,7 +667,7 @@ function DashboardPage() {
     const revenueChartFrom = periodMode === 'all_time' ? null : startOfLocalDay(revenueChartFromIso);
     const revenueChartTo = periodMode === 'all_time' ? null : endOfLocalDay(revenueChartToIso);
     const revenuePerDay = buildNetRevenuePerDay(revenueChartFrom, revenueChartTo);
-    for (const sale of competitionSales) {
+    for (const { sale, totals } of competitionSaleSummaries) {
       const seller = sale.sellerName || t('Unknown');
       const saleBranchId = String(sale.branchId || '').trim();
       const saleBranchName = branchNameById.get(saleBranchId) || sale.branchName || saleBranchId || '—';
@@ -679,7 +684,6 @@ function DashboardPage() {
         });
       }
       const cashierRow = cashierMap.get(cashierKey);
-      const totals = getAdjustedSaleRangeTotals(sale);
       if (totals.revenue === 0 && totals.profit === 0) continue;
       cashierRow.sales += 1;
       cashierRow.revenue += totals.revenue;
@@ -696,7 +700,6 @@ function DashboardPage() {
     const revenueChartDays = periodMode === 'all_time'
       ? Array.from(new Set(Object.keys(revenuePerDay))).sort((a, b) => a.localeCompare(b))
       : enumerateDateKeys(revenueChartFromIso, revenueChartToIso);
-    const last30 = daysInRange;
     const lineData = {
       labels: revenueChartDays,
       datasets: [{
@@ -713,10 +716,9 @@ function DashboardPage() {
         borderWidth: 2.5
       }]
     };
-    last30Revenue = last30.reduce((s, d) => s + (Number(perDay[d] || 0)), 0);
-    const last30Sales = activitySales;
-    last30Profit = last30Sales.reduce((s, x) => s + getAdjustedSaleRangeTotals(x).profit, 0);
-    last30Cost = last30Sales.reduce((s, x) => s + getAdjustedSaleRangeTotals(x).cost, 0);
+    last30Revenue = activitySaleSummaries.reduce((sum, { totals }) => sum + Number(totals.revenue || 0), 0);
+    last30Profit = activitySaleSummaries.reduce((sum, { totals }) => sum + Number(totals.profit || 0), 0);
+    last30Cost = activitySaleSummaries.reduce((sum, { totals }) => sum + Number(totals.cost || 0), 0);
     itemsSold = Math.max(0, itemsSold - approvedRefundItems);
     const marginPct = last30Revenue > 0 ? Math.round((last30Profit / last30Revenue) * 10000) / 100 : 0;
     const paymentTypes = ['cash','card','mobile','wallet','other'];
