@@ -1056,7 +1056,6 @@ function DashboardPage() {
               <LoadingDots label={t('Loading finance summary')} />
             ) : card.value}
           </div>
-          <div className="dashboard-card-meta">{card.subtitle}</div>
         </div>
         <div className="dashboard-card-badge">{card.badge}</div>
       </div>
