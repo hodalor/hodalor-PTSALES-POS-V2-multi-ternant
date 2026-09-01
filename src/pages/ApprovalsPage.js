@@ -7,6 +7,15 @@ import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import LoadingDots from '../components/LoadingDots';
 import { getProductDisplayMeta } from '../utils/inventoryFilters';
 
+function getApprovalStatusMeta(status = '') {
+  const value = String(status || '').trim().toLowerCase();
+  if (value === 'approved') return { label: 'Approved', tone: 'success' };
+  if (value === 'rejected') return { label: 'Rejected', tone: 'danger' };
+  if (value === 'pending_manager') return { label: 'Pending Manager', tone: 'warning' };
+  if (value === 'pending_director') return { label: 'Pending Director', tone: 'info' };
+  return { label: status || 'Unknown', tone: 'info' };
+}
+
 function ApprovalsPage() {
   const toast = useToast();
   const dispatch = useDispatch();
@@ -44,6 +53,32 @@ function ApprovalsPage() {
   }, [load, status]);
 
   const grouped = useMemo(() => rows.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [rows]);
+  const summaryCards = useMemo(() => ([
+    {
+      key: 'total',
+      label: 'Queue Size',
+      value: grouped.length,
+      accent: '#2563eb'
+    },
+    {
+      key: 'director',
+      label: 'Pending Director',
+      value: grouped.filter((row) => String(row?.status || '').toLowerCase() === 'pending_director').length,
+      accent: '#0f766e'
+    },
+    {
+      key: 'manager',
+      label: 'Pending Manager',
+      value: grouped.filter((row) => String(row?.status || '').toLowerCase() === 'pending_manager').length,
+      accent: '#f59e0b'
+    },
+    {
+      key: 'resolved',
+      label: 'Resolved',
+      value: grouped.filter((row) => ['approved', 'rejected'].includes(String(row?.status || '').toLowerCase())).length,
+      accent: '#7c3aed'
+    }
+  ]), [grouped]);
 
   function formatActor(name = '', role = '') {
     const actorName = String(name || '').trim();
@@ -139,13 +174,16 @@ function ApprovalsPage() {
   }
 
   return (
-    <div style={{ padding: 16, display: 'grid', gap: 12 }}>
-      <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-        <div>
-          <h1 style={{ margin: 0 }}>Approvals Center</h1>
-          <div style={{ color: '#64748b', fontSize: 13 }}>Director and manager approval queue for wholesale operations and credit repayments.</div>
+    <div className="sales-page-shell">
+      <div className="sales-header">
+        <div className="sales-header-copy">
+          <div className="ui-eyebrow">Control Center</div>
+          <h1 className="sales-title">Approvals</h1>
+          <p className="sales-subtitle">
+            Director and manager approval queue for stock operations and related approval-controlled workflows.
+          </p>
         </div>
-        <div className="filter-actions">
+        <div className="sales-header-actions">
           <select className="select" value={status} onChange={e => setStatus(e.target.value)}>
             <option value="pending_director">Pending Director</option>
             <option value="pending_manager">Pending Manager</option>
@@ -153,53 +191,98 @@ function ApprovalsPage() {
             <option value="rejected">Rejected</option>
             <option value="all">All</option>
           </select>
-          <button className="btn" onClick={() => load(status)} disabled={loading}>{loading ? <LoadingDots label="Loading approvals" /> : 'Refresh'}</button>
+          <button className="btn" onClick={() => load(status)} disabled={loading}>
+            {loading ? <LoadingDots label="Loading approvals" /> : 'Refresh'}
+          </button>
         </div>
       </div>
 
-      <div className="card">
-        <table className="table">
-          <thead>
-            <tr>
-              <th align="left">Action</th>
-              <th align="left">Products</th>
-              <th align="left">Route</th>
-              <th align="left">Type</th>
-              <th align="left">Initiated By</th>
-              <th align="left">Director</th>
-              <th align="left">Manager</th>
-              <th align="left">Status</th>
-              <th align="left">Created</th>
-              <th align="left"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {grouped.map(row => (
-              <tr key={row._id}>
-                <td>{row.actionType}</td>
-                <td>{renderProducts(row)}</td>
-                <td>{renderRoute(row)}</td>
-                <td>{row.referenceModel}</td>
-                <td>{formatActor(row.initiatedByName, row.initiatedByRole)}</td>
-                <td>{formatActor(row.directorApprovedByName, row.directorApprovedByRole)}</td>
-                <td>{formatActor(row.managerApprovedByName, row.managerApprovedByRole)}</td>
-                <td>{row.status}</td>
-                <td>{row.createdAt ? new Date(row.createdAt).toLocaleString() : '—'}</td>
-                <td>
-                  {(row.status === 'pending_director' || row.status === 'pending_manager') ? (
-                    <>
-                      <button className="btn btn-primary" onClick={() => onApprove(row)} disabled={workingId === row._id}>{workingId === row._id ? 'Working…' : 'Approve'}</button>
-                      <button className="btn" onClick={() => onReject(row)} disabled={workingId === row._id} style={{ marginLeft: 6 }}>{workingId === row._id ? 'Working…' : 'Reject'}</button>
-                    </>
-                  ) : (
-                    <span style={{ color: row.status === 'approved' ? '#16a34a' : '#ef4444', fontWeight: 700 }}>{row.status}</span>
-                  )}
-                </td>
+      <div className="sales-summary-grid">
+        {summaryCards.map((card) => (
+          <div key={card.key} className="sales-summary-card" style={{ '--accent': card.accent }}>
+            <div className="sales-summary-label">{card.label}</div>
+            <div className="sales-summary-value">{card.value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="sales-section-card">
+        <div className="sales-section-head">
+          <div>
+            <h2 className="sales-section-title">Approval Queue</h2>
+            <p className="sales-section-note">
+              Track who initiated, who reviewed, and what still needs action from this screen.
+            </p>
+          </div>
+        </div>
+        <div className="sales-table-meta">
+          <div className="sales-results-note">
+            {loading ? 'Loading approvals...' : `${grouped.length} approval${grouped.length === 1 ? '' : 's'} found`}
+          </div>
+        </div>
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th align="left">Action</th>
+                <th align="left">Products</th>
+                <th align="left">Route</th>
+                <th align="left">Type</th>
+                <th align="left">Initiated By</th>
+                <th align="left">Director</th>
+                <th align="left">Manager</th>
+                <th align="left">Status</th>
+                <th align="left">Created</th>
+                <th align="left">Action</th>
               </tr>
-            ))}
-            {!loading && grouped.length === 0 && <tr><td colSpan="10" style={{ padding: 12, color: '#64748b' }}>No approvals found</td></tr>}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {grouped.map((row) => {
+                const statusMeta = getApprovalStatusMeta(row?.status);
+                const busy = workingId === row._id;
+                const isPending = row.status === 'pending_director' || row.status === 'pending_manager';
+                return (
+                  <tr key={row._id}>
+                    <td>
+                      <div className="sales-ref-cell">
+                        <span className="sales-ref-primary">{row.actionType || '—'}</span>
+                      </div>
+                    </td>
+                    <td>{renderProducts(row)}</td>
+                    <td>{renderRoute(row)}</td>
+                    <td>{row.referenceModel}</td>
+                    <td>{formatActor(row.initiatedByName, row.initiatedByRole)}</td>
+                    <td>{formatActor(row.directorApprovedByName, row.directorApprovedByRole)}</td>
+                    <td>{formatActor(row.managerApprovedByName, row.managerApprovedByRole)}</td>
+                    <td>
+                      <span className={`status-badge ${statusMeta.tone}`}>{statusMeta.label}</span>
+                    </td>
+                    <td>{row.createdAt ? new Date(row.createdAt).toLocaleString() : '—'}</td>
+                    <td>
+                      {isPending ? (
+                        <div className="sales-row-actions">
+                          <button className="btn btn-primary btn-compact" onClick={() => onApprove(row)} disabled={busy}>
+                            {busy ? 'Working…' : 'Approve'}
+                          </button>
+                          <button className="btn btn-compact" onClick={() => onReject(row)} disabled={busy}>
+                            {busy ? 'Working…' : 'Reject'}
+                          </button>
+                        </div>
+                      ) : (
+                        <span className={`status-badge ${statusMeta.tone}`}>{statusMeta.label}</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+              {!loading && grouped.length === 0 && (
+                <tr>
+                  <td colSpan="10" style={{ padding: 12, color: '#64748b' }}>No approvals found</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

@@ -563,13 +563,14 @@ function AdjustmentsPage() {
   }
 
   return (
-    <div className="page-shell">
-      <div className="page-header">
-        <div>
-          <h1 style={{ margin: 0 }}>{t('Adjustments')}</h1>
-          <div className="page-subtitle-compact">{t('Record inventory corrections with a clearer approval flow for retail, distribution, and serialized stock.')}</div>
+    <div className="sales-page-shell">
+      <div className="sales-header">
+        <div className="sales-header-copy">
+          <div className="ui-eyebrow">{t('Stock Operations')}</div>
+          <h1 className="sales-title">{t('Adjustments')}</h1>
+          <p className="sales-subtitle">{t('Record inventory corrections with a clearer approval flow for retail, distribution, and serialized stock.')}</p>
         </div>
-        <div className="page-header-actions">
+        <div className="sales-header-actions">
           {tab === 'initiate' && (
             <button className="btn btn-primary" onClick={() => setOpenModal(true)}>
               <svg viewBox="0 0 24 24" fill="none"><path d="M12 6v12M6 12h12" stroke="currentColor" strokeWidth="2"/></svg>
@@ -579,16 +580,16 @@ function AdjustmentsPage() {
           <OfflineQueueIndicator collection="adjustmentrequests" label={t('Adjustments queued')} />
         </div>
       </div>
-      <div className="page-tabs">
+      <div className="sales-tabbar">
         <button className={tab === 'initiate' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('initiate')}>{t('Initiate')}</button>
         <button className={tab === 'approvals' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('approvals')} disabled={!canApprove}>{t('Approvals')}</button>
       </div>
-      <div className="stats-grid">
-        <div className="card stat-card"><div className="stat-label">{t('Adjustment Records')}</div><div className="stat-value">{summary.records}</div></div>
-        <div className="card stat-card"><div className="stat-label">{t('Total Units Adjusted')}</div><div className="stat-value">{summary.totalDelta}</div></div>
-        <div className="card stat-card"><div className="stat-label">{t('Increases')}</div><div className="stat-value">{summary.increaseCount}</div></div>
-        <div className="card stat-card"><div className="stat-label">{t('Decreases')}</div><div className="stat-value">{summary.decreaseCount}</div></div>
-        <div className="card stat-card"><div className="stat-label">{t('Products')}</div><div className="stat-value">{summary.products}</div></div>
+      <div className="sales-summary-grid">
+        <div className="sales-summary-card" style={{ '--accent': '#2563eb' }}><div className="sales-summary-label">{t('Adjustment Records')}</div><div className="sales-summary-value">{summary.records}</div></div>
+        <div className="sales-summary-card" style={{ '--accent': '#0f766e' }}><div className="sales-summary-label">{t('Total Units Adjusted')}</div><div className="sales-summary-value">{summary.totalDelta}</div></div>
+        <div className="sales-summary-card" style={{ '--accent': '#7c3aed' }}><div className="sales-summary-label">{t('Increases')}</div><div className="sales-summary-value">{summary.increaseCount}</div></div>
+        <div className="sales-summary-card" style={{ '--accent': '#dc2626' }}><div className="sales-summary-label">{t('Decreases')}</div><div className="sales-summary-value">{summary.decreaseCount}</div></div>
+        <div className="sales-summary-card" style={{ '--accent': '#06b6d4' }}><div className="sales-summary-label">{t('Products')}</div><div className="sales-summary-value">{summary.products}</div></div>
       </div>
       {openModal && (
         <Modal title={t('Add Adjustment')} onClose={() => setOpenModal(false)} footer={
@@ -841,7 +842,7 @@ function AdjustmentsPage() {
           setApprovalDateTo={setApprovalDateTo}
         />
       )}
-      <div className="card" style={{ marginTop: 12 }}>
+      <div className="sales-section-card">
         <div className="card-scroll-x">
         <div className="record-filters">
           <label>
@@ -894,7 +895,15 @@ function AdjustmentsPage() {
           </div>
         </div>
         </div>
-        <h2 className="section-title">{t('Recent Adjustments')}</h2>
+        <div className="sales-section-head">
+          <div>
+            <h2 className="sales-section-title">{t('Recent Adjustments')}</h2>
+            <p className="sales-section-note">{t('Review branch corrections, export the filtered result, and clean up records when needed.')}</p>
+          </div>
+        </div>
+        <div className="sales-table-meta">
+          <div className="sales-results-note">{`${rows.length} ${t('record')}${rows.length === 1 ? '' : 's'}`}</div>
+        </div>
         <div className="table-wrap">
         <table className="table">
           <thead>
@@ -952,10 +961,10 @@ function AdjustmentsPage() {
           </tbody>
         </table>
         </div>
-        <div className="pagination-row">
-          <div className="pagination-controls">
+        <div className="sales-pagination">
+          <div className="sales-row-actions">
             <button className="btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>Prev</button>
-            <span className="table-meta">Page {page} of {Math.max(1, Math.ceil(rows.length / pageSize))}</span>
+            <span className="sales-results-note">Page {page} of {Math.max(1, Math.ceil(rows.length / pageSize))}</span>
             <button className="btn" onClick={() => setPage(p => Math.min(Math.max(1, Math.ceil(rows.length / pageSize)), p + 1))} disabled={page >= Math.max(1, Math.ceil(rows.length / pageSize))}>Next</button>
           </div>
           <label>
@@ -1097,11 +1106,14 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
     } finally { setBusyId(null); }
   }
   return (
-    <div className="card" style={{ marginBottom: 12 }}>
+    <div className="sales-section-card">
       <div className="approval-toolbar">
-        <h2 className="section-title" style={{ marginBottom: 8 }}>Approvals</h2>
+        <div>
+          <h2 className="sales-section-title">Approvals</h2>
+          <p className="sales-section-note">Review adjustment increases and decreases before stock changes are committed.</p>
+        </div>
         <div className="card-scroll-x">
-        <div className="page-tabs">
+        <div className="sales-tabbar">
           <button className={statusFilter === 'pending_director' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_director')}>Pending Director</button>
           <button className={statusFilter === 'pending_manager' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_manager')}>Pending Manager</button>
           <button className={statusFilter === 'approved' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('approved')}>Approved</button>
@@ -1110,7 +1122,8 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
         </div>
         </div>
       </div>
-      <div className="record-filters" style={{ marginBottom: 12 }}>
+      <div className="sales-filter-card" style={{ marginTop: 12, marginBottom: 12 }}>
+      <div className="record-filters">
         <label>
           <div className="field-label">Search Product</div>
           <input className="input" value={approvalQuery} onChange={e => setApprovalQuery(e.target.value)} placeholder="Search product, branch, or remark" />
@@ -1132,6 +1145,12 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
           <div className="field-label">To</div>
           <input className="input" type="date" value={approvalDateTo} onChange={e => setApprovalDateTo(e.target.value)} />
         </label>
+      </div>
+      </div>
+      <div className="sales-table-meta">
+        <div className="sales-results-note">
+          {loading ? 'Loading adjustments' : `${filteredRequests.length} request${filteredRequests.length === 1 ? '' : 's'}`}
+        </div>
       </div>
       <div className="table-wrap">
       <table className="table">
@@ -1168,11 +1187,11 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
                 <td>
                   {['pending_approval', 'pending_director', 'pending_manager'].includes(String(r.status || '')) ? (
                     <div className="approval-row-actions">
-                      <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={((String(r.status || '') === 'pending_director' && !canDirectorApprove) || (String(r.status || '') === 'pending_manager' && !canManagerApprove) || busyId === (r._id || r.clientId))}>{busyId === (r._id || r.clientId) ? 'Working…' : String(r.status || '') === 'pending_manager' ? 'Manager Approve' : 'Director Approve'}</button>
-                      <button className="btn" onClick={(e) => { e.stopPropagation(); reject(r); }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? 'Working…' : 'Reject'}</button>
+                      <button className="btn btn-primary btn-compact" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={((String(r.status || '') === 'pending_director' && !canDirectorApprove) || (String(r.status || '') === 'pending_manager' && !canManagerApprove) || busyId === (r._id || r.clientId))}>{busyId === (r._id || r.clientId) ? 'Working…' : String(r.status || '') === 'pending_manager' ? 'Manager Approve' : 'Director Approve'}</button>
+                      <button className="btn btn-compact" onClick={(e) => { e.stopPropagation(); reject(r); }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? 'Working…' : 'Reject'}</button>
                     </div>
                   ) : (
-                    <span className={`status-pill ${r.status === 'approved' ? 'status-pill-approved' : 'status-pill-rejected'}`}>{r.status}</span>
+                    <span className={`status-badge ${r.status === 'approved' ? 'success' : 'danger'}`}>{r.status}</span>
                   )}
                 </td>
               </tr>
@@ -1201,11 +1220,11 @@ function RequestDetail({ detail, products, byId }) {
       ? { background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e' }
       : { background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857' };
   return (
-    <>
-      <div style={{ marginBottom: 12, padding: 12, borderRadius: 12, ...reviewTypeStyle }}>
-        <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.8 }}>Adjustment Review Type</div>
-        <div style={{ fontSize: 20, fontWeight: 800, marginTop: 4 }}>{reviewTypeLabel}</div>
-        <div style={{ fontSize: 13, marginTop: 4 }}>
+    <div className="operation-detail-stack">
+      <div className="operation-detail-banner" style={reviewTypeStyle}>
+        <div className="operation-detail-banner-title">Adjustment Review Type</div>
+        <div className="operation-detail-banner-value">{reviewTypeLabel}</div>
+        <div className="operation-detail-banner-note">
           {reviewTypeLabel === 'Mixed Adjustment'
             ? 'This request contains both increase and decrease adjustment lines.'
             : reviewTypeLabel === 'Decrease Stock'
@@ -1213,26 +1232,26 @@ function RequestDetail({ detail, products, byId }) {
               : 'Approving this request will increase stock for the affected item(s).'}
         </div>
       </div>
-      <div className="detail-grid">
-        <div className="detail-field"><div className="detail-label">Status</div><div className="detail-value"><span className={`status-pill ${detail.status === 'approved' ? 'status-pill-approved' : detail.status === 'rejected' ? 'status-pill-rejected' : 'status-pill-pending'}`}>{detail.status}</span></div></div>
-        <div className="detail-field"><div className="detail-label">Title</div><div className="detail-value">{detail.transactionTitle || '—'}</div></div>
-        <div className="detail-field"><div className="detail-label">Product</div><div className="detail-value">{meta.productName || detail.productId}</div></div>
-        {meta.secondaryLabel ? <div className="detail-field"><div className="detail-label">Variant / Attribute</div><div className="detail-value">{meta.secondaryLabel}</div></div> : null}
-        <div className="detail-field"><div className="detail-label">Branch</div><div className="detail-value">{byId.get(detail.branchId) || detail.branchId}</div></div>
-        <div className="detail-field"><div className="detail-label">Adjustment Type</div><div className="detail-value">{adjustment.typeLabel}</div></div>
-        <div className="detail-field"><div className="detail-label">Quantity</div><div className="detail-value">{adjustment.quantity}</div></div>
-        <div className="detail-field"><div className="detail-label">Initiator</div><div className="detail-value">{detail.initiatorName} {detail.initiatorRole ? `(${detail.initiatorRole})` : ''}</div></div>
-        <div className="detail-field"><div className="detail-label">Initiation Remark</div><div className="detail-value">{detail.remark || '—'}</div></div>
-        <div className="detail-field"><div className="detail-label">Approver</div><div className="detail-value">{detail.approverName ? `${detail.approverName}${detail.approverRole ? ` (${detail.approverRole})` : ''}` : '—'}</div></div>
-        {detail.status === 'approved' && <div className="detail-field"><div className="detail-label">Approval Remark</div><div className="detail-value">{detail.approvalRemark || '—'}</div></div>}
-        {detail.status === 'rejected' && <div className="detail-field"><div className="detail-label">Rejection Remark</div><div className="detail-value">{detail.rejectionRemark || '—'}</div></div>}
-        <div className="detail-field"><div className="detail-label">Created</div><div className="detail-value">{detail.createdAt ? new Date(detail.createdAt).toLocaleString() : '—'}</div></div>
-        <div className="detail-field"><div className="detail-label">Director Approval Date</div><div className="detail-value">{formatDateTime(detail.directorApproved_at || detail.directorApprovedAt)}</div></div>
-        <div className="detail-field"><div className="detail-label">Manager Approval Date</div><div className="detail-value">{formatDateTime(detail.managerApproved_at || detail.managerApprovedAt)}</div></div>
-        <div className="detail-field"><div className="detail-label">Updated</div><div className="detail-value">{detail.updatedAt ? new Date(detail.updatedAt).toLocaleString() : '—'}</div></div>
+      <div className="operation-detail-meta">
+        <div className="operation-detail-box"><div className="detail-label">Status</div><div className="detail-value"><span className={`status-badge ${detail.status === 'approved' ? 'success' : detail.status === 'rejected' ? 'danger' : 'warning'}`}>{detail.status}</span></div></div>
+        <div className="operation-detail-box"><div className="detail-label">Title</div><div className="detail-value">{detail.transactionTitle || '—'}</div></div>
+        <div className="operation-detail-box"><div className="detail-label">Product</div><div className="detail-value">{meta.productName || detail.productId}</div></div>
+        {meta.secondaryLabel ? <div className="operation-detail-box"><div className="detail-label">Variant / Attribute</div><div className="detail-value">{meta.secondaryLabel}</div></div> : null}
+        <div className="operation-detail-box"><div className="detail-label">Branch</div><div className="detail-value">{byId.get(detail.branchId) || detail.branchId}</div></div>
+        <div className="operation-detail-box"><div className="detail-label">Adjustment Type</div><div className="detail-value">{adjustment.typeLabel}</div></div>
+        <div className="operation-detail-box"><div className="detail-label">Quantity</div><div className="detail-value">{adjustment.quantity}</div></div>
+        <div className="operation-detail-box"><div className="detail-label">Initiator</div><div className="detail-value">{detail.initiatorName} {detail.initiatorRole ? `(${detail.initiatorRole})` : ''}</div></div>
+        <div className="operation-detail-box"><div className="detail-label">Initiation Remark</div><div className="detail-value">{detail.remark || '—'}</div></div>
+        <div className="operation-detail-box"><div className="detail-label">Approver</div><div className="detail-value">{detail.approverName ? `${detail.approverName}${detail.approverRole ? ` (${detail.approverRole})` : ''}` : '—'}</div></div>
+        {detail.status === 'approved' && <div className="operation-detail-box"><div className="detail-label">Approval Remark</div><div className="detail-value">{detail.approvalRemark || '—'}</div></div>}
+        {detail.status === 'rejected' && <div className="operation-detail-box"><div className="detail-label">Rejection Remark</div><div className="detail-value">{detail.rejectionRemark || '—'}</div></div>}
+        <div className="operation-detail-box"><div className="detail-label">Created</div><div className="detail-value">{detail.createdAt ? new Date(detail.createdAt).toLocaleString() : '—'}</div></div>
+        <div className="operation-detail-box"><div className="detail-label">Director Approval Date</div><div className="detail-value">{formatDateTime(detail.directorApproved_at || detail.directorApprovedAt)}</div></div>
+        <div className="operation-detail-box"><div className="detail-label">Manager Approval Date</div><div className="detail-value">{formatDateTime(detail.managerApproved_at || detail.managerApprovedAt)}</div></div>
+        <div className="operation-detail-box"><div className="detail-label">Updated</div><div className="detail-value">{detail.updatedAt ? new Date(detail.updatedAt).toLocaleString() : '—'}</div></div>
       </div>
       {Array.isArray(detail.items) && detail.items.length > 0 && (
-        <div style={{ marginTop: 12 }}>
+        <div className="operation-detail-box">
           <div className="field-label">Request Items</div>
           <div className="table-wrap">
           <table className="table">
@@ -1275,7 +1294,7 @@ function RequestDetail({ detail, products, byId }) {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }
 

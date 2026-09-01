@@ -562,13 +562,14 @@ function PurchasesPage() {
   }
 
   return (
-    <div className="page-shell">
-      <div className="page-header">
-        <div>
-          <h1 style={{ margin: 0 }}>{t('Purchases')}</h1>
-          <div className="page-subtitle-compact">{t('Create, review, and approve retail purchase requests with a cleaner workflow.')}</div>
+    <div className="sales-page-shell">
+      <div className="sales-header">
+        <div className="sales-header-copy">
+          <div className="ui-eyebrow">{t('Stock Operations')}</div>
+          <h1 className="sales-title">{t('Purchases')}</h1>
+          <p className="sales-subtitle">{t('Create, review, and approve retail purchase requests with a cleaner workflow.')}</p>
         </div>
-        <div className="page-header-actions">
+        <div className="sales-header-actions">
           {tab === 'initiate' && (
           <button className="btn btn-primary" onClick={() => { setOpenModal(true); }}>
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2"/></svg>
@@ -579,16 +580,16 @@ function PurchasesPage() {
           <OfflineQueueIndicator collection="audits" label={t('Stock queued')} />
         </div>
       </div>
-      <div className="page-tabs">
+      <div className="sales-tabbar">
         <button className={tab === 'initiate' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('initiate')}>{t('Initiate')}</button>
         <button className={tab === 'approvals' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('approvals')} disabled={!canApprove}>{t('Approvals')}</button>
       </div>
-      <div className="stats-grid">
-        <div className="card stat-card"><div className="stat-label">{t('Purchase Records')}</div><div className="stat-value">{summary.records}</div></div>
-        <div className="card stat-card"><div className="stat-label">{t('Units Purchased')}</div><div className="stat-value">{summary.totalQty}</div></div>
-        <div className="card stat-card"><div className="stat-label">{t('Purchase Value')}</div><div className="stat-value-compact price-accent">{formatCurrency(summary.totalCost, settings)}</div></div>
-        <div className="card stat-card"><div className="stat-label">{t('Products')}</div><div className="stat-value">{summary.uniqueProducts}</div></div>
-        <div className="card stat-card"><div className="stat-label">{t('Pending Approvals')}</div><div className="stat-value">{summary.pendingApprovals}</div></div>
+      <div className="sales-summary-grid">
+        <div className="sales-summary-card" style={{ '--accent': '#2563eb' }}><div className="sales-summary-label">{t('Purchase Records')}</div><div className="sales-summary-value">{summary.records}</div></div>
+        <div className="sales-summary-card" style={{ '--accent': '#0f766e' }}><div className="sales-summary-label">{t('Units Purchased')}</div><div className="sales-summary-value">{summary.totalQty}</div></div>
+        <div className="sales-summary-card" style={{ '--accent': '#7c3aed' }}><div className="sales-summary-label">{t('Purchase Value')}</div><div className="sales-summary-value">{formatCurrency(summary.totalCost, settings)}</div></div>
+        <div className="sales-summary-card" style={{ '--accent': '#06b6d4' }}><div className="sales-summary-label">{t('Products')}</div><div className="sales-summary-value">{summary.uniqueProducts}</div></div>
+        <div className="sales-summary-card" style={{ '--accent': '#f59e0b' }}><div className="sales-summary-label">{t('Pending Approvals')}</div><div className="sales-summary-value">{summary.pendingApprovals}</div></div>
       </div>
       {openModal && (
         <Modal title={t('Add Purchase')} onClose={() => setOpenModal(false)} footer={
@@ -753,11 +754,14 @@ function PurchasesPage() {
         }}
       />
       {tab === 'approvals' && (
-        <div className="card" style={{ marginBottom: 12 }}>
+        <div className="sales-section-card">
           <div className="approval-toolbar">
-            <h2 className="section-title" style={{ marginBottom: 8 }}>{t('Approvals')}</h2>
+            <div>
+              <h2 className="sales-section-title">{t('Approvals')}</h2>
+              <p className="sales-section-note">{t('Review queued purchase requests and complete director or manager actions.')}</p>
+            </div>
             <div className="card-scroll-x">
-            <div className="page-tabs">
+            <div className="sales-tabbar">
               <button className={statusFilter === 'pending_director' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_director')}>{t('Pending Director')}</button>
               <button className={statusFilter === 'pending_manager' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_manager')}>{t('Pending Manager')}</button>
               <button className={statusFilter === 'approved' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('approved')}>{t('Approved')}</button>
@@ -765,7 +769,8 @@ function PurchasesPage() {
             </div>
             </div>
           </div>
-          <div className="record-filters" style={{ marginBottom: 12 }}>
+          <div className="sales-filter-card" style={{ marginTop: 12, marginBottom: 12 }}>
+          <div className="record-filters">
             <label>
               <div className="field-label">{t('Search Product')}</div>
               <input className="input" value={approvalQuery} onChange={e => setApprovalQuery(e.target.value)} placeholder={t('Search product, branch, supplier, or remark')} />
@@ -787,6 +792,12 @@ function PurchasesPage() {
               <div className="field-label">{t('To')}</div>
               <input className="input" type="date" value={approvalDateTo} onChange={e => setApprovalDateTo(e.target.value)} />
             </label>
+          </div>
+          </div>
+          <div className="sales-table-meta">
+            <div className="sales-results-note">
+              {loading ? t('Loading purchases') : `${filteredPendingRequests.length} ${t('request')}${filteredPendingRequests.length === 1 ? '' : 's'}`}
+            </div>
           </div>
           <div className="table-wrap">
           <table className="table">
@@ -825,11 +836,11 @@ function PurchasesPage() {
                     <td>
                       {['pending_approval', 'pending_director', 'pending_manager'].includes(String(r.status || '')) ? (
                         <div className="approval-row-actions">
-                          <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={((String(r.status || '') === 'pending_director' && !canDirectorApprove) || (String(r.status || '') === 'pending_manager' && !canManagerApprove) || busyId === (r._id || r.clientId))}>{busyId === (r._id || r.clientId) ? t('Working…') : String(r.status || '') === 'pending_manager' ? t('Manager Approve') : t('Director Approve')}</button>
-                          <button className="btn" onClick={(e) => { e.stopPropagation(); reject(r); }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? t('Working…') : t('Rejected')}</button>
+                          <button className="btn btn-primary btn-compact" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={((String(r.status || '') === 'pending_director' && !canDirectorApprove) || (String(r.status || '') === 'pending_manager' && !canManagerApprove) || busyId === (r._id || r.clientId))}>{busyId === (r._id || r.clientId) ? t('Working…') : String(r.status || '') === 'pending_manager' ? t('Manager Approve') : t('Director Approve')}</button>
+                          <button className="btn btn-compact" onClick={(e) => { e.stopPropagation(); reject(r); }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? t('Working…') : t('Rejected')}</button>
                         </div>
                       ) : (
-                        <span className={`status-pill ${r.status === 'approved' ? 'status-pill-approved' : 'status-pill-rejected'}`}>{r.status}</span>
+                        <span className={`status-badge ${r.status === 'approved' ? 'success' : 'danger'}`}>{r.status}</span>
                       )}
                     </td>
                   </tr>
@@ -843,28 +854,29 @@ function PurchasesPage() {
       )}
       {detail && (
         <Modal title={t('Purchase Details')} onClose={() => setDetail(null)}>
-          <div className="detail-grid">
-            <div className="detail-field"><div className="detail-label">Status</div><div className="detail-value"><span className={`status-pill ${detail.status === 'approved' ? 'status-pill-approved' : detail.status === 'rejected' ? 'status-pill-rejected' : 'status-pill-pending'}`}>{detail.status}</span></div></div>
-            <div className="detail-field"><div className="detail-label">Branch</div><div className="detail-value">{byId.get(detail.branchId) || detail.branchId}</div></div>
-            <div className="detail-field"><div className="detail-label">Title</div><div className="detail-value">{detail.transactionTitle || '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">Product</div><div className="detail-value">{getProductDisplayMeta(products, detail.productId, detail.variantId, detail).productName || detail.productId}</div></div>
-            {getProductDisplayMeta(products, detail.productId, detail.variantId, detail).secondaryLabel ? <div className="detail-field"><div className="detail-label">Variant / Attribute</div><div className="detail-value">{getProductDisplayMeta(products, detail.productId, detail.variantId, detail).secondaryLabel}</div></div> : null}
-            <div className="detail-field"><div className="detail-label">Base Units</div><div className="detail-value">{detail.baseUnits}</div></div>
-            <div className="detail-field"><div className="detail-label">Pack</div><div className="detail-value">{detail.pack || 'Base Unit'}</div></div>
-            <div className="detail-field"><div className="detail-label">Supplier</div><div className="detail-value">{detail.supplier || '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">Cost</div><div className="detail-value">{Number.isFinite(Number(detail.cost)) ? <span className="price-accent">{formatCurrency(Number(detail.cost), settings)}</span> : '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">Initiator</div><div className="detail-value">{detail.initiatorName} {detail.initiatorRole ? `(${detail.initiatorRole})` : ''}</div></div>
-            <div className="detail-field"><div className="detail-label">Initiation Remark</div><div className="detail-value">{detail.remark || '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">Approver</div><div className="detail-value">{detail.approverName ? `${detail.approverName}${detail.approverRole ? ` (${detail.approverRole})` : ''}` : '—'}</div></div>
-            {detail.status === 'approved' && <div className="detail-field"><div className="detail-label">Approval Remark</div><div className="detail-value">{detail.approvalRemark || '—'}</div></div>}
-            {detail.status === 'rejected' && <div className="detail-field"><div className="detail-label">Rejection Remark</div><div className="detail-value">{detail.rejectionRemark || '—'}</div></div>}
-            <div className="detail-field"><div className="detail-label">Created</div><div className="detail-value">{detail.createdAt ? new Date(detail.createdAt).toLocaleString() : '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">{t('Director Approval Date')}</div><div className="detail-value">{formatDateTime(detail.directorApproved_at || detail.directorApprovedAt)}</div></div>
-            <div className="detail-field"><div className="detail-label">{t('Manager Approval Date')}</div><div className="detail-value">{formatDateTime(detail.managerApproved_at || detail.managerApprovedAt)}</div></div>
-            <div className="detail-field"><div className="detail-label">Updated</div><div className="detail-value">{detail.updatedAt ? new Date(detail.updatedAt).toLocaleString() : '—'}</div></div>
-          </div>
+          <div className="operation-detail-stack">
+            <div className="operation-detail-meta">
+              <div className="operation-detail-box"><div className="detail-label">Status</div><div className="detail-value"><span className={`status-badge ${detail.status === 'approved' ? 'success' : detail.status === 'rejected' ? 'danger' : 'warning'}`}>{detail.status}</span></div></div>
+              <div className="operation-detail-box"><div className="detail-label">Branch</div><div className="detail-value">{byId.get(detail.branchId) || detail.branchId}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">Title</div><div className="detail-value">{detail.transactionTitle || '—'}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">Product</div><div className="detail-value">{getProductDisplayMeta(products, detail.productId, detail.variantId, detail).productName || detail.productId}</div></div>
+              {getProductDisplayMeta(products, detail.productId, detail.variantId, detail).secondaryLabel ? <div className="operation-detail-box"><div className="detail-label">Variant / Attribute</div><div className="detail-value">{getProductDisplayMeta(products, detail.productId, detail.variantId, detail).secondaryLabel}</div></div> : null}
+              <div className="operation-detail-box"><div className="detail-label">Base Units</div><div className="detail-value">{detail.baseUnits}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">Pack</div><div className="detail-value">{detail.pack || 'Base Unit'}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">Supplier</div><div className="detail-value">{detail.supplier || '—'}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">Cost</div><div className="detail-value">{Number.isFinite(Number(detail.cost)) ? <span className="price-accent">{formatCurrency(Number(detail.cost), settings)}</span> : '—'}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">Initiator</div><div className="detail-value">{detail.initiatorName} {detail.initiatorRole ? `(${detail.initiatorRole})` : ''}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">Initiation Remark</div><div className="detail-value">{detail.remark || '—'}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">Approver</div><div className="detail-value">{detail.approverName ? `${detail.approverName}${detail.approverRole ? ` (${detail.approverRole})` : ''}` : '—'}</div></div>
+              {detail.status === 'approved' && <div className="operation-detail-box"><div className="detail-label">Approval Remark</div><div className="detail-value">{detail.approvalRemark || '—'}</div></div>}
+              {detail.status === 'rejected' && <div className="operation-detail-box"><div className="detail-label">Rejection Remark</div><div className="detail-value">{detail.rejectionRemark || '—'}</div></div>}
+              <div className="operation-detail-box"><div className="detail-label">Created</div><div className="detail-value">{detail.createdAt ? new Date(detail.createdAt).toLocaleString() : '—'}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">{t('Director Approval Date')}</div><div className="detail-value">{formatDateTime(detail.directorApproved_at || detail.directorApprovedAt)}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">{t('Manager Approval Date')}</div><div className="detail-value">{formatDateTime(detail.managerApproved_at || detail.managerApprovedAt)}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">Updated</div><div className="detail-value">{detail.updatedAt ? new Date(detail.updatedAt).toLocaleString() : '—'}</div></div>
+            </div>
           {Array.isArray(detail.items) && detail.items.length > 0 && (
-            <div style={{ marginTop: 12 }}>
+            <div className="operation-detail-box">
               <div className="field-label">Request Items</div>
               <div className="table-wrap">
               <table className="table">
@@ -901,9 +913,10 @@ function PurchasesPage() {
               </div>
             </div>
           )}
+          </div>
         </Modal>
       )}
-      <div className="card" style={{ marginTop: 12 }}>
+      <div className="sales-section-card">
         <div className="card-scroll-x">
         <div className="record-filters">
           <label>
@@ -959,7 +972,15 @@ function PurchasesPage() {
           </div>
         </div>
         </div>
-        <h2 className="section-title">{t('Recent Purchases')}</h2>
+        <div className="sales-section-head">
+          <div>
+            <h2 className="sales-section-title">{t('Recent Purchases')}</h2>
+            <p className="sales-section-note">{t('Browse purchase history, export records, and manage bulk cleanup from one table.')}</p>
+          </div>
+        </div>
+        <div className="sales-table-meta">
+          <div className="sales-results-note">{`${purchases.length} ${t('record')}${purchases.length === 1 ? '' : 's'}`}</div>
+        </div>
         <div className="table-wrap">
         <table className="table">
           <thead>
@@ -1022,10 +1043,10 @@ function PurchasesPage() {
           </tbody>
         </table>
         </div>
-        <div className="pagination-row">
-          <div className="pagination-controls">
+        <div className="sales-pagination">
+          <div className="sales-row-actions">
             <button className="btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>Prev</button>
-            <span className="table-meta">Page {page} of {Math.max(1, Math.ceil(purchases.length / pageSize))}</span>
+            <span className="sales-results-note">Page {page} of {Math.max(1, Math.ceil(purchases.length / pageSize))}</span>
             <button className="btn" onClick={() => setPage(p => Math.min(Math.max(1, Math.ceil(purchases.length / pageSize)), p + 1))} disabled={page >= Math.max(1, Math.ceil(purchases.length / pageSize))}>Next</button>
           </div>
           <label>

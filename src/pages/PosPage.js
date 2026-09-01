@@ -262,7 +262,9 @@ function PosPage({ mode = 'retail' }) {
   const setCartItemQuantity = (id, quantity) => dispatch(setQuantity({ id, quantity, scope: cartScope }));
   const setCartItemPricing = (payload) => dispatch(updateItemPricing({ ...payload, scope: cartScope }));
   const clearActiveCart = () => dispatch(clearCart({ scope: cartScope }));
-  const replaceActiveCart = (payload) => dispatch(replaceCart({ ...payload, scope: cartScope }));
+  const replaceActiveCart = useCallback((payload) => {
+    dispatch(replaceCart({ ...payload, scope: cartScope }));
+  }, [cartScope, dispatch]);
   const addHeldSale = (payload) => dispatch(addHeld({ ...payload, scope: cartScope }));
   const removeHeldSale = (id) => dispatch(removeHeld({ id, scope: cartScope }));
   const patchHeldSale = (payload) => dispatch(updateHeld({ ...payload, scope: cartScope }));
@@ -540,7 +542,7 @@ function PosPage({ mode = 'retail' }) {
     return () => {
       cancelled = true;
     };
-  }, [branchLabel, customers, defaultCustomerType, dispatch, initialPriceTier, inventoryType, location.state, products, stockBranchId, toast]);
+  }, [branchLabel, customers, defaultCustomerType, dispatch, initialPriceTier, inventoryType, location.state, products, replaceActiveCart, stockBranchId, toast]);
 
   const customerMatches = useMemo(() => {
     const q = customerQuery.trim().toLowerCase();
@@ -2099,9 +2101,10 @@ function PosPage({ mode = 'retail' }) {
       <div className="pos-products-pane">
         <div className="pos-sticky-search">
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-            <div>
-              <h2 style={{ marginBottom: 4 }}>{modeLabel}</h2>
-              <div style={{ color: '#64748b', fontSize: 12 }}>
+            <div className="pos-page-copy">
+              <div className="ui-eyebrow">{isWarehouse ? t('Warehouse Selling') : isWholesale ? t('Distribution Selling') : t('Retail Selling')}</div>
+              <h2 className="pos-page-title">{modeLabel}</h2>
+              <div className="pos-page-subtitle">
                 {isWholesale
                   ? `${t('Distribution inventory')}${branchLabel ? ` • ${branchLabel}` : missingInventoryBranch ? ` • ${t(missingInventoryBranchText)}` : ''}`
                   : isWarehouse
@@ -2290,7 +2293,7 @@ function PosPage({ mode = 'retail' }) {
         <div className="pos-cart-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0 }}>{t('Cart')}</h2>
           <div style={{ position: 'relative' }}>
-            <div style={{ display: 'flex', gap: 6 }}>
+            <div className="pos-cart-actions">
               {heldUiEnabled && (
                 <>
                   <button className="btn" onClick={holdCurrentSale} disabled={cart.items.length === 0 || saving}>
@@ -2309,8 +2312,8 @@ function PosPage({ mode = 'retail' }) {
               </button>
             </div>
             {heldUiEnabled && heldOpen && (
-              <div style={{ position: 'absolute', right: 0, marginTop: 6, width: 360, maxWidth: '90vw', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 10px 20px rgba(2,6,23,0.15)', zIndex: 30 }}>
-                <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', fontWeight: 700 }}>{t('Held Sales')}</div>
+              <div className="pos-floating-panel">
+                <div className="pos-floating-panel-head">{t('Held Sales')}</div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 8, padding: 10, borderBottom: '1px solid #e2e8f0', alignItems: 'center' }}>
                   <input className="input" placeholder={t('Search label or customer')} value={heldQuery} onChange={e => onChangeHeldQuery(e.target.value)} />
                   <label style={{ color: '#64748b', fontSize: 12 }}>{t('Sort')}</label>
@@ -2321,57 +2324,59 @@ function PosPage({ mode = 'retail' }) {
                     <option value="labelZA">{t('Label Z-A')}</option>
                   </select>
                 </div>
-                <div style={{ maxHeight: 320, overflow: 'auto' }}>
+                <div className="pos-floating-panel-body">
                   {heldList.map(h => (
-                    <div key={h.id} style={{ display: 'grid', gridTemplateColumns: '1fr auto auto auto', alignItems: 'center', gap: 8, padding: 10, borderTop: '1px solid #f1f5f9', opacity: deletingHeldId === String(h.id || '') ? 0.55 : 1 }}>
-                      <div>
-                        <div style={{ fontWeight: 700 }}>{h.label || 'Held sale'}</div>
-                        <div style={{ color: '#64748b', fontSize: 12 }}>{new Date(h.createdAt).toLocaleString()} • {t('Items')}: {Array.isArray(h.items) ? h.items.length : 0}</div>
+                    <div key={h.id} className="pos-floating-item" style={{ opacity: deletingHeldId === String(h.id || '') ? 0.55 : 1 }}>
+                      <div className="pos-floating-item-main">
+                        <div className="pos-floating-item-title">{h.label || 'Held sale'}</div>
+                        <div className="pos-floating-item-meta">{new Date(h.createdAt).toLocaleString()} • {t('Items')}: {Array.isArray(h.items) ? h.items.length : 0}</div>
                       </div>
-                      <button className="btn" onClick={() => renameHeld(h)} disabled={deletingHeldId === String(h.id || '')}>{t('Rename')}</button>
-                      <button className="btn" onClick={() => resumeHeld(h)} disabled={deletingHeldId === String(h.id || '')}>{t('Resume')}</button>
-                      <button className="btn" onClick={() => deleteHeld(h)} disabled={deletingHeldId === String(h.id || '')}>
+                      <div className="pos-floating-item-actions">
+                      <button className="btn btn-compact" onClick={() => renameHeld(h)} disabled={deletingHeldId === String(h.id || '')}>{t('Rename')}</button>
+                      <button className="btn btn-compact" onClick={() => resumeHeld(h)} disabled={deletingHeldId === String(h.id || '')}>{t('Resume')}</button>
+                      <button className="btn btn-compact" onClick={() => deleteHeld(h)} disabled={deletingHeldId === String(h.id || '')}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                           {deletingHeldId === String(h.id || '') && <InlineSpinner />}
                           {deletingHeldId === String(h.id || '') ? t('Deleting...') : t('Delete')}
                         </span>
                       </button>
+                      </div>
                     </div>
                   ))}
-                  {heldList.length === 0 && <div style={{ padding: 12, color: '#64748b' }}>{t('No held sales')}</div>}
+                  {heldList.length === 0 && <div className="pos-floating-empty">{t('No held sales')}</div>}
                 </div>
               </div>
             )}
             {discountOpen && (
-              <div style={{ position: 'absolute', right: 0, marginTop: 6, width: 420, maxWidth: '92vw', background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 10px 20px rgba(2,6,23,0.15)', zIndex: 30 }}>
-                <div style={{ padding: 10, borderBottom: '1px solid #e2e8f0', fontWeight: 700 }}>{t('Discount Sales')}</div>
-                <div style={{ maxHeight: 360, overflow: 'auto' }}>
-                  {discountLoading && <div style={{ padding: 12, color: '#64748b' }}>{t('Loading...')}</div>}
+              <div className="pos-floating-panel pos-floating-panel--wide">
+                <div className="pos-floating-panel-head">{t('Discount Sales')}</div>
+                <div className="pos-floating-panel-body">
+                  {discountLoading && <div className="pos-floating-empty">{t('Loading...')}</div>}
                   {!discountLoading && discountRequestList.map((row) => {
                     const id = String(row?._id || '');
                     const isApproved = String(row?.status || '') === 'approved';
                     const isRejected = String(row?.status || '') === 'rejected';
                     const isWorking = discountWorkingId === id;
                     return (
-                      <div key={id} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, padding: 10, borderTop: '1px solid #f1f5f9', alignItems: 'center' }}>
-                        <div>
-                          <div style={{ fontWeight: 700 }}>{row?.customerName || 'Walk-in customer'}</div>
-                          <div style={{ color: '#64748b', fontSize: 12 }}>
+                      <div key={id} className="pos-floating-item">
+                        <div className="pos-floating-item-main">
+                          <div className="pos-floating-item-title">{row?.customerName || 'Walk-in customer'}</div>
+                          <div className="pos-floating-item-meta">
                             {new Date(row?.createdAt || Date.now()).toLocaleString()} • {formatCurrency(row?.total || 0, settings)} • {String(row?.status || '').replace('_', ' ')}
                           </div>
-                          <div style={{ color: '#64748b', fontSize: 12 }}>
+                          <div className="pos-floating-item-meta">
                             {t('Discount')}: {formatCurrency(row?.discount || 0, settings)}{row?.approvedByName ? ` • ${t('Approver')}: ${row.approvedByName}` : row?.rejectedByName ? ` • ${t('Approver')}: ${row.rejectedByName}` : ''}
                           </div>
                           {row?.rejectionRemark ? (
-                            <div style={{ color: '#b91c1c', fontSize: 12 }}>{t('Remark')}: {row.rejectionRemark}</div>
+                            <div className="pos-floating-item-meta" style={{ color: '#b91c1c' }}>{t('Remark')}: {row.rejectionRemark}</div>
                           ) : null}
                         </div>
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button className="btn btn-primary" onClick={() => completeApprovedDiscountRequest(row)} disabled={(!isApproved && !isRejected) || isWorking}>
+                        <div className="pos-floating-item-actions">
+                          <button className="btn btn-primary btn-compact" onClick={() => completeApprovedDiscountRequest(row)} disabled={(!isApproved && !isRejected) || isWorking}>
                             {isWorking ? t('Processing...') : t('Complete')}
                           </button>
                           {isRejected ? (
-                            <button className="btn" onClick={() => cancelRejectedDiscountRequest(row)} disabled={isWorking}>
+                            <button className="btn btn-compact" onClick={() => cancelRejectedDiscountRequest(row)} disabled={isWorking}>
                               {isWorking ? t('Processing...') : t('Cancel')}
                             </button>
                           ) : null}
@@ -2379,7 +2384,7 @@ function PosPage({ mode = 'retail' }) {
                       </div>
                     );
                   })}
-                  {!discountLoading && discountRequestList.length === 0 && <div style={{ padding: 12, color: '#64748b' }}>{t('No discount requests')}</div>}
+                  {!discountLoading && discountRequestList.length === 0 && <div className="pos-floating-empty">{t('No discount requests')}</div>}
                 </div>
               </div>
             )}
@@ -2489,7 +2494,6 @@ function PosPage({ mode = 'retail' }) {
                 X
               </button>
               <input
-                className="input"
                 type="number"
                 min="1"
                 value={item.quantity}
@@ -2497,10 +2501,10 @@ function PosPage({ mode = 'retail' }) {
                   if (item.unitId) return;
                   setCartItemQuantity(item.id, Number(e.target.value));
                 }}
-                style={{ width: 70 }}
+                className="input pos-cart-qty"
                 disabled={!!item.unitId}
               />
-              <div style={{ display: 'grid', gap: 6 }}>
+              <div className="pos-cart-price-box">
                 {isNonRetail ? (
                 <>
                 <select
@@ -2519,7 +2523,7 @@ function PosPage({ mode = 'retail' }) {
                 </select>
                 </>
                 ) : (
-                <span style={{ fontWeight: 700 }}>{formatCurrency(item.price, settings)}</span>
+                <span className="pos-cart-price-inline">{formatCurrency(item.price, settings)}</span>
                 )}
                 {!isWarehouse && (
                   <span style={{ fontSize: 12, color: '#64748b' }}>
@@ -2527,7 +2531,7 @@ function PosPage({ mode = 'retail' }) {
                   </span>
                 )}
               </div>
-              <div style={{ minWidth: 120, textAlign: 'right', paddingRight: 18 }}>
+              <div className="pos-cart-total">
                 <strong>{formatCurrency((Number(item.price) || 0) * (Number(item.quantity) || 0), settings)}</strong>
               </div>
             </li>
@@ -2548,15 +2552,15 @@ function PosPage({ mode = 'retail' }) {
               <div style={{ color: '#64748b' }}>{t('Loyalty discount')}: {formatCurrency(loyaltyDiscount, settings)}</div>
             </div>
           )}
-          <div style={{ marginTop: 8 }}>
-            <div>{t('Subtotal')}: {formatCurrency(subtotal, settings)}</div>
-            <div>{t('Discount')}: {formatCurrency(discount, settings)}</div>
-            <div>{t('Tax')} ({Math.round((taxRate || 0) * 100)}%): {formatCurrency(tax, settings)}</div>
-            <div><strong>{t('Total')}: {formatCurrency(total, settings)}</strong></div>
+          <div style={{ marginTop: 10 }}>
+            <div className="pos-summary-row"><span>{t('Subtotal')}</span><strong>{formatCurrency(subtotal, settings)}</strong></div>
+            <div className="pos-summary-row"><span>{t('Discount')}</span><strong>{formatCurrency(discount, settings)}</strong></div>
+            <div className="pos-summary-row"><span>{t('Tax')} ({Math.round((taxRate || 0) * 100)}%)</span><strong>{formatCurrency(tax, settings)}</strong></div>
+            <div className="pos-summary-row total"><span>{t('Total')}</span><strong>{formatCurrency(total, settings)}</strong></div>
           </div>
-          <div style={{ marginTop: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 8 }}>
-              <h3 style={{ margin: 0 }}>{t('Payments')}</h3>
+          <div className="pos-payments-card">
+            <div className="pos-payments-head">
+              <h3 className="pos-payments-title">{t('Payments')}</h3>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
                 <input
                   type="checkbox"
@@ -2569,7 +2573,7 @@ function PosPage({ mode = 'retail' }) {
             </div>
             {easyBuyEnabled ? (
               <div style={{ display: 'grid', gap: 8 }}>
-                <div style={{ color: easyBuyBlockedItem ? '#b91c1c' : '#64748b', fontSize: 12 }}>
+                <div className="pos-payments-note" style={{ color: easyBuyBlockedItem ? '#b91c1c' : '#64748b' }}>
                   {easyBuyBlockedItem
                     ? `${easyBuyBlockedItem.name} ${t('does not allow')} ${creditModeLabel.toLowerCase()}`
                     : `${t('Minimum upfront')}: ${formatCurrency(easyBuyMinimum, settings)}${customerMaxCreditLimit > 0 ? ` • ${t('Limit')}: ${formatCurrency(customerMaxCreditLimit, settings)}` : ''}`}
@@ -2595,7 +2599,7 @@ function PosPage({ mode = 'retail' }) {
                 <div style={{ display: 'grid', gap: 6 }}>
                   <div style={{ color: '#64748b', fontSize: 12 }}>{t('Payment method breakdown must equal the amount paid now')}</div>
                   {payments.map((p, i) => (
-                    <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <div key={i} className="pos-payment-row">
                       <select className="select" value={p.type} onChange={e => updatePayment(i, 'type', e.target.value)} style={{ width: 112, minWidth: 112, flex: '0 0 112px' }}>
                         <option value="cash">{t('Cash')}</option>
                         <option value="card">{t('Card')}</option>
@@ -2608,12 +2612,12 @@ function PosPage({ mode = 'retail' }) {
                   ))}
                   <button className="btn" onClick={addPaymentRow}>{t('Add Payment')}</button>
                 </div>
-                <div style={{ color: '#64748b' }}>{t('Paid now')}: {formatCurrency(paid, settings)} | {t('Breakdown total')}: {formatCurrency(payments.reduce((sum, row) => sum + (Number(row.amount) || 0), 0), settings)} | {t('Remaining balance')}: {formatCurrency(due, settings)}</div>
+                  <div className="pos-payments-note">{t('Paid now')}: {formatCurrency(paid, settings)} | {t('Breakdown total')}: {formatCurrency(payments.reduce((sum, row) => sum + (Number(row.amount) || 0), 0), settings)} | {t('Remaining balance')}: {formatCurrency(due, settings)}</div>
               </div>
             ) : (
               <>
                 {payments.map((p, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                  <div key={i} className="pos-payment-row">
                     <select className="select" value={p.type} onChange={e => updatePayment(i, 'type', e.target.value)} style={{ width: 112, minWidth: 112, flex: '0 0 112px' }}>
                       <option value="cash">{t('Cash')}</option>
                       <option value="card">{t('Card')}</option>
@@ -2631,7 +2635,7 @@ function PosPage({ mode = 'retail' }) {
                   <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2"/></svg>
                   {t('Add Payment')}
                 </button>
-                <div style={{ marginTop: 6, color: '#64748b' }}>{t('Paid')}: {formatCurrency(paid, settings)} | {t('Due')}: {formatCurrency(due, settings)} | {t('Change')}: {formatCurrency(change, settings)}</div>
+                <div className="pos-payments-note">{t('Paid')}: {formatCurrency(paid, settings)} | {t('Due')}: {formatCurrency(due, settings)} | {t('Change')}: {formatCurrency(change, settings)}</div>
               </>
             )}
           </div>
@@ -2672,7 +2676,7 @@ function PosPage({ mode = 'retail' }) {
             </div>
           )}
         </div>
-        <div style={{ marginTop: 12 }}>
+        <div className="pos-action-row">
           {requiresDiscountApproval ? (
             <button className="btn btn-primary" onClick={submitDiscountForReview} disabled={cart.items.length === 0 || saving}>
               <svg viewBox="0 0 24 24" fill="none"><path d="M4 12h10" stroke="currentColor" strokeWidth="2"/><path d="M11 7l5 5-5 5" stroke="currentColor" strokeWidth="2"/><path d="M18 5h2v14h-2" stroke="currentColor" strokeWidth="2"/></svg>
@@ -2684,13 +2688,13 @@ function PosPage({ mode = 'retail' }) {
                 <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>
                 {saving ? t('Processing...') : t('Complete & Print')}
               </button>
-              <button className="btn" onClick={() => completeSale(true)} style={{ marginLeft: 8 }} disabled={cart.items.length === 0 || saving}>
+              <button className="btn" onClick={() => completeSale(true)} disabled={cart.items.length === 0 || saving}>
                 <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>
                 {saving ? t('Processing...') : t('Complete (ESC/POS)')}
               </button>
             </>
           )}
-          <button className="btn" onClick={() => { void releaseSerializedCartItems(cart.items); clearActiveCart(); rotateReservationToken(); }} style={{ marginLeft: 8 }} disabled={cart.items.length === 0}>
+          <button className="btn" onClick={() => { void releaseSerializedCartItems(cart.items); clearActiveCart(); rotateReservationToken(); }} disabled={cart.items.length === 0}>
             <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M6 7l1 12h10l1-12M9 7l1-2h4l1 2" stroke="currentColor" strokeWidth="2"/></svg>
             {t('Clear')}
           </button>

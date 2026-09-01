@@ -556,23 +556,31 @@ function InvoicesPage({ mode = 'retail' }) {
   ), [invoiceKind, invoices, recordSourceFilter, searchTerm]);
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 12 }}>
-        <h1 style={{ margin: 0 }}>{pageTitle}</h1>
-        <div style={{ color: '#64748b', fontSize: 13 }}>
+    <div className="sales-page-shell">
+      <div className="sales-header">
+        <div className="sales-header-copy">
+          <div className="ui-eyebrow">Billing</div>
+          <h1 className="sales-title">{pageTitle}</h1>
+          <p className="sales-subtitle">
           {modeLower === 'retail' ? 'Create retail A4 invoices and reprint invoice records.' : modeLower === 'wholesale' ? 'Create distribution A4 invoices using the assigned visible pricing tier.' : 'Create warehouse A4 invoices using the assigned visible pricing tier.'}
+          </p>
         </div>
       </div>
-      <div className="filter-actions" style={{ marginBottom: 12 }}>
+      <div className="sales-tabbar">
         {showNewTab && (<button className={`btn ${tab === 'new' ? 'btn-primary' : ''}`} onClick={() => setTab('new')}>New Invoice</button>)}
         {showRecordsTab && (<button className={`btn ${tab === 'records' ? 'btn-primary' : ''}`} onClick={() => setTab('records')}>Invoice Records</button>)}
       </div>
       {(tab === 'new' && showNewTab) ? (
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 16 }}>
-        <div>
-          <h2>Products</h2>
+      <div className="invoice-workspace">
+        <div className="invoice-pane">
+          <div className="sales-section-head">
+            <div>
+              <h2 className="sales-section-title">Products</h2>
+              <p className="sales-section-note">Search products, pick the invoice price tier, and build the item list from one side.</p>
+            </div>
+          </div>
           {modeLower !== 'retail' && (
-            <div className="card" style={{ marginBottom: 12 }}>
+            <div className="sales-section-card">
               <label style={{ display: 'grid', gap: 6 }}>
                 <div style={{ fontWeight: 700 }}>Invoice Price Tier</div>
                 <select className="select" value={selectedInvoiceTier} onChange={e => setSelectedInvoiceTier(e.target.value)}>
@@ -588,9 +596,12 @@ function InvoicesPage({ mode = 'retail' }) {
               </label>
             </div>
           )}
+          <div className="sales-filter-card">
           <div className="toolbar">
             <input className="input" placeholder="Search name, brand, SKU or scan barcode" value={query} onChange={e => setQuery(e.target.value)} style={{ width: '100%' }} />
           </div>
+          </div>
+          <div className="sales-section-card">
           <div className="product-list">
             {filtered.map(p => (
               <button key={p.id} onClick={() => addItem(p)} className="product-list-item">
@@ -607,11 +618,17 @@ function InvoicesPage({ mode = 'retail' }) {
               </button>
             ))}
           </div>
+          </div>
         </div>
-        <div>
-          <h2>Invoice</h2>
+        <div className="invoice-pane">
+          <div className="sales-section-head">
+            <div>
+              <h2 className="sales-section-title">Invoice</h2>
+              <p className="sales-section-note">Fill customer details, review totals, and generate or update the A4 invoice.</p>
+            </div>
+          </div>
         {editingInvoiceId && (
-          <div className="card" style={{ marginBottom: 12, padding: 12, display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+          <div className="sales-section-card" style={{ padding: 12, display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
             <div>
               <div style={{ fontWeight: 700 }}>Editing Invoice</div>
               <div style={{ color: '#64748b', fontSize: 12 }}>{editingInvoiceNumber || 'Current invoice'} will be updated instead of creating a new one.</div>
@@ -619,7 +636,7 @@ function InvoicesPage({ mode = 'retail' }) {
             <button className="btn" onClick={resetInvoiceForm}>Cancel Edit</button>
           </div>
         )}
-        <div className="card" style={{ marginBottom: 12 }}>
+        <div className="sales-section-card">
           <div style={{ fontWeight: 700, marginBottom: 6 }}>Customer</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
             <div style={{ position: 'relative' }}>
@@ -676,6 +693,7 @@ function InvoicesPage({ mode = 'retail' }) {
               )}
           </div>
         </div>
+        <div className="sales-section-card">
         <ul className="cart-list">
           {items.map(item => (
             <li key={item.id} className="cart-item">
@@ -712,7 +730,8 @@ function InvoicesPage({ mode = 'retail' }) {
             <div><strong className="price-accent">Total: {formatCurrency(total, settings)}</strong></div>
           </div>
         </div>
-          <div className="card" style={{ marginTop: 12 }}>
+        </div>
+          <div className="sales-section-card">
           <div style={{ display: 'grid', gap: 8 }}>
             <input className="input" placeholder="Delivery Note" value={deliveryNote} onChange={e => setDeliveryNote(e.target.value)} />
             <input className="input" placeholder="Payment Terms" value={paymentTerms} onChange={e => setPaymentTerms(e.target.value)} />
@@ -744,9 +763,15 @@ function InvoicesPage({ mode = 'retail' }) {
         </div>
       </div>
       ) : (tab === 'records' && showRecordsTab) ? (
-      <div className="card">
-        <h2 className="section-title" style={{ margin: '8px 0' }}>Invoice Records</h2>
-        <div className="toolbar" style={{ marginBottom: 8, display: 'flex', gap: 8 }}>
+      <div className="sales-section-card">
+        <div className="sales-section-head">
+          <div>
+            <h2 className="sales-section-title">Invoice Records</h2>
+            <p className="sales-section-note">Search invoice numbers, filter temporary records, and reopen editable invoices when needed.</p>
+          </div>
+        </div>
+        <div className="sales-filter-card" style={{ marginBottom: 8 }}>
+        <div className="toolbar" style={{ display: 'flex', gap: 8 }}>
           <input className="input" placeholder="Search by number, receipt, temp ref, customer, order no., supplier/other refs" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} style={{ width: '100%' }} />
           {modeLower === 'retail' && (
             <div style={{ display: 'inline-flex', gap: 4 }}>
@@ -762,6 +787,11 @@ function InvoicesPage({ mode = 'retail' }) {
             <button className={recordSourceFilter === 'server' ? 'btn btn-primary' : 'btn'} onClick={() => setRecordSourceFilter('server')}>Server Records</button>
           </div>
         </div>
+        </div>
+        <div className="sales-table-meta">
+          <div className="sales-results-note">{`${filteredInvoiceRecords.length} record${filteredInvoiceRecords.length === 1 ? '' : 's'}`}</div>
+        </div>
+        <div className="table-wrap">
         <table className="table">
           <thead>
             <tr>
@@ -812,6 +842,7 @@ function InvoicesPage({ mode = 'retail' }) {
             )}
           </tbody>
         </table>
+        </div>
       </div>
       ) : null}
     </div>

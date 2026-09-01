@@ -1,5 +1,5 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { setSession, openSession, closeSession, addMovement } from '../store/sessionsSlice';
 import { downloadText, escposOpenDrawer } from '../utils/escpos';
 import * as cashApi from '../api/cashsessions';
@@ -103,68 +103,97 @@ function CashDrawerPage() {
   const totalIn = session.movements.filter(m => m.type === 'in').reduce((s, m) => s + m.amount, 0);
   const totalOut = session.movements.filter(m => m.type === 'out').reduce((s, m) => s + m.amount, 0);
   const expected = session.openingFloat + totalIn - totalOut;
+  const summaryCards = useMemo(() => ([
+    { key: 'opened', label: 'Opening Float', value: formatCurrency(session.openingFloat || 0, settings), accent: '#2563eb' },
+    { key: 'expected', label: 'Expected Cash', value: formatCurrency(expected || 0, settings), accent: '#0f766e' },
+    { key: 'cashin', label: 'Cash In', value: formatCurrency(totalIn || 0, settings), accent: '#7c3aed' },
+    { key: 'cashout', label: 'Cash Out', value: formatCurrency(totalOut || 0, settings), accent: '#dc2626' }
+  ]), [expected, session.openingFloat, settings, totalIn, totalOut]);
 
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <h1 style={{ margin: 0 }}>Cash Drawer</h1>
-        <OfflineQueueIndicator collection="cashsessions" label="Cash queued" />
+    <div className="sales-page-shell">
+      <div className="sales-header">
+        <div className="sales-header-copy">
+          <div className="ui-eyebrow">Till Control</div>
+          <h1 className="sales-title">Cash Drawer</h1>
+          <p className="sales-subtitle">Open the till, record cash movements, and close the session with a cleaner cashier workflow.</p>
+        </div>
+        <div className="sales-header-actions">
+          <OfflineQueueIndicator collection="cashsessions" label="Cash queued" />
+        </div>
       </div>
       {loadingSession && (
-        <div className="card" style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+        <div className="sales-section-card" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <InlineSpinner />
           <span style={{ color: '#64748b' }}>Loading cash session…</span>
         </div>
       )}
       {session.isOpen ? (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 12, marginBottom: 16 }}>
-            <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-              <div style={{ color: '#64748b' }}>Opened</div>
-              <div style={{ fontWeight: 700 }}>{new Date(session.openedAt).toLocaleString()}</div>
-            </div>
-            <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-              <div style={{ color: '#64748b' }}>Opening Float</div>
-              <div style={{ fontWeight: 700 }}>{formatCurrency(session.openingFloat, settings)}</div>
-            </div>
-            <div style={{ background: '#fff', padding: 16, borderRadius: 12 }}>
-              <div style={{ color: '#64748b' }}>Expected Cash</div>
-              <div style={{ fontWeight: 700 }}>{formatCurrency(expected, settings)}</div>
-            </div>
+          <div className="sales-summary-grid">
+            {summaryCards.map((card) => (
+              <div key={card.key} className="sales-summary-card" style={{ '--accent': card.accent }}>
+                <div className="sales-summary-label">{card.label}</div>
+                <div className="sales-summary-value">{card.value}</div>
+              </div>
+            ))}
           </div>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <input placeholder="amount" type="number" value={amount} onChange={e => setAmount(e.target.value)} />
-            <input placeholder="note" value={note} onChange={e => setNote(e.target.value)} />
-            <button onClick={() => record('in')} disabled={workingAction === 'in' || workingAction === 'out' || workingAction === 'close'}>
+
+          <div className="sales-section-card">
+            <div className="sales-section-head">
+              <div>
+                <h2 className="sales-section-title">Live Session</h2>
+                <p className="sales-section-note">{session.openedAt ? `Opened ${new Date(session.openedAt).toLocaleString()}` : 'Session is active.'}</p>
+              </div>
+            </div>
+            <div className="cashdrawer-action-row">
+              <input className="input" placeholder="Amount" type="number" value={amount} onChange={e => setAmount(e.target.value)} />
+              <input className="input" placeholder="Note" value={note} onChange={e => setNote(e.target.value)} />
+              <button className="btn btn-primary" onClick={() => record('in')} disabled={workingAction === 'in' || workingAction === 'out' || workingAction === 'close'}>
               {workingAction === 'in' ? 'Processing…' : 'Cash In'}
-            </button>
-            <button onClick={() => record('out')} disabled={workingAction === 'in' || workingAction === 'out' || workingAction === 'close'}>
+              </button>
+              <button className="btn" onClick={() => record('out')} disabled={workingAction === 'in' || workingAction === 'out' || workingAction === 'close'}>
               {workingAction === 'out' ? 'Processing…' : 'Cash Out'}
-            </button>
-            <button onClick={openDrawerNow}>Open Drawer Now</button>
+              </button>
+              <button className="btn" onClick={openDrawerNow}>Open Drawer Now</button>
+            </div>
           </div>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr>
-                <th align="left">Time</th>
-                <th align="left">Type</th>
-                <th align="left">Amount</th>
-                <th align="left">Note</th>
-              </tr>
-            </thead>
-            <tbody>
-              {session.movements.map((m, i) => (
-                <tr key={i} style={{ borderTop: '1px solid #e2e8f0' }}>
-                  <td>{new Date(m.time).toLocaleString()}</td>
-                  <td>{m.type}</td>
-                  <td>{formatCurrency(m.amount, settings)}</td>
-                  <td>{m.note}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div style={{ marginTop: 12 }}>
-            <button onClick={() => {
+
+          <div className="sales-section-card">
+            <div className="sales-section-head">
+              <div>
+                <h2 className="sales-section-title">Movements</h2>
+                <p className="sales-section-note">Track everything added to or removed from the till during this session.</p>
+              </div>
+            </div>
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th align="left">Time</th>
+                    <th align="left">Type</th>
+                    <th align="left">Amount</th>
+                    <th align="left">Note</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {session.movements.map((m, i) => (
+                    <tr key={i}>
+                      <td>{new Date(m.time).toLocaleString()}</td>
+                      <td><span className={`status-badge ${m.type === 'in' ? 'success' : 'danger'}`}>{m.type}</span></td>
+                      <td>{formatCurrency(m.amount, settings)}</td>
+                      <td>{m.note || '—'}</td>
+                    </tr>
+                  ))}
+                  {session.movements.length === 0 && (
+                    <tr><td colSpan={4} style={{ color: '#64748b' }}>No movements recorded yet.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="sales-table-meta">
+              <div className="sales-results-note">Close the session when reconciliation is complete.</div>
+              <button className="btn btn-primary" onClick={() => {
               (async () => {
                 setWorkingAction('close');
                 if (!navigator.onLine) {
@@ -192,21 +221,27 @@ function CashDrawerPage() {
               })();
             }} disabled={workingAction === 'in' || workingAction === 'out' || workingAction === 'close'}>
               {workingAction === 'close' ? 'Closing…' : 'Close Session'}
-            </button>
+              </button>
+            </div>
           </div>
         </>
       ) : (
-        <div style={{ background: '#fff', padding: 16, borderRadius: 12, width: 360 }}>
-          <h2>Open Cash Drawer</h2>
-          <input placeholder="Opening float" type="number" value={floatAmount} onChange={e => setFloatAmount(e.target.value)} style={{ display: 'block', width: '100%', marginBottom: 8 }} />
-          <button onClick={openDrawer} disabled={workingAction === 'open'}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+        <div className="sales-section-card cashdrawer-open-card">
+          <div className="sales-section-head">
+            <div>
+              <h2 className="sales-section-title">Open Cash Drawer</h2>
+              <p className="sales-section-note">Start the cashier session with the opening float before sales begin.</p>
+            </div>
+          </div>
+          <input className="input" placeholder="Opening float" type="number" value={floatAmount} onChange={e => setFloatAmount(e.target.value)} style={{ display: 'block', width: '100%', marginBottom: 10 }} />
+          <div className="cashdrawer-open-actions">
+            <button className="btn btn-primary" onClick={openDrawer} disabled={workingAction === 'open'}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               {workingAction === 'open' && <InlineSpinner />}
               {workingAction === 'open' ? 'Opening…' : 'Open Session'}
-            </span>
-          </button>
-          <div style={{ marginTop: 8 }}>
-            <button onClick={openDrawerNow}>Open Drawer Now</button>
+              </span>
+            </button>
+            <button className="btn" onClick={openDrawerNow}>Open Drawer Now</button>
           </div>
         </div>
       )}

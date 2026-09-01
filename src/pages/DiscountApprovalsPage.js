@@ -63,21 +63,21 @@ function buildStatusLabel(status = '') {
 function buildReviewResult(row = {}) {
   const status = String(row?.status || '').trim().toLowerCase();
   if (status === 'rejected' || status === 'cancelled' || row?.rejectedByName) {
-    return { label: 'Rejected', color: '#b91c1c', background: '#fee2e2', border: '#fecaca' };
+    return { label: 'Rejected', tone: 'danger' };
   }
   if (status === 'approved' || (status === 'completed' && row?.approvedByName)) {
-    return { label: 'Approved', color: '#166534', background: '#dcfce7', border: '#bbf7d0' };
+    return { label: 'Approved', tone: 'success' };
   }
-  return { label: 'Pending', color: '#92400e', background: '#fef3c7', border: '#fde68a' };
+  return { label: 'Pending', tone: 'warning' };
 }
 
 function buildLifecycleBadge(status = '') {
   const value = String(status || '').trim().toLowerCase();
-  if (value === 'completed') return { label: 'Completed', color: '#1e293b', background: '#e2e8f0', border: '#cbd5e1' };
-  if (value === 'cancelled') return { label: 'Cancelled', color: '#7c2d12', background: '#ffedd5', border: '#fdba74' };
-  if (value === 'approved') return { label: 'Approved', color: '#166534', background: '#dcfce7', border: '#bbf7d0' };
-  if (value === 'rejected') return { label: 'Rejected', color: '#b91c1c', background: '#fee2e2', border: '#fecaca' };
-  return { label: 'Under Review', color: '#92400e', background: '#fef3c7', border: '#fde68a' };
+  if (value === 'completed') return { label: 'Completed', tone: 'info' };
+  if (value === 'cancelled') return { label: 'Cancelled', tone: 'danger' };
+  if (value === 'approved') return { label: 'Approved', tone: 'success' };
+  if (value === 'rejected') return { label: 'Rejected', tone: 'danger' };
+  return { label: 'Under Review', tone: 'warning' };
 }
 
 function isWithinDateRange(value, from, to) {
@@ -89,26 +89,6 @@ function isWithinDateRange(value, from, to) {
   if (toDate) toDate.setHours(23, 59, 59, 999);
   const toStamp = toDate ? toDate.getTime() : Number.MAX_SAFE_INTEGER;
   return stamp >= fromStamp && stamp <= toStamp;
-}
-
-function statusPill({ label, color, background, border }) {
-  return (
-    <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minWidth: 96,
-      padding: '4px 10px',
-      borderRadius: 999,
-      fontSize: 12,
-      fontWeight: 700,
-      color,
-      background,
-      border: `1px solid ${border}`
-    }}>
-      {label}
-    </span>
-  );
 }
 
 function requestUnitIds(row = {}) {
@@ -344,28 +324,41 @@ function DiscountApprovalsPage() {
   }
 
   const activeDetailItems = detail ? detailItems(detail) : [];
+  const summaryCards = [
+    { key: 'count', label: t('Requests'), value: rowsForTable.length, accent: '#2563eb' },
+    { key: 'pending', label: t('Pending'), value: rowsForTable.filter((row) => buildReviewResult(row).label === 'Pending').length, accent: '#f59e0b' },
+    { key: 'approved', label: t('Approved'), value: rowsForTable.filter((row) => buildReviewResult(row).label === 'Approved').length, accent: '#0f766e' },
+    { key: 'rejected', label: t('Rejected'), value: rowsForTable.filter((row) => buildReviewResult(row).label === 'Rejected').length, accent: '#dc2626' }
+  ];
 
   return (
-    <div className="page-shell">
-      <div className="page-header">
-        <div>
-          <h1 style={{ margin: 0 }}>{t('Discount Approval')}</h1>
-          <div className="page-subtitle-compact">Review, approve, reject, complete, and track discounted sales with full accountability.</div>
+    <div className="sales-page-shell">
+      <div className="sales-header">
+        <div className="sales-header-copy">
+          <div className="ui-eyebrow">{t('Governance')}</div>
+          <h1 className="sales-title">{t('Discount Approval')}</h1>
+          <p className="sales-subtitle">Review, approve, reject, complete, and track discounted sales with full accountability.</p>
+        </div>
+        <div className="sales-header-actions">
+          <div className="sales-tabbar">
+            <button className={`btn ${tab === 'under_review' ? 'btn-primary' : ''}`} onClick={() => setTab('under_review')}>{t('Under Review')}</button>
+            <button className={`btn ${tab === 'approved' ? 'btn-primary' : ''}`} onClick={() => setTab('approved')}>{t('Approved')}</button>
+            <button className={`btn ${tab === 'completed' ? 'btn-primary' : ''}`} onClick={() => setTab('completed')}>{t('Completed')}</button>
+          </div>
         </div>
       </div>
-      <div className="filter-actions" style={{ marginBottom: 12 }}>
-        <button className={`btn ${tab === 'under_review' ? 'btn-primary' : ''}`} onClick={() => setTab('under_review')}>
-          {t('Under Review')}
-        </button>
-        <button className={`btn ${tab === 'approved' ? 'btn-primary' : ''}`} onClick={() => setTab('approved')}>
-          {t('Approved')}
-        </button>
-        <button className={`btn ${tab === 'completed' ? 'btn-primary' : ''}`} onClick={() => setTab('completed')}>
-          {t('Completed')}
-        </button>
+
+      <div className="sales-summary-grid">
+        {summaryCards.map((card) => (
+          <div key={card.key} className="sales-summary-card" style={{ '--accent': card.accent }}>
+            <div className="sales-summary-label">{card.label}</div>
+            <div className="sales-summary-value">{card.value}</div>
+          </div>
+        ))}
       </div>
-      <div className="card" style={{ marginBottom: 12 }}>
-        <div className="filter-actions" style={{ display: 'grid', gap: 10, gridTemplateColumns: 'minmax(220px, 1.4fr) repeat(4, minmax(140px, 1fr)) auto' }}>
+
+      <div className="sales-filter-card">
+        <div className="sales-filter-grid">
           <input className="input" placeholder={t('Search customer, item, approver, remark')} value={search} onChange={(e) => setSearch(e.target.value)} />
           <select className="select" value={branchFilter} onChange={(e) => setBranchFilter(e.target.value)}>
             <option value="all">{t('All Branches')}</option>
@@ -384,7 +377,17 @@ function DiscountApprovalsPage() {
           </button>
         </div>
       </div>
-      <div className="card">
+
+      <div className="sales-section-card">
+        <div className="sales-section-head">
+          <div>
+            <h2 className="sales-section-title">{t('Request Queue')}</h2>
+            <p className="sales-section-note">{t('Open any row to review the sale, remarks, items, and approval history.')}</p>
+          </div>
+        </div>
+        <div className="sales-table-meta">
+          <div className="sales-results-note">{loading ? t('Loading...') : `${rowsForTable.length} ${t('records')}`}</div>
+        </div>
         <div className="table-wrap">
           <table className="table">
             <thead>
@@ -421,23 +424,21 @@ function DiscountApprovalsPage() {
                     <td>{row?.submittedByName || '—'}</td>
                     <td>{row?.approvedByName || row?.rejectedByName || '—'}</td>
                     <td>{row?.completedByName || '—'}</td>
-                    <td>{statusPill(reviewResult)}</td>
-                    <td>{statusPill(lifecycleBadge)}</td>
+                    <td><span className={`status-badge ${reviewResult.tone}`}>{reviewResult.label}</span></td>
+                    <td><span className={`status-badge ${lifecycleBadge.tone}`}>{lifecycleBadge.label}</span></td>
                     <td align="right" onClick={(e) => e.stopPropagation()}>
                       {tab === 'under_review' && (
-                        <>
-                          <button className="btn btn-primary" onClick={() => openDetail(row)} disabled={busy}>
-                            {busy ? t('Working...') : t('Approve')}
-                          </button>
-                        </>
+                        <button className="btn btn-primary btn-compact" onClick={() => openDetail(row)} disabled={busy}>
+                          {busy ? t('Working...') : t('Approve')}
+                        </button>
                       )}
                       {tab === 'approved' && (
-                        <button className="btn btn-primary" onClick={() => onComplete(row)} disabled={busy || !canComplete}>
+                        <button className="btn btn-primary btn-compact" onClick={() => onComplete(row)} disabled={busy || !canComplete}>
                           {busy ? t('Working...') : t('Complete')}
                         </button>
                       )}
                       {tab === 'completed' && (
-                        <button className="btn" onClick={() => openDetail(row)}>
+                        <button className="btn btn-compact" onClick={() => openDetail(row)}>
                           {t('View')}
                         </button>
                       )}
@@ -482,18 +483,18 @@ function DiscountApprovalsPage() {
             </>
           )}
         >
-          <div style={{ display: 'grid', gap: 14 }}>
-            <div style={{ display: 'grid', gap: 6, gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-              <div><strong>{t('Branch')}:</strong> {branchMap.get(String(detail?.branchId || '')) || detail?.branchName || '—'}</div>
-              <div><strong>{t('Customer')}:</strong> {detail?.customerName || detail?.customerPhone || 'Walk-in'}</div>
-              <div><strong>{t('Initiator')}:</strong> {detail?.submittedByName || '—'}</div>
-              <div><strong>{t('Approver')}:</strong> {detail?.approvedByName || detail?.rejectedByName || '—'}</div>
-              <div><strong>{t('Completer')}:</strong> {detail?.completedByName || '—'}</div>
-              <div><strong>{t('Status')}:</strong> {buildStatusLabel(detail?.status)}</div>
+          <div className="discount-detail-grid">
+            <div className="discount-detail-meta">
+              <div className="discount-detail-box"><strong>{t('Branch')}:</strong> {branchMap.get(String(detail?.branchId || '')) || detail?.branchName || '—'}</div>
+              <div className="discount-detail-box"><strong>{t('Customer')}:</strong> {detail?.customerName || detail?.customerPhone || 'Walk-in'}</div>
+              <div className="discount-detail-box"><strong>{t('Initiator')}:</strong> {detail?.submittedByName || '—'}</div>
+              <div className="discount-detail-box"><strong>{t('Approver')}:</strong> {detail?.approvedByName || detail?.rejectedByName || '—'}</div>
+              <div className="discount-detail-box"><strong>{t('Completer')}:</strong> {detail?.completedByName || '—'}</div>
+              <div className="discount-detail-box"><strong>{t('Status')}:</strong> {buildStatusLabel(detail?.status)}</div>
             </div>
 
             {String(detail?.status || '') === 'under_review' ? (
-              <div style={{ display: 'grid', gap: 10, gridTemplateColumns: 'minmax(180px, 220px) 1fr' }}>
+              <div className="discount-detail-edit">
                 <div>
                   <div style={{ marginBottom: 6, fontWeight: 700 }}>{t('Discount Amount')}</div>
                   <input className="input" type="number" min="0" step="0.01" value={draftDiscount} onChange={(e) => setDraftDiscount(e.target.value)} />
@@ -504,14 +505,14 @@ function DiscountApprovalsPage() {
                 </div>
               </div>
             ) : (
-              <div style={{ display: 'grid', gap: 6 }}>
+              <div className="discount-detail-box" style={{ display: 'grid', gap: 6 }}>
                 <div><strong>{t('Reviewed Discount')}:</strong> {formatCurrency(detail?.discount || 0, settings)}</div>
                 {detail?.approvalRemark ? <div><strong>{t('Approval Remark')}:</strong> {detail.approvalRemark}</div> : null}
                 {detail?.rejectionRemark ? <div><strong>{t('Rejection Remark')}:</strong> {detail.rejectionRemark}</div> : null}
               </div>
             )}
 
-            <div>
+            <div className="discount-detail-box">
               <div style={{ fontWeight: 700, marginBottom: 8 }}>{t('Products')}</div>
               <div className="table-wrap">
                 <table className="table">
@@ -546,7 +547,7 @@ function DiscountApprovalsPage() {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gap: 6, justifyItems: 'end' }}>
+            <div className="discount-detail-totals">
               <div><strong>{t('Subtotal')}:</strong> {formatCurrency(detail?.subtotal || 0, settings)}</div>
               <div><strong>{t('Discount')}:</strong> {formatCurrency(detail?.discount || 0, settings)}</div>
               <div><strong>{t('Tax')}:</strong> {formatCurrency(detail?.tax || 0, settings)}</div>

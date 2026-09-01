@@ -779,13 +779,14 @@ function TransfersPage() {
   }
 
   return (
-    <div className="page-shell">
-      <div className="page-header">
-        <div>
-          <h1 style={{ margin: 0 }}>{t('Transfers')}</h1>
-          <div className="page-subtitle-compact">{t('Move stock between branches with clearer routing, approvals, and inventory segregation.')}</div>
+    <div className="sales-page-shell">
+      <div className="sales-header">
+        <div className="sales-header-copy">
+          <div className="ui-eyebrow">{t('Stock Operations')}</div>
+          <h1 className="sales-title">{t('Transfers')}</h1>
+          <p className="sales-subtitle">{t('Move stock between branches with clearer routing, approvals, and inventory segregation.')}</p>
         </div>
-        <div className="page-header-actions">
+        <div className="sales-header-actions">
           {tab === 'initiate' && (
             <button className="btn btn-primary" onClick={() => setOpenModal(true)}>
               <svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2"/></svg>
@@ -795,16 +796,16 @@ function TransfersPage() {
           <OfflineQueueIndicator collection="transferrequests" label={t('Transfers queued')} />
         </div>
       </div>
-      <div className="page-tabs">
+      <div className="sales-tabbar">
         <button className={tab === 'initiate' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('initiate')}>{t('Initiate')}</button>
         <button className={tab === 'approvals' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('approvals')} disabled={!canApprove}>{t('Approvals')}</button>
       </div>
-      <div className="stats-grid">
-        <div className="card stat-card"><div className="stat-label">{t('Transfer Records')}</div><div className="stat-value">{summary.historyCount}</div></div>
-        <div className="card stat-card"><div className="stat-label">{t('Units Moved')}</div><div className="stat-value">{summary.transferQty}</div></div>
-        <div className="card stat-card"><div className="stat-label">{t('Products')}</div><div className="stat-value">{summary.uniqueProducts}</div></div>
-        <div className="card stat-card"><div className="stat-label">{t('Routes')}</div><div className="stat-value">{summary.uniqueRoutes}</div></div>
-        <div className="card stat-card"><div className="stat-label">{t('Pending Approvals')}</div><div className="stat-value">{summary.pendingApprovals}</div></div>
+      <div className="sales-summary-grid">
+        <div className="sales-summary-card" style={{ '--accent': '#2563eb' }}><div className="sales-summary-label">{t('Transfer Records')}</div><div className="sales-summary-value">{summary.historyCount}</div></div>
+        <div className="sales-summary-card" style={{ '--accent': '#0f766e' }}><div className="sales-summary-label">{t('Units Moved')}</div><div className="sales-summary-value">{summary.transferQty}</div></div>
+        <div className="sales-summary-card" style={{ '--accent': '#7c3aed' }}><div className="sales-summary-label">{t('Products')}</div><div className="sales-summary-value">{summary.uniqueProducts}</div></div>
+        <div className="sales-summary-card" style={{ '--accent': '#06b6d4' }}><div className="sales-summary-label">{t('Routes')}</div><div className="sales-summary-value">{summary.uniqueRoutes}</div></div>
+        <div className="sales-summary-card" style={{ '--accent': '#f59e0b' }}><div className="sales-summary-label">{t('Pending Approvals')}</div><div className="sales-summary-value">{summary.pendingApprovals}</div></div>
       </div>
       {openModal && (
         <Modal title={t('Retail Transfer')} onClose={() => setOpenModal(false)} footer={
@@ -946,11 +947,14 @@ function TransfersPage() {
         </Modal>
       )}
       {tab === 'approvals' && (
-        <div className="card" style={{ marginTop: 8 }}>
+        <div className="sales-section-card">
           <div className="approval-toolbar">
-            <h2 className="section-title" style={{ marginBottom: 8 }}>{t('Approvals')}</h2>
+            <div>
+              <h2 className="sales-section-title">{t('Approvals')}</h2>
+              <p className="sales-section-note">{t('Review transfer routes, quantities, and branch destinations before approval.')}</p>
+            </div>
             <div className="card-scroll-x">
-            <div className="page-tabs">
+            <div className="sales-tabbar">
               <button className={statusFilter === 'pending_director' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_director')}>{t('Pending Director')}</button>
               <button className={statusFilter === 'pending_manager' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('pending_manager')}>{t('Pending Manager')}</button>
               <button className={statusFilter === 'approved' ? 'btn btn-primary' : 'btn'} onClick={() => setStatusFilter('approved')}>{t('Approved')}</button>
@@ -958,7 +962,8 @@ function TransfersPage() {
             </div>
             </div>
           </div>
-          <div className="record-filters" style={{ marginBottom: 12 }}>
+          <div className="sales-filter-card" style={{ marginTop: 12, marginBottom: 12 }}>
+          <div className="record-filters">
             <label>
               <div className="field-label">{t('Search Product')}</div>
               <input className="input" value={approvalQuery} onChange={e => setApprovalQuery(e.target.value)} placeholder={t('Search product, title, branch, or remark')} />
@@ -980,6 +985,12 @@ function TransfersPage() {
               <div className="field-label">{t('To')}</div>
               <input className="input" type="date" value={approvalDateTo} onChange={e => setApprovalDateTo(e.target.value)} />
             </label>
+          </div>
+          </div>
+          <div className="sales-table-meta">
+            <div className="sales-results-note">
+              {loading ? t('Loading transfers') : `${filteredPendingRequests.length} ${t('request')}${filteredPendingRequests.length === 1 ? '' : 's'}`}
+            </div>
           </div>
           <div className="table-wrap">
           <table className="table">
@@ -1035,10 +1046,10 @@ function TransfersPage() {
                     <td>
                       {(r.status === 'pending_approval' || r.status === 'pending_manager' || r.status === 'pending_director') ? (
                         <div className="approval-row-actions">
-                          <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); openDetail(r); }} disabled={!canAct || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? t('Working…') : t('Review')}</button>
+                          <button className="btn btn-primary btn-compact" onClick={(e) => { e.stopPropagation(); openDetail(r); }} disabled={!canAct || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? t('Working…') : t('Review')}</button>
                         </div>
                       ) : (
-                        <span className={`status-pill ${r.status === 'approved' ? 'status-pill-approved' : 'status-pill-rejected'}`}>{r.status}</span>
+                        <span className={`status-badge ${r.status === 'approved' ? 'success' : 'danger'}`}>{r.status}</span>
                       )}
                     </td>
                   </tr>
@@ -1050,7 +1061,7 @@ function TransfersPage() {
           </div>
         </div>
       )}
-      <div className="card" style={{ marginTop: 12 }}>
+      <div className="sales-section-card">
         <div className="card-scroll-x">
         <div className="record-filters">
           <label>
@@ -1113,7 +1124,15 @@ function TransfersPage() {
           </div>
         </div>
         </div>
-        <h2 className="section-title">{t('Recent Transfers')}</h2>
+        <div className="sales-section-head">
+          <div>
+            <h2 className="sales-section-title">{t('Recent Transfers')}</h2>
+            <p className="sales-section-note">{t('Filter transfer history, export records, and clean up selected entries from one place.')}</p>
+          </div>
+        </div>
+        <div className="sales-table-meta">
+          <div className="sales-results-note">{`${transfers.length} ${t('record')}${transfers.length === 1 ? '' : 's'}`}</div>
+        </div>
         <div className="table-wrap">
         <table className="table">
           <thead>
@@ -1174,10 +1193,10 @@ function TransfersPage() {
           </tbody>
         </table>
         </div>
-        <div className="pagination-row">
-          <div className="pagination-controls">
+        <div className="sales-pagination">
+          <div className="sales-row-actions">
             <button className="btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>{t('Prev')}</button>
-            <span className="table-meta">{t('Page')} {page} {t('of')} {Math.max(1, Math.ceil(transfers.length / pageSize))}</span>
+            <span className="sales-results-note">{t('Page')} {page} {t('of')} {Math.max(1, Math.ceil(transfers.length / pageSize))}</span>
             <button className="btn" onClick={() => setPage(p => Math.min(Math.max(1, Math.ceil(transfers.length / pageSize)), p + 1))} disabled={page >= Math.max(1, Math.ceil(transfers.length / pageSize))}>{t('Next')}</button>
           </div>
           <label>
@@ -1203,29 +1222,30 @@ function TransfersPage() {
             )}
           </>
         }>
-          <div className="detail-grid">
-            <div className="detail-field"><div className="detail-label">{t('Status')}</div><div className="detail-value"><span className={`status-pill ${detail.status === 'approved' ? 'status-pill-approved' : detail.status === 'rejected' ? 'status-pill-rejected' : 'status-pill-pending'}`}>{detail.status}</span></div></div>
-            <div className="detail-field"><div className="detail-label">{t('Title')}</div><div className="detail-value">{detail.transactionTitle || '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">{t('Product')}</div><div className="detail-value">{getProductDisplayMeta(products, detail.productId, detail.variantId, detail).productName || detail.productId}</div></div>
-            {getProductDisplayMeta(products, detail.productId, detail.variantId, detail).secondaryLabel ? <div className="detail-field"><div className="detail-label">{t('Variant / Attribute')}</div><div className="detail-value">{getProductDisplayMeta(products, detail.productId, detail.variantId, detail).secondaryLabel}</div></div> : null}
-            <div className="detail-field"><div className="detail-label">{t('From')}</div><div className="detail-value">{byId.get(detail.fromBranchId || detail.from) || detail.fromBranchId || detail.from}</div></div>
-            <div className="detail-field"><div className="detail-label">{t('To')}</div><div className="detail-value">{byId.get(detail.toBranchId || detail.to) || detail.toBranchId || detail.to}</div></div>
-            <div className="detail-field"><div className="detail-label">{t('From Inventory')}</div><div className="detail-value">{t(detail.fromInventoryType || 'retail')}</div></div>
-            <div className="detail-field"><div className="detail-label">{t('To Inventory')}</div><div className="detail-value">{t(detail.toInventoryType || detail.fromInventoryType || 'retail')}</div></div>
-            <div className="detail-field"><div className="detail-label">{t('Qty')}</div><div className="detail-value">{detail.qty || detail.baseUnits}</div></div>
-            <div className="detail-field"><div className="detail-label">{t('Initiator')}</div><div className="detail-value">{detail.initiatedByName || detail.initiatorName} {(detail.initiatedByRole || detail.initiatorRole) ? `(${detail.initiatedByRole || detail.initiatorRole})` : ''}</div></div>
-            <div className="detail-field"><div className="detail-label">{t('Initiation Remark')}</div><div className="detail-value">{detail.remark || '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">{t('Director Approver')}</div><div className="detail-value">{(detail.directorApproverName || detail.directorApprovedByName) ? `${detail.directorApproverName || detail.directorApprovedByName}${(detail.directorApproverRole || detail.directorApprovedByRole) ? ` (${detail.directorApproverRole || detail.directorApprovedByRole})` : ''}` : '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">{t('Manager Approver')}</div><div className="detail-value">{(detail.managerApproverName || detail.managerApprovedByName || detail.approverName) ? `${detail.managerApproverName || detail.managerApprovedByName || detail.approverName}${(detail.managerApproverRole || detail.managerApprovedByRole || detail.approverRole) ? ` (${detail.managerApproverRole || detail.managerApprovedByRole || detail.approverRole})` : ''}` : '—'}</div></div>
-            {detail.status === 'approved' && <div className="detail-field"><div className="detail-label">{t('Approval Remark')}</div><div className="detail-value">{detail.approvalRemark || '—'}</div></div>}
-            {detail.status === 'rejected' && <div className="detail-field"><div className="detail-label">{t('Rejection Remark')}</div><div className="detail-value">{detail.rejectionRemark || '—'}</div></div>}
-            <div className="detail-field"><div className="detail-label">{t('Created')}</div><div className="detail-value">{detail.createdAt ? new Date(detail.createdAt).toLocaleString() : '—'}</div></div>
-            <div className="detail-field"><div className="detail-label">{t('Director Approval Date')}</div><div className="detail-value">{formatDateTime(detail.directorApproved_at || detail.directorApprovedAt)}</div></div>
-            <div className="detail-field"><div className="detail-label">{t('Manager Approval Date')}</div><div className="detail-value">{formatDateTime(detail.managerApproved_at || detail.managerApprovedAt)}</div></div>
-            <div className="detail-field"><div className="detail-label">{t('Updated')}</div><div className="detail-value">{detail.updatedAt ? new Date(detail.updatedAt).toLocaleString() : '—'}</div></div>
-          </div>
+          <div className="operation-detail-stack">
+            <div className="operation-detail-meta">
+              <div className="operation-detail-box"><div className="detail-label">{t('Status')}</div><div className="detail-value"><span className={`status-badge ${detail.status === 'approved' ? 'success' : detail.status === 'rejected' ? 'danger' : 'warning'}`}>{detail.status}</span></div></div>
+              <div className="operation-detail-box"><div className="detail-label">{t('Title')}</div><div className="detail-value">{detail.transactionTitle || '—'}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">{t('Product')}</div><div className="detail-value">{getProductDisplayMeta(products, detail.productId, detail.variantId, detail).productName || detail.productId}</div></div>
+              {getProductDisplayMeta(products, detail.productId, detail.variantId, detail).secondaryLabel ? <div className="operation-detail-box"><div className="detail-label">{t('Variant / Attribute')}</div><div className="detail-value">{getProductDisplayMeta(products, detail.productId, detail.variantId, detail).secondaryLabel}</div></div> : null}
+              <div className="operation-detail-box"><div className="detail-label">{t('From')}</div><div className="detail-value">{byId.get(detail.fromBranchId || detail.from) || detail.fromBranchId || detail.from}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">{t('To')}</div><div className="detail-value">{byId.get(detail.toBranchId || detail.to) || detail.toBranchId || detail.to}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">{t('From Inventory')}</div><div className="detail-value">{t(detail.fromInventoryType || 'retail')}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">{t('To Inventory')}</div><div className="detail-value">{t(detail.toInventoryType || detail.fromInventoryType || 'retail')}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">{t('Qty')}</div><div className="detail-value">{detail.qty || detail.baseUnits}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">{t('Initiator')}</div><div className="detail-value">{detail.initiatedByName || detail.initiatorName} {(detail.initiatedByRole || detail.initiatorRole) ? `(${detail.initiatedByRole || detail.initiatorRole})` : ''}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">{t('Initiation Remark')}</div><div className="detail-value">{detail.remark || '—'}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">{t('Director Approver')}</div><div className="detail-value">{(detail.directorApproverName || detail.directorApprovedByName) ? `${detail.directorApproverName || detail.directorApprovedByName}${(detail.directorApproverRole || detail.directorApprovedByRole) ? ` (${detail.directorApproverRole || detail.directorApprovedByRole})` : ''}` : '—'}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">{t('Manager Approver')}</div><div className="detail-value">{(detail.managerApproverName || detail.managerApprovedByName || detail.approverName) ? `${detail.managerApproverName || detail.managerApprovedByName || detail.approverName}${(detail.managerApproverRole || detail.managerApprovedByRole || detail.approverRole) ? ` (${detail.managerApproverRole || detail.managerApprovedByRole || detail.approverRole})` : ''}` : '—'}</div></div>
+              {detail.status === 'approved' && <div className="operation-detail-box"><div className="detail-label">{t('Approval Remark')}</div><div className="detail-value">{detail.approvalRemark || '—'}</div></div>}
+              {detail.status === 'rejected' && <div className="operation-detail-box"><div className="detail-label">{t('Rejection Remark')}</div><div className="detail-value">{detail.rejectionRemark || '—'}</div></div>}
+              <div className="operation-detail-box"><div className="detail-label">{t('Created')}</div><div className="detail-value">{detail.createdAt ? new Date(detail.createdAt).toLocaleString() : '—'}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">{t('Director Approval Date')}</div><div className="detail-value">{formatDateTime(detail.directorApproved_at || detail.directorApprovedAt)}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">{t('Manager Approval Date')}</div><div className="detail-value">{formatDateTime(detail.managerApproved_at || detail.managerApprovedAt)}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">{t('Updated')}</div><div className="detail-value">{detail.updatedAt ? new Date(detail.updatedAt).toLocaleString() : '—'}</div></div>
+            </div>
           {reviewConflict && (
-            <div style={{ marginTop: 12, padding: 12, borderRadius: 10, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b' }}>
+            <div className="operation-detail-box" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b' }}>
               <div style={{ fontWeight: 700 }}>{reviewConflict.message || t('Some items are no longer available for transfer')}</div>
               {reviewConflict.unavailableUnitCodes.length > 0 && (
                 <div style={{ marginTop: 6, fontSize: 13 }}>
@@ -1242,7 +1262,7 @@ function TransfersPage() {
             </div>
           )}
           {Array.isArray(reviewItems) && reviewItems.length > 0 && (
-            <div style={{ marginTop: 12 }}>
+            <div className="operation-detail-box">
               <div className="field-label">{t('Request Items')}</div>
               <div className="table-wrap">
               <table className="table">
@@ -1320,11 +1340,12 @@ function TransfersPage() {
             </div>
           )}
           {canActOnDetail && (
-            <label style={{ marginTop: 12, display: 'block' }}>
+            <label className="operation-detail-box" style={{ display: 'block' }}>
               <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('Approval / Rejection Remark')}</div>
               <textarea className="input" value={decisionRemark} onChange={e => setDecisionRemark(e.target.value)} rows={4} style={{ width: '100%', resize: 'vertical' }} />
             </label>
           )}
+          </div>
         </Modal>
       )}
       {auditDetail && (

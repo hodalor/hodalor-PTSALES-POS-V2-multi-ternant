@@ -5,7 +5,6 @@ import { formatCurrency } from '../utils/currency';
 import { Chart, BarElement, LineElement, PointElement, CategoryScale, LinearScale, ArcElement, Tooltip, Legend, Filler } from 'chart.js';
 import * as expensesApi from '../api/expenses';
 import { getCashReconciliationSummary } from '../api/cashReconciliations';
-import { listOperations } from '../api/wholesale';
 import { isFeatureEnabled } from '../utils/featureFlags';
 import BranchSelect from '../components/BranchSelect';
 import LoadingDots from '../components/LoadingDots';
@@ -190,8 +189,6 @@ function DashboardPage() {
   const [expenses, setExpenses] = useState([]);
   const [financeSummary, setFinanceSummary] = useState({ depositedAmount: 0, awaitingAmount: 0, pendingApprovalAmount: 0, backlogDays: 0 });
   const [financeSummaryLoading, setFinanceSummaryLoading] = useState(false);
-  const [warehousePending, setWarehousePending] = useState(0);
-  const [wholesalePending, setWholesalePending] = useState(0);
   const todayIso = useMemo(() => formatLocalDateKey(new Date()), []);
   const defaultRevenueChartFromIso = useMemo(() => {
     const start = new Date();
@@ -276,12 +273,6 @@ function DashboardPage() {
     }
   }, [allowedDashboardBranchIdSet, branchId, branches, canSelectAllDashboardBranches, defaultDashboardBranchId, canUseScopedDashboardBranches, isPrivilegedDashboardViewer]);
 
-  const inRange = useCallback((iso) => {
-    if (periodMode === 'all_time') return true;
-    const key = formatLocalDateKey(iso);
-    if (!key) return false;
-    return (!dateFrom || key >= dateFrom) && (!dateTo || key <= dateTo);
-  }, [dateFrom, dateTo, periodMode]);
   const matchBranch = useCallback((value) => {
     const key = String(value || '').trim();
     if (canSelectAllDashboardBranches && String(branchId ?? '').trim() === '') {
@@ -371,53 +362,9 @@ function DashboardPage() {
     };
   }, [activityFilter, canUseFinanceReconciliation, dateFrom, dateTo, defaultFromIso, financeSummaryBranchId, financeSummaryRequestKey, periodMode, todayIso]);
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const groups = await Promise.all([
-          listOperations({ operationArea: 'warehouse', operationType: 'purchase', status: 'pending_director' }).catch(() => []),
-          listOperations({ operationArea: 'warehouse', operationType: 'transfer', status: 'pending_director' }).catch(() => []),
-          listOperations({ operationArea: 'warehouse', operationType: 'adjustment', status: 'pending_director' }).catch(() => []),
-          listOperations({ operationArea: 'warehouse', operationType: 'purchase', status: 'pending_manager' }).catch(() => []),
-          listOperations({ operationArea: 'warehouse', operationType: 'transfer', status: 'pending_manager' }).catch(() => []),
-          listOperations({ operationArea: 'warehouse', operationType: 'adjustment', status: 'pending_manager' }).catch(() => [])
-        ]);
-        if (!alive) return;
-        setWarehousePending(groups.reduce((sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0));
-      } catch {
-        if (!alive) return;
-        setWarehousePending(0);
-      }
-    })();
-    return () => { alive = false; };
-  }, []);
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const groups = await Promise.all([
-          listOperations({ operationArea: 'wholesale', operationType: 'purchase', status: 'pending_director' }).catch(() => []),
-          listOperations({ operationArea: 'wholesale', operationType: 'transfer', status: 'pending_director' }).catch(() => []),
-          listOperations({ operationArea: 'wholesale', operationType: 'adjustment', status: 'pending_director' }).catch(() => []),
-          listOperations({ operationArea: 'wholesale', operationType: 'purchase', status: 'pending_manager' }).catch(() => []),
-          listOperations({ operationArea: 'wholesale', operationType: 'transfer', status: 'pending_manager' }).catch(() => []),
-          listOperations({ operationArea: 'wholesale', operationType: 'adjustment', status: 'pending_manager' }).catch(() => [])
-        ]);
-        if (!alive) return;
-        setWholesalePending(groups.reduce((sum, rows) => sum + (Array.isArray(rows) ? rows.length : 0), 0));
-      } catch {
-        if (!alive) return;
-        setWholesalePending(0);
-      }
-    })();
-    return () => { alive = false; };
-  }, []);
-
   const chartTextColor = '#475569';
   const chartGridColor = '#e2e8f0';
-  const chartLegendStyle = {
+  const chartLegendStyle = useMemo(() => ({
     position: 'bottom',
     labels: {
       color: chartTextColor,
@@ -428,7 +375,7 @@ function DashboardPage() {
       padding: 16,
       font: { size: 12, weight: '600' }
     }
-  };
+  }), [chartTextColor]);
 
   const metrics = useMemo(() => {
     const selectedFrom = periodMode === 'all_time' ? null : startOfLocalDay(dateFrom || defaultFromIso);
@@ -1027,7 +974,7 @@ function DashboardPage() {
       multiBranchCashierView,
       revenueLineTitle
     };
-  }, [sales, refunds, products, branches, branchId, dateFrom, dateTo, inRange, matchBranch, matchCompetitionBranch, defaultFromIso, defaultRevenueChartFromIso, todayIso, periodMode, activityFilter, canUseScopedDashboardBranches, canViewBranchCompetitionAll, canViewCashierCompetitionAll, t]);
+  }, [sales, refunds, products, branches, dateFrom, dateTo, matchBranch, matchCompetitionBranch, defaultFromIso, defaultRevenueChartFromIso, todayIso, periodMode, activityFilter, t, chartLegendStyle]);
 
   const finance = useMemo(() => {
     const expenseTotal = expenses.reduce((s, x) => s + (Number(x.amount) || 0), 0);
@@ -1053,49 +1000,6 @@ function DashboardPage() {
     return canViewProfit ? value : '***';
   }
 
-  const branchComparison = useMemo(() => {
-    if (!(canViewBranchCompetitionAssigned || canViewBranchCompetitionAll)) return [];
-    const byId = new Map(branches.map(b => [String(b.id), b.name || b.code || b.id]));
-    const map = new Map();
-    const salesById = new Map((sales || []).map((row) => [String(row?.id || row?._id || row?.clientId || '').trim(), row]));
-    const branchRefundRevenueAppliedBySaleId = new Map();
-    for (const s of sales) {
-      if (isRefundSale(s)) continue;
-      if (!inRange(s.created_at) || !matchCompetitionBranch(s.branchId)) continue;
-      const key = String(s.branchId || '');
-      if (!map.has(key)) map.set(key, { branchId: key, name: byId.get(key) || key, revenue: 0, profit: 0, sales: 0 });
-      const row = map.get(key);
-      row.revenue += Number(s.total) || 0;
-      row.profit += Number(s.profitTotal) || 0;
-      row.sales += 1;
-    }
-    for (const refund of (Array.isArray(refunds) ? refunds : [])) {
-      if (String(refund?.status || '').trim().toLowerCase() !== 'approved') continue;
-      const sale = salesById.get(String(refund?.saleId || '').trim());
-      if (!sale || isRefundSale(sale)) continue;
-      if (!inRange(sale.created_at) || !matchCompetitionBranch(sale.branchId)) continue;
-      const saleId = String(sale?.id || sale?._id || sale?.clientId || '').trim();
-      const key = String(sale.branchId || '');
-      if (!map.has(key)) continue;
-      const saleRangeStart = startOfLocalDay(formatLocalDateKey(sale.created_at));
-      const saleRangeEnd = endOfLocalDay(formatLocalDateKey(sale.created_at));
-      const totals = getSaleRangeTotals(sale, saleRangeStart, saleRangeEnd);
-      const alreadyAppliedRevenue = Number(branchRefundRevenueAppliedBySaleId.get(saleId) || 0);
-      const remainingRevenueImpact = Math.max(0, Number(totals.revenue || 0) - alreadyAppliedRevenue);
-      const refundCashImpact = Math.min(remainingRevenueImpact, Math.max(0, getRefundCashImpact(refund, sale)));
-      const refundRatio = Number(totals.revenue || 0) > 0
-        ? Math.min(1, refundCashImpact / Math.max(0.0001, Number(totals.revenue || 0)))
-        : 0;
-      branchRefundRevenueAppliedBySaleId.set(saleId, alreadyAppliedRevenue + refundCashImpact);
-      const row = map.get(key);
-      row.revenue = Math.max(0, Number(row.revenue || 0) - refundCashImpact);
-      row.profit = Math.max(0, Number(row.profit || 0) - (Math.max(0, Number(totals.profit || 0)) * refundRatio));
-      if (String(refund?.type || '').trim().toLowerCase() === 'full') {
-        row.sales = Math.max(0, Number(row.sales || 0) - 1);
-      }
-    }
-    return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 10);
-  }, [sales, refunds, branches, inRange, matchCompetitionBranch, canViewBranchCompetitionAssigned, canViewBranchCompetitionAll]);
   const customerLeaderboard = useMemo(() => (
     customerLeaderboardMode === 'products'
       ? metrics.customerLeaderboardByProducts
@@ -1117,83 +1021,6 @@ function DashboardPage() {
     };
   }, [customerLeaderboard, customerLeaderboardMode, t]);
 
-  const warehouseStats = useMemo(() => {
-    const warehouseBranches = branches.filter(b => String(b.branchType || 'retail').toLowerCase() === 'warehouse');
-    const warehouseUnits = products.reduce((sum, product) => {
-      const base = Object.values(product.warehouseStockByBranch || {}).reduce((s, qty) => s + (Number(qty) || 0), 0);
-      const variants = Array.isArray(product.variants)
-        ? product.variants.reduce((s, variant) => s + Object.values(variant.warehouseStockByBranch || {}).reduce((t, qty) => t + (Number(qty) || 0), 0), 0)
-        : 0;
-      return sum + base + variants;
-    }, 0);
-    const lowStockRows = products
-      .map(product => {
-        const total = Object.values(product.warehouseStockByBranch || {}).reduce((s, qty) => s + (Number(qty) || 0), 0);
-        return { id: product.id, name: product.name, lowStock: Number(product.warehouseLowStock != null ? product.warehouseLowStock : (product.lowStock || 0)), total };
-      })
-      .filter(row => row.lowStock > 0 && row.total <= row.lowStock)
-      .sort((a, b) => a.total - b.total)
-      .slice(0, 8);
-    return {
-      warehouseCount: warehouseBranches.length,
-      warehouseUnits,
-      lowStockRows
-    };
-  }, [branches, products]);
-  const wholesaleStats = useMemo(() => {
-    const wholesaleBranches = branches.filter(b => String(b.branchType || 'retail').toLowerCase() === 'wholesale');
-    const wholesaleUnits = products.reduce((sum, product) => {
-      const base = Object.values(product.wholesaleStockByBranch || {}).reduce((s, qty) => s + (Number(qty) || 0), 0);
-      const variants = Array.isArray(product.variants)
-        ? product.variants.reduce((s, variant) => s + Object.values(variant.wholesaleStockByBranch || {}).reduce((t, qty) => t + (Number(qty) || 0), 0), 0)
-        : 0;
-      return sum + base + variants;
-    }, 0);
-    const lowStockRows = products
-      .map(product => {
-        const total = Object.values(product.wholesaleStockByBranch || {}).reduce((s, qty) => s + (Number(qty) || 0), 0);
-        return { id: product.id, name: product.name, lowStock: Number(product.wholesaleLowStock != null ? product.wholesaleLowStock : (product.lowStock || 0)), total };
-      })
-      .filter(row => row.lowStock > 0 && row.total <= row.lowStock)
-      .sort((a, b) => a.total - b.total)
-      .slice(0, 8);
-    return {
-      wholesaleCount: wholesaleBranches.length,
-      wholesaleUnits,
-      lowStockRows
-    };
-  }, [branches, products]);
-  const summaryCardStyle = {
-    background: '#fff',
-    padding: 11,
-    borderRadius: 14,
-    border: '1px solid #e2e8f0',
-    boxShadow: '0 8px 18px rgba(15, 23, 42, 0.05)',
-    position: 'relative',
-    overflow: 'hidden'
-  };
-  const summaryCardAccentStyle = (accent) => ({
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 4,
-    background: `linear-gradient(90deg, ${accent} 0%, ${accent}cc 100%)`
-  });
-  const summaryCardBadgeStyle = (accent, tint) => ({
-    width: 36,
-    height: 36,
-    borderRadius: 999,
-    background: tint,
-    color: accent,
-    display: 'grid',
-    placeItems: 'center',
-    fontSize: 11,
-    fontWeight: 800,
-    letterSpacing: 0.3,
-    flexShrink: 0,
-    boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.5)'
-  });
   const summaryCards = [
     { key: 'sales', label: t('Total Sales (Repayment + Actual Sales)'), value: maskRevenue(metrics.todayTotal), subtitle: periodMode === 'all_time' ? t('Recognized sales and repayments for all time') : t('Recognized sales and repayments in selected range'), accent: '#2563eb', tint: '#dbeafe', badge: 'RV', primary: true },
     { key: 'profit', label: t('Total Profit (Repayment Profit + Actual Sales Profit)'), value: maskProfit(metrics.todayProfit), subtitle: canViewProfit ? t('Recognized profit for sales and repayments') : t('Profit access masked'), accent: '#7c3aed', tint: '#ede9fe', badge: 'PF', primary: true },
@@ -1215,86 +1042,57 @@ function DashboardPage() {
   ].filter((card) => !card.hidden);
   const primarySummaryCards = summaryCards.filter((card) => card.primary);
   const secondarySummaryCards = summaryCards.filter((card) => !card.primary);
-  const sectionCardStyle = {
-    background: '#fff',
-    padding: 14,
-    borderRadius: 16,
-    border: '1px solid #e2e8f0',
-    boxShadow: '0 10px 24px rgba(15, 23, 42, 0.05)'
-  };
-  const pageTitleStyle = {
-    margin: '0 0 10px',
-    fontSize: 30,
-    lineHeight: 1.1,
-    fontWeight: 800,
-    color: '#0f172a',
-    letterSpacing: -0.6
-  };
-  const sectionTitleStyle = {
-    margin: 0,
-    fontSize: 17,
-    lineHeight: 1.2,
-    fontWeight: 800,
-    color: '#0f172a',
-    letterSpacing: -0.25
-  };
-  const fieldLabelStyle = {
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: 700,
-    marginBottom: 6
-  };
-  const bodyMutedStyle = {
-    color: '#64748b',
-    fontSize: 12.5,
-    fontWeight: 500
-  };
-  const miniStatLabelStyle = {
-    color: '#64748b',
-    fontSize: 12,
-    fontWeight: 700
-  };
-  const miniStatValueStyle = {
-    fontSize: 22,
-    lineHeight: 1.15,
-    fontWeight: 800,
-    color: '#0f172a'
-  };
-  const tableHeaderStyle = {
-    color: '#475569',
-    fontSize: 12,
-    fontWeight: 800,
-    letterSpacing: 0.2
-  };
-  const tableCellStyle = {
-    paddingTop: 12,
-    paddingBottom: 12,
-    color: '#334155',
-    fontSize: 13,
-    fontWeight: 500
-  };
+  const renderSummaryCard = (card) => (
+    <div
+      key={card.key}
+      className="dashboard-card"
+      style={{ '--accent': card.accent, '--accent-soft': card.tint }}
+    >
+      <div className="dashboard-card-top">
+        <div className="dashboard-card-copy">
+          <div className="dashboard-card-label">{card.label}</div>
+          <div className="dashboard-card-value">
+            {card.loading ? (
+              <LoadingDots label={t('Loading finance summary')} />
+            ) : card.value}
+          </div>
+          <div className="dashboard-card-meta">{card.subtitle}</div>
+        </div>
+        <div className="dashboard-card-badge">{card.badge}</div>
+      </div>
+      <div className="dashboard-card-rail" />
+    </div>
+  );
   return (
-    <div style={{ padding: 12 }}>
-      <h1 style={pageTitleStyle}>{t('Dashboard')}</h1>
-      <div className="card" style={{ padding: 12, marginBottom: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10, alignItems: 'end' }}>
-          <label>
-            <div style={fieldLabelStyle}>{t('Period')}</div>
+    <div className="dashboard-shell">
+      <div className="dashboard-header">
+        <div className="dashboard-header-copy">
+          <div className="ui-eyebrow">{t('Executive Overview')}</div>
+          <h1 className="dashboard-title">{t('Dashboard')}</h1>
+          <p className="dashboard-subtitle">
+            {t('Track revenue, credit, refunds, deposits, and branch performance from one calm operational view.')}
+          </p>
+        </div>
+      </div>
+      <div className="card dashboard-filter-card">
+        <div className="dashboard-filter-grid">
+          <label className="dashboard-filter-field">
+            <div className="dashboard-filter-label">{t('Period')}</div>
             <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
               <option value="range">{t('Custom Range')}</option>
               <option value="all_time">{t('All Time')}</option>
             </select>
           </label>
-          <label>
-            <div style={fieldLabelStyle}>{t('From')}</div>
+          <label className="dashboard-filter-field">
+            <div className="dashboard-filter-label">{t('From')}</div>
             <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
-          <label>
-            <div style={fieldLabelStyle}>{t('To')}</div>
+          <label className="dashboard-filter-field">
+            <div className="dashboard-filter-label">{t('To')}</div>
             <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
           </label>
-          <label>
-            <div style={fieldLabelStyle}>{t('Activity')}</div>
+          <label className="dashboard-filter-field">
+            <div className="dashboard-filter-label">{t('Activity')}</div>
             <select className="select" value={activityFilter} onChange={e => setActivityFilter(e.target.value)}>
               <option value="all">{t('All Sales & Credit')}</option>
               <option value="all_sales">{t('All Sales')}</option>
@@ -1307,8 +1105,8 @@ function DashboardPage() {
               <option value="warehouse_credit">{t('Warehouse Credit')}</option>
             </select>
           </label>
-          <label>
-            <div style={fieldLabelStyle}>{t('Branch')}</div>
+          <label className="dashboard-filter-field">
+            <div className="dashboard-filter-label">{t('Branch')}</div>
             <BranchSelect
               value={branchId}
               onChange={setBranchId}
@@ -1319,35 +1117,17 @@ function DashboardPage() {
           </label>
         </div>
       </div>
-      <div className="summary-grid" style={{ marginBottom: 6, gap: 12 }}>
-        {primarySummaryCards.map((card) => (
-          <div key={card.key} style={summaryCardStyle}>
-            <div style={summaryCardAccentStyle(card.accent)} />
-            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ color: '#64748b', fontSize: 11, lineHeight: 1.25, fontWeight: 700 }}>{card.label}</div>
-                <div style={{ fontSize: 22, lineHeight: 1.1, fontWeight: 800, color: '#0f172a', marginTop: 6 }}>
-                  {card.loading ? (
-                    <LoadingDots label={t('Loading finance summary')} />
-                  ) : card.value}
-                </div>
-                <div style={{ marginTop: 6, color: '#64748b', fontSize: 11, lineHeight: 1.3 }}>{card.subtitle}</div>
-              </div>
-              <div style={summaryCardBadgeStyle(card.accent, card.tint)}>{card.badge}</div>
-            </div>
-            <div style={{ marginTop: 10, height: 4, borderRadius: 999, background: `linear-gradient(90deg, ${card.accent} 0%, ${card.accent}99 72%, rgba(255,255,255,0) 100%)` }} />
-          </div>
-        ))}
+      <div className="summary-grid">
+        {primarySummaryCards.map(renderSummaryCard)}
       </div>
       {secondarySummaryCards.length > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <div className="dashboard-summary-toggle">
           <button
             type="button"
             className="btn"
             onClick={() => setShowMoreSummaryCards((prev) => !prev)}
-            style={{ fontSize: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 8 }}
           >
-            <span style={{ width: 18, height: 18, borderRadius: 999, display: 'inline-grid', placeItems: 'center', background: '#e2e8f0', color: '#0f172a', fontSize: 12, fontWeight: 800 }}>
+            <span className="dashboard-toggle-icon">
               {showMoreSummaryCards ? '-' : '+'}
             </span>
             {showMoreSummaryCards ? t('Hide More Summary Cards') : t('Show More Summary Cards')}
@@ -1355,31 +1135,19 @@ function DashboardPage() {
         </div>
       )}
       {showMoreSummaryCards && secondarySummaryCards.length > 0 && (
-        <div className="summary-grid" style={{ marginBottom: 12, gap: 12 }}>
-          {secondarySummaryCards.map((card) => (
-            <div key={card.key} style={summaryCardStyle}>
-              <div style={summaryCardAccentStyle(card.accent)} />
-              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ color: '#64748b', fontSize: 11, lineHeight: 1.25, fontWeight: 700 }}>{card.label}</div>
-                  <div style={{ fontSize: 22, lineHeight: 1.1, fontWeight: 800, color: '#0f172a', marginTop: 6 }}>
-                    {card.loading ? (
-                      <LoadingDots label={t('Loading finance summary')} />
-                    ) : card.value}
-                  </div>
-                  <div style={{ marginTop: 6, color: '#64748b', fontSize: 11, lineHeight: 1.3 }}>{card.subtitle}</div>
-                </div>
-                <div style={summaryCardBadgeStyle(card.accent, card.tint)}>{card.badge}</div>
-              </div>
-              <div style={{ marginTop: 10, height: 4, borderRadius: 999, background: `linear-gradient(90deg, ${card.accent} 0%, ${card.accent}99 72%, rgba(255,255,255,0) 100%)` }} />
-            </div>
-          ))}
+        <div className="summary-grid">
+          {secondarySummaryCards.map(renderSummaryCard)}
         </div>
       )}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12, alignItems: 'start' }}>
-        <div style={sectionCardStyle}>
-          <h2 style={sectionTitleStyle}>{metrics.revenueLineTitle}</h2>
-          <div style={{ height: 220 }}>
+      <div className="dashboard-grid-2">
+        <div className="dashboard-section-card">
+          <div className="dashboard-section-head">
+            <div>
+              <h2 className="dashboard-section-title">{metrics.revenueLineTitle}</h2>
+              <p className="dashboard-section-note">{t('Net recognized revenue after approved refund impact.')}</p>
+            </div>
+          </div>
+          <div className="dashboard-chart-tall">
             <Line data={metrics.lineData} options={{
               ...metrics.lineOptions,
               scales: {
@@ -1397,64 +1165,79 @@ function DashboardPage() {
             }} />
           </div>
         </div>
-        <div style={sectionCardStyle}>
-          <h2 style={sectionTitleStyle}>{t('Units by Category')}</h2>
+        <div className="dashboard-section-card">
+          <div className="dashboard-section-head">
+            <div>
+              <h2 className="dashboard-section-title">{t('Units by Category')}</h2>
+              <p className="dashboard-section-note">{t('Sales mix for the current dashboard selection.')}</p>
+            </div>
+          </div>
           <Doughnut data={metrics.doughData} />
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12, marginTop: 12, alignItems: 'start' }}>
-        <div style={sectionCardStyle}>
-          <div style={miniStatLabelStyle}>{t('Revenue')}</div>
-          <div style={miniStatValueStyle}>{maskRevenue(metrics.last30Revenue)}</div>
-          <div style={{ ...bodyMutedStyle, marginTop: 6 }}>{t('COGS')}: {maskProfit(metrics.last30Cost)}</div>
-          <div style={{ ...bodyMutedStyle, marginTop: 2 }}>{t('Profit')}: {maskProfit(metrics.last30Profit)}</div>
+      <div className="dashboard-mini-grid">
+        <div className="dashboard-section-card">
+          <div className="dashboard-mini-label">{t('Revenue')}</div>
+          <div className="dashboard-mini-value">{maskRevenue(metrics.last30Revenue)}</div>
+          <div className="dashboard-mini-meta">{t('COGS')}: {maskProfit(metrics.last30Cost)}</div>
+          <div className="dashboard-mini-meta" style={{ marginTop: 2 }}>{t('Profit')}: {maskProfit(metrics.last30Profit)}</div>
         </div>
-        <div style={sectionCardStyle}>
-          <div style={miniStatLabelStyle}>{t('Expenses')}</div>
-          <div style={miniStatValueStyle}>{maskProfit(finance.expenseTotal)}</div>
-          <div style={{ ...bodyMutedStyle, marginTop: 6 }}>{t('Projection')}: {maskProfit(finance.projected30)}</div>
+        <div className="dashboard-section-card">
+          <div className="dashboard-mini-label">{t('Expenses')}</div>
+          <div className="dashboard-mini-value">{maskProfit(finance.expenseTotal)}</div>
+          <div className="dashboard-mini-meta">{t('Projection')}: {maskProfit(finance.projected30)}</div>
         </div>
-        <div style={sectionCardStyle}>
-          <div style={miniStatLabelStyle}>{t('Cashflow')}</div>
-          <div style={{ marginTop: 6, display: 'grid', gap: 4 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', ...bodyMutedStyle }}><span>{t('Inflow')}</span><strong style={{ color: '#0f172a', fontWeight: 800 }}>{maskRevenue(metrics.last30Revenue)}</strong></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', ...bodyMutedStyle }}><span>{t('Outflow')}</span><strong style={{ color: '#0f172a', fontWeight: 800 }}>{maskProfit(finance.expenseTotal)}</strong></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', ...bodyMutedStyle }}><span>{t('Net')}</span><strong style={{ color: '#0f172a', fontWeight: 800 }}>{maskProfit(finance.net)}</strong></div>
+        <div className="dashboard-section-card">
+          <div className="dashboard-mini-label">{t('Cashflow')}</div>
+          <div className="dashboard-kv-list">
+            <div className="dashboard-kv-row"><span>{t('Inflow')}</span><strong>{maskRevenue(metrics.last30Revenue)}</strong></div>
+            <div className="dashboard-kv-row"><span>{t('Outflow')}</span><strong>{maskProfit(finance.expenseTotal)}</strong></div>
+            <div className="dashboard-kv-row"><span>{t('Net')}</span><strong>{maskProfit(finance.net)}</strong></div>
           </div>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12, alignItems: 'start' }}>
-        <div style={sectionCardStyle}>
-          <h2 style={sectionTitleStyle}>{t('Top Products (Units)')}</h2>
-          <div style={{ height: 190 }}>
+      <div className="dashboard-grid-2">
+        <div className="dashboard-section-card">
+          <div className="dashboard-section-head">
+            <div>
+              <h2 className="dashboard-section-title">{t('Top Products (Units)')}</h2>
+              <p className="dashboard-section-note">{t('Fast view of best-moving items in the current range.')}</p>
+            </div>
+          </div>
+          <div className="dashboard-chart-medium">
             <Bar data={metrics.topBar} options={metrics.barOptions} />
           </div>
         </div>
-        <div style={sectionCardStyle}>
-          <h2 style={sectionTitleStyle}>{t('Payments by Day (Selected Range)')}</h2>
-          <div style={{ height: 190 }}>
+        <div className="dashboard-section-card">
+          <div className="dashboard-section-head">
+            <div>
+              <h2 className="dashboard-section-title">{t('Payments by Day')}</h2>
+              <p className="dashboard-section-note">{t('Cash, card, mobile money, wallet, and other payment mix by day.')}</p>
+            </div>
+          </div>
+          <div className="dashboard-chart-medium">
             <Bar data={metrics.paymentBar} options={metrics.stackedOptions} />
           </div>
         </div>
       </div>
-      <div style={{ ...sectionCardStyle, marginTop: 12 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: 10, marginBottom: 10 }}>
+      <div className="dashboard-section-card">
+        <div className="dashboard-section-head">
           <div>
-            <h2 style={sectionTitleStyle}>{t('Customer Leaderboard (Top 10)')}</h2>
-            <div style={{ ...bodyMutedStyle, marginTop: 4 }}>
+            <h2 className="dashboard-section-title">{t('Customer Leaderboard (Top 10)')}</h2>
+            <div className="dashboard-section-note">
               {t('Ranked by the current dashboard filters.')}
             </div>
           </div>
-          <label style={{ minWidth: 220 }}>
-            <div style={fieldLabelStyle}>{t('Rank By')}</div>
+          <label className="dashboard-filter-field" style={{ minWidth: 220 }}>
+            <div className="dashboard-filter-label">{t('Rank By')}</div>
             <select className="select" value={customerLeaderboardMode} onChange={e => setCustomerLeaderboardMode(e.target.value)}>
               <option value="amount">{t('Amount Spent')}</option>
               <option value="products">{t('Products Bought')}</option>
             </select>
           </label>
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 12, alignItems: 'start' }}>
-          <div style={{ height: 240 }}>
+        <div className="dashboard-table-layout">
+          <div className="dashboard-chart-tall">
             <Bar
               data={customerLeaderboardChart}
               options={{
@@ -1496,37 +1279,42 @@ function DashboardPage() {
               }}
             />
           </div>
-          <div style={{ overflowX: 'auto' }}>
+          <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
-                  <th align="left" style={tableHeaderStyle}>#</th>
-                  <th align="left" style={tableHeaderStyle}>{t('Customer')}</th>
-                  <th align="left" style={tableHeaderStyle}>{t('Sales')}</th>
-                  <th align="left" style={tableHeaderStyle}>{t('Products')}</th>
-                  <th align="left" style={tableHeaderStyle}>{t('Amount')}</th>
+                  <th align="left">#</th>
+                  <th align="left">{t('Customer')}</th>
+                  <th align="left">{t('Sales')}</th>
+                  <th align="left">{t('Products')}</th>
+                  <th align="left">{t('Amount')}</th>
                 </tr>
               </thead>
               <tbody>
                 {customerLeaderboard.map((row, idx) => (
                   <tr key={row.key}>
-                    <td style={tableCellStyle}>{idx + 1}</td>
-                    <td style={tableCellStyle}>{row.customerName}</td>
-                    <td style={tableCellStyle}>{row.sales}</td>
-                    <td style={tableCellStyle}>{row.products}</td>
-                    <td style={tableCellStyle}>{maskRevenue(row.amount)}</td>
+                    <td>{idx + 1}</td>
+                    <td>{row.customerName}</td>
+                    <td>{row.sales}</td>
+                    <td>{row.products}</td>
+                    <td>{maskRevenue(row.amount)}</td>
                   </tr>
                 ))}
-                {customerLeaderboard.length === 0 && <tr><td colSpan="5" style={{ padding: 12, ...bodyMutedStyle }}>{t('No customer data')}</td></tr>}
+                {customerLeaderboard.length === 0 && <tr><td colSpan="5" className="dashboard-table-meta-empty">{t('No customer data')}</td></tr>}
               </tbody>
             </table>
           </div>
         </div>
       </div>
       {(canViewCashierCompetitionAssigned || canViewCashierCompetitionAll) && (
-      <div style={{ ...sectionCardStyle, marginTop: 12 }}>
-        <h2 style={sectionTitleStyle}>{t('Cashier Performance (Filtered Revenue)')}</h2>
-        <div style={{ height: 210 }}>
+      <div className="dashboard-section-card">
+        <div className="dashboard-section-head">
+          <div>
+            <h2 className="dashboard-section-title">{t('Cashier Performance')}</h2>
+            <p className="dashboard-section-note">{t('Filtered revenue by cashier for the active branch scope.')}</p>
+          </div>
+        </div>
+        <div className="dashboard-chart-medium">
           <Bar
             data={metrics.cashierBar}
             options={{

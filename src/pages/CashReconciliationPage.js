@@ -72,6 +72,15 @@ async function optimizeProofImage(file) {
   return canvas.toDataURL('image/jpeg', PROOF_OUTPUT_QUALITY);
 }
 
+function getReconciliationStatusMeta(status = '') {
+  const value = String(status || '').trim().toLowerCase();
+  if (value === 'approved') return { label: 'Approved', tone: 'success' };
+  if (value === 'rejected') return { label: 'Rejected', tone: 'danger' };
+  if (value === 'pending_manager') return { label: 'Pending Manager', tone: 'warning' };
+  if (value === 'pending_director' || value === 'pending_approval') return { label: 'Pending', tone: 'info' };
+  return { label: status || 'Unknown', tone: 'info' };
+}
+
 function CashReconciliationPage() {
   const auth = useSelector((s) => s.auth);
   const settings = useSelector((s) => s.settings);
@@ -371,6 +380,32 @@ function CashReconciliationPage() {
     if (status === 'pending_manager') return canApproveManager;
     return false;
   }), [canApproveDirector, canApproveManager, records]);
+  const summaryCards = useMemo(() => ([
+    {
+      key: 'deposited',
+      label: 'Deposited',
+      value: loading ? <LoadingDots label="Loading deposited total" /> : formatCurrency(summary.depositedAmount || 0, settings),
+      accent: '#0f766e'
+    },
+    {
+      key: 'awaiting',
+      label: 'Awaiting Deposit',
+      value: loading ? <LoadingDots label="Loading awaiting amount" /> : formatCurrency(summary.awaitingAmount || 0, settings),
+      accent: '#2563eb'
+    },
+    {
+      key: 'pending',
+      label: 'Pending Approval',
+      value: loading ? <LoadingDots label="Loading pending amount" /> : formatCurrency(summary.pendingApprovalAmount || 0, settings),
+      accent: '#f59e0b'
+    },
+    {
+      key: 'backlog',
+      label: 'Backlog Days',
+      value: loading ? <LoadingDots label="Loading backlog days" /> : (summary.backlogDays || 0),
+      accent: '#7c3aed'
+    }
+  ]), [loading, settings, summary.awaitingAmount, summary.backlogDays, summary.depositedAmount, summary.pendingApprovalAmount]);
 
   function openSubmitModal() {
     setSelectedDates([]);
@@ -395,16 +430,17 @@ function CashReconciliationPage() {
   }
 
   return (
-    <div className="page-shell">
-      <div className="card">
-        <div className="page-header">
-          <div>
-            <h1 style={{ margin: 0 }}>Cash Reconciliation</h1>
-            <div className="page-subtitle-compact">
-              Reconcile branch sales to company accounts, track backlog days, and approve deposits safely.
-            </div>
-          </div>
-          <div className="page-tabs">
+    <div className="sales-page-shell">
+      <div className="sales-header">
+        <div className="sales-header-copy">
+          <div className="ui-eyebrow">Finance Controls</div>
+          <h1 className="sales-title">Cash Reconciliation</h1>
+          <p className="sales-subtitle">
+            Reconcile branch sales to company accounts, track backlog days, and review deposit approvals from one screen.
+          </p>
+        </div>
+        <div className="sales-header-actions">
+          <div className="sales-tabbar">
             <button className={tab === 'submit' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('submit')}>Backlog & Submit</button>
             <button className={tab === 'records' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('records')}>Deposit Records</button>
             {canApproveAnything && (
@@ -414,18 +450,18 @@ function CashReconciliationPage() {
         </div>
       </div>
 
-      <div className="card" style={{ display: 'grid', gap: 12 }}>
-        <div className="record-filters">
-          <label style={{ display: 'grid', gap: 6 }}>
-            <span className="field-label">From</span>
+      <div className="sales-filter-card">
+        <div className="sales-filter-grid">
+          <label className="sales-filter-field">
+            <div className="sales-filter-label">From</div>
             <input className="input" type="date" value={filters.from} onChange={(e) => setFilters((prev) => ({ ...prev, from: e.target.value }))} />
           </label>
-          <label style={{ display: 'grid', gap: 6 }}>
-            <span className="field-label">To</span>
+          <label className="sales-filter-field">
+            <div className="sales-filter-label">To</div>
             <input className="input" type="date" value={filters.to} onChange={(e) => setFilters((prev) => ({ ...prev, to: e.target.value }))} />
           </label>
-          <label style={{ display: 'grid', gap: 6 }}>
-            <span className="field-label">Records Branch</span>
+          <label className="sales-filter-field">
+            <div className="sales-filter-label">Records Branch</div>
             <BranchSelect
               value={filters.branchId}
               onChange={(value) => setFilters((prev) => ({ ...prev, branchId: value }))}
@@ -434,8 +470,8 @@ function CashReconciliationPage() {
               enforceRole={false}
             />
           </label>
-          <label style={{ display: 'grid', gap: 6 }}>
-            <span className="field-label">Account</span>
+          <label className="sales-filter-field">
+            <div className="sales-filter-label">Account</div>
             <select className="select" value={filters.accountId} onChange={(e) => setFilters((prev) => ({ ...prev, accountId: e.target.value }))}>
               <option value="">All Accounts</option>
               {accounts.map((account) => (
@@ -443,8 +479,8 @@ function CashReconciliationPage() {
               ))}
             </select>
           </label>
-          <label style={{ display: 'grid', gap: 6 }}>
-            <span className="field-label">Status</span>
+          <label className="sales-filter-field">
+            <div className="sales-filter-label">Status</div>
             <select className="select" value={filters.status} onChange={(e) => setFilters((prev) => ({ ...prev, status: e.target.value }))}>
               <option value="">All Statuses</option>
               <option value="pending_director">Pending Director</option>
@@ -456,70 +492,79 @@ function CashReconciliationPage() {
         </div>
       </div>
 
-      <div className="stats-grid">
-        <div className="card stat-card"><div className="stat-label">Deposited (Approved)</div><div className="stat-value-compact">{loading ? <LoadingDots /> : formatCurrency(summary.depositedAmount || 0, settings)}</div></div>
-        <div className="card stat-card"><div className="stat-label">Awaiting Deposit</div><div className="stat-value-compact">{loading ? <LoadingDots /> : formatCurrency(summary.awaitingAmount || 0, settings)}</div></div>
-        <div className="card stat-card"><div className="stat-label">Pending Approval</div><div className="stat-value-compact">{loading ? <LoadingDots /> : formatCurrency(summary.pendingApprovalAmount || 0, settings)}</div></div>
-        <div className="card stat-card"><div className="stat-label">Backlog Days</div><div className="stat-value">{loading ? <LoadingDots /> : (summary.backlogDays || 0)}</div></div>
+      <div className="sales-summary-grid">
+        {summaryCards.map((card) => (
+          <div key={card.key} className="sales-summary-card" style={{ '--accent': card.accent }}>
+            <div className="sales-summary-label">{card.label}</div>
+            <div className="sales-summary-value">{card.value}</div>
+          </div>
+        ))}
       </div>
 
       {tab === 'submit' && (
-        <>
-          <div className="card" style={{ display: 'grid', gap: 12 }}>
-            <div className="section-header">
-              <div>
-                <h2 style={{ margin: 0 }}>Branch Reconciliation</h2>
-                <div className="section-note" style={{ marginTop: 4 }}>
-                  Create a transfer only when needed. The add modal loads sales dates that have revenue but are not yet deposited.
-                </div>
-              </div>
-              <button className="btn btn-primary" onClick={openSubmitModal} disabled={!canSubmit}>Add Reconciliation</button>
+        <div className="sales-section-card">
+          <div className="sales-section-head">
+            <div>
+              <h2 className="sales-section-title">Branch Reconciliation</h2>
+              <p className="sales-section-note">
+                Open the submission modal only when needed. It will load sales dates that still have revenue awaiting deposit.
+              </p>
             </div>
-            <div className="stats-grid">
-              <div className="surface-panel"><div className="stat-label">Awaiting Deposit</div><div className="stat-value-compact">{loading ? <LoadingDots /> : formatCurrency(summary.awaitingAmount || 0, settings)}</div></div>
-              <div className="surface-panel"><div className="stat-label">Pending Approval</div><div className="stat-value-compact">{loading ? <LoadingDots /> : formatCurrency(summary.pendingApprovalAmount || 0, settings)}</div></div>
-              <div className="surface-panel"><div className="stat-label">Backlog Days</div><div className="stat-value">{loading ? <LoadingDots /> : (summary.backlogDays || 0)}</div></div>
+            <button className="btn btn-primary" onClick={openSubmitModal} disabled={!canSubmit}>Add Reconciliation</button>
+          </div>
+          <div className="sales-table-meta">
+            <div className="sales-results-note">
+              {summary.backlogDays || 0} backlog day{Number(summary.backlogDays || 0) === 1 ? '' : 's'} currently need attention.
             </div>
           </div>
-        </>
+          <div className="stats-grid">
+            <div className="surface-panel"><div className="stat-label">Awaiting Deposit</div><div className="stat-value-compact">{loading ? <LoadingDots /> : formatCurrency(summary.awaitingAmount || 0, settings)}</div></div>
+            <div className="surface-panel"><div className="stat-label">Pending Approval</div><div className="stat-value-compact">{loading ? <LoadingDots /> : formatCurrency(summary.pendingApprovalAmount || 0, settings)}</div></div>
+            <div className="surface-panel"><div className="stat-label">Backlog Days</div><div className="stat-value">{loading ? <LoadingDots /> : (summary.backlogDays || 0)}</div></div>
+          </div>
+        </div>
       )}
 
       {tab === 'records' && (
-        <>
-          <div className="card">
-            <div className="section-header">
-              <div>
-                <h2 style={{ margin: 0 }}>Deposits into Selected Account</h2>
-                <div className="section-note" style={{ marginTop: 4 }}>
-                  Total for the current filters and account selection.
-                </div>
-              </div>
-              <div className="stat-value-compact" style={{ marginTop: 0 }}>{formatCurrency(accountTotals.total || 0, settings)}</div>
+        <div className="sales-section-card">
+          <div className="sales-section-head">
+            <div>
+              <h2 className="sales-section-title">Deposit Records</h2>
+              <p className="sales-section-note">
+                Review all submitted reconciliations for the current filter set and account selection.
+              </p>
+            </div>
+            <div className="sales-summary-value" style={{ fontSize: 24 }}>{formatCurrency(accountTotals.total || 0, settings)}</div>
+          </div>
+          <div className="sales-table-meta">
+            <div className="sales-results-note">
+              {loading ? 'Loading deposit records...' : `${records.length} reconciliation record${records.length === 1 ? '' : 's'} found`}
             </div>
           </div>
-          <div className="card">
-            <div className="table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th align="left">No.</th>
-                    <th align="left">Branch</th>
-                    <th align="left">Dates</th>
-                    <th align="right">Expected</th>
-                    <th align="right">Deposited</th>
-                    <th align="left">Status</th>
-                    <th align="left">Allocations</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {records.map((row) => (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th align="left">No.</th>
+                  <th align="left">Branch</th>
+                  <th align="left">Dates</th>
+                  <th align="right">Expected</th>
+                  <th align="right">Deposited</th>
+                  <th align="left">Status</th>
+                  <th align="left">Allocations</th>
+                </tr>
+              </thead>
+              <tbody>
+                {records.map((row) => {
+                  const statusMeta = getReconciliationStatusMeta(row?.status);
+                  return (
                     <tr key={row._id}>
                       <td>{row.reconciliationNumber || row._id}</td>
                       <td>{row.branchName || row.branchId}</td>
                       <td>{(row.selectedDates || []).join(', ') || '—'}</td>
                       <td align="right">{formatCurrency(row.expectedAmount || 0, settings)}</td>
                       <td align="right">{formatCurrency(row.depositedAmount || 0, settings)}</td>
-                      <td>{row.status}</td>
+                      <td><span className={`status-badge ${statusMeta.tone}`}>{statusMeta.label}</span></td>
                       <td>
                         <div className="options-grid" style={{ gap: 6 }}>
                           {(row.allocations || []).map((item, index) => (
@@ -530,26 +575,31 @@ function CashReconciliationPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
-                  {!loading && records.length === 0 && <tr><td colSpan="7" style={{ padding: 12, color: '#64748b' }}>No reconciliation records found.</td></tr>}
-                </tbody>
-              </table>
-            </div>
+                  );
+                })}
+                {!loading && records.length === 0 && <tr><td colSpan="7" style={{ padding: 12, color: '#64748b' }}>No reconciliation records found.</td></tr>}
+              </tbody>
+            </table>
           </div>
-        </>
+        </div>
       )}
 
       {tab === 'approvals' && canApproveAnything && (
-        <div className="card">
-          <div className="section-header">
+        <div className="sales-section-card">
+          <div className="sales-section-head">
             <div>
-              <h2 style={{ margin: 0 }}>Pending Approvals</h2>
-              <div className="section-note" style={{ marginTop: 4 }}>
-                Review deposit proofs and confirm the total matches the sales days before approval.
-              </div>
+              <h2 className="sales-section-title">Pending Approvals</h2>
+              <p className="sales-section-note">
+                Review deposit proofs and confirm the submitted amount still matches the selected sales days.
+              </p>
             </div>
           </div>
-          <div className="table-wrap" style={{ marginTop: 12 }}>
+          <div className="sales-table-meta">
+            <div className="sales-results-note">
+              {loading ? 'Loading approval queue...' : `${approvalRows.length} approval${approvalRows.length === 1 ? '' : 's'} in your queue`}
+            </div>
+          </div>
+          <div className="table-wrap">
             <table className="table">
               <thead>
                 <tr>
@@ -585,7 +635,12 @@ function CashReconciliationPage() {
                         ) : null)}
                       </div>
                     </td>
-                    <td><span className={`status-pill ${row.status === 'approved' ? 'status-pill-approved' : row.status === 'rejected' ? 'status-pill-rejected' : 'status-pill-pending'}`}>{row.status}</span></td>
+                    <td>
+                      {(() => {
+                        const statusMeta = getReconciliationStatusMeta(row?.status);
+                        return <span className={`status-badge ${statusMeta.tone}`}>{statusMeta.label}</span>;
+                      })()}
+                    </td>
                     <td>
                       {(row.status === 'pending_director' && canApproveDirector) || (row.status === 'pending_manager' && canApproveManager) ? (
                         <div className="approval-row-actions">

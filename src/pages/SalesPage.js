@@ -146,6 +146,14 @@ function getSalePrimaryReference(sale) {
   return sale?.invoiceSerial || sale?.receiptNumber || sale?.clientId || sale?.id || sale?._id || '—';
 }
 
+function getSaleTypeLabel(sale) {
+  return String(sale?.posType || 'retail') === 'wholesale'
+    ? 'Distribution'
+    : String(sale?.posType || 'retail') === 'warehouse'
+      ? 'Warehouse'
+      : 'Retail';
+}
+
 function SalesPage() {
   const dispatch = useDispatch();
   const sales = useSelector(s => s.sales.sales);
@@ -573,21 +581,39 @@ function SalesPage() {
   function maskCost(value) {
     return canViewCost ? formatCurrency(value, settings) : '***';
   }
+  const totalPages = Math.max(1, Math.ceil(filteredSales.length / pageSize));
+  const currentPageSales = filteredSales.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
+  const salesSummaryCards = [
+    { key: 'count', label: 'Sales Count', value: summary.totalSales, accent: '#2563eb' },
+    { key: 'revenue', label: 'Collected Revenue', value: maskRevenue(summary.totalRevenue), accent: '#0f766e' },
+    { key: 'profit', label: 'Collected Profit', value: maskProfit(summary.totalProfit), accent: '#7c3aed' },
+    ...(canViewCost ? [{ key: 'cost', label: 'Total Cost Price', value: maskCost(summary.totalCost), accent: '#f59e0b' }] : []),
+    { key: 'items', label: 'Items Sold', value: summary.itemsSold, accent: '#14b8a6' },
+    { key: 'creditOut', label: 'Credit Out', value: maskRevenue(summary.creditOut), accent: '#ea580c' },
+    { key: 'incomplete', label: 'Incomplete Sales', value: summary.incompleteCount, accent: '#eab308' },
+    { key: 'easybuy', label: 'Retail Credit', value: summary.easybuyCount, accent: '#06b6d4' },
+    { key: 'wholesaleCredit', label: 'Distribution Credit', value: summary.wholesaleCreditCount, accent: '#8b5cf6' },
+    { key: 'warehouseCredit', label: 'Warehouse Credit', value: summary.warehouseCreditCount, accent: '#10b981' }
+  ];
   return (
-    <div style={{ padding: 16 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 style={{ margin: 0 }}>Sales</h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div className="sales-page-shell">
+      <div className="sales-header">
+        <div className="sales-header-copy">
+          <div className="ui-eyebrow">Revenue Records</div>
+          <h1 className="sales-title">Sales</h1>
+          <p className="sales-subtitle">Review completed sales, compare sellers and branches, and export clean finance-ready records from one place.</p>
+        </div>
+        <div className="sales-header-actions">
           <OfflineQueueIndicator collection="sales" label="Sales queued" />
           {canSeeAll && (
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+            <label className="sales-toggle-pill">
               <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
               <span>All branches</span>
             </label>
           )}
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 6, marginTop: 10, marginBottom: 8, flexWrap: 'wrap' }}>
+      <div className="sales-tabbar">
         <button className={tab === 'sales' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('sales')}>Sales</button>
         <button className={tab === 'leaderboard' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('leaderboard')}>Sales Rep Leaderboard</button>
         <button className={tab === 'branches' ? 'btn btn-primary' : 'btn'} onClick={() => setTab('branches')}>Branch Comparison</button>
@@ -595,187 +621,190 @@ function SalesPage() {
       {tab === 'sales' && (
         <>
           {loadingSales ? (
-            <div className="card" style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div className="sales-section-card" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <InlineSpinner />
               <span>Loading sales...</span>
             </div>
           ) : null}
-          <div className="card" style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
-            <label>
-              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Search</div>
-              <input className="input" value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setPage(1); }} placeholder="Invoice, receipt, temp ref, customer, product, brand, SKU" />
-            </label>
-            <label>
-              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Period</div>
-              <select className="select" value={periodMode} onChange={e => { setPeriodMode(e.target.value); setPage(1); }}>
-                <option value="range">Custom Range</option>
-                <option value="all_time">All Time</option>
-              </select>
-            </label>
-            <label>
-              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Period From</div>
-              <input className="input" type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} disabled={periodMode === 'all_time'} />
-            </label>
-            <label>
-              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Period To</div>
-              <input className="input" type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} disabled={periodMode === 'all_time'} />
-            </label>
-            <label>
-              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Branch</div>
-              <BranchSelect value={selectedBranchId} onChange={(value) => { setSelectedBranchId(value || ''); setPage(1); }} includeAll allLabel="All Branches" />
-            </label>
-            <label>
-              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Inventory Type</div>
-              <select className="select" value={saleKind} onChange={e => { setSaleKind(e.target.value); setPage(1); }}>
-                <option value="all">All Types</option>
-                <option value="retail">Retail</option>
-                <option value="wholesale">Distribution</option>
-                <option value="warehouse">Warehouse</option>
-              </select>
-            </label>
-            <label>
-              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Credit Filter</div>
-              <select className="select" value={creditKind} onChange={e => { setCreditKind(e.target.value); setPage(1); }}>
-                <option value="all">All Payment Types</option>
-                <option value="non_credit">Non Credit</option>
-                <option value="retail_easybuy">Retail Credit</option>
-                <option value="wholesale_credit">Distribution Credit Sale</option>
-                <option value="warehouse_credit">Warehouse Credit Sale</option>
-              </select>
-            </label>
-            <label>
-              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Credit Package</div>
-              <select className="select" value={creditPackageFilter} onChange={e => { setCreditPackageFilter(e.target.value); setPage(1); }}>
-                <option value="all">All Packages</option>
-                <option value="non_credit">Non Credit</option>
-                {creditPackageOptions.map((item) => <option key={item} value={item}>{item}</option>)}
-              </select>
-            </label>
-            <label>
-              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Settlement</div>
-              <select className="select" value={settlementFilter} onChange={e => { setSettlementFilter(e.target.value); setPage(1); }}>
-                <option value="all">All Sales</option>
-                <option value="incomplete">Incomplete Sales</option>
-                <option value="completed">Completed Sales</option>
-              </select>
-            </label>
-            <label>
-              <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Record Source</div>
-              <select className="select" value={recordSourceFilter} onChange={e => { setRecordSourceFilter(e.target.value); setPage(1); }}>
-                <option value="all">All Records</option>
-                <option value="temporary">Temporary / Queued</option>
-                <option value="server">Server Records</option>
-              </select>
-            </label>
+          <div className="sales-filter-card">
+            <div className="sales-filter-grid">
+              <label className="sales-filter-field">
+                <div className="sales-filter-label">Search</div>
+                <input className="input" value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setPage(1); }} placeholder="Invoice, receipt, temp ref, customer, product, brand, SKU" />
+              </label>
+              <label className="sales-filter-field">
+                <div className="sales-filter-label">Period</div>
+                <select className="select" value={periodMode} onChange={e => { setPeriodMode(e.target.value); setPage(1); }}>
+                  <option value="range">Custom Range</option>
+                  <option value="all_time">All Time</option>
+                </select>
+              </label>
+              <label className="sales-filter-field">
+                <div className="sales-filter-label">Period From</div>
+                <input className="input" type="date" value={dateFrom} onChange={e => { setDateFrom(e.target.value); setPage(1); }} disabled={periodMode === 'all_time'} />
+              </label>
+              <label className="sales-filter-field">
+                <div className="sales-filter-label">Period To</div>
+                <input className="input" type="date" value={dateTo} onChange={e => { setDateTo(e.target.value); setPage(1); }} disabled={periodMode === 'all_time'} />
+              </label>
+              <label className="sales-filter-field">
+                <div className="sales-filter-label">Branch</div>
+                <BranchSelect value={selectedBranchId} onChange={(value) => { setSelectedBranchId(value || ''); setPage(1); }} includeAll allLabel="All Branches" />
+              </label>
+              <label className="sales-filter-field">
+                <div className="sales-filter-label">Inventory Type</div>
+                <select className="select" value={saleKind} onChange={e => { setSaleKind(e.target.value); setPage(1); }}>
+                  <option value="all">All Types</option>
+                  <option value="retail">Retail</option>
+                  <option value="wholesale">Distribution</option>
+                  <option value="warehouse">Warehouse</option>
+                </select>
+              </label>
+              <label className="sales-filter-field">
+                <div className="sales-filter-label">Credit Filter</div>
+                <select className="select" value={creditKind} onChange={e => { setCreditKind(e.target.value); setPage(1); }}>
+                  <option value="all">All Payment Types</option>
+                  <option value="non_credit">Non Credit</option>
+                  <option value="retail_easybuy">Retail Credit</option>
+                  <option value="wholesale_credit">Distribution Credit Sale</option>
+                  <option value="warehouse_credit">Warehouse Credit Sale</option>
+                </select>
+              </label>
+              <label className="sales-filter-field">
+                <div className="sales-filter-label">Credit Package</div>
+                <select className="select" value={creditPackageFilter} onChange={e => { setCreditPackageFilter(e.target.value); setPage(1); }}>
+                  <option value="all">All Packages</option>
+                  <option value="non_credit">Non Credit</option>
+                  {creditPackageOptions.map((item) => <option key={item} value={item}>{item}</option>)}
+                </select>
+              </label>
+              <label className="sales-filter-field">
+                <div className="sales-filter-label">Settlement</div>
+                <select className="select" value={settlementFilter} onChange={e => { setSettlementFilter(e.target.value); setPage(1); }}>
+                  <option value="all">All Sales</option>
+                  <option value="incomplete">Incomplete Sales</option>
+                  <option value="completed">Completed Sales</option>
+                </select>
+              </label>
+              <label className="sales-filter-field">
+                <div className="sales-filter-label">Record Source</div>
+                <select className="select" value={recordSourceFilter} onChange={e => { setRecordSourceFilter(e.target.value); setPage(1); }}>
+                  <option value="all">All Records</option>
+                  <option value="temporary">Temporary / Queued</option>
+                  <option value="server">Server Records</option>
+                </select>
+              </label>
+            </div>
           </div>
-          <div className="summary-grid" style={{ marginTop: 12 }}>
-            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Sales Count</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.totalSales}</div></div>
-            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Collected Revenue</div><div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{maskRevenue(summary.totalRevenue)}</div></div>
-            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Collected Profit</div><div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{maskProfit(summary.totalProfit)}</div></div>
-            {canViewCost && (
-              <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Total Cost Price</div><div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{maskCost(summary.totalCost)}</div></div>
-            )}
-            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Items Sold</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.itemsSold}</div></div>
-            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Credit Out</div><div className="price-accent" style={{ fontSize: 24, fontWeight: 800 }}>{maskRevenue(summary.creditOut)}</div></div>
-            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Incomplete Sales</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.incompleteCount}</div></div>
-            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Retail Credit</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.easybuyCount}</div></div>
-            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Distribution Credit</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.wholesaleCreditCount}</div></div>
-            <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Warehouse Credit</div><div style={{ fontSize: 28, fontWeight: 800 }}>{summary.warehouseCreditCount}</div></div>
+          <div className="sales-summary-grid">
+            {salesSummaryCards.map((card) => (
+              <div key={card.key} className="sales-summary-card" style={{ '--accent': card.accent }}>
+                <div className="sales-summary-label">{card.label}</div>
+                <div className="sales-summary-value">{card.value}</div>
+              </div>
+            ))}
           </div>
         </>
       )}
       {(tab === 'leaderboard' || tab === 'branches') && (
-        <div className="card" style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }}>
-          <label>
-            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Period</div>
-            <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
-              <option value="range">Custom Range</option>
-              <option value="all_time">All Time</option>
-            </select>
-          </label>
-          <label>
-            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Date From</div>
-            <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
-          </label>
-          <label>
-            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Date To</div>
-            <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
-          </label>
-          <label>
-            <div style={{ color: '#64748b', fontSize: 12, marginBottom: 6 }}>Branch</div>
-            <select className="select" value={selectedBranchId} onChange={e => setSelectedBranchId(e.target.value)}>
-              <option value="">{canViewCashierCompetitionAll ? 'All Branches' : 'Assigned Branches'}</option>
-              {(canViewCashierCompetitionAll ? branches : (canUseCompetitionScope ? allowedBranches : branches)).map(branch => <option key={branch.id} value={branch.id}>{branch.name || branch.code || branch.id}</option>)}
-            </select>
-          </label>
+        <div className="sales-filter-card">
+          <div className="sales-filter-grid">
+            <label className="sales-filter-field">
+              <div className="sales-filter-label">Period</div>
+              <select className="select" value={periodMode} onChange={e => setPeriodMode(e.target.value)}>
+                <option value="range">Custom Range</option>
+                <option value="all_time">All Time</option>
+              </select>
+            </label>
+            <label className="sales-filter-field">
+              <div className="sales-filter-label">Date From</div>
+              <input className="input" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} disabled={periodMode === 'all_time'} />
+            </label>
+            <label className="sales-filter-field">
+              <div className="sales-filter-label">Date To</div>
+              <input className="input" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} disabled={periodMode === 'all_time'} />
+            </label>
+            <label className="sales-filter-field">
+              <div className="sales-filter-label">Branch</div>
+              <select className="select" value={selectedBranchId} onChange={e => setSelectedBranchId(e.target.value)}>
+                <option value="">{canViewCashierCompetitionAll ? 'All Branches' : 'Assigned Branches'}</option>
+                {(canViewCashierCompetitionAll ? branches : (canUseCompetitionScope ? allowedBranches : branches)).map(branch => <option key={branch.id} value={branch.id}>{branch.name || branch.code || branch.id}</option>)}
+              </select>
+            </label>
+          </div>
         </div>
       )}
-      {tab === 'sales' && (
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 6, margin: '8px 0' }}>
-        <button className="btn" onClick={onExportCsv}>Export CSV</button>
-        <button className="btn" onClick={onExportPdf}>Export PDF</button>
-      </div>
-      )}
       {tab === 'leaderboard' && (
-        <div className="card" style={{ marginTop: 12 }}>
-          <h2 className="section-title">Sales Rep Leaderboard</h2>
-          <table className="table">
-            <thead>
-              <tr>
-                <th align="left">Seller</th>
-                <th align="left">Sales</th>
-                <th align="left">Revenue</th>
-                <th align="left">Profit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {leaderboard.map(x => (
-                <tr key={x.seller}>
-                  <td>{x.seller}</td>
-                  <td>{x.sales}</td>
-                  <td><span className="price-accent">{maskRevenue(x.revenue)}</span></td>
-                  <td><span className="price-accent">{maskProfit(x.profit)}</span></td>
+        <div className="sales-section-card">
+          <div className="sales-section-head">
+            <div>
+              <h2 className="sales-section-title">Sales Rep Leaderboard</h2>
+              <p className="sales-section-note">Performance ranked by the current date and branch filters.</p>
+            </div>
+          </div>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th align="left">Seller</th>
+                  <th align="left">Sales</th>
+                  <th align="left">Revenue</th>
+                  <th align="left">Profit</th>
                 </tr>
-              ))}
-              {leaderboard.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No sales found</td></tr>}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {leaderboard.map(x => (
+                  <tr key={x.seller}>
+                    <td>{x.seller}</td>
+                    <td>{x.sales}</td>
+                    <td><span className="price-accent">{maskRevenue(x.revenue)}</span></td>
+                    <td><span className="price-accent">{maskProfit(x.profit)}</span></td>
+                  </tr>
+                ))}
+                {leaderboard.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No sales found</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
       {tab === 'branches' && (
-        <div className="card" style={{ marginTop: 12 }}>
-          <h2 className="section-title">Branch Comparison</h2>
-          <div style={{ color: '#64748b', fontSize: 12, marginBottom: 8 }}>
-            {canSeeAll && showAll ? 'Showing all branches' : 'Enable “All branches” to compare branches'}
+        <div className="sales-section-card">
+          <div className="sales-section-head">
+            <div>
+              <h2 className="sales-section-title">Branch Comparison</h2>
+              <p className="sales-section-note">{canSeeAll && showAll ? 'Showing all branches' : 'Enable “All branches” to compare branches.'}</p>
+            </div>
           </div>
-          <table className="table">
-            <thead>
-              <tr>
-                <th align="left">Branch</th>
-                <th align="left">Sales</th>
-                <th align="left">Revenue</th>
-                <th align="left">Profit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {branchComparison.map(b => (
-                <tr key={b.branchId}>
-                  <td>{b.name}</td>
-                  <td>{b.sales}</td>
-                  <td><span className="price-accent">{maskRevenue(b.revenue)}</span></td>
-                  <td><span className="price-accent">{maskProfit(b.profit)}</span></td>
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th align="left">Branch</th>
+                  <th align="left">Sales</th>
+                  <th align="left">Revenue</th>
+                  <th align="left">Profit</th>
                 </tr>
-              ))}
-              {branchComparison.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No sales found</td></tr>}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {branchComparison.map(b => (
+                  <tr key={b.branchId}>
+                    <td>{b.name}</td>
+                    <td>{b.sales}</td>
+                    <td><span className="price-accent">{maskRevenue(b.revenue)}</span></td>
+                    <td><span className="price-accent">{maskProfit(b.profit)}</span></td>
+                  </tr>
+                ))}
+                {branchComparison.length === 0 && <tr><td colSpan="4" style={{ padding: 12, color: '#64748b' }}>No sales found</td></tr>}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
       {tab === 'sales' && (
       <>
       {canDeleteSales && (
-        <div className="card" style={{ marginBottom: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+        <div className="sales-section-card" style={{ marginBottom: 0, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
           <select className="select" value={bulkAction} onChange={e => setBulkAction(e.target.value)} style={{ width: 180 }} disabled={bulkDeleting}>
             <option value="">Actions</option>
             <option value="delete">Delete Selected</option>
@@ -788,6 +817,15 @@ function SalesPage() {
           </button>
         </div>
       )}
+      <div className="sales-section-card">
+      <div className="sales-table-meta">
+        <div className="sales-results-note">Showing {currentPageSales.length} of {filteredSales.length} sales</div>
+        <div className="sales-actions-row">
+          <button className="btn btn-secondary" onClick={onExportCsv}>Export CSV</button>
+          <button className="btn btn-secondary" onClick={onExportPdf}>Export PDF</button>
+        </div>
+      </div>
+      <div className="table-wrap">
       <table className="table">
         <thead>
           <tr>
@@ -796,9 +834,9 @@ function SalesPage() {
                 <input
                   type="checkbox"
                   disabled={bulkDeleting}
-                  checked={filteredSales.slice((page-1)*pageSize, (page-1)*pageSize + pageSize).length > 0 && filteredSales.slice((page-1)*pageSize, (page-1)*pageSize + pageSize).every(sale => selectedSaleIds.includes(String(sale.id || sale._id || sale.clientId || '')))}
+                  checked={currentPageSales.length > 0 && currentPageSales.every(sale => selectedSaleIds.includes(String(sale.id || sale._id || sale.clientId || '')))}
                   onChange={e => {
-                    const pageIds = filteredSales.slice((page-1)*pageSize, (page-1)*pageSize + pageSize).map(sale => String(sale.id || sale._id || sale.clientId || '')).filter(Boolean);
+                    const pageIds = currentPageSales.map(sale => String(sale.id || sale._id || sale.clientId || '')).filter(Boolean);
                     setSelectedSaleIds(prev => e.target.checked ? [...new Set([...prev, ...pageIds])] : prev.filter(id => !pageIds.includes(id)));
                   }}
                 />
@@ -820,7 +858,7 @@ function SalesPage() {
           </tr>
         </thead>
         <tbody>
-          {filteredSales.slice((page-1)*pageSize, (page-1)*pageSize + pageSize).map(sale => (
+          {currentPageSales.map(sale => (
             <tr key={sale.id} style={bulkDeleting && selectedSaleIds.includes(String(sale.id || sale._id || sale.clientId || '')) ? { opacity: 0.55 } : undefined}>
               {canDeleteSales && (
                 <td>
@@ -843,7 +881,7 @@ function SalesPage() {
                 </div>
               </td>
               <td>{branchLabel(sale)}</td>
-              <td>{String(sale.posType || 'retail') === 'wholesale' ? 'Distribution' : String(sale.posType || 'retail') === 'warehouse' ? 'Warehouse' : 'Retail'}</td>
+              <td>{getSaleTypeLabel(sale)}</td>
               <td>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span>{getCreditModeLabel(sale)}</span>
@@ -856,13 +894,15 @@ function SalesPage() {
               </td>
               <td>{sale.sellerName || '-'}</td>
               <td>
-                <div style={{ fontWeight: 700 }}>{getSalePrimaryReference(sale)}</div>
-                <div style={{ color: isTemporarySaleRecord(sale) ? '#b45309' : '#64748b', fontSize: 12 }}>
+                <div className="sales-ref-cell">
+                <div className="sales-ref-primary">{getSalePrimaryReference(sale)}</div>
+                <div className="sales-ref-secondary" style={{ color: isTemporarySaleRecord(sale) ? '#b45309' : '#64748b' }}>
                   {getSaleRecordLabel(sale)}
                   {sale.receiptNumber && sale.invoiceSerial && sale.receiptNumber !== sale.invoiceSerial ? ` || Receipt: ${sale.receiptNumber}` : ''}
                 </div>
+                </div>
               </td>
-              <td>{sale.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}${i.spec ? ' ['+i.spec+']' : ''}x${i.qty}`).join(', ')}</td>
+              <td><div className="sales-item-snippet">{sale.items.map(i => `${i.name}${i.brand ? ` (${i.brand})` : ''}${i.spec ? ` [${i.spec}]` : ''}x${i.qty}`).join(', ')}</div></td>
               <td>{sale.customerName || ''}</td>
               <td><span className="price-accent" style={amountCellStyle(getSaleDisplayTotal(sale))}>{formatCurrency(getSaleDisplayTotal(sale), settings)}</span></td>
               <td><span className="price-accent" style={amountCellStyle(getSaleRangeTotals(sale, periodMode === 'all_time' ? null : parseRangeStart(dateFrom), periodMode === 'all_time' ? null : parseRangeEnd(dateTo)).revenue)}>{maskRevenue(getSaleRangeTotals(sale, periodMode === 'all_time' ? null : parseRangeStart(dateFrom), periodMode === 'all_time' ? null : parseRangeEnd(dateTo)).revenue)}</span></td>
@@ -876,48 +916,37 @@ function SalesPage() {
                     : refundBadge === 'part_refunded'
                       ? 'Part Refunded'
                       : (isIncomplete ? 'Incomplete' : 'Completed');
-                  const color = refundBadge
-                    ? '#b91c1c'
-                    : (isIncomplete ? '#b45309' : '#15803d');
-                  const background = refundBadge
-                    ? '#fee2e2'
-                    : (isIncomplete ? '#fef3c7' : '#dcfce7');
                   return (
-                <span style={{
-                  display: 'inline-flex',
-                  padding: '4px 10px',
-                  borderRadius: 999,
-                  fontSize: 12,
-                  fontWeight: 700,
-                  color,
-                  background
-                }}>
+                <span className={`status-badge ${refundBadge ? 'danger' : isIncomplete ? 'warning' : 'success'}`}>
                   {label}
                 </span>
                   );
                 })()}
               </td>
               <td>
-                <button className="btn btn-primary" onClick={() => reprint(sale, false)} disabled={bulkDeleting && selectedSaleIds.includes(String(sale.id || sale._id || sale.clientId || ''))}>
-                  <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>
-                  Reprint
-                </button>
-                <button className="btn" onClick={() => reprint(sale, true)} style={{ marginLeft: 6 }} disabled={bulkDeleting && selectedSaleIds.includes(String(sale.id || sale._id || sale.clientId || ''))}>
-                  <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>
-                  ESC/POS
-                </button>
+                <div className="sales-row-actions">
+                  <button className="btn btn-primary btn-compact" onClick={() => reprint(sale, false)} disabled={bulkDeleting && selectedSaleIds.includes(String(sale.id || sale._id || sale.clientId || ''))}>
+                    <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>
+                    Reprint
+                  </button>
+                  <button className="btn btn-compact" onClick={() => reprint(sale, true)} disabled={bulkDeleting && selectedSaleIds.includes(String(sale.id || sale._id || sale.clientId || ''))}>
+                    <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>
+                    ESC/POS
+                  </button>
+                </div>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8 }}>
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+      </div>
+      <div className="sales-pagination">
+        <div className="sales-pagination-controls">
           <button className="btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1}>Prev</button>
-          <span>Page {page} of {Math.max(1, Math.ceil(filteredSales.length / pageSize))}</span>
-          <button className="btn" onClick={() => setPage(p => Math.min(Math.max(1, Math.ceil(filteredSales.length / pageSize)), p + 1))} disabled={page >= Math.max(1, Math.ceil(filteredSales.length / pageSize))}>Next</button>
+          <span className="sales-pagination-note">Page {page} of {totalPages}</span>
+          <button className="btn" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page >= totalPages}>Next</button>
         </div>
-        <label>
+        <label className="sales-actions-row">
           <span style={{ marginRight: 6 }}>Rows</span>
           <select className="select" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}>
             <option value={10}>10</option>
@@ -926,6 +955,7 @@ function SalesPage() {
             <option value={100}>100</option>
           </select>
         </label>
+      </div>
       </div>
       </>
       )}
