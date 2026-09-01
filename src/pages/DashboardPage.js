@@ -9,7 +9,7 @@ import { isFeatureEnabled } from '../utils/featureFlags';
 import BranchSelect from '../components/BranchSelect';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
-import { getSaleActivityType, getSalePaymentTimeline, getSaleRangeTotals, saleHasActivityInRange } from '../utils/saleAccounting';
+import { buildRefundAdjustedSaleMetrics, getRefundReturnedValue, getSaleActivityType, getSalePaymentTimeline, getSaleRangeTotals, saleHasActivityInRange } from '../utils/saleAccounting';
 
 Chart.register(BarElement, LineElement, PointElement, CategoryScale, LinearScale, ArcElement, Tooltip, Legend, Filler);
 
@@ -39,14 +39,6 @@ function addPaymentBreakdown(target, day, paymentType, amount) {
   const type = normalizePaymentType(paymentType);
   target[day] = target[day] || {};
   target[day][type] = (target[day][type] || 0) + value;
-}
-
-function subtractPaymentBreakdown(target, day, paymentType, amount) {
-  if (!day || !target[day]) return;
-  const value = Number(amount || 0);
-  if (value <= 0) return;
-  const type = normalizePaymentType(paymentType);
-  target[day][type] = Math.max(0, Number(target[day][type] || 0) - value);
 }
 
 function parseInputDateKey(value) {
@@ -83,36 +75,6 @@ function isRefundSale(sale) {
   if (Number(sale?.total || 0) < 0) return true;
   if ((Array.isArray(sale?.payment_methods) ? sale.payment_methods : []).some((row) => String(row?.type || '').trim().toLowerCase() === 'refund')) return true;
   return (Array.isArray(sale?.items) ? sale.items : []).some((item) => String(item?.name || '').trim().toUpperCase().startsWith('REFUND '));
-}
-
-function getRefundEventDate(refund) {
-  return refund?.approved_at || refund?.created_at || null;
-}
-
-function isCreditLikeSale(sale) {
-  const creditMode = String(sale?.creditMode || '').trim().toLowerCase();
-  return !!((creditMode && creditMode !== 'none' && creditMode !== 'non_credit') || sale?.creditSale || String(sale?.creditSaleId || '').trim());
-}
-
-function getRefundReturnedValue(refund, originalSale = null) {
-  const requested = Math.abs(Number(refund?.requestedAmount || 0));
-  if (requested > 0) return requested;
-  if (String(refund?.type || '').trim().toLowerCase() === 'full') {
-    return Math.max(0, Number(originalSale?.total || 0));
-  }
-  return 0;
-}
-
-function getRefundCashImpact(refund, originalSale = null) {
-  const explicit = Math.abs(Number(refund?.cashRefundAmount || 0));
-  const settlementMode = String(refund?.settlementMode || '').trim().toLowerCase();
-  if (explicit > 0 || ['cash_refund', 'credit_relief', 'mixed'].includes(settlementMode)) return explicit;
-  const returnedValue = getRefundReturnedValue(refund, originalSale);
-  if (!isCreditLikeSale(originalSale)) return returnedValue;
-  const collectedToDate = Math.max(0, Number(originalSale?.creditSale?.amount_paid ?? originalSale?.creditAmountPaidNow ?? 0));
-  const currentCreditTotal = Math.max(0, Number(originalSale?.creditSale?.total_amount ?? originalSale?.total ?? 0));
-  const revisedCreditTotal = Math.max(0, currentCreditTotal - Math.min(returnedValue, currentCreditTotal));
-  return Math.max(0, collectedToDate - revisedCreditTotal);
 }
 
 function matchesDashboardActivityFilter(sale, filter) {
@@ -395,9 +357,6 @@ function DashboardPage() {
       };
       return matchesDashboardActivityFilter(fallbackSale, activityFilter);
     });
-    const approvedRefundsInRange = approvedRefundsForSalesMath.filter((refund) => (
-      isDateInRange(getRefundEventDate(refund), selectedFrom, selectedTo)
-    ));
     const productById = new Map();
     const categoryBySku = new Map();
     products.forEach((product) => {
@@ -434,10 +393,6 @@ function DashboardPage() {
     let retailCreditRecovered = 0;
     let wholesaleCreditRecovered = 0;
     let warehouseCreditRecovered = 0;
-    let approvedRefundAmountInRange = 0;
-    let recognizedRefundRevenueImpact = 0;
-    let approvedRefundProfit = 0;
-    let approvedRefundCost = 0;
     let approvedRefundItems = 0;
     const perDay = {};
     const perDayPayments = {}; // { 'YYYY-MM-DD': { cash: x, card: y, ... } }
@@ -446,15 +401,45 @@ function DashboardPage() {
     const cashierMap = new Map();
     const customerMap = new Map();
     const productProfit = new Map();
-    const refundRevenueAppliedBySaleId = new Map();
-    const refundProfitAppliedBySaleId = new Map();
-    const refundCostAppliedBySaleId = new Map();
     const approvedFullRefundSaleIds = new Set();
+    const refundAdjustedSales = buildRefundAdjustedSaleMetrics(
+      filteredSales.filter((sale) => !isRefundSale(sale)),
+      approvedRefundsForSalesMath,
+      selectedFrom,
+      selectedTo
+    );
+    const approvedRefundAmountInRange = refundAdjustedSales.approvedRefundAmountInRange;
+    const recognizedRefundRevenueImpact = refundAdjustedSales.recognizedRefundRevenueImpact;
+    const getSaleAdjustment = (sale) => {
+      const saleId = String(sale?.id || sale?._id || sale?.clientId || '').trim();
+      return refundAdjustedSales.bySaleId.get(saleId) || null;
+    };
+    const getAdjustedSaleRangeTotals = (sale) => {
+      const adjustment = getSaleAdjustment(sale);
+      if (!adjustment) return getSaleRangeTotals(sale, selectedFrom, selectedTo);
+      return {
+        revenue: Number(adjustment.adjustedRevenue || 0),
+        profit: Number(adjustment.adjustedProfit || 0),
+        cost: Number(adjustment.adjustedCost || 0),
+        payments: 0
+      };
+    };
+    const getSaleRevenueScale = (sale, rangeFrom = selectedFrom, rangeTo = selectedTo) => {
+      const adjustment = getSaleAdjustment(sale);
+      if (adjustment) {
+        const baseRevenue = Number(adjustment.baseRevenue || 0);
+        if (baseRevenue <= 0) return 0;
+        return Math.max(0, Math.min(1, Number(adjustment.adjustedRevenue || 0) / Math.max(0.0001, baseRevenue)));
+      }
+      const fallbackTotals = getSaleRangeTotals(sale, rangeFrom, rangeTo);
+      return Number(fallbackTotals.revenue || 0) > 0 ? 1 : 0;
+    };
     const buildNetRevenuePerDay = (rangeFrom = null, rangeTo = null) => {
       const totalsByDay = {};
-      const appliedRefundRevenueBySaleId = new Map();
       for (const sale of filteredSales) {
         if (isRefundSale(sale)) continue;
+        const revenueScale = getSaleRevenueScale(sale, rangeFrom, rangeTo);
+        if (revenueScale <= 0) continue;
         const timeline = getSalePaymentTimeline(sale);
         timeline.forEach((event) => {
           const paidAt = new Date(event?.paidAt || 0);
@@ -463,32 +448,8 @@ function DashboardPage() {
           if (rangeTo && paidAt.getTime() > rangeTo.getTime()) return;
           const day = formatLocalDateKey(paidAt);
           if (!day) return;
-          totalsByDay[day] = (totalsByDay[day] || 0) + Number(event?.amount || 0);
-        });
-      }
-      for (const refund of approvedRefundsForSalesMath) {
-        const originalSale = salesById.get(String(refund?.saleId || ''));
-        if (!originalSale || isRefundSale(originalSale)) continue;
-        const saleId = String(originalSale?.id || originalSale?._id || originalSale?.clientId || '').trim();
-        const originalRecognized = getSaleRangeTotals(originalSale, rangeFrom, rangeTo);
-        const alreadyAppliedRevenue = Number(appliedRefundRevenueBySaleId.get(saleId) || 0);
-        const remainingRevenueImpact = Math.max(0, Number(originalRecognized.revenue || 0) - alreadyAppliedRevenue);
-        const refundCashImpact = Math.min(remainingRevenueImpact, Math.max(0, getRefundCashImpact(refund, originalSale)));
-        const refundRatio = Number(originalRecognized.revenue || 0) > 0
-          ? Math.min(1, refundCashImpact / Math.max(0.0001, Number(originalRecognized.revenue || 0)))
-          : 0;
-        if (refundRatio <= 0) continue;
-        appliedRefundRevenueBySaleId.set(saleId, alreadyAppliedRevenue + refundCashImpact);
-        const originalTimeline = getSalePaymentTimeline(originalSale);
-        originalTimeline.forEach((event) => {
-          const paidAt = new Date(event?.paidAt || 0);
-          if (Number.isNaN(paidAt.getTime())) return;
-          if (rangeFrom && paidAt.getTime() < rangeFrom.getTime()) return;
-          if (rangeTo && paidAt.getTime() > rangeTo.getTime()) return;
-          const day = formatLocalDateKey(paidAt);
-          if (!day) return;
-          const adjustedAmount = Math.max(0, Number(event?.amount || 0) * refundRatio);
-          totalsByDay[day] = Math.max(0, Number(totalsByDay[day] || 0) - adjustedAmount);
+          const adjustedAmount = Math.max(0, Number(event?.amount || 0) * revenueScale);
+          totalsByDay[day] = (totalsByDay[day] || 0) + adjustedAmount;
         });
       }
       return totalsByDay;
@@ -506,7 +467,7 @@ function DashboardPage() {
       }
     }
     for (const sale of activitySales) {
-      const recognized = getSaleRangeTotals(sale, selectedFrom, selectedTo);
+      const recognized = getAdjustedSaleRangeTotals(sale);
       if (recognized.revenue === 0 && recognized.profit === 0 && recognized.cost === 0) continue;
       const creditMode = String(sale.creditMode || '').trim().toLowerCase();
       if (creditMode === 'retail_easybuy') {
@@ -587,10 +548,6 @@ function DashboardPage() {
         if (customerRow) customerRow.products += qty;
       }
     }
-    for (const refund of approvedRefundsInRange) {
-      const originalSale = salesById.get(String(refund?.saleId || ''));
-      approvedRefundAmountInRange += Math.max(0, getRefundCashImpact(refund, originalSale || null));
-    }
     for (const refund of approvedRefundsForSalesMath) {
       const refundType = String(refund?.type || '').trim().toLowerCase();
       const originalSale = salesById.get(String(refund?.saleId || ''));
@@ -604,26 +561,6 @@ function DashboardPage() {
       const customerKey = String(originalSale?.customerId || '').trim()
         || String(originalSale?.customerCode || '').trim()
         || String(originalSale?.customerName || '').trim().toLowerCase();
-      const originalRecognized = getSaleRangeTotals(originalSale, selectedFrom, selectedTo);
-      const alreadyAppliedRevenue = Number(refundRevenueAppliedBySaleId.get(saleId) || 0);
-      const remainingRevenueImpact = Math.max(0, Number(originalRecognized.revenue || 0) - alreadyAppliedRevenue);
-      const refundCashImpact = Math.min(remainingRevenueImpact, Math.max(0, getRefundCashImpact(refund, originalSale)));
-      const recognizedImpactRatio = Number(originalRecognized.revenue || 0) > 0
-        ? Math.min(1, refundCashImpact / Math.max(0.0001, Number(originalRecognized.revenue || 0)))
-        : 0;
-      refundRevenueAppliedBySaleId.set(saleId, alreadyAppliedRevenue + refundCashImpact);
-      const rawProfitImpact = Math.max(0, Number(originalRecognized.profit || 0) * recognizedImpactRatio);
-      const rawCostImpact = Math.max(0, Number(originalRecognized.cost || 0) * recognizedImpactRatio);
-      const alreadyAppliedProfit = Number(refundProfitAppliedBySaleId.get(saleId) || 0);
-      const alreadyAppliedCost = Number(refundCostAppliedBySaleId.get(saleId) || 0);
-      const profitImpact = Math.min(Math.max(0, Number(originalRecognized.profit || 0) - alreadyAppliedProfit), rawProfitImpact);
-      const costImpact = Math.min(Math.max(0, Number(originalRecognized.cost || 0) - alreadyAppliedCost), rawCostImpact);
-      recognizedRefundRevenueImpact += refundCashImpact;
-      refundProfitAppliedBySaleId.set(saleId, alreadyAppliedProfit + profitImpact);
-      refundCostAppliedBySaleId.set(saleId, alreadyAppliedCost + costImpact);
-      if (customerKey && customerMap.has(customerKey)) {
-        customerMap.get(customerKey).amount = Math.max(0, Number(customerMap.get(customerKey).amount || 0) - refundCashImpact);
-      }
       if (originalSaleCreatedInRange && refundItems.length > 0) {
         refundItems.forEach((refundItem) => {
           const qty = Math.max(0, Number(refundItem?.qty || 0));
@@ -677,26 +614,9 @@ function DashboardPage() {
           }
         });
       }
-      approvedRefundCost += costImpact;
-      approvedRefundProfit += profitImpact;
       approvedRefundItems += refundItemQty;
       if (refundType === 'full' && originalSale && isDateInRange(originalSale.created_at, selectedFrom, selectedTo)) {
         approvedFullRefundSaleIds.add(saleId);
-      }
-      const originalSaleAt = new Date(originalSale.created_at || originalSale.saleCapturedAt || originalSale.recordedAt || 0);
-      const originalSaleDay = Number.isNaN(originalSaleAt.getTime()) ? '' : formatLocalDateKey(originalSaleAt);
-      const originalTimeline = Array.isArray(originalSale.paymentTimeline) ? originalSale.paymentTimeline : [];
-      originalTimeline.forEach((event) => {
-        const paidAt = new Date(event.paidAt || 0);
-        if (Number.isNaN(paidAt.getTime())) return;
-        const day = formatLocalDateKey(paidAt);
-        if (!day) return;
-        const adjustedAmount = Math.max(0, Number(event.amount || 0) * recognizedImpactRatio);
-        perDay[day] = Math.max(0, Number(perDay[day] || 0) - adjustedAmount);
-      });
-      const originalMethods = Array.isArray(originalSale.payment_methods) ? originalSale.payment_methods : [];
-      if (originalSaleDay) {
-        originalMethods.forEach((methodRow) => subtractPaymentBreakdown(perDayPayments, originalSaleDay, methodRow?.type, Math.max(0, Number(methodRow?.amount || 0) * recognizedImpactRatio)));
       }
     }
     for (const sale of activitySales) {
@@ -706,13 +626,15 @@ function DashboardPage() {
       const saleDayInRange = saleDay && (!selectedFrom || salePaidAt.getTime() >= selectedFrom.getTime()) && (!selectedTo || salePaidAt.getTime() <= selectedTo.getTime());
       const recordedMethods = Array.isArray(sale.payment_methods) ? sale.payment_methods : [];
       let saleDayAmountCaptured = 0;
+      const revenueScale = getSaleRevenueScale(sale, selectedFrom, selectedTo);
+      if (revenueScale <= 0) continue;
       timeline.forEach((event) => {
         const paidAt = new Date(event.paidAt || 0);
         if (Number.isNaN(paidAt.getTime())) return;
         if (selectedFrom && paidAt.getTime() < selectedFrom.getTime()) return;
         if (selectedTo && paidAt.getTime() > selectedTo.getTime()) return;
         const day = formatLocalDateKey(paidAt);
-        const eventAmount = Number(event.amount || 0);
+        const eventAmount = Math.max(0, Number(event.amount || 0) * revenueScale);
         perDay[day] = (perDay[day] || 0) + eventAmount;
         if (event.source === 'credit_repayment') {
           addPaymentBreakdown(perDayPayments, day, event.paymentMethod || 'cash', eventAmount);
@@ -722,7 +644,7 @@ function DashboardPage() {
       });
       if (saleDayInRange) {
         if (recordedMethods.length > 0) {
-          recordedMethods.forEach((methodRow) => addPaymentBreakdown(perDayPayments, saleDay, methodRow?.type, methodRow?.amount));
+          recordedMethods.forEach((methodRow) => addPaymentBreakdown(perDayPayments, saleDay, methodRow?.type, Math.max(0, Number(methodRow?.amount || 0) * revenueScale)));
         } else if (saleDayAmountCaptured > 0) {
           addPaymentBreakdown(perDayPayments, saleDay, 'other', saleDayAmountCaptured);
         }
@@ -757,37 +679,11 @@ function DashboardPage() {
         });
       }
       const cashierRow = cashierMap.get(cashierKey);
-      const totals = getSaleRangeTotals(sale, selectedFrom, selectedTo);
+      const totals = getAdjustedSaleRangeTotals(sale);
       if (totals.revenue === 0 && totals.profit === 0) continue;
       cashierRow.sales += 1;
       cashierRow.revenue += totals.revenue;
       cashierRow.profit += totals.profit;
-    }
-    const cashierRefundRevenueAppliedBySaleId = new Map();
-    for (const refund of approvedRefundsForSalesMath) {
-      const originalSale = salesById.get(String(refund?.saleId || ''));
-      if (!originalSale) continue;
-      const saleId = String(originalSale?.id || originalSale?._id || originalSale?.clientId || '').trim();
-      const saleBranchId = String(originalSale.branchId || '').trim();
-      if (!matchCompetitionBranch(saleBranchId) || !matchesDashboardActivityFilter(originalSale, activityFilter)) continue;
-      if (!(isDateInRange(originalSale.created_at, selectedFrom, selectedTo) || saleHasActivityInRange(originalSale, selectedFrom, selectedTo))) continue;
-      const totals = getSaleRangeTotals(originalSale, selectedFrom, selectedTo);
-      const alreadyAppliedRevenue = Number(cashierRefundRevenueAppliedBySaleId.get(saleId) || 0);
-      const remainingRevenueImpact = Math.max(0, Number(totals.revenue || 0) - alreadyAppliedRevenue);
-      const refundCashImpact = Math.min(remainingRevenueImpact, Math.max(0, getRefundCashImpact(refund, originalSale)));
-      const refundRatio = Number(totals.revenue || 0) > 0
-        ? Math.min(1, refundCashImpact / Math.max(0.0001, Number(totals.revenue || 0)))
-        : 0;
-      cashierRefundRevenueAppliedBySaleId.set(saleId, alreadyAppliedRevenue + refundCashImpact);
-      const seller = originalSale.sellerName || t('Unknown');
-      const cashierKey = `${saleBranchId}::${seller}`;
-      if (!cashierMap.has(cashierKey)) continue;
-      const row = cashierMap.get(cashierKey);
-      row.revenue = Math.max(0, Number(row.revenue || 0) - (totals.revenue * refundRatio));
-      row.profit = Math.max(0, Number(row.profit || 0) - (totals.profit * refundRatio));
-      if (String(refund?.type || '').trim().toLowerCase() === 'full') {
-        row.sales = Math.max(0, Number(row.sales || 0) - 1);
-      }
     }
     const filteredDateKeys = createdSales
       .map((sale) => formatLocalDateKey(sale.created_at))
@@ -819,13 +715,9 @@ function DashboardPage() {
     };
     last30Revenue = last30.reduce((s, d) => s + (Number(perDay[d] || 0)), 0);
     const last30Sales = activitySales;
-    last30Profit = last30Sales.reduce((s, x) => s + getSaleRangeTotals(x, selectedFrom, selectedTo).profit, 0);
-    last30Cost = last30Sales.reduce((s, x) => s + getSaleRangeTotals(x, selectedFrom, selectedTo).cost, 0);
-    todayTotal = Math.max(0, todayTotal - recognizedRefundRevenueImpact);
-    todayProfit = Math.max(0, todayProfit - approvedRefundProfit);
+    last30Profit = last30Sales.reduce((s, x) => s + getAdjustedSaleRangeTotals(x).profit, 0);
+    last30Cost = last30Sales.reduce((s, x) => s + getAdjustedSaleRangeTotals(x).cost, 0);
     itemsSold = Math.max(0, itemsSold - approvedRefundItems);
-    last30Profit = Math.max(0, last30Profit - approvedRefundProfit);
-    last30Cost = Math.max(0, last30Cost - approvedRefundCost);
     const marginPct = last30Revenue > 0 ? Math.round((last30Profit / last30Revenue) * 10000) / 100 : 0;
     const paymentTypes = ['cash','card','mobile','wallet','other'];
     const paymentBar = {
