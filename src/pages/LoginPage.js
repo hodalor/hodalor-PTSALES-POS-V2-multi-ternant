@@ -633,7 +633,7 @@ function LoginPage() {
     <div className="login-page">
       <div className="login-shell">
         <section className="login-hero">
-          <div className="login-hero-badge">{t('Business Operating Platform')}</div>
+          <div className="login-hero-badge">{t('Business Management Syetem')}</div>
           <div className="login-brand login-brand--hero">
             <img src="/logo512.png" alt="logo" />
             <div>
@@ -642,7 +642,7 @@ function LoginPage() {
             </div>
           </div>
           <div className="login-hero-copy">
-            <h1>{t('One Platform. Multiple Solutions.')}</h1>
+            <h1>{t('')}</h1>
           </div>
           <div className="login-solution-panel">
             <div className="login-solution-heading">
@@ -769,7 +769,7 @@ function LoginPage() {
               </>
             ) : null}
           </div>
-          <div className="login-visit-link-wrap">
+          <div className="login-visit-link-wrap" style={{textDecorationColor:"blue"}}>
             <a
               className="login-visit-link"
               href="https://prynova.net"
