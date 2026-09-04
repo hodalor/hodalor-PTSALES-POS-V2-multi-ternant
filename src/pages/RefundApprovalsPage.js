@@ -175,6 +175,7 @@ function RefundApprovalsPage() {
       restockMode,
       restockItems
     };
+    let resolvedRequest = r;
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) {
         toast.show('Offline: connect internet and try again.', { type: 'error' });
@@ -191,36 +192,41 @@ function RefundApprovalsPage() {
       try {
         const saved = await refundsApi.approve(payload);
         dispatch(approveRefund(payload));
-        if (saved?.request) dispatch(mergeRequests([saved.request]));
+        if (saved && typeof saved === 'object') {
+          resolvedRequest = { ...r, ...saved };
+          dispatch(mergeRequests([saved]));
+        }
       } catch {
         toast.show('Failed to sync to server', { type: 'error' });
         return;
       }
     }
     if (saleRef) {
-      const amt = Math.round((Number(r.requestedAmount) || 0) * 100) / 100;
-      dispatch(recordSale({
-        id: `refund-${refundId(r)}`,
-        branchId: saleRef.branchId,
-        branchName: saleRef.branchName || branchLabel(saleRef.branchId),
-        sellerName: auth.user?.name || 'unknown',
-        sellerRole: auth.role || '',
-        items: [{ name: `REFUND ${saleRef.invoiceSerial || saleRef.receiptNumber || saleRef.id}`, sku: 'REFUND', qty: 1, price: -amt }],
-        subtotal: -amt,
-        discount: 0,
-        tax: 0,
-        total: -amt,
-        costTotal: 0,
-        profitTotal: -amt,
-        posType: saleRef.posType || 'retail',
-        inventoryType: saleRef.inventoryType || saleRef.posType || 'retail',
-        defaultPriceTier: saleRef.defaultPriceTier || (saleRef.posType || 'retail'),
-        payment_methods: [{ type: 'refund', amount: -amt }],
-        status: 'completed',
-        created_at: new Date().toISOString(),
-        invoiceSerial: '',
-        receiptNumber: ''
-      }));
+      const cashRefundAmount = Math.round((Number(resolvedRequest?.cashRefundAmount) || 0) * 100) / 100;
+      if (cashRefundAmount > 0) {
+        dispatch(recordSale({
+          id: `refund-${refundId(r)}`,
+          branchId: saleRef.branchId,
+          branchName: saleRef.branchName || branchLabel(saleRef.branchId),
+          sellerName: auth.user?.name || 'unknown',
+          sellerRole: auth.role || '',
+          items: [{ name: `REFUND ${saleRef.invoiceSerial || saleRef.receiptNumber || saleRef.id}`, sku: 'REFUND', qty: 1, price: -cashRefundAmount }],
+          subtotal: -cashRefundAmount,
+          discount: 0,
+          tax: 0,
+          total: -cashRefundAmount,
+          costTotal: 0,
+          profitTotal: -cashRefundAmount,
+          posType: saleRef.posType || 'retail',
+          inventoryType: saleRef.inventoryType || saleRef.posType || 'retail',
+          defaultPriceTier: saleRef.defaultPriceTier || (saleRef.posType || 'retail'),
+          payment_methods: [{ type: 'refund', amount: -cashRefundAmount }],
+          status: 'completed',
+          created_at: new Date().toISOString(),
+          invoiceSerial: '',
+          receiptNumber: ''
+        }));
+      }
       if (restockMode === 'full' || restockMode === 'partial') {
         const skuToRef = new Map();
         products.forEach(p => {
@@ -266,7 +272,14 @@ function RefundApprovalsPage() {
     dispatch(addAudit({
       actor: auth.user?.name || 'unknown',
       actionType: 'refund_approved',
-      details: { refundId: refundId(r), saleId: r.saleId, amount: r.requestedAmount, restockMode },
+      details: {
+        refundId: refundId(r),
+        saleId: r.saleId,
+        amount: resolvedRequest?.requestedAmount ?? r.requestedAmount,
+        cashRefundAmount: Number(resolvedRequest?.cashRefundAmount || 0),
+        settlementMode: resolvedRequest?.settlementMode || '',
+        restockMode
+      },
       branchId: r.branchId,
       offline: !navigator.onLine
     }));

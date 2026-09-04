@@ -769,7 +769,7 @@ function LoginPage() {
               </>
             ) : null}
           </div>
-          <div className="login-visit-link-wrap" style={{textDecorationColor:"blue"}}>
+          <div className="login-visit-link-wrap">
             <a
               className="login-visit-link"
               href="https://prynova.net"

@@ -673,7 +673,15 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
       : 'cash';
     setWorkingId(row._id || '');
     try {
-      const payload = { creditSaleId: row._id, amount: Number(amount), paymentMethod, remark: String(remark || '') };
+      const payload = {
+        creditSaleId: row._id,
+        amount: Number(amount),
+        paymentMethod,
+        remark: String(remark || ''),
+        clientId: (typeof crypto !== 'undefined' && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : `credit-repayment-${Date.now()}-${Math.random().toString(16).slice(2)}`
+      };
       if (!navigator.onLine && offlineBackupAllowed) {
         await enqueueHttp({ collection: 'creditrepayments', label: 'Credit repayment', path: '/api/credits/repayments', method: 'POST', body: payload });
         toast.show('Repayment saved offline. It will sync when online.', { type: 'success' });
