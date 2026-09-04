@@ -12,6 +12,7 @@ const CreditSaleItemSchema = new mongoose.Schema({
 }, { _id: false });
 
 const PaymentHistorySchema = new mongoose.Schema({
+  repaymentId: { type: String, default: '' },
   amount: { type: Number, default: 0 },
   paid_at: { type: Date, default: Date.now },
   approved_by: { type: String, default: '' },

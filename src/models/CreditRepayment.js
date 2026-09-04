@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { createTenantAwareModel } from './_tenantModel.js';
 
 const CreditRepaymentSchema = new mongoose.Schema({
+  clientId: { type: String, unique: true, sparse: true, index: true },
   creditSaleId: { type: String, required: true, index: true },
   customerId: { type: String, required: true, index: true },
   amount: { type: Number, required: true, min: 0 },
@@ -12,6 +13,9 @@ const CreditRepaymentSchema = new mongoose.Schema({
   approvedByName: { type: String, default: '' },
   approvedByRole: { type: String, default: '' },
   approvalId: { type: String, default: '', index: true },
+  appliedAt: { type: Date },
+  appliedAmount: { type: Number, default: 0 },
+  daysAdded: { type: Number, default: 0 },
   approvedAt: { type: Date },
   rejectedAt: { type: Date },
   status: {

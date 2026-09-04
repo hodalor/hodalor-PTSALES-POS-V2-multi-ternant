@@ -455,13 +455,30 @@ async function applyWholesaleOperation(operation, actor) {
 }
 
 async function applyCreditRepayment(repayment, actor) {
-  const creditSale = await CreditSale.findById(repayment.creditSaleId);
+  const repaymentId = String(repayment?._id || '');
+  const currentRepayment = repaymentId ? await CreditRepayment.findById(repaymentId) : repayment;
+  if (!currentRepayment) return repayment;
+  if (currentRepayment?.appliedAt || String(currentRepayment?.status || '').toLowerCase() === 'approved') {
+    return currentRepayment;
+  }
+  const creditSale = await CreditSale.findById(currentRepayment.creditSaleId);
   if (!creditSale) {
     const err = new Error('Credit sale not found');
     err.status = 400;
     throw err;
   }
-  const amount = Math.max(0, Number(repayment.amount || 0));
+  const existingHistory = (Array.isArray(creditSale.payment_history) ? creditSale.payment_history : []).find((entry) => String(entry?.repaymentId || '') === repaymentId);
+  if (existingHistory) {
+    currentRepayment.status = 'approved';
+    currentRepayment.approvedByName = currentRepayment.approvedByName || actor?.name || 'unknown';
+    currentRepayment.approvedByRole = currentRepayment.approvedByRole || actor?.role || '';
+    currentRepayment.approvedAt = currentRepayment.approvedAt || new Date(existingHistory.paid_at || Date.now());
+    currentRepayment.appliedAt = currentRepayment.appliedAt || new Date(existingHistory.paid_at || Date.now());
+    currentRepayment.appliedAmount = Math.max(0, Number(currentRepayment.appliedAmount || currentRepayment.amount || 0));
+    await currentRepayment.save();
+    return currentRepayment;
+  }
+  const amount = Math.max(0, Number(currentRepayment.amount || 0));
   if (amount <= 0) {
     const err = new Error('Repayment amount must be greater than zero');
     err.status = 400;
@@ -474,27 +491,45 @@ async function applyCreditRepayment(repayment, actor) {
     err.status = 400;
     throw err;
   }
+  const packageDaysMatch = String(fresh.creditPackageName || '').match(/(\d+)\s*day/i);
+  const packageDays = packageDaysMatch ? Math.max(0, Number(packageDaysMatch[1] || 0)) : 0;
   const appliedToPenalty = Math.min(Number(fresh.accumulated_penalty || 0), amount);
   const principalPayment = amount - appliedToPenalty;
   fresh.accumulated_penalty = Math.max(0, Number(fresh.accumulated_penalty || 0) - appliedToPenalty);
   fresh.amount_paid = Math.max(0, Number(fresh.amount_paid || 0) + principalPayment);
+  if (packageDays > 0) {
+    const currentDueDate = fresh.due_date ? new Date(fresh.due_date) : null;
+    const today = new Date();
+    const baseDueDate = currentDueDate instanceof Date && !Number.isNaN(currentDueDate.getTime()) && currentDueDate.getTime() > today.getTime()
+      ? currentDueDate
+      : today;
+    if (baseDueDate instanceof Date && !Number.isNaN(baseDueDate.getTime())) {
+      const nextDueDate = new Date(baseDueDate);
+      nextDueDate.setDate(nextDueDate.getDate() + packageDays);
+      fresh.due_date = nextDueDate;
+    }
+  }
   fresh.payment_history.push({
+    repaymentId,
     amount,
     paid_at: new Date(),
     approved_by: actor?.name || 'unknown',
-    note: repayment.remark || ''
+    note: currentRepayment.remark || ''
   });
   await refreshCreditSaleStatus(fresh);
-  repayment.status = 'approved';
-  repayment.approvedByName = actor?.name || 'unknown';
-  repayment.approvedByRole = actor?.role || '';
-  repayment.approvedAt = new Date();
-  await repayment.save();
-  await updateCustomerCreditMetrics(repayment.customerId);
+  currentRepayment.status = 'approved';
+  currentRepayment.approvedByName = actor?.name || 'unknown';
+  currentRepayment.approvedByRole = actor?.role || '';
+  currentRepayment.approvedAt = new Date();
+  currentRepayment.appliedAt = new Date();
+  currentRepayment.appliedAmount = amount;
+  currentRepayment.daysAdded = packageDays;
+  await currentRepayment.save();
+  await updateCustomerCreditMetrics(currentRepayment.customerId);
   await Audit.create({
     actor: actor?.name || 'unknown',
     actionType: 'credit_repayment_approved',
-    details: { creditSaleId: repayment.creditSaleId, amount },
+    details: { creditSaleId: currentRepayment.creditSaleId, repaymentId, amount, daysAdded: packageDays },
     branchId: fresh.branchId || '',
     ts: new Date()
   });

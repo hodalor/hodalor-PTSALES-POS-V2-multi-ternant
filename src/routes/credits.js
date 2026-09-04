@@ -47,6 +47,28 @@ async function getPendingRepaymentAmount(creditSaleId) {
   return rows.reduce((sum, row) => sum + Math.max(0, Number(row?.amount || 0)), 0);
 }
 
+function normalizeRepaymentMethod(value) {
+  return ['cash', 'card', 'mobile', 'wallet'].includes(String(value || '').trim().toLowerCase())
+    ? String(value || '').trim().toLowerCase()
+    : 'cash';
+}
+
+function buildRepaymentClientId({ creditSaleId = '', amount = 0, paymentMethod = 'cash', remark = '', paidDate = null } = {}) {
+  const amountKey = Number(amount || 0).toFixed(2);
+  const dateValue = paidDate ? new Date(paidDate) : new Date();
+  const safeDate = Number.isNaN(dateValue.getTime()) ? new Date() : dateValue;
+  const dayKey = `${safeDate.getFullYear()}-${String(safeDate.getMonth() + 1).padStart(2, '0')}-${String(safeDate.getDate()).padStart(2, '0')}`;
+  const remarkKey = String(remark || '').trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 120);
+  return [
+    'credit-repayment',
+    String(creditSaleId || '').trim(),
+    amountKey,
+    normalizeRepaymentMethod(paymentMethod),
+    dayKey,
+    remarkKey
+  ].join(':');
+}
+
 function normalizeBranchIds(value) {
   if (value === 'all') return 'all';
   return Array.from(new Set(
@@ -268,9 +290,15 @@ r.post('/repayments', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], 'add_sa
   const accessibleBranchIds = getAccessibleBranchIds(req.user);
   const creditSaleId = String(body.creditSaleId || '');
   const amount = Math.max(0, Number(body.amount || 0));
-  const paymentMethod = ['cash', 'card', 'mobile', 'wallet'].includes(String(body.paymentMethod || '').trim().toLowerCase())
-    ? String(body.paymentMethod || '').trim().toLowerCase()
-    : 'cash';
+  const paymentMethod = normalizeRepaymentMethod(body.paymentMethod);
+  const remark = String(body.remark || '');
+  const clientId = String(body.clientId || '').trim() || buildRepaymentClientId({
+    creditSaleId,
+    amount,
+    paymentMethod,
+    remark,
+    paidDate: body.paidAt || body.createdAt || Date.now()
+  });
   if (!creditSaleId) return res.status(400).json({ error: 'Missing creditSaleId' });
   if (amount <= 0) return res.status(400).json({ error: 'Amount must be greater than zero' });
   const creditSale = await CreditSale.findById(creditSaleId);
@@ -289,12 +317,18 @@ r.post('/repayments', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], 'add_sa
   if (amount > availableAmount) {
     return res.status(400).json({ error: `Repayment amount exceeds remaining payable amount of ${availableAmount.toFixed(2)}` });
   }
+  const existing = await CreditRepayment.findOne({ clientId });
+  if (existing) {
+    const approval = existing.approvalId ? await Approval.findById(existing.approvalId).catch(() => null) : null;
+    return res.json({ repayment: existing, approval });
+  }
   const repayment = await CreditRepayment.create({
+    clientId,
     creditSaleId: String(creditSale._id),
     customerId: String(creditSale.customer_id),
     amount,
     paymentMethod,
-    remark: String(body.remark || ''),
+    remark,
     initiatedByName: req.user?.name || 'unknown',
     initiatedByRole: req.user?.role || '',
     status: 'pending_director'
