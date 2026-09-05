@@ -2152,11 +2152,16 @@ function PosPage({ mode = 'retail' }) {
               allLabel={t('All Types')}
               searchPlaceholder={t('Type product type')}
             />
-            {isNonRetail && (
-            <select className="select pos-toolbar-tier" value={selectedPriceTier} onChange={e => setSelectedPriceTier(e.target.value)}>
-              {allowedPriceTiers.map(tier => <option key={tier} value={tier}>{getPriceTierLabel(tier)}</option>)}
+            <select
+              className="select pos-toolbar-tier"
+              value={getPreferredPriceTier(allowedPriceTiers, selectedPriceTier)}
+              onChange={e => setSelectedPriceTier(e.target.value)}
+              disabled={priceTierOptions.length <= 1}
+            >
+              {priceTierOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
             </select>
-            )}
             {!isNonRetail ? (
               <div className="filter-actions pos-toolbar-actions">
                 <button className={`btn-toggle ${view === 'grid' ? 'active' : ''}`} onClick={() => setView('grid')} aria-label={t('Card view')} title={t('Card view')}>
@@ -2505,7 +2510,6 @@ function PosPage({ mode = 'retail' }) {
                 disabled={!!item.unitId}
               />
               <div className="pos-cart-price-box">
-                {isNonRetail ? (
                 <>
                 <select
                   className="select"
@@ -2522,9 +2526,6 @@ function PosPage({ mode = 'retail' }) {
                   ))}
                 </select>
                 </>
-                ) : (
-                <span className="pos-cart-price-inline">{formatCurrency(item.price, settings)}</span>
-                )}
                 {!isWarehouse && (
                   <span style={{ fontSize: 12, color: '#64748b' }}>
                     {t('Unit')}: {formatCurrency(item.price, settings)}
