@@ -166,7 +166,7 @@ app.get('/readyz', (_req, res) => {
 
 app.use('/api', router);
 
-app.use(async (err, req, res, next) => {
+app.use(async (err, req, res, _next) => {
   try {
     const code = err && (err.code || err.name || err.err && err.err.code);
     await ServerLog.create({

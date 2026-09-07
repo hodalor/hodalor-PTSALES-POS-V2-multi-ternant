@@ -1,10 +1,9 @@
 import { Router } from 'express';
 import mongoose from 'mongoose';
-import Audit, { modelFor as AuditModelFor } from '../models/Audit.js';
-import Approval from '../models/Approval.js';
+import { modelFor as AuditModelFor } from '../models/Audit.js';
 import Branch, { modelFor as BranchModelFor } from '../models/Branch.js';
 import CashReconciliation, { modelFor as CashReconciliationModelFor } from '../models/CashReconciliation.js';
-import ReconciliationAccount, { modelFor as ReconciliationAccountModelFor } from '../models/ReconciliationAccount.js';
+import { modelFor as ReconciliationAccountModelFor } from '../models/ReconciliationAccount.js';
 import Sale from '../models/Sale.js';
 import { getMasterConnection } from '../config/tenancy.js';
 import { modelFor as TenantModelFor } from '../models/Tenant.js';
@@ -12,7 +11,7 @@ import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import { createApprovalForReference } from '../utils/approvalWorkflow.js';
 import { uploadMediaString } from '../utils/mediaStorage.js';
 import { listRecognizedSalesTotalsByDay } from '../utils/saleAccounting.js';
-import { canAccessAccount, normalizeBranchIds, resolveAllowedBranchIds } from './reconciliationAccounts.js';
+import { canAccessAccount, resolveAllowedBranchIds } from './reconciliationAccounts.js';
 
 const r = Router();
 

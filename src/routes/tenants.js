@@ -8,7 +8,7 @@ import { getMasterConnection, getTenantConnection, getTenantDbName, normalizeTen
 import { hashPin } from '../utils/pin.js';
 import { ALL_FEATURES, featureFlagsFromEnabled, normalizeFeatureList } from '../config/tenantAccess.js';
 import { getEffectiveTenantLimits, getTenantLimitDefaults, getTenantUsageSummary, normalizeLimitDefaults, normalizeLimitValue, saveTenantLimitDefaults } from '../utils/tenantLimits.js';
-import { buildRenewalHistoryEntry, ensureTenantActivationCode, normalizeSubscriptionAmount, refreshTenantActivationCode, syncTenantSubscriptionSnapshot } from '../utils/tenantActivation.js';
+import { buildRenewalHistoryEntry, ensureTenantActivationCode, normalizeSubscriptionAmount, refreshTenantActivationCode } from '../utils/tenantActivation.js';
 import { getPaymentManagementConfig, getPaymentManagementDashboard, savePaymentManagementConfig } from '../utils/paymentManagement.js';
 import { getSubscriptionManagementConfig, resolveSubscriptionPlan, saveSubscriptionManagementConfig } from '../utils/subscriptionManagement.js';
 import { exportTenantData, importTenantData } from '../utils/tenantDataTransfer.js';

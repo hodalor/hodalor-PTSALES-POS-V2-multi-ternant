@@ -2,7 +2,7 @@ import { Router } from 'express';
 import Product from '../models/Product.js';
 import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
-import { requireAuth, requireAdmin, requireRole, requireRoleOrPerm } from '../middleware/auth.js';
+import { requireAuth, requireAdmin, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
 import { normalizeTrackType } from '../utils/productUnits.js';
 import { uploadMediaString } from '../utils/mediaStorage.js';
@@ -157,7 +157,7 @@ function preserveVariantInventoryMaps(existingVariants = [], incomingVariants = 
   if (!Array.isArray(incomingVariants)) return incomingVariants;
   const existing = Array.isArray(existingVariants) ? existingVariants : [];
   const usedIndexes = new Set();
-  return incomingVariants.map((variant, index) => {
+  return incomingVariants.map((variant) => {
     if (!variant || typeof variant !== 'object') return variant;
     const incomingId = String(variant.id || '').trim();
     const incomingSku = String(variant.sku || '').trim().toLowerCase();

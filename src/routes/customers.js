@@ -3,7 +3,7 @@ import Customer from '../models/Customer.js';
 import Branch from '../models/Branch.js';
 import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
-import { requireAuth, requireAdmin, requireRole, requireRoleOrPerm } from '../middleware/auth.js';
+import { requireAuth, requireAdmin, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
 import { uploadMediaString } from '../utils/mediaStorage.js';
 import { archiveLiveDocument } from '../utils/superBin.js';

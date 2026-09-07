@@ -196,7 +196,7 @@ r.put('/', requireAdmin, async (req, res) => {
     data.userGrants = mergedMap;
   }
   const nextData = normalizeSettingsData({ ...before, ...data });
-  let doc = await Settings.findOneAndUpdate({ key: 'default' }, { data: nextData }, { new: true, upsert: true });
+  const doc = await Settings.findOneAndUpdate({ key: 'default' }, { data: nextData }, { new: true, upsert: true });
   const after = normalizeSettingsData(doc && doc.data ? doc.data : {});
   const tenantId = String(req.user?.tenantId || req.tenantId || '').trim();
   const changed = [];

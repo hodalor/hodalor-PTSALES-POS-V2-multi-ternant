@@ -17,7 +17,6 @@ import { getPaymentManagementConfig } from '../utils/paymentManagement.js';
 
 const r = Router();
 const tenantMetaCache = new Map();
-const TENANT_META_TTL_MS = 30_000;
 const SUPPORTED_LANGUAGES = new Set(['en', 'tw', 'ga', 'ewe', 'dag', 'fr', 'zh']);
 
 function normalizeTenantScopedRole(rawRole, tenantId = '') {
@@ -37,15 +36,6 @@ function canResetOwnPassword(req) {
   if (role === 'superadmin' || role === 'admin') return true;
   const grants = Array.isArray(req.user?.grants) ? req.user.grants : [];
   return grants.includes('reset_own_password');
-}
-
-async function getTenantMetaCached(tenantId) {
-  const key = String(tenantId || '').toLowerCase();
-  const cached = tenantMetaCache.get(key);
-  if (cached && (Date.now() - cached.ts) < TENANT_META_TTL_MS) return cached.value;
-  const meta = await Tenant.findOne({ tenantId });
-  tenantMetaCache.set(key, { ts: Date.now(), value: meta || null });
-  return meta || null;
 }
 
 function sanitizeTenantMeta(meta) {

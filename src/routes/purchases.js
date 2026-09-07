@@ -34,16 +34,6 @@ function productLookupQuery(productId) {
   if (mongoose.isValidObjectId(pid)) or.unshift({ _id: pid });
   return { $or: or };
 }
-function getBranchQty(mapLike, branchId) {
-  if (!mapLike) return 0;
-  if (typeof mapLike.get === 'function') return Number(mapLike.get(branchId) || 0);
-  return Number(mapLike[branchId] || 0);
-}
-function setBranchQty(mapLike, branchId, qty) {
-  if (!mapLike) return;
-  if (typeof mapLike.set === 'function') mapLike.set(branchId, qty);
-  else mapLike[branchId] = qty;
-}
 function normalizeItems(payload = {}) {
   const raw = Array.isArray(payload.items) && payload.items.length > 0
     ? payload.items

@@ -390,7 +390,7 @@ export async function restoreSuperBinEntry(entry) {
   throw new Error(`Restore not supported for ${entityType || 'this item'}`);
 }
 
-async function deleteForeverGenericEntry(_entry) {
+async function deleteForeverGenericEntry() {
   return;
 }
 

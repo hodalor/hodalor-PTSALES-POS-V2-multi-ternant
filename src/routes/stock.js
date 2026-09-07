@@ -28,20 +28,6 @@ function productLookupQuery(productId) {
   return { $or: or };
 }
 
-function getBranchQty(mapLike, branchId) {
-  if (!mapLike) return 0;
-  if (typeof mapLike.get === 'function') return Number(mapLike.get(branchId) || 0);
-  return Number(mapLike[branchId] || 0);
-}
-function setBranchQty(mapLike, branchId, qty) {
-  if (!mapLike) return;
-  if (typeof mapLike.set === 'function') {
-    mapLike.set(branchId, qty);
-  } else {
-    mapLike[branchId] = qty;
-  }
-}
-
 async function adjustBaseStock(productId, branchId, delta, inventoryType = 'retail') {
   const p = await Product.findOne(productLookupQuery(productId));
   if (!p) {

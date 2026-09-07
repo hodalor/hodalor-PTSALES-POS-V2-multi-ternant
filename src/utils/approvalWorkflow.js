@@ -15,13 +15,6 @@ import { refreshCreditSaleStatus, updateCustomerCreditMetrics } from './credit.j
 import { adjustSerializedUnits, normalizeTrackType, transferSerializedUnits } from './productUnits.js';
 import { assertOutgoingAvailability } from './inTransitLocks.js';
 
-function productQuery(productId) {
-  const pid = String(productId || '');
-  const or = [{ id: pid }];
-  if (mongoose.isValidObjectId(pid)) or.unshift({ _id: pid });
-  return { $or: or };
-}
-
 function reportInTransitStockLockDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
   const envCandidates = [
     path.resolve(process.cwd(), '.dbg', 'in-transit-stock-lock.env'),

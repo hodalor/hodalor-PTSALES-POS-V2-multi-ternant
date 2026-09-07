@@ -144,12 +144,6 @@ function getStorageClient() {
   return storageClient;
 }
 
-function getPublicBaseUrl() {
-  const explicit = trimString(process.env.GCS_PUBLIC_BASE_URL || '');
-  if (explicit) return explicit.replace(/\/+$/g, '');
-  return `https://storage.googleapis.com/${getBucketName()}`;
-}
-
 function getSignedUrlExpiry() {
   const ttlDays = Number(process.env.GCS_SIGNED_URL_TTL_DAYS || 3650);
   const safeDays = Number.isFinite(ttlDays) && ttlDays > 0 ? ttlDays : 3650;
@@ -190,11 +184,6 @@ function buildObjectPath({
   const extension = getMimeExtension(mimeType);
   const stamp = `${Date.now()}-${crypto.randomBytes(6).toString('hex')}`;
   return `${safeTenant}/${safeFolder}/${safeBase}-${stamp}.${extension}`;
-}
-
-function buildPublicUrl(objectPath = '') {
-  const safePath = String(objectPath || '').split('/').map((segment) => encodeURIComponent(segment)).join('/');
-  return `${getPublicBaseUrl()}/${safePath}`;
 }
 
 async function buildSignedReadUrl(objectPath = '') {

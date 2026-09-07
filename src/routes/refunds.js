@@ -4,7 +4,7 @@ import Audit from '../models/Audit.js';
 import Sale from '../models/Sale.js';
 import Product from '../models/Product.js';
 import CreditSale from '../models/CreditSale.js';
-import { requireAuth, requireRole, requireRoleOrPerm } from '../middleware/auth.js';
+import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
 import { resolveInventoryTypeFromBranch, returnSerializedUnits } from '../utils/productUnits.js';
 import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from '../utils/inventory.js';
@@ -283,7 +283,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_refunds'), as
     return res.status(400).json({ error: `Refund amount exceeds remaining refundable amount of ${coverage.remainingAmount.toFixed(2)}` });
   }
   const settlement = buildRefundSettlement({ sale: saleRef, creditSale: linkedCreditSale, requestedAmount });
-  
+
   // 1. Update request
   rfd.status = 'approved';
   rfd.approverName = approverName || 'unknown';
@@ -351,17 +351,17 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_refunds'), as
     const inventoryType = await resolveInventoryTypeFromBranch(rfd.branchId, saleRef?.inventoryType || 'retail');
     for (const item of rfd.restockItems) {
       if ((!item.sku && !item.productId) || item.qty <= 0) continue;
-      
+
       // Try finding by SKU (main product)
       let p = await Product.findOne({ sku: item.sku });
       let variantId = null;
-      
+
       if (!p) {
         // Try finding by variant SKU manually
         // Since variant SKU isn't indexed at top level, we might need to search products with variants
         // But for performance, let's fetch all products that *might* have variants or rely on SKU convention if possible
         // Actually, let's just search all products where variants.sku matches
-        const pVar = await Product.findOne({ "variants.sku": item.sku });
+        const pVar = await Product.findOne({ 'variants.sku': item.sku });
         if (pVar) {
           p = pVar;
           const v = p.variants.find(v => v.sku === item.sku);

@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import Supplier from '../models/Supplier.js';
 import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
-import { requireAuth, requireAdmin, requireRole, requireRoleOrPerm } from '../middleware/auth.js';
+import { requireAuth, requireAdmin, requireRoleOrPerm } from '../middleware/auth.js';
 import { archiveLiveDocument } from '../utils/superBin.js';
 
 const r = Router();
