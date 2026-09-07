@@ -497,7 +497,16 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
     if (!canAccessDiscountApproval(req.user, discountApproval)) {
       return res.status(403).json({ error: 'You do not have access to this discount approval request' });
     }
+    const existingCompletedDiscountSale = await Sale.findOne({ discountApprovalId }).sort({ created_at: -1 }).catch(() => null);
+    if (existingCompletedDiscountSale) {
+      return res.json(existingCompletedDiscountSale);
+    }
     if (['completed', 'cancelled'].includes(String(discountApproval.status || ''))) {
+      const completedSaleId = String(discountApproval.completedSaleId || '').trim();
+      if (completedSaleId) {
+        const existingCompletedSale = await Sale.findById(completedSaleId).catch(() => null);
+        if (existingCompletedSale) return res.json(existingCompletedSale);
+      }
       return res.status(400).json({ error: 'Discount approval request has already been completed' });
     }
     if (String(discountApproval.branchId || '') !== String(branchId || '')) {
@@ -786,13 +795,14 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       const cp = variant?.costPrice != null ? Number(variant.costPrice || 0) : Number(p.costPrice || 0);
       if (Number.isFinite(cp) && cp > 0) costTotal += cp * it.qty;
       const requestedPrice = Math.max(0, Number(it.requestedPrice || 0));
-      const itemPrice = requestedPrice > 0
+      const resolvedTierPrice = resolveTierPrice(
+        variant || p,
+        it.priceTier,
+        resolveTierPrice(p, it.priceTier, Number(p.retailPrice || p.price || 0))
+      );
+      const itemPrice = requestedPrice > 0 && Math.abs(requestedPrice - resolvedTierPrice) <= 0.01
         ? requestedPrice
-        : resolveTierPrice(
-            variant || p,
-            it.priceTier,
-            resolveTierPrice(p, it.priceTier, Number(p.retailPrice || p.price || 0))
-          );
+        : resolvedTierPrice;
       finalItems.push({
         productId: it.productId,
         variantId: it.variantId || null,
@@ -1206,30 +1216,34 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
     });
   } catch {}
   if (discountApproval) {
-    try {
-      discountApproval.status = 'completed';
-      discountApproval.completedByName = String(req.user?.name || 'unknown');
-      discountApproval.completedByRole = String(req.user?.role || '');
-      discountApproval.completedAt = sale.discountCompletedAt || new Date();
-      discountApproval.completedSaleId = String(sale._id || '');
-      discountApproval.completedInvoiceSerial = String(sale.invoiceSerial || '');
-      discountApproval.completedReceiptNumber = String(sale.receiptNumber || '');
-      await discountApproval.save();
-      await Audit.create({
-        actor: String(req.user?.name || sale.sellerName || 'unknown').trim() || 'unknown',
-        actionType: 'discount_sale_completed',
-        details: {
-          discountApprovalId: String(discountApproval._id || ''),
-          saleId: String(sale._id || ''),
-          invoiceSerial: String(sale.invoiceSerial || ''),
-          receiptNumber: String(sale.receiptNumber || ''),
-          total: Number(sale.total || 0),
-          discount: Number(sale.discount || 0)
-        },
-        branchId: sale.branchId,
-        ts: new Date()
-      }).catch(() => {});
-    } catch {}
+    await DiscountApproval.updateOne(
+      { _id: discountApproval._id, status: { $in: ['approved', 'rejected'] } },
+      {
+        $set: {
+          status: 'completed',
+          completedByName: String(req.user?.name || 'unknown'),
+          completedByRole: String(req.user?.role || ''),
+          completedAt: sale.discountCompletedAt || new Date(),
+          completedSaleId: String(sale._id || ''),
+          completedInvoiceSerial: String(sale.invoiceSerial || ''),
+          completedReceiptNumber: String(sale.receiptNumber || '')
+        }
+      }
+    ).catch(() => null);
+    await Audit.create({
+      actor: String(req.user?.name || sale.sellerName || 'unknown').trim() || 'unknown',
+      actionType: 'discount_sale_completed',
+      details: {
+        discountApprovalId: String(discountApproval._id || ''),
+        saleId: String(sale._id || ''),
+        invoiceSerial: String(sale.invoiceSerial || ''),
+        receiptNumber: String(sale.receiptNumber || ''),
+        total: Number(sale.total || 0),
+        discount: Number(sale.discount || 0)
+      },
+      branchId: sale.branchId,
+      ts: new Date()
+    }).catch(() => {});
   }
   // #region debug-point C:backend-response-success
   reportEbkTmpReceiptDebug({

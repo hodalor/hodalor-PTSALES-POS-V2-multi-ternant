@@ -46,14 +46,21 @@ function computeTaxRate(subtotal = 0, discount = 0, tax = 0) {
   return Math.max(0, Number(tax || 0)) / taxable;
 }
 
-function adjustPaymentMethods(paymentMethods = [], nextTotal = 0) {
+function getReviewedPaymentTarget(salePayload = {}, nextTotal = 0) {
+  const creditEnabled = !!(salePayload?.creditSale && salePayload.creditSale.enabled);
+  if (!creditEnabled) return Math.max(0, Number(nextTotal || 0));
+  const creditPaidNow = Math.max(0, Number(salePayload?.creditSale?.amountPaidNow ?? salePayload?.creditAmountPaidNow ?? 0));
+  return Math.min(Math.max(0, Number(nextTotal || 0)), creditPaidNow);
+}
+
+function adjustPaymentMethods(paymentMethods = [], targetAmount = 0) {
   const methods = Array.isArray(paymentMethods) ? paymentMethods.map((entry) => ({
     ...entry,
     amount: Math.max(0, Number(entry?.amount || 0))
   })) : [];
   const currentTotal = methods.reduce((sum, entry) => sum + Math.max(0, Number(entry?.amount || 0)), 0);
-  const delta = Number(nextTotal || 0) - currentTotal;
-  if (methods.length === 0) return [{ type: 'cash', amount: Math.max(0, Number(nextTotal || 0)) }];
+  const delta = Number(targetAmount || 0) - currentTotal;
+  if (methods.length === 0) return [{ type: 'cash', amount: Math.max(0, Number(targetAmount || 0)) }];
   const targetIndex = Math.max(0, methods.findIndex((entry) => String(entry?.type || '').toLowerCase() === 'cash'));
   methods[targetIndex] = {
     ...methods[targetIndex],
@@ -69,7 +76,14 @@ function applyReviewedDiscount(row, requestedDiscount) {
   const taxRate = computeTaxRate(subtotal, row?.discount || salePayload?.discount || 0, row?.tax || salePayload?.tax || 0);
   const nextTax = Math.max(0, (subtotal - boundedDiscount) * taxRate);
   const nextTotal = Math.max(0, subtotal - boundedDiscount + nextTax);
-  const nextPaymentMethods = adjustPaymentMethods(salePayload?.payment_methods, nextTotal);
+  const nextCreditPaidNow = Math.min(
+    nextTotal,
+    Math.max(0, Number(salePayload?.creditSale?.amountPaidNow ?? salePayload?.creditAmountPaidNow ?? 0))
+  );
+  const nextPaymentMethods = adjustPaymentMethods(
+    salePayload?.payment_methods,
+    getReviewedPaymentTarget(salePayload, nextTotal)
+  );
   return {
     subtotal,
     discount: boundedDiscount,
@@ -82,7 +96,15 @@ function applyReviewedDiscount(row, requestedDiscount) {
       discount: boundedDiscount,
       tax: nextTax,
       total: nextTotal,
-      payment_methods: nextPaymentMethods
+      payment_methods: nextPaymentMethods,
+      creditAmountPaidNow: salePayload?.creditSale?.enabled ? nextCreditPaidNow : Number(salePayload?.creditAmountPaidNow || 0),
+      creditBalance: salePayload?.creditSale?.enabled ? Math.max(0, nextTotal - nextCreditPaidNow) : Number(salePayload?.creditBalance || 0),
+      outstandingBalance: salePayload?.creditSale?.enabled ? Math.max(0, nextTotal - nextCreditPaidNow) : Number(salePayload?.outstandingBalance || 0),
+      outstandingTotal: salePayload?.creditSale?.enabled ? Math.max(0, nextTotal - nextCreditPaidNow) : Number(salePayload?.outstandingTotal || 0),
+      creditSale: salePayload?.creditSale?.enabled ? {
+        ...salePayload.creditSale,
+        amountPaidNow: nextCreditPaidNow
+      } : salePayload?.creditSale
     }
   };
 }
