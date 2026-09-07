@@ -4,6 +4,7 @@ import morgan from 'morgan';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import connectDb from './config/db.js';
+import { httpLogger, logger } from './config/logger.js';
 import { runWithRequestContext } from './config/requestContext.js';
 import router from './routes/index.js';
 import { parseAuth } from './middleware/auth.js';
@@ -19,6 +20,7 @@ const featureFlagCache = new Map();
 const FEATURE_FLAG_CACHE_TTL_MS = 10_000;
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
+app.use(httpLogger);
 if (process.env.NODE_ENV !== 'production') {
   app.use(morgan('dev', {
     skip: (req) => req.url.includes('/api/auth/me') || req.url.includes('/api/server-logs')
@@ -192,12 +194,14 @@ app.use((req, res) => {
 
 const port = process.env.PORT || 4000;
 const server = app.listen(port, () => {
+  logger.info({ port: Number(port) || 0 }, 'API listening');
   console.log(`API on ${port}`);
   ServerLog.create({ level: 'info', message: `Server started on ${port}`, actor: 'server' }).catch(() => {});
   Promise.resolve().then(async () => {
     try {
       await connectDb();
     } catch (err) {
+      logger.error({ err, port: Number(port) || 0 }, 'Mongo connect error');
       console.error('Mongo connect error:', err?.message || String(err));
       ServerLog.create({
         level: 'error',
@@ -212,6 +216,7 @@ const server = app.listen(port, () => {
 });
 server.on('error', (err) => {
   const code = err && (err.code || err.name);
+  logger.error({ err, port: Number(port) || 0 }, 'Server failed to start');
   console.error(`Server failed to start on port ${port}:`, err?.message || String(err));
   ServerLog.create({
     level: 'error',
@@ -225,6 +230,7 @@ server.on('error', (err) => {
 
 process.on('unhandledRejection', (reason) => {
   const code = reason && (reason.code || reason.name);
+  logger.error({ err: reason }, 'Unhandled rejection');
   ServerLog.create({
     level: 'error',
     actor: 'server',
@@ -236,6 +242,7 @@ process.on('unhandledRejection', (reason) => {
 });
 process.on('uncaughtException', (err) => {
   const code = err && (err.code || err.name);
+  logger.error({ err }, 'Uncaught exception');
   ServerLog.create({
     level: 'error',
     actor: 'server',
