@@ -844,14 +844,14 @@ function PosPage({ mode = 'retail' }) {
     return Math.max(0, Number(taxValue || 0)) / taxable;
   }
 
-  function adjustReviewPaymentMethods(paymentMethods = [], nextTotal = 0) {
+  function adjustReviewPaymentMethods(paymentMethods = [], targetAmount = 0) {
     const methods = Array.isArray(paymentMethods) ? paymentMethods.map((entry) => ({
       ...entry,
       amount: Math.max(0, Number(entry?.amount || 0))
     })) : [];
     const currentTotal = methods.reduce((sum, entry) => sum + Math.max(0, Number(entry?.amount || 0)), 0);
-    const delta = Number(nextTotal || 0) - currentTotal;
-    if (methods.length === 0) return [{ type: 'cash', amount: Math.max(0, Number(nextTotal || 0)) }];
+    const delta = Number(targetAmount || 0) - currentTotal;
+    if (methods.length === 0) return [{ type: 'cash', amount: Math.max(0, Number(targetAmount || 0)) }];
     const cashIndex = methods.findIndex((entry) => String(entry?.type || '').toLowerCase() === 'cash');
     const targetIndex = cashIndex >= 0 ? cashIndex : methods.length - 1;
     methods[targetIndex] = {
@@ -864,18 +864,35 @@ function PosPage({ mode = 'retail' }) {
   function buildDiscountCompletionPayload(row) {
     const status = String(row?.status || '');
     const basePayload = row?.salePayload && typeof row.salePayload === 'object' ? { ...row.salePayload } : {};
-    if (status !== 'rejected') return basePayload;
     const subtotalValue = Math.max(0, Number(row?.subtotal || basePayload?.subtotal || 0));
+    const approvedDiscount = status === 'rejected'
+      ? 0
+      : Math.max(0, Number(row?.discount ?? basePayload?.discount ?? 0));
     const nextTaxRate = computeReviewTaxRate(subtotalValue, row?.discount || basePayload?.discount || 0, row?.tax || basePayload?.tax || 0);
-    const nextTax = Math.max(0, subtotalValue * nextTaxRate);
-    const nextTotal = Math.max(0, subtotalValue + nextTax);
+    const nextTax = Math.max(0, (subtotalValue - approvedDiscount) * nextTaxRate);
+    const nextTotal = Math.max(0, subtotalValue - approvedDiscount + nextTax);
+    const nextCreditPaidNow = Math.min(
+      nextTotal,
+      Math.max(0, Number(basePayload?.creditSale?.amountPaidNow ?? basePayload?.creditAmountPaidNow ?? 0))
+    );
+    const paymentTarget = basePayload?.creditSale?.enabled
+      ? nextCreditPaidNow
+      : nextTotal;
     return {
       ...basePayload,
       subtotal: subtotalValue,
-      discount: 0,
+      discount: approvedDiscount,
       tax: nextTax,
       total: nextTotal,
-      payment_methods: adjustReviewPaymentMethods(basePayload?.payment_methods, nextTotal)
+      payment_methods: adjustReviewPaymentMethods(basePayload?.payment_methods, paymentTarget),
+      creditAmountPaidNow: basePayload?.creditSale?.enabled ? nextCreditPaidNow : Number(basePayload?.creditAmountPaidNow || 0),
+      creditBalance: basePayload?.creditSale?.enabled ? Math.max(0, nextTotal - nextCreditPaidNow) : Number(basePayload?.creditBalance || 0),
+      outstandingBalance: basePayload?.creditSale?.enabled ? Math.max(0, nextTotal - nextCreditPaidNow) : Number(basePayload?.outstandingBalance || 0),
+      outstandingTotal: basePayload?.creditSale?.enabled ? Math.max(0, nextTotal - nextCreditPaidNow) : Number(basePayload?.outstandingTotal || 0),
+      creditSale: basePayload?.creditSale?.enabled ? {
+        ...basePayload.creditSale,
+        amountPaidNow: nextCreditPaidNow
+      } : basePayload?.creditSale
     };
   }
 
@@ -911,6 +928,7 @@ function PosPage({ mode = 'retail' }) {
         branchName: row?.branchName || activeBranch?.name || activeBranchId
       };
       dispatch(recordSale(saleForPrint));
+      setDiscountRequests((current) => current.filter((item) => String(item?._id || '') !== id));
       const shouldPrint = await confirmDialog('Print receipt now?');
       if (shouldPrint) {
         printReceiptHtml(buildBrandedReceiptHtml({ settings, sale: saleForPrint }));
@@ -925,11 +943,12 @@ function PosPage({ mode = 'retail' }) {
     }
   }
 
-  async function cancelRejectedDiscountRequest(row) {
+  async function cancelDiscountRequest(row) {
     const id = String(row?._id || '');
     if (!id || saving) return;
-    if (String(row?.status || '') !== 'rejected') return;
-    const okay = await confirmDialog('Cancel this rejected discount sale?');
+    const status = String(row?.status || '');
+    if (!['approved', 'rejected'].includes(status)) return;
+    const okay = await confirmDialog(status === 'approved' ? 'Cancel this approved discount sale?' : 'Cancel this rejected discount sale?');
     if (!okay) return;
     setDiscountWorkingId(id);
     try {
@@ -942,7 +961,7 @@ function PosPage({ mode = 'retail' }) {
       }
       await cancelDiscountApproval(id, {});
       await refreshDiscountRequests();
-      toast.show('Rejected discount sale cancelled', { type: 'success' });
+      toast.show(status === 'approved' ? 'Approved discount sale cancelled' : 'Rejected discount sale cancelled', { type: 'success' });
     } catch (e) {
       toast.show(String(e?.message || 'Failed to cancel rejected discount sale'), { type: 'error' });
     } finally {
@@ -2380,8 +2399,8 @@ function PosPage({ mode = 'retail' }) {
                           <button className="btn btn-primary btn-compact" onClick={() => completeApprovedDiscountRequest(row)} disabled={(!isApproved && !isRejected) || isWorking}>
                             {isWorking ? t('Processing...') : t('Complete')}
                           </button>
-                          {isRejected ? (
-                            <button className="btn btn-compact" onClick={() => cancelRejectedDiscountRequest(row)} disabled={isWorking}>
+                          {(isApproved || isRejected) ? (
+                            <button className="btn btn-compact" onClick={() => cancelDiscountRequest(row)} disabled={isWorking}>
                               {isWorking ? t('Processing...') : t('Cancel')}
                             </button>
                           ) : null}
@@ -2510,7 +2529,6 @@ function PosPage({ mode = 'retail' }) {
                 disabled={!!item.unitId}
               />
               <div className="pos-cart-price-box">
-                <>
                 <select
                   className="select"
                   value={getPreferredPriceTier(allowedPriceTiers, item.priceTier || selectedPriceTier)}
@@ -2525,12 +2543,6 @@ function PosPage({ mode = 'retail' }) {
                     <option key={option.value} value={option.value}>{option.label}</option>
                   ))}
                 </select>
-                </>
-                {!isWarehouse && (
-                  <span style={{ fontSize: 12, color: '#64748b' }}>
-                    {t('Unit')}: {formatCurrency(item.price, settings)}
-                  </span>
-                )}
               </div>
               <div className="pos-cart-total">
                 <strong>{formatCurrency((Number(item.price) || 0) * (Number(item.quantity) || 0), settings)}</strong>

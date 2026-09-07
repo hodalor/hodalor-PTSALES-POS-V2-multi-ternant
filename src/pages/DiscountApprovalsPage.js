@@ -34,20 +34,41 @@ function adjustPaymentMethods(paymentMethods = [], nextTotal = 0) {
   return methods;
 }
 
+function getPaymentTarget(base = {}, nextTotal = 0) {
+  const creditEnabled = !!(base?.creditSale && base.creditSale.enabled);
+  if (!creditEnabled) return Math.max(0, Number(nextTotal || 0));
+  const paidNow = Math.max(0, Number(base?.creditSale?.amountPaidNow ?? base?.creditAmountPaidNow ?? 0));
+  return Math.min(Math.max(0, Number(nextTotal || 0)), paidNow);
+}
+
 function normalizeResolvedPayload(row, mode = 'approved') {
   const base = row?.salePayload && typeof row.salePayload === 'object' ? { ...row.salePayload } : {};
-  if (mode !== 'rejected_complete') return base;
   const subtotal = Math.max(0, Number(row?.subtotal || base?.subtotal || 0));
+  const nextDiscount = mode === 'rejected_complete'
+    ? 0
+    : Math.max(0, Number(row?.discount ?? base?.discount ?? 0));
   const taxRate = computeTaxRate(subtotal, row?.discount || base?.discount || 0, row?.tax || base?.tax || 0);
-  const nextTax = Math.max(0, subtotal * taxRate);
-  const nextTotal = Math.max(0, subtotal + nextTax);
+  const nextTax = Math.max(0, (subtotal - nextDiscount) * taxRate);
+  const nextTotal = Math.max(0, subtotal - nextDiscount + nextTax);
+  const nextCreditPaidNow = Math.min(
+    nextTotal,
+    Math.max(0, Number(base?.creditSale?.amountPaidNow ?? base?.creditAmountPaidNow ?? 0))
+  );
   return {
     ...base,
     subtotal,
-    discount: 0,
+    discount: nextDiscount,
     tax: nextTax,
     total: nextTotal,
-    payment_methods: adjustPaymentMethods(base?.payment_methods, nextTotal)
+    payment_methods: adjustPaymentMethods(base?.payment_methods, getPaymentTarget(base, nextTotal)),
+    creditAmountPaidNow: base?.creditSale?.enabled ? nextCreditPaidNow : Number(base?.creditAmountPaidNow || 0),
+    creditBalance: base?.creditSale?.enabled ? Math.max(0, nextTotal - nextCreditPaidNow) : Number(base?.creditBalance || 0),
+    outstandingBalance: base?.creditSale?.enabled ? Math.max(0, nextTotal - nextCreditPaidNow) : Number(base?.outstandingBalance || 0),
+    outstandingTotal: base?.creditSale?.enabled ? Math.max(0, nextTotal - nextCreditPaidNow) : Number(base?.outstandingTotal || 0),
+    creditSale: base?.creditSale?.enabled ? {
+      ...base.creditSale,
+      amountPaidNow: nextCreditPaidNow
+    } : base?.creditSale
   };
 }
 
@@ -250,7 +271,9 @@ function DiscountApprovalsPage() {
   async function onCancel(row = detail) {
     const id = String(row?._id || '');
     if (!id) return;
-    const confirm = await confirmDialog('Cancel this rejected discount sale?');
+    const status = String(row?.status || '');
+    if (!['approved', 'rejected'].includes(status)) return;
+    const confirm = await confirmDialog(status === 'approved' ? 'Cancel this approved discount sale?' : 'Cancel this rejected discount sale?');
     if (!confirm) return;
     setWorkingId(id);
     try {
@@ -259,7 +282,7 @@ function DiscountApprovalsPage() {
         await releaseProductUnits({ unitIds, reservationToken: String(row.salePayload.reservationToken || '') });
       }
       await cancelDiscountApproval(id, { remark: String(draftRemark || '') });
-      toast.show('Rejected discount sale cancelled', { type: 'success' });
+      toast.show(status === 'approved' ? 'Approved discount sale cancelled' : 'Rejected discount sale cancelled', { type: 'success' });
       closeDetail(true);
       await load(tab);
     } catch (e) {
@@ -433,9 +456,14 @@ function DiscountApprovalsPage() {
                         </button>
                       )}
                       {tab === 'approved' && (
-                        <button className="btn btn-primary btn-compact" onClick={() => onComplete(row)} disabled={busy || !canComplete}>
-                          {busy ? t('Working...') : t('Complete')}
-                        </button>
+                        <div style={{ display: 'inline-flex', gap: 8 }}>
+                          <button className="btn btn-compact" onClick={() => onCancel(row)} disabled={busy}>
+                            {busy ? t('Working...') : t('Cancel')}
+                          </button>
+                          <button className="btn btn-primary btn-compact" onClick={() => onComplete(row)} disabled={busy || !canComplete}>
+                            {busy ? t('Working...') : t('Complete')}
+                          </button>
+                        </div>
                       )}
                       {tab === 'completed' && (
                         <button className="btn btn-compact" onClick={() => openDetail(row)}>
@@ -472,7 +500,10 @@ function DiscountApprovalsPage() {
                 </>
               )}
               {String(detail?.status || '') === 'approved' && (
-                <button className="btn btn-primary" onClick={() => onComplete(detail)} disabled={!!workingId || !canComplete}>{workingId ? t('Working...') : t('Complete')}</button>
+                <>
+                  <button className="btn" onClick={() => onCancel(detail)} disabled={!!workingId}>{workingId ? t('Working...') : t('Cancel')}</button>
+                  <button className="btn btn-primary" onClick={() => onComplete(detail)} disabled={!!workingId || !canComplete}>{workingId ? t('Working...') : t('Complete')}</button>
+                </>
               )}
               {String(detail?.status || '') === 'rejected' && (
                 <>

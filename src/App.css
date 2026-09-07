@@ -2803,7 +2803,7 @@ html, body, #root {
 }
 .cart-item {
   gap: 12px;
-  padding: 14px 0;
+  padding: 14px 34px 14px 0;
 }
 .cart-item .cart-title {
   gap: 2px;
@@ -2814,16 +2814,18 @@ html, body, #root {
 .pos-cart-price-box {
   display: grid;
   gap: 6px;
-  min-width: 150px;
+  min-width: 132px;
 }
 .pos-cart-price-inline {
   font-weight: 700;
   color: #0f172a;
 }
 .pos-cart-total {
-  min-width: 120px;
+  min-width: 92px;
   text-align: right;
-  padding-right: 22px;
+  justify-self: end;
+  padding-right: 4px;
+  white-space: nowrap;
   font-size: 1.05rem;
   line-height: 1;
   font-weight: 850;
@@ -3310,7 +3312,7 @@ html, body, #root {
 }
 .cart-item {
   display: grid;
-  grid-template-columns: 1fr auto auto auto;
+  grid-template-columns: minmax(0, 1fr) 78px minmax(132px, 150px) minmax(92px, max-content);
   align-items: center;
   gap: 8px;
   padding: 8px 0;
@@ -3320,6 +3322,7 @@ html, body, #root {
 .cart-item .cart-title {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 .cart-item small {
   color: #64748b;
@@ -3407,7 +3410,7 @@ html, body, #root {
   overscroll-behavior: contain;
   scrollbar-width: thin;
   scrollbar-color: rgba(148, 163, 184, 0.7) transparent;
-  padding: 10px 6px 12px 2px;
+  padding: 10px 14px 12px 2px;
 }
 .pos-products-scroll::-webkit-scrollbar,
 .pos-cart-scroll::-webkit-scrollbar {
