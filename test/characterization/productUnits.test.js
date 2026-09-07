@@ -5,7 +5,8 @@ const mocks = vi.hoisted(() => ({
   productUnitFind: vi.fn(),
   productUnitFindOne: vi.fn(),
   productUnitFindOneAndUpdate: vi.fn(),
-  branchFindOne: vi.fn()
+  branchFindOne: vi.fn(),
+  fetch: vi.fn(() => Promise.reject(new Error('debug sink unavailable')))
 }));
 
 vi.mock('../../src/models/Product.js', () => ({
@@ -40,6 +41,7 @@ const productUnits = await import('../../src/utils/productUnits.js');
 describe('productUnits characterization', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal('fetch', mocks.fetch);
   });
 
   it('normalizes track and inventory types to current defaults', () => {
@@ -169,6 +171,45 @@ describe('productUnits characterization', () => {
       _id: 'unit-1',
       status: 'reserved',
       reservationToken: 'token-1'
+    });
+  });
+
+  it('marks serialized units sold even if debug telemetry fails', async () => {
+    const saveA = vi.fn().mockResolvedValue({});
+    const saveB = vi.fn().mockResolvedValue({});
+    mocks.productUnitFind.mockResolvedValue([
+      {
+        _id: 'unit-1',
+        status: 'reserved',
+        reservationToken: 'token-1',
+        save: saveA
+      },
+      {
+        _id: 'unit-2',
+        status: 'in_stock',
+        reservationToken: '',
+        save: saveB
+      }
+    ]);
+
+    const result = await productUnits.sellSerializedUnits({
+      unitIds: ['unit-1', 'unit-2'],
+      reservationToken: 'token-1',
+      saleId: 'sale-1'
+    });
+
+    expect(saveA).toHaveBeenCalledOnce();
+    expect(saveB).toHaveBeenCalledOnce();
+    expect(result).toHaveLength(2);
+    expect(result[0]).toMatchObject({
+      status: 'sold',
+      soldSaleId: 'sale-1',
+      reservationToken: ''
+    });
+    expect(result[1]).toMatchObject({
+      status: 'sold',
+      soldSaleId: 'sale-1',
+      reservationToken: ''
     });
   });
 });

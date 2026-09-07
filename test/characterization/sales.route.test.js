@@ -8,7 +8,7 @@ const mocks = vi.hoisted(() => ({
   saleFind: vi.fn(),
   saleFindOne: vi.fn(),
   enrichSalesWithAccounting: vi.fn(),
-  fetch: vi.fn(() => Promise.resolve({ ok: true }))
+  fetch: vi.fn(() => Promise.reject(new Error('debug sink unavailable')))
 }));
 
 vi.mock('../../src/models/Sale.js', () => ({
@@ -182,7 +182,7 @@ describe('sales route characterization', () => {
     expect(response.body).toEqual({ error: 'Discounted sales must be approved first' });
   });
 
-  it('dedupes repeated sale requests by returning the existing sale for the same clientId', async () => {
+  it('dedupes repeated sale requests by returning the existing sale for the same clientId even if debug telemetry fails', async () => {
     mocks.saleFindOne.mockResolvedValue({
       _id: 'sale-2',
       clientId: 'sale-client-1',

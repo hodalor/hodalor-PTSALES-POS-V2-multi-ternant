@@ -19,7 +19,7 @@ const mocks = vi.hoisted(() => ({
   refreshCreditSaleStatus: vi.fn(async () => {}),
   updateCustomerCreditMetrics: vi.fn(),
   archiveLiveDocument: vi.fn().mockResolvedValue({}),
-  fetch: vi.fn(() => Promise.resolve({ ok: true }))
+  fetch: vi.fn(() => Promise.reject(new Error('debug sink unavailable')))
 }));
 
 vi.mock('../../src/models/CreditRepayment.js', () => ({
@@ -102,6 +102,23 @@ describe('credits route characterization', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal('fetch', mocks.fetch);
+  });
+
+  it('returns credit sales even if debug telemetry fails while listing them', async () => {
+    mocks.creditSaleFind.mockReturnValue({
+      sort: vi.fn().mockReturnValue({
+        limit: vi.fn().mockReturnValue({
+          lean: vi.fn().mockResolvedValue([{ _id: 'credit-1', branchId: 'north', status: 'active' }])
+        })
+      })
+    });
+
+    const response = await request(createApp())
+      .get('/sales')
+      .set(authHeader())
+      .expect(200);
+
+    expect(response.body).toEqual([{ _id: 'credit-1', branchId: 'north', status: 'active' }]);
   });
 
   it('returns an empty list when a restricted user requests another branchs credit sales', async () => {

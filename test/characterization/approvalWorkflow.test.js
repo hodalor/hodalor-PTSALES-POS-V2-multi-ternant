@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   wholesaleFindByIdAndUpdate: vi.fn(),
   creditRepaymentFindByIdAndUpdate: vi.fn(),
   cashReconciliationFindByIdAndUpdate: vi.fn(),
-  fetch: vi.fn(() => Promise.resolve({ ok: true }))
+  fetch: vi.fn(() => Promise.reject(new Error('debug sink unavailable')))
 }));
 
 vi.mock('../../src/models/Audit.js', () => ({
@@ -145,7 +145,7 @@ describe('approvalWorkflow characterization', () => {
     );
   });
 
-  it('creates approvals with pending_director status and immediately syncs the reference model', async () => {
+  it('creates approvals with pending_director status and immediately syncs the reference model even if debug telemetry fails', async () => {
     const result = await approvalWorkflow.createApprovalForReference({
       actionType: 'credit_repayment',
       referenceModel: 'CreditRepayment',
@@ -167,6 +167,5 @@ describe('approvalWorkflow characterization', () => {
       status: 'pending_director',
       approvalId: 'approval-1'
     });
-    expect(mocks.fetch).toHaveBeenCalledTimes(3);
   });
 });
