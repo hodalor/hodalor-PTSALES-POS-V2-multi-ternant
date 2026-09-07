@@ -10,6 +10,9 @@ function readTenantId(req) {
 
 export async function tenantContext(req, res, next) {
   try {
+    if (String(req.path || '') === '/health') {
+      return next();
+    }
     const requestedTenantId = readTenantId(req);
     const tenantId = await resolveStoredTenantId(requestedTenantId);
     if (tenantId.toLowerCase() !== 'master') {
