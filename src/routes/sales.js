@@ -1,6 +1,4 @@
 import { Router } from 'express';
-import fs from 'node:fs';
-import path from 'node:path';
 import Sale from '../models/Sale.js';
 import Product from '../models/Product.js';
 import Audit from '../models/Audit.js';
@@ -12,8 +10,6 @@ import Customer from '../models/Customer.js';
 import CreditSale from '../models/CreditSale.js';
 import DiscountApproval from '../models/DiscountApproval.js';
 import ProductUnit from '../models/ProductUnit.js';
-import WholesaleOperation from '../models/WholesaleOperation.js';
-import TransferRequest from '../models/TransferRequest.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
 import { getMapQty, getStockTarget, markInventoryModified, resolveTierPrice, setMapQty } from '../utils/inventory.js';
@@ -28,167 +24,6 @@ import { assertOutgoingAvailability } from '../utils/inTransitLocks.js';
 const r = Router();
 
 r.use(requireAuth);
-
-function reportInTransitStockLockDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
-  const envCandidates = [
-    path.resolve(process.cwd(), '.dbg', 'in-transit-stock-lock.env'),
-    path.resolve(process.cwd(), '..', '.dbg', 'in-transit-stock-lock.env')
-  ];
-  let url = 'http://127.0.0.1:7777/event';
-  let sessionId = 'in-transit-stock-lock';
-  for (const candidate of envCandidates) {
-    try {
-      const text = fs.readFileSync(candidate, 'utf8');
-      url = text.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || url;
-      sessionId = text.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || sessionId;
-      break;
-    } catch {}
-  }
-  fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, runId: 'pre-fix', hypothesisId, location, msg, data, ts: Date.now() })
-  }).catch(() => {});
-}
-
-function reportQueuedSalesImeiDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
-  const envCandidates = [
-    path.resolve(process.cwd(), '.dbg', 'queued-sales-imei.env'),
-    path.resolve(process.cwd(), '..', '.dbg', 'queued-sales-imei.env')
-  ];
-  let url = 'http://127.0.0.1:7777/event';
-  let sessionId = 'queued-sales-imei';
-  for (const candidate of envCandidates) {
-    try {
-      const text = fs.readFileSync(candidate, 'utf8');
-      url = text.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || url;
-      sessionId = text.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || sessionId;
-      break;
-    } catch {}
-  }
-  fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, runId: 'pre-fix', hypothesisId, location, msg, data, ts: Date.now() })
-  }).catch(() => {});
-}
-
-function reportEbkTmpReceiptDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
-  const envCandidates = [
-    path.resolve(process.cwd(), '.dbg', 'ebk-tmp-receipt.env'),
-    path.resolve(process.cwd(), '..', '.dbg', 'ebk-tmp-receipt.env')
-  ];
-  let url = 'http://127.0.0.1:7777/event';
-  let sessionId = 'ebk-tmp-receipt';
-  for (const candidate of envCandidates) {
-    try {
-      const text = fs.readFileSync(candidate, 'utf8');
-      url = text.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || url;
-      sessionId = text.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || sessionId;
-      break;
-    } catch {}
-  }
-  fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, runId: 'pre-fix', hypothesisId, location, msg, data, ts: Date.now() })
-  }).catch(() => {});
-}
-
-async function summarizePendingInventoryLocks({ productId = '', variantId = '', branchId = '', inventoryType = 'retail', soldUnitIds = [] } = {}) {
-  const wholesaleOps = await WholesaleOperation.find({
-    status: { $in: ['pending_director', 'pending_manager'] },
-    $or: [
-      {
-        operationType: 'transfer',
-        fromBranchId: String(branchId || ''),
-        fromInventoryType: String(inventoryType || 'retail'),
-        items: { $elemMatch: { productId: String(productId || ''), variantId: String(variantId || ''), status: { $ne: 'cancelled' } } }
-      },
-      {
-        operationType: 'adjustment',
-        branchId: String(branchId || ''),
-        fromInventoryType: String(inventoryType || 'retail'),
-        items: { $elemMatch: { productId: String(productId || ''), variantId: String(variantId || ''), adjustmentType: 'decrease', status: { $ne: 'cancelled' } } }
-      }
-    ]
-  }, {
-    operationType: 1,
-    status: 1,
-    fromBranchId: 1,
-    toBranchId: 1,
-    branchId: 1,
-    fromInventoryType: 1,
-    toInventoryType: 1,
-    items: 1
-  }).limit(20).lean();
-  const retailTransfers = await TransferRequest.find({
-    status: { $in: ['pending_approval', 'pending_director', 'pending_manager'] },
-    from: String(branchId || ''),
-    items: { $elemMatch: { productId: String(productId || ''), variantId: String(variantId || ''), status: { $ne: 'cancelled' } } }
-  }, {
-    status: 1,
-    from: 1,
-    to: 1,
-    items: 1
-  }).limit(20).lean();
-  const serializedRows = soldUnitIds.length > 0
-    ? await ProductUnit.find({ _id: { $in: soldUnitIds.map(String) } }, { _id: 1, status: 1, reservationToken: 1, branchId: 1, inventoryType: 1, soldSaleId: 1, imei: 1, serialNumber: 1 }).lean()
-    : [];
-  return {
-    wholesaleOps: wholesaleOps.map((row) => ({
-      id: String(row?._id || ''),
-      operationType: String(row?.operationType || ''),
-      status: String(row?.status || ''),
-      fromBranchId: String(row?.fromBranchId || row?.branchId || ''),
-      toBranchId: String(row?.toBranchId || ''),
-      fromInventoryType: String(row?.fromInventoryType || ''),
-      lockedQty: (Array.isArray(row?.items) ? row.items : []).filter((item) => (
-        String(item?.productId || '') === String(productId || '')
-        && String(item?.variantId || '') === String(variantId || '')
-        && String(item?.status || 'accepted').toLowerCase() !== 'cancelled'
-        && (
-          String(row?.operationType || '') !== 'adjustment'
-          || String(item?.adjustmentType || '').toLowerCase() === 'decrease'
-        )
-      )).reduce((sum, item) => sum + Math.max(0, Number(item?.qty || 0)), 0),
-      lockedUnitIds: (Array.isArray(row?.items) ? row.items : []).flatMap((item) => (
-        String(item?.productId || '') === String(productId || '')
-          && String(item?.variantId || '') === String(variantId || '')
-          && String(item?.status || 'accepted').toLowerCase() !== 'cancelled'
-          ? (Array.isArray(item?.unitIds) ? item.unitIds.map(String) : [])
-          : []
-      ))
-    })),
-    retailTransfers: retailTransfers.map((row) => ({
-      id: String(row?._id || ''),
-      status: String(row?.status || ''),
-      fromBranchId: String(row?.from || ''),
-      toBranchId: String(row?.to || ''),
-      lockedQty: (Array.isArray(row?.items) ? row.items : []).filter((item) => (
-        String(item?.productId || '') === String(productId || '')
-        && String(item?.variantId || '') === String(variantId || '')
-        && String(item?.status || 'accepted').toLowerCase() !== 'cancelled'
-      )).reduce((sum, item) => sum + Math.max(0, Number(item?.qty || 0)), 0),
-      lockedUnitIds: (Array.isArray(row?.items) ? row.items : []).flatMap((item) => (
-        String(item?.productId || '') === String(productId || '')
-          && String(item?.variantId || '') === String(variantId || '')
-          && String(item?.status || 'accepted').toLowerCase() !== 'cancelled'
-          ? (Array.isArray(item?.unitIds) ? item.unitIds.map(String) : [])
-          : []
-      ))
-    })),
-    serializedRows: serializedRows.map((row) => ({
-      id: String(row?._id || ''),
-      status: String(row?.status || ''),
-      reservationToken: String(row?.reservationToken || ''),
-      branchId: String(row?.branchId || ''),
-      inventoryType: String(row?.inventoryType || ''),
-      soldSaleId: String(row?.soldSaleId || ''),
-      code: String(row?.imei || row?.serialNumber || '')
-    }))
-  };
-}
 
 function escapeRegex(text = '') {
   return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -538,24 +373,6 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
   if (clientId) {
     const existing = await Sale.findOne({ clientId });
     if (existing) {
-      // #region debug-point D:sale-request-deduped
-      reportQueuedSalesImeiDebug({
-        hypothesisId: 'D',
-        location: 'sales.js:post:dedupe-existing-sale',
-        msg: '[DEBUG] Backend sale replay deduped to existing sale',
-        data: {
-          clientId,
-          saleId: String(existing?._id || ''),
-          branchId: String(existing?.branchId || branchId || ''),
-          status: String(existing?.status || ''),
-          creditSaleId: String(existing?.creditSaleId || ''),
-          hasSerializedItems: Array.isArray(existing?.items) && existing.items.some((item) => Array.isArray(item?.soldUnitIds) && item.soldUnitIds.length > 0),
-          serializedUnitCount: Array.isArray(existing?.items)
-            ? existing.items.reduce((sum, item) => sum + (Array.isArray(item?.soldUnitIds) ? item.soldUnitIds.length : 0), 0)
-            : 0
-        }
-      });
-      // #endregion
       return res.json(existing);
     }
   }
@@ -573,43 +390,6 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
   if (cleaned.some(it => !it.productId || !Number.isFinite(it.qty) || it.qty <= 0)) {
     return res.status(400).json({ error: 'Each item must include productId and positive qty' });
   }
-  // #region debug-point B:backend-request-received
-  reportEbkTmpReceiptDebug({
-    hypothesisId: 'B',
-    location: 'sales.js:post:request-received',
-    msg: '[DEBUG] Backend sales route received a sale request',
-    data: {
-      clientId,
-      branchId: String(branchId || ''),
-      posType: String(posType || ''),
-      inventoryType: String(inventoryType || ''),
-      reservationToken: String(payload?.reservationToken || ''),
-      itemCount: cleaned.length,
-      hasSerialized: cleaned.some((item) => Array.isArray(item?.soldUnitIds) && item.soldUnitIds.length > 0)
-    }
-  });
-  // #endregion
-  // #region debug-point B:sale-request-received
-  reportQueuedSalesImeiDebug({
-    hypothesisId: 'B',
-    location: 'sales.js:post:request-received',
-    msg: '[DEBUG] Backend sale request received',
-    data: {
-      clientId,
-      branchId: String(branchId || ''),
-      posType: String(posType || ''),
-      inventoryType: String(inventoryType || ''),
-      reservationToken: String(payload?.reservationToken || ''),
-      itemCount: cleaned.length,
-      items: cleaned.map((item) => ({
-        productId: String(item?.productId || ''),
-        variantId: String(item?.variantId || ''),
-        qty: Number(item?.qty || 0),
-        soldUnitIds: Array.isArray(item?.soldUnitIds) ? item.soldUnitIds.map(String) : []
-      }))
-    }
-  });
-  // #endregion
 
   let customerId = String(payload.customerId || '').trim();
   let customerCode = String(payload.customerCode || '').trim();
@@ -745,32 +525,6 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
         throw err;
       }
       const prev = getMapQty(target.container, branchId);
-      const pendingLocks = await summarizePendingInventoryLocks({
-        productId: String(p.id || p._id || it.productId),
-        variantId: String(it.variantId || ''),
-        branchId,
-        inventoryType,
-        soldUnitIds: it.soldUnitIds
-      });
-      // #region debug-point A:sale-stock-check
-      reportInTransitStockLockDebug({
-        hypothesisId: 'A',
-        location: 'sales.js:post:stock-check',
-        msg: '[DEBUG] Sale stock check evaluated against pending transfer/adjustment locks',
-        data: {
-          seller: String(req.user?.name || req.user?.username || ''),
-          branchId: String(branchId || ''),
-          inventoryType: String(inventoryType || ''),
-          productId: String(p.id || p._id || ''),
-          productName: String(p.name || ''),
-          variantId: String(it.variantId || ''),
-          qtyRequested: Number(it.qty || 0),
-          currentStock: Number(prev || 0),
-          soldUnitIds: Array.isArray(it.soldUnitIds) ? it.soldUnitIds.map(String) : [],
-          pendingLocks
-        }
-      });
-      // #endregion
       await assertOutgoingAvailability({
         product: p,
         productId: String(p.id || p._id || it.productId),
@@ -829,7 +583,6 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
   }
 
   let sale;
-  let saleCreatePhase = 'before-sale-create';
   let serializedFinalizePhase = 'not-started';
   let customerPointsAfter = null;
   let creditSale = null;
@@ -970,21 +723,6 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       isBackdated: saleTimes.isBackdated,
       backdatedByName: saleTimes.backdatedByName
     });
-    saleCreatePhase = 'sale-created';
-    // #region debug-point B:sale-created-before-serialized-finalize
-    reportQueuedSalesImeiDebug({
-      hypothesisId: 'B',
-      location: 'sales.js:post:sale-created',
-      msg: '[DEBUG] Backend sale document created before serialized finalize',
-      data: {
-        saleId: String(sale?._id || ''),
-        clientId,
-        branchId: String(branchId || ''),
-        reservationToken: String(payload?.reservationToken || ''),
-        touchedSerializedUnits: touchedSerializedUnits.map(String)
-      }
-    });
-    // #endregion
     if (touchedSerializedUnits.length > 0) {
       serializedFinalizePhase = 'started';
       const soldRows = await sellSerializedUnits({
@@ -993,26 +731,6 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
         saleId: String(sale._id)
       });
       serializedFinalizePhase = 'completed';
-      // #region debug-point B:sale-serialized-finalized
-      reportQueuedSalesImeiDebug({
-        hypothesisId: 'B',
-        location: 'sales.js:post:sold-serialized-units',
-        msg: '[DEBUG] Backend serialized units finalized for sale',
-        data: {
-          saleId: String(sale?._id || ''),
-          clientId,
-          soldRows: soldRows.map((row) => ({
-            unitId: String(row?._id || ''),
-            status: String(row?.status || ''),
-            branchId: String(row?.branchId || ''),
-            inventoryType: String(row?.inventoryType || ''),
-            soldSaleId: String(row?.soldSaleId || ''),
-            imei: String(row?.imei || ''),
-            serialNumber: String(row?.serialNumber || '')
-          }))
-        }
-      });
-      // #endregion
       const soldById = new Map(soldRows.map(row => [String(row._id), row]));
       sale.items = sale.items.map(item => ({
         ...(item?.toObject ? item.toObject() : item),
@@ -1064,42 +782,6 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       customerPointsAfter = updated ? Number(updated.loyaltyPoints || 0) : null;
     }
   } catch (e) {
-    // #region debug-point E:backend-create-failed
-    reportEbkTmpReceiptDebug({
-      hypothesisId: 'E',
-      location: 'sales.js:post:failed',
-      msg: '[DEBUG] Backend sale creation failed during EBK temp receipt trace',
-      data: {
-        clientId,
-        branchId: String(branchId || ''),
-        reservationToken: String(payload?.reservationToken || ''),
-        message: String(e?.message || ''),
-        touchedSerializedUnits: touchedSerializedUnits.map(String),
-        saleCreatePhase,
-        serializedFinalizePhase,
-        saleId: String(sale?._id || ''),
-        creditSaleId: String(creditSale?._id || '')
-      }
-    });
-    // #endregion
-    // #region debug-point E:sale-create-failed
-    reportQueuedSalesImeiDebug({
-      hypothesisId: 'E',
-      location: 'sales.js:post:failed',
-      msg: '[DEBUG] Backend sale creation failed',
-      data: {
-        clientId,
-        branchId: String(branchId || ''),
-        reservationToken: String(payload?.reservationToken || ''),
-        message: String(e?.message || ''),
-        touchedSerializedUnits: touchedSerializedUnits.map(String),
-        saleCreatePhase,
-        serializedFinalizePhase,
-        saleId: String(sale?._id || ''),
-        creditSaleId: String(creditSale?._id || '')
-      }
-    });
-    // #endregion
     try {
       for (let i = touched.length - 1; i >= 0; i--) {
         const t = touched[i];
@@ -1245,20 +927,6 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       ts: new Date()
     }).catch(() => {});
   }
-  // #region debug-point C:backend-response-success
-  reportEbkTmpReceiptDebug({
-    hypothesisId: 'C',
-    location: 'sales.js:post:response-success',
-    msg: '[DEBUG] Backend sale creation completed successfully',
-    data: {
-      clientId,
-      saleId: String(out?._id || out?.id || sale?._id || ''),
-      branchId: String(out?.branchId || branchId || ''),
-      receiptNumber: String(out?.receiptNumber || ''),
-      invoiceSerial: String(out?.invoiceSerial || '')
-    }
-  });
-  // #endregion
   res.json(out);
 });
 
