@@ -14,6 +14,22 @@ import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 
+function reportRefundApproveSyncDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  fetch('http://127.0.0.1:7777/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'refund-approve-sync',
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      msg,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {});
+}
+
 function normalizeBranchIds(value) {
   if (value === 'all') return 'all';
   return Array.from(new Set(
@@ -270,6 +286,30 @@ function RefundApprovalsPage() {
       restockMode,
       restockItems
     };
+    // #region debug-point A:refund-approve-payload
+    reportRefundApproveSyncDebug({
+      hypothesisId: 'A',
+      location: 'RefundApprovalsPage.js:onApprove:payload',
+      msg: '[DEBUG] Prepared refund approval payload',
+      data: {
+        id: String(payload.id || ''),
+        refundStatus: String(r?.status || ''),
+        refundArea: String(resolveRefundArea(r) || ''),
+        restockMode: String(restockMode || ''),
+        restockItemsCount: Array.isArray(restockItems) ? restockItems.length : 0,
+        firstRestockItem: Array.isArray(restockItems) && restockItems.length > 0 ? {
+          sku: String(restockItems[0]?.sku || ''),
+          productId: String(restockItems[0]?.productId || ''),
+          variantId: String(restockItems[0]?.variantId || ''),
+          qty: Number(restockItems[0]?.qty || 0),
+          unitIdsCount: Array.isArray(restockItems[0]?.unitIds) ? restockItems[0].unitIds.length : 0
+        } : null,
+        saleRefFound: !!saleRef,
+        saleRefId: String(saleRef?.id || saleRef?._id || ''),
+        online: typeof navigator !== 'undefined' ? !!navigator.onLine : null
+      }
+    });
+    // #endregion
     let resolvedRequest = r;
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) {
@@ -286,12 +326,41 @@ function RefundApprovalsPage() {
     } else {
       try {
         const saved = await refundsApi.approve(payload);
+        // #region debug-point E:refund-approve-success
+        reportRefundApproveSyncDebug({
+          hypothesisId: 'E',
+          location: 'RefundApprovalsPage.js:onApprove:success',
+          msg: '[DEBUG] Refund approval request returned successfully',
+          data: {
+            id: String(payload.id || ''),
+            returnedStatus: String(saved?.status || ''),
+            settlementMode: String(saved?.settlementMode || ''),
+            cashRefundAmount: Number(saved?.cashRefundAmount || 0),
+            creditReliefAmount: Number(saved?.creditReliefAmount || 0)
+          }
+        });
+        // #endregion
         dispatch(approveRefund(payload));
         if (saved && typeof saved === 'object') {
           resolvedRequest = { ...r, ...saved };
           dispatch(mergeRequests([saved]));
         }
-      } catch {
+      } catch (e) {
+        // #region debug-point D:refund-approve-client-error
+        reportRefundApproveSyncDebug({
+          hypothesisId: 'D',
+          location: 'RefundApprovalsPage.js:onApprove:catch',
+          msg: '[DEBUG] Refund approval request failed in browser',
+          data: {
+            id: String(payload.id || ''),
+            message: String(e?.message || ''),
+            status: Number(e?.status || 0),
+            errorData: e?.data || null,
+            restockMode: String(restockMode || ''),
+            restockItemsCount: Array.isArray(restockItems) ? restockItems.length : 0
+          }
+        });
+        // #endregion
         toast.show('Failed to sync to server', { type: 'error' });
         return;
       }
