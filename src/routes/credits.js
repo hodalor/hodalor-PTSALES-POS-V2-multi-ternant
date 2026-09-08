@@ -9,7 +9,7 @@ import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import { createApprovalForReference } from '../utils/approvalWorkflow.js';
 import { computeCreditStatus, customerRankFromScore, refreshCreditSaleStatus, updateCustomerCreditMetrics } from '../utils/credit.js';
 import { archiveLiveDocument } from '../utils/superBin.js';
-import { validateLogOnly } from '../validation/logOnlyValidation.js';
+import { formatValidationError, validateEnforced } from '../validation/logOnlyValidation.js';
 import { creditRepaymentCreateSchema } from '../validation/schemas.js';
 
 const r = Router();
@@ -238,13 +238,17 @@ r.get('/customers', async (req, res) => {
 
 r.post('/repayments', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], 'add_sales'), async (req, res) => {
   const body = req.body || {};
-  validateLogOnly(creditRepaymentCreateSchema, body, {
-    scope: 'credits.repayments.create',
-    route: '/api/credits/repayments',
-    method: 'POST',
-    tenantId: String(req.user?.tenantId || req.tenantId || ''),
-    userName: String(req.user?.name || '')
-  });
+  try {
+    validateEnforced(creditRepaymentCreateSchema, body, {
+      scope: 'credits.repayments.create',
+      route: '/api/credits/repayments',
+      method: 'POST',
+      tenantId: String(req.user?.tenantId || req.tenantId || ''),
+      userName: String(req.user?.name || '')
+    });
+  } catch (err) {
+    return res.status(400).json(formatValidationError(err));
+  }
   const accessibleBranchIds = getAccessibleBranchIds(req.user);
   const creditSaleId = String(body.creditSaleId || '');
   const amount = Math.max(0, Number(body.amount || 0));

@@ -16,7 +16,7 @@ import { createDpoLimitUpgradePayment, createPayPalLimitUpgradePayment, createPa
 import { uploadMediaString } from '../utils/mediaStorage.js';
 import { modelFor as TenantSessionModelFor } from '../models/TenantSession.js';
 import { archiveLiveDocument } from '../utils/superBin.js';
-import { validateLogOnly } from '../validation/logOnlyValidation.js';
+import { formatValidationError, validateEnforced } from '../validation/logOnlyValidation.js';
 import { limitUpgradeStartSchema } from '../validation/schemas.js';
 
 const r = Router();
@@ -123,13 +123,17 @@ r.get('/me', async (req, res) => {
 });
 
 r.post('/start-limit-upgrade-payment', requireRoleOrPerm(['Admin', 'SuperAdmin'], 'view_config'), async (req, res) => {
-  validateLogOnly(limitUpgradeStartSchema, req.body || {}, {
-    scope: 'tenants.startLimitUpgradePayment',
-    route: '/api/tenants/start-limit-upgrade-payment',
-    method: 'POST',
-    tenantId: String(req.user?.tenantId || req.tenantId || ''),
-    userName: String(req.user?.name || '')
-  });
+  try {
+    validateEnforced(limitUpgradeStartSchema, req.body || {}, {
+      scope: 'tenants.startLimitUpgradePayment',
+      route: '/api/tenants/start-limit-upgrade-payment',
+      method: 'POST',
+      tenantId: String(req.user?.tenantId || req.tenantId || ''),
+      userName: String(req.user?.name || '')
+    });
+  } catch (err) {
+    return res.status(400).json(formatValidationError(err));
+  }
   const tid = normalizeTenantId(req.user?.tenantId || req.tenantId || '');
   if (!tid || tid.toLowerCase() === 'master') return res.status(400).json({ error: 'Tenant payment is only available for tenant databases' });
   const master = await getMasterConnection();

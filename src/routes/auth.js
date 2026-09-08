@@ -14,7 +14,7 @@ import { cleanupExpiredTenantSessions, countActiveTenantSessions, getEffectiveTe
 import { activateTenantSubscription, ensureTenantActivationCode } from '../utils/tenantActivation.js';
 import { createDpoRenewalPayment, createPayPalRenewalPayment, createPaystackRenewalPayment, getMobileMoneyNetworks, getTenantRenewalInfo, verifyDpoRenewalPayment, verifyPayPalRenewalPayment, verifyPaystackRenewalPayment } from '../utils/subscriptionPayments.js';
 import { getPaymentManagementConfig } from '../utils/paymentManagement.js';
-import { validateLogOnly } from '../validation/logOnlyValidation.js';
+import { formatValidationError, validateEnforced } from '../validation/logOnlyValidation.js';
 import { renewalStartSchema } from '../validation/schemas.js';
 
 const r = Router();
@@ -208,13 +208,17 @@ r.get('/renewal-info', async (req, res) => {
 });
 
 r.post('/start-renewal-payment', async (req, res) => {
-  validateLogOnly(renewalStartSchema, req.body || {}, {
-    scope: 'auth.startRenewalPayment',
-    route: '/api/auth/start-renewal-payment',
-    method: 'POST',
-    tenantId: String(req.body?.tenantId || ''),
-    userName: String(req.user?.name || '')
-  });
+  try {
+    validateEnforced(renewalStartSchema, req.body || {}, {
+      scope: 'auth.startRenewalPayment',
+      route: '/api/auth/start-renewal-payment',
+      method: 'POST',
+      tenantId: String(req.body?.tenantId || ''),
+      userName: String(req.user?.name || '')
+    });
+  } catch (err) {
+    return res.status(400).json(formatValidationError(err));
+  }
   const resolvedTenantId = await resolveStoredTenantId(String(req.body?.tenantId || ''));
   if (!resolvedTenantId || resolvedTenantId.toLowerCase() === 'master') return res.status(400).json({ error: 'Invalid tenant' });
   const master = await getMasterConnection();

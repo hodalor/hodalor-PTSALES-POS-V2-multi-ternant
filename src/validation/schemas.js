@@ -1,11 +1,15 @@
 import { z } from 'zod';
 import { zLooseBoolean, zLooseNumber } from './logOnlyValidation.js';
 
-const requiredIdSchema = z.union([z.string(), z.number()]).transform((value) => String(value || '').trim()).refine((value) => value.length > 0, 'id is required');
+function requiredIdSchema(message = 'id is required') {
+  return z.union([z.string(), z.number(), z.null(), z.undefined()])
+    .transform((value) => String(value || '').trim())
+    .refine((value) => value.length > 0, message);
+}
 
 const saleItemSchema = z.object({
-  productId: requiredIdSchema,
-  qty: zLooseNumber.refine((value) => Number.isFinite(value) && value > 0, 'qty must be greater than zero'),
+  productId: requiredIdSchema('Each item must include productId and positive qty'),
+  qty: zLooseNumber.refine((value) => Number.isFinite(value) && value > 0, 'Each item must include productId and positive qty'),
   variantId: z.optional(z.union([z.string(), z.number()])).transform((value) => String(value || '').trim()),
   price: z.optional(zLooseNumber),
   requestedPrice: z.optional(zLooseNumber),
@@ -14,8 +18,8 @@ const saleItemSchema = z.object({
 }).passthrough();
 
 export const saleCreateSchema = z.object({
-  branchId: requiredIdSchema,
-  items: z.array(saleItemSchema).min(1),
+  branchId: requiredIdSchema('Missing branchId'),
+  items: z.array(saleItemSchema).min(1, 'Sale must include items'),
   clientId: z.optional(z.union([z.string(), z.number()])),
   posType: z.optional(z.union([z.string(), z.number()])),
   inventoryType: z.optional(z.union([z.string(), z.number()])),
@@ -35,8 +39,8 @@ export const saleCreateSchema = z.object({
 }).passthrough();
 
 export const creditRepaymentCreateSchema = z.object({
-  creditSaleId: requiredIdSchema,
-  amount: zLooseNumber.refine((value) => Number.isFinite(value) && value > 0, 'amount must be greater than zero'),
+  creditSaleId: requiredIdSchema('Missing creditSaleId'),
+  amount: zLooseNumber.refine((value) => Number.isFinite(value) && value > 0, 'Amount must be greater than zero'),
   paymentMethod: z.optional(z.union([z.string(), z.number()])),
   remark: z.optional(z.union([z.string(), z.number()])),
   paidAt: z.optional(z.union([z.string(), z.date()])),
@@ -80,14 +84,16 @@ export const productWriteSchema = z.object({
 }).passthrough();
 
 export const renewalStartSchema = z.object({
-  months: zLooseNumber.refine((value) => Number.isFinite(value) && value > 0, 'months must be greater than zero'),
+  months: zLooseNumber.refine((value) => Number.isFinite(value) && value > 0, 'Months must be greater than zero'),
   method: z.optional(z.union([z.string(), z.number()])),
   returnUrl: z.optional(z.union([z.string(), z.number()]))
 }).passthrough();
 
 export const limitUpgradeStartSchema = z.object({
-  resourceType: z.union([z.string(), z.number()]).transform((value) => String(value || '').trim().toLowerCase()),
-  quantity: zLooseNumber.refine((value) => Number.isFinite(value) && value > 0, 'quantity must be greater than zero'),
+  resourceType: z.union([z.string(), z.number()])
+    .transform((value) => String(value || '').trim().toLowerCase())
+    .refine((value) => value.length > 0, 'Resource type is required'),
+  quantity: zLooseNumber.refine((value) => Number.isFinite(value) && value > 0, 'Quantity must be greater than zero'),
   method: z.optional(z.union([z.string(), z.number()])),
   returnUrl: z.optional(z.union([z.string(), z.number()]))
 }).passthrough();

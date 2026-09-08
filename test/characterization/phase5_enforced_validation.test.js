@@ -4,18 +4,14 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseAuth } from '../../src/middleware/auth.js';
 
-const validationSpy = vi.fn();
-
 const salesMocks = vi.hoisted(() => ({
-  saleFindOne: vi.fn(),
-  fetch: vi.fn(() => Promise.resolve({ ok: true }))
+  saleFindOne: vi.fn()
 }));
 
 const creditsMocks = vi.hoisted(() => ({
   creditSaleFindById: vi.fn(),
   creditRepaymentFind: vi.fn(),
-  creditRepaymentFindOne: vi.fn(),
-  fetch: vi.fn(() => Promise.resolve({ ok: true }))
+  creditRepaymentFindOne: vi.fn()
 }));
 
 const productsMocks = vi.hoisted(() => ({
@@ -23,13 +19,16 @@ const productsMocks = vi.hoisted(() => ({
   serverLogCreate: vi.fn().mockResolvedValue({})
 }));
 
-vi.mock('../../src/validation/logOnlyValidation.js', async () => {
-  const actual = await vi.importActual('../../src/validation/logOnlyValidation.js');
-  return {
-    ...actual,
-    validateLogOnly: (...args) => validationSpy(...args)
-  };
-});
+const loggerMocks = vi.hoisted(() => ({
+  warn: vi.fn(),
+  info: vi.fn(),
+  error: vi.fn()
+}));
+
+vi.mock('../../src/config/logger.js', () => ({
+  logger: loggerMocks,
+  httpLogger: (_req, _res, next) => next()
+}));
 
 vi.mock('../../src/models/Sale.js', () => ({
   default: {
@@ -60,7 +59,10 @@ vi.mock('../../src/models/ServerLog.js', () => ({
 }));
 
 vi.mock('../../src/models/Settings.js', () => ({
-  default: {}
+  default: {
+    findOneAndUpdate: vi.fn(),
+    findOne: vi.fn()
+  }
 }));
 
 vi.mock('../../src/models/Invoice.js', () => ({
@@ -173,7 +175,7 @@ vi.mock('../../src/models/User.js', () => ({
 
 vi.mock('../../src/models/Tenant.js', () => ({
   default: {
-    findOne: vi.fn()
+    findOne: vi.fn(async () => ({ tenantId: 'tenant-1', disabled: false, subscriptionPermanent: false }))
   },
   modelFor: vi.fn(() => ({
     findOne: vi.fn(async () => ({ tenantId: 'tenant-1', disabled: false }))
@@ -237,7 +239,7 @@ function createApp(router) {
 }
 
 function authHeader(overrides = {}) {
-  const secret = 'phase4-log-only-secret';
+  const secret = 'phase5-enforced-secret';
   process.env.JWT_SECRET = secret;
   const token = jwt.sign({
     name: 'Admin User',
@@ -251,10 +253,9 @@ function authHeader(overrides = {}) {
   return { Authorization: `Bearer ${token}` };
 }
 
-describe('Phase 4 log-only validation characterization', () => {
+describe('Phase 5 enforced validation characterization', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.stubGlobal('fetch', salesMocks.fetch);
     salesMocks.saleFindOne.mockResolvedValue(null);
     creditsMocks.creditSaleFindById.mockResolvedValue({
       _id: 'credit-sale-1',
@@ -272,57 +273,71 @@ describe('Phase 4 log-only validation characterization', () => {
     creditsMocks.creditRepaymentFindOne.mockResolvedValue(null);
   });
 
-  it('still returns the current sales validation error while invoking log-only validation', async () => {
+  it('rejects invalid sales payloads at the validation boundary', async () => {
     const response = await request(createApp(salesRouter))
       .post('/')
       .set(authHeader())
       .send({ items: [] })
       .expect(400);
 
-    expect(validationSpy).toHaveBeenCalled();
-    expect(response.body).toEqual({ error: 'Missing branchId' });
+    expect(response.body.error).toBe('Missing branchId');
   });
 
-  it('still returns the current credit repayment validation error while invoking log-only validation', async () => {
+  it('rejects invalid credit repayment payloads at the validation boundary', async () => {
     const response = await request(createApp(creditsRouter))
       .post('/repayments')
       .set(authHeader())
       .send({ amount: 0 })
       .expect(400);
 
-    expect(validationSpy).toHaveBeenCalled();
-    expect(response.body).toEqual({ error: 'Missing creditSaleId' });
+    expect(response.body.error).toBe('Missing creditSaleId');
   });
 
-  it('still returns the current product pricing validation error while invoking log-only validation', async () => {
+  it('keeps existing product pricing validation behavior when schema validation passes', async () => {
     const response = await request(createApp(productsRouter))
       .post('/')
       .set(authHeader())
       .send({ retailPrice: 10, costPrice: 20 })
       .expect(400);
 
-    expect(validationSpy).toHaveBeenCalled();
     expect(response.body).toEqual({ error: 'Cost price cannot be greater than retail selling price' });
   });
 
-  it('still accepts renewal payment requests while invoking log-only validation', async () => {
+  it('rejects invalid renewal payment payloads at the validation boundary', async () => {
     const response = await request(createApp(authRouter))
       .post('/start-renewal-payment')
       .send({ tenantId: 'tenant-1', provider: 'dpo_pay', months: 'abc' })
+      .expect(400);
+
+    expect(response.body.error).toBe('Months must be greater than zero');
+  });
+
+  it('still accepts valid renewal payment requests', async () => {
+    const response = await request(createApp(authRouter))
+      .post('/start-renewal-payment')
+      .send({ tenantId: 'tenant-1', provider: 'dpo_pay', months: 1 })
       .expect(200);
 
-    expect(validationSpy).toHaveBeenCalled();
     expect(response.body).toMatchObject({ ok: true });
   });
 
-  it('still accepts limit-upgrade requests while invoking log-only validation', async () => {
+  it('rejects invalid limit-upgrade payloads at the validation boundary', async () => {
     const response = await request(createApp(tenantsRouter))
       .post('/start-limit-upgrade-payment')
       .set(authHeader())
       .send({ provider: 'paystack', resourceType: 'user', quantity: 'abc' })
+      .expect(400);
+
+    expect(response.body.error).toBe('Quantity must be greater than zero');
+  });
+
+  it('still accepts valid limit-upgrade requests', async () => {
+    const response = await request(createApp(tenantsRouter))
+      .post('/start-limit-upgrade-payment')
+      .set(authHeader())
+      .send({ provider: 'paystack', resourceType: 'user', quantity: 1 })
       .expect(200);
 
-    expect(validationSpy).toHaveBeenCalled();
     expect(response.body).toMatchObject({ ok: true });
   });
 });

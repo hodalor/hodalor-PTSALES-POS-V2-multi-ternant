@@ -7,7 +7,7 @@ import mongoose from 'mongoose';
 import { normalizeTrackType } from '../utils/productUnits.js';
 import { uploadMediaString } from '../utils/mediaStorage.js';
 import { archiveLiveDocument } from '../utils/superBin.js';
-import { validateLogOnly } from '../validation/logOnlyValidation.js';
+import { formatValidationError, validateEnforced } from '../validation/logOnlyValidation.js';
 import { productWriteSchema } from '../validation/schemas.js';
 
 const r = Router();
@@ -303,7 +303,7 @@ r.get('/', async (req, res) => {
 
 r.post('/', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (req, res) => {
   try {
-    validateLogOnly(productWriteSchema, req.body || {}, {
+    validateEnforced(productWriteSchema, req.body || {}, {
       scope: 'products.create',
       route: '/api/products',
       method: 'POST',
@@ -358,6 +358,9 @@ r.post('/', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (req,
       message: `Product created: ${p.name} (${p.sku})`
     }).catch(() => {});
   } catch (err) {
+    if (Array.isArray(err?.validationIssues) && err.validationIssues.length > 0) {
+      return res.status(400).json(formatValidationError(err));
+    }
     const message = productRouteErrorMessage(err);
     const status = String(err?.code || err?.name || '') === 'ValidationError' || String(err?.code || '') === '11000' || String(err?.code || '') === 'E11000' ? 400 : 500;
     void ServerLog.create({
@@ -379,13 +382,17 @@ r.post('/', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (req,
 });
 
 r.put('/:id', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (req, res) => {
-  validateLogOnly(productWriteSchema, req.body || {}, {
-    scope: 'products.update',
-    route: '/api/products/:id',
-    method: 'PUT',
-    tenantId: String(req.user?.tenantId || req.tenantId || ''),
-    userName: String(req.user?.name || '')
-  });
+  try {
+    validateEnforced(productWriteSchema, req.body || {}, {
+      scope: 'products.update',
+      route: '/api/products/:id',
+      method: 'PUT',
+      tenantId: String(req.user?.tenantId || req.tenantId || ''),
+      userName: String(req.user?.name || '')
+    });
+  } catch (err) {
+    return res.status(400).json(formatValidationError(err));
+  }
   const id = req.params.id;
   const query = productLookupQuery(id);
   const before = await Product.findOne(query);
