@@ -17,6 +17,22 @@ const r = Router();
 
 r.use(requireAuth);
 
+function reportRefundApproveSyncDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
+  fetch('http://127.0.0.1:7777/event', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'refund-approve-sync',
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      msg,
+      data,
+      ts: Date.now()
+    })
+  }).catch(() => {});
+}
+
 function escapeRegex(text = '') {
   return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -301,18 +317,64 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_refun
 
 r.post('/approve', async (req, res) => {
   const { id, approverName, approverRole, approvalRemark, restockMode, restockItems } = req.body || {};
+  // #region debug-point B:approve-entry
+  reportRefundApproveSyncDebug({
+    hypothesisId: 'B',
+    location: 'refunds.js:/approve:entry',
+    msg: '[DEBUG] Refund approve request received',
+    data: {
+      id: String(id || ''),
+      approverRole: String(approverRole || req.user?.role || ''),
+      approverName: String(approverName || req.user?.name || ''),
+      restockMode: String(restockMode || ''),
+      restockItemsCount: Array.isArray(restockItems) ? restockItems.length : 0,
+      branchId: String(req.user?.branchId || ''),
+      tenantId: String(req.user?.tenantId || '')
+    }
+  });
+  // #endregion
   const key = String(id || '');
   const or = [];
   if (mongoose.isValidObjectId(key)) or.push({ _id: key });
   or.push({ clientId: key });
   const rfd = await RefundRequest.findOne({ $or: or });
   if (!rfd) return res.status(404).json({ error: 'Not found' });
+  // #region debug-point B:approve-refund-loaded
+  reportRefundApproveSyncDebug({
+    hypothesisId: 'B',
+    location: 'refunds.js:/approve:refund-loaded',
+    msg: '[DEBUG] Refund record loaded for approval',
+    data: {
+      id: String(rfd?._id || rfd?.clientId || ''),
+      saleId: String(rfd?.saleId || ''),
+      status: String(rfd?.status || ''),
+      refundArea: String(rfd?.refundArea || ''),
+      requestedAmount: Number(rfd?.requestedAmount || 0)
+    }
+  });
+  // #endregion
   if (!canApproveRefundRequest(req.user, rfd)) return res.status(403).json({ error: 'Not allowed to approve this refund' });
   if (rfd.status !== 'pending_approval') return res.json(rfd);
   const saleRef = await resolveRefundSaleReference(rfd);
   if (!saleRef) return res.status(404).json({ error: 'Sale not found for refund approval' });
   const linkedCreditSale = await resolveLinkedCreditSale(saleRef);
   const coverage = await getRefundCoverageForSale(saleRef, { excludeRequestId: String(rfd?._id || '') });
+  // #region debug-point B:approve-validation
+  reportRefundApproveSyncDebug({
+    hypothesisId: 'B',
+    location: 'refunds.js:/approve:validation',
+    msg: '[DEBUG] Refund approval validation state computed',
+    data: {
+      refundId: String(rfd?._id || rfd?.clientId || ''),
+      saleId: String(saleRef?._id || saleRef?.clientId || ''),
+      saleInventoryType: String(saleRef?.inventoryType || saleRef?.posType || ''),
+      linkedCreditSale: !!linkedCreditSale,
+      coverage,
+      requestedAmount: Number(rfd?.requestedAmount || 0),
+      restockMode: String(restockMode || '')
+    }
+  });
+  // #endregion
   if (coverage.hasApprovedFull || coverage.remainingAmount <= 0.0001) {
     return res.status(400).json({ error: 'Sale already refunded' });
   }
@@ -340,6 +402,20 @@ r.post('/approve', async (req, res) => {
 
   // 2. Update linked credit sale when returned goods reduce debt and/or payout
   if (linkedCreditSale && settlement.isCredit) {
+    // #region debug-point C:approve-credit-update
+    reportRefundApproveSyncDebug({
+      hypothesisId: 'C',
+      location: 'refunds.js:/approve:credit-update',
+      msg: '[DEBUG] Updating linked credit sale during refund approval',
+      data: {
+        refundId: String(rfd?._id || ''),
+        creditSaleId: String(linkedCreditSale?._id || ''),
+        revisedCreditTotal: Number(settlement.revisedCreditTotal || 0),
+        revisedAmountPaid: Number(settlement.revisedAmountPaid || 0),
+        revisedCreditBalance: Number(settlement.revisedCreditBalance || 0)
+      }
+    });
+    // #endregion
     linkedCreditSale.total_amount = settlement.revisedCreditTotal;
     linkedCreditSale.amount_paid = settlement.revisedAmountPaid;
     await refreshCreditSaleStatus(linkedCreditSale);
@@ -350,6 +426,18 @@ r.post('/approve', async (req, res) => {
 
   // 3. Create negative sale only for actual cash refunded back to customer
   if (saleRef && settlement.cashRefundAmount > 0) {
+    // #region debug-point C:approve-cash-refund-sale
+    reportRefundApproveSyncDebug({
+      hypothesisId: 'C',
+      location: 'refunds.js:/approve:cash-refund-sale',
+      msg: '[DEBUG] Creating negative sale for cash refund settlement',
+      data: {
+        refundId: String(rfd?._id || ''),
+        saleId: String(saleRef?._id || ''),
+        cashRefundAmount: Number(settlement.cashRefundAmount || 0)
+      }
+    });
+    // #endregion
     const amt = settlement.cashRefundAmount;
     const refundSale = new Sale({
       branchId: saleRef.branchId,
@@ -387,8 +475,35 @@ r.post('/approve', async (req, res) => {
   // 4. Restock inventory if needed
   if ((restockMode === 'full' || restockMode === 'partial') && Array.isArray(rfd.restockItems) && rfd.restockItems.length > 0) {
     const inventoryType = await resolveInventoryTypeFromBranch(rfd.branchId, saleRef?.inventoryType || 'retail');
+    // #region debug-point C:approve-restock-start
+    reportRefundApproveSyncDebug({
+      hypothesisId: 'C',
+      location: 'refunds.js:/approve:restock-start',
+      msg: '[DEBUG] Starting refund restock processing',
+      data: {
+        refundId: String(rfd?._id || ''),
+        inventoryType: String(inventoryType || ''),
+        itemsCount: Array.isArray(rfd.restockItems) ? rfd.restockItems.length : 0
+      }
+    });
+    // #endregion
     for (const item of rfd.restockItems) {
       if ((!item.sku && !item.productId) || item.qty <= 0) continue;
+      // #region debug-point C:approve-restock-item
+      reportRefundApproveSyncDebug({
+        hypothesisId: 'C',
+        location: 'refunds.js:/approve:restock-item',
+        msg: '[DEBUG] Processing refund restock item',
+        data: {
+          refundId: String(rfd?._id || ''),
+          sku: String(item?.sku || ''),
+          productId: String(item?.productId || ''),
+          variantId: String(item?.variantId || ''),
+          qty: Number(item?.qty || 0),
+          unitIdsCount: Array.isArray(item?.unitIds) ? item.unitIds.length : 0
+        }
+      });
+      // #endregion
 
       // Try finding by SKU (main product)
       let p = await Product.findOne({ sku: item.sku });
@@ -471,6 +586,21 @@ r.post('/approve', async (req, res) => {
     branchId: rfd.branchId
   });
 
+  // #region debug-point E:approve-success
+  reportRefundApproveSyncDebug({
+    hypothesisId: 'E',
+    location: 'refunds.js:/approve:success',
+    msg: '[DEBUG] Refund approval completed successfully on server',
+    data: {
+      refundId: String(rfd?._id || rfd?.clientId || ''),
+      status: String(rfd?.status || ''),
+      settlementMode: String(rfd?.settlementMode || ''),
+      restockMode: String(rfd?.restockMode || ''),
+      cashRefundAmount: Number(rfd?.cashRefundAmount || 0),
+      creditReliefAmount: Number(rfd?.creditReliefAmount || 0)
+    }
+  });
+  // #endregion
   res.json(rfd);
 });
 
