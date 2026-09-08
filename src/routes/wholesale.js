@@ -16,7 +16,7 @@ function permissionForOperation(type = '', area = '') {
   if (key === 'purchase') return scope === 'warehouse' ? 'add_warehouse_purchases' : 'add_wholesale_purchases';
   if (key === 'transfer') return scope === 'warehouse' ? 'add_warehouse_transfers' : 'add_wholesale_transfers';
   if (key === 'adjustment') return scope === 'warehouse' ? 'add_warehouse_adjustments' : 'add_wholesale_adjustments';
-  if (key === 'refund') return 'add_distribution_refunds';
+  if (key === 'refund') return scope === 'warehouse' ? 'add_warehouse_refunds' : 'add_distribution_refunds';
   return '';
 }
 
@@ -87,7 +87,7 @@ r.get('/operations', async (req, res) => {
   res.json(normalized);
 });
 
-r.post('/operations', requireRoleOrPerm(['Admin', 'Manager', 'Inventory Staff', 'Cashier'], ['add_purchases', 'add_wholesale_purchases', 'add_warehouse_purchases', 'add_transfers', 'add_wholesale_transfers', 'add_warehouse_transfers', 'add_adjustments', 'add_wholesale_adjustments', 'add_warehouse_adjustments', 'add_distribution_refunds']), async (req, res) => {
+r.post('/operations', requireRoleOrPerm(['Admin', 'Manager', 'Inventory Staff', 'Cashier'], ['add_purchases', 'add_wholesale_purchases', 'add_warehouse_purchases', 'add_transfers', 'add_wholesale_transfers', 'add_warehouse_transfers', 'add_adjustments', 'add_wholesale_adjustments', 'add_warehouse_adjustments', 'add_distribution_refunds', 'add_warehouse_refunds']), async (req, res) => {
   const body = req.body || {};
   const operationArea = String(body.operationArea || 'wholesale').toLowerCase() === 'warehouse' ? 'warehouse' : 'wholesale';
   const operationType = String(body.operationType || '').toLowerCase();

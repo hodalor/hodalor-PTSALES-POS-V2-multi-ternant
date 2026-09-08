@@ -29,6 +29,20 @@ function normalizeBranchIds(value) {
   ));
 }
 
+function normalizeRefundArea(value = '') {
+  const area = String(value || '').trim().toLowerCase();
+  if (area === 'warehouse') return 'warehouse';
+  if (area === 'distribution' || area === 'wholesale') return 'distribution';
+  return 'retail';
+}
+
+function getSaleRefundArea(sale = {}) {
+  const inventoryType = String(sale?.inventoryType || sale?.posType || 'retail').trim().toLowerCase();
+  if (inventoryType === 'warehouse') return 'warehouse';
+  if (inventoryType === 'wholesale' || inventoryType === 'distribution') return 'distribution';
+  return 'retail';
+}
+
 function computeSaleItemsSubtotal(items = []) {
   return (Array.isArray(items) ? items : []).reduce((sum, item) => (
     sum + (Number(item?.price || 0) * Math.max(0, Number(item?.qty || 0)))
@@ -187,9 +201,11 @@ r.get('/requests', async (req, res) => {
   res.json(rows);
 });
 
-r.get('/lookup-sale', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_refunds', 'add_distribution_refunds', 'approve_refunds']), async (req, res) => {
+r.get('/lookup-sale', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_refunds', 'add_distribution_refunds', 'add_warehouse_refunds', 'approve_refunds']), async (req, res) => {
   const q = String(req.query.q || '').trim();
   if (!q) return res.status(400).json({ error: 'Missing search query' });
+  const requestedRefundAreaRaw = String(req.query.refundArea || req.query.area || '').trim();
+  const requestedRefundArea = requestedRefundAreaRaw ? normalizeRefundArea(requestedRefundAreaRaw) : '';
   const role = String(req.user?.role || '').toLowerCase();
   const query = {};
   const assigned = normalizeBranchIds(req.user?.assignedBranches);
@@ -208,11 +224,15 @@ r.get('/lookup-sale', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_ref
   }
   const sale = await Sale.findOne(query).sort({ created_at: -1 }).lean();
   if (!sale) return res.status(404).json({ error: 'Sale not found' });
+  const saleRefundArea = getSaleRefundArea(sale);
+  if (requestedRefundArea && saleRefundArea !== requestedRefundArea) {
+    return res.status(400).json({ error: `Sale belongs to ${saleRefundArea} refunds` });
+  }
   const [enriched] = await enrichSalesWithAccounting([normalizeSaleFinancials(sale)]);
   res.json(enriched || normalizeSaleFinancials(sale));
 });
 
-r.post('/requests', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_refunds', 'add_distribution_refunds']), async (req, res) => {
+r.post('/requests', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_refunds', 'add_distribution_refunds', 'add_warehouse_refunds']), async (req, res) => {
   const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim();
   const payload = {
     ...(req.body || {}),
@@ -229,6 +249,12 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_refun
   }
   const saleRef = await resolveRefundSaleReference(payload);
   if (!saleRef) return res.status(404).json({ error: 'Sale not found for refund' });
+  const requestedRefundAreaRaw = String(payload?.refundArea || '').trim();
+  const requestedRefundArea = requestedRefundAreaRaw ? normalizeRefundArea(requestedRefundAreaRaw) : '';
+  const saleRefundArea = getSaleRefundArea(saleRef);
+  if (requestedRefundArea && requestedRefundArea !== saleRefundArea) {
+    return res.status(400).json({ error: `Sale belongs to ${saleRefundArea} refunds` });
+  }
   const coverage = await getRefundCoverageForSale(saleRef);
   if (coverage.hasActiveFull || coverage.remainingAmount <= 0.0001) {
     return res.status(400).json({ error: 'Sale already refunded' });
@@ -250,6 +276,7 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_refun
     invoiceSerial: saleRef?.invoiceSerial || payload?.invoiceSerial || '',
     receiptNumber: saleRef?.receiptNumber || payload?.receiptNumber || '',
     branchId: saleRef?.branchId || payload?.branchId || '',
+    refundArea: saleRefundArea,
     requestedAmount,
     clientId: clientId || undefined
   });

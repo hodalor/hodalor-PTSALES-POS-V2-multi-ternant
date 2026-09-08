@@ -7,6 +7,7 @@ const RefundRequestSchema = new mongoose.Schema({
   invoiceSerial: String,
   receiptNumber: String,
   branchId: String,
+  refundArea: { type: String, enum: ['retail', 'distribution', 'warehouse'], default: 'retail' },
   initiatorName: String,
   initiatorRole: String,
   type: { type: String, enum: ['full','partial'], default: 'full' },

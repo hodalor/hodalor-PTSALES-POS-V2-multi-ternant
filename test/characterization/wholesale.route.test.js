@@ -141,4 +141,64 @@ describe('wholesale route characterization', () => {
       }
     });
   });
+
+  it('creates warehouse refund operations when the user has warehouse refund grants', async () => {
+    mocks.wholesaleCreate.mockResolvedValue({
+      _id: 'op-warehouse-refund-1',
+      operationType: 'refund',
+      operationArea: 'warehouse',
+      requestedAmount: 180,
+      items: [{ productId: 'p1', qty: 1 }],
+      toObject: () => ({
+        _id: 'op-warehouse-refund-1',
+        operationType: 'refund',
+        operationArea: 'warehouse',
+        requestedAmount: 180,
+        items: [{ productId: 'p1', qty: 1 }],
+        status: 'pending_director'
+      })
+    });
+    mocks.createApprovalForReference.mockResolvedValue({
+      _id: 'approval-warehouse-refund-1',
+      status: 'pending_director'
+    });
+
+    const response = await request(createApp())
+      .post('/operations')
+      .set(authHeader({
+        role: 'Cashier',
+        grants: ['add_warehouse_refunds']
+      }))
+      .send({
+        operationType: 'refund',
+        operationArea: 'warehouse',
+        branchId: 'warehouse-main',
+        requestedAmount: 180,
+        items: [{ productId: 'p1', qty: 1 }]
+      })
+      .expect(200);
+
+    expect(mocks.wholesaleCreate).toHaveBeenCalledWith(expect.objectContaining({
+      operationType: 'refund',
+      operationArea: 'warehouse',
+      branchId: 'warehouse-main',
+      requestedAmount: 180
+    }));
+    expect(response.body).toEqual({
+      operation: {
+        _id: 'op-warehouse-refund-1',
+        operationType: 'refund',
+        operationArea: 'warehouse',
+        requestedAmount: 180,
+        items: [{ productId: 'p1', qty: 1 }],
+        status: 'pending_director',
+        approvalId: 'approval-warehouse-refund-1',
+        approvalMode: 'workflow'
+      },
+      approval: {
+        _id: 'approval-warehouse-refund-1',
+        status: 'pending_director'
+      }
+    });
+  });
 });

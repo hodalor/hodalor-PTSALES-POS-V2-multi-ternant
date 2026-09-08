@@ -10,7 +10,7 @@ export const TENANT_GRANT_KEYS = [
   'add_customers', 'edit_customers', 'view_credit_control', 'approve_credit_director',
   'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_discount_sales',
   'approve_retail_director', 'approve_retail_manager',
-  'approve_distribution_director', 'approve_distribution_manager', 'approve_warehouse_director', 'approve_warehouse_manager', 'view_refunds', 'add_refunds', 'view_distribution_refunds', 'add_distribution_refunds',
+  'approve_distribution_director', 'approve_distribution_manager', 'approve_warehouse_director', 'approve_warehouse_manager', 'view_refunds', 'add_refunds', 'view_distribution_refunds', 'add_distribution_refunds', 'view_warehouse_refunds', 'add_warehouse_refunds',
   'approve_refunds', 'view_expenses', 'add_expenses', 'approve_expenses', 'view_reports', 'view_revenue', 'view_profit', 'view_financials',
   'view_stock_records', 'view_inventory_consistency', 'view_wholesale_invoices', 'view_warehouse_invoices',
   'view_warehouse_approvals', 'view_imei_conflicts', 'view_cashdrawer', 'view_users',
@@ -33,7 +33,7 @@ export const ALL_FEATURES = [
   'pages.distribution.goods', 'pages.distribution.pos', 'pages.distribution.invoices', 'pages.distribution.purchase',
   'pages.distribution.transfer', 'pages.distribution.adjustment', 'pages.distribution.refund', 'pages.distribution.approvals',
   'pages.warehouse.goods', 'pages.warehouse.pos', 'pages.warehouse.invoices', 'pages.warehouse.purchase', 'pages.warehouse.transfer',
-  'pages.warehouse.adjustment', 'pages.warehouse.approvals',
+  'pages.warehouse.adjustment', 'pages.warehouse.refund', 'pages.warehouse.approvals',
   'pages.finance.reconciliation',
   'pages.communication.chat', 'pages.communication.askPtAi',
   'modules.dashboard', 'modules.pos', 'modules.wholesalePos', 'modules.invoices', 'modules.sales',
@@ -74,7 +74,7 @@ export const PLAN_FEATURES = {
     'pages.distribution.goods', 'pages.distribution.pos', 'pages.distribution.invoices', 'pages.distribution.purchase',
     'pages.distribution.transfer', 'pages.distribution.adjustment', 'pages.distribution.refund', 'pages.distribution.approvals',
     'pages.warehouse.goods', 'pages.warehouse.pos', 'pages.warehouse.invoices', 'pages.warehouse.purchase', 'pages.warehouse.transfer',
-    'pages.warehouse.adjustment', 'pages.warehouse.approvals',
+    'pages.warehouse.adjustment', 'pages.warehouse.refund', 'pages.warehouse.approvals',
     'pages.finance.reconciliation',
     'pages.communication.chat', 'pages.communication.askPtAi',
     'modules.dashboard', 'modules.pos', 'modules.wholesalePos', 'modules.invoices', 'modules.sales',
@@ -94,7 +94,7 @@ const SECTION_FALLBACKS = {
   'sections.primary': ['modules.dashboard', 'modules.sales', 'modules.invoices', 'modules.products', 'modules.inventory', 'modules.labels', 'modules.reports', 'modules.backup'],
   'sections.retail': ['modules.pos', 'modules.purchases', 'modules.transfers', 'modules.adjustments', 'modules.refunds'],
   'sections.distribution': ['pages.distribution.goods', 'pages.distribution.pos', 'pages.distribution.invoices', 'pages.distribution.purchase', 'pages.distribution.transfer', 'pages.distribution.adjustment', 'pages.distribution.refund', 'pages.distribution.approvals'],
-  'sections.warehouse': ['pages.warehouse.goods', 'pages.warehouse.pos', 'pages.warehouse.invoices', 'pages.warehouse.purchase', 'pages.warehouse.transfer', 'pages.warehouse.adjustment', 'pages.warehouse.approvals'],
+  'sections.warehouse': ['pages.warehouse.goods', 'pages.warehouse.pos', 'pages.warehouse.invoices', 'pages.warehouse.purchase', 'pages.warehouse.transfer', 'pages.warehouse.adjustment', 'pages.warehouse.refund', 'pages.warehouse.approvals'],
   'sections.credit': ['modules.creditControl', 'grants.view_credit_control', 'grants.view_credit_repayment_approvals'],
   'sections.expense': ['modules.expenses', 'modules.expenseApprovals'],
   'sections.finance': ['modules.finance', 'pages.finance.reconciliation', 'grants.view_finance_reconciliation'],
@@ -117,6 +117,7 @@ const PAGE_FALLBACKS = {
   'pages.distribution.approvals': ['sections.distribution', 'grants.approve_distribution_manager'],
   'pages.warehouse.pos': ['sections.warehouse', 'grants.view_warehouse_pos'],
   'pages.warehouse.invoices': ['sections.warehouse', 'grants.view_warehouse_invoices'],
+  'pages.warehouse.refund': ['sections.warehouse', 'grants.view_warehouse_refunds'],
   'pages.warehouse.approvals': ['sections.warehouse', 'grants.view_warehouse_approvals']
 };
 
@@ -143,6 +144,7 @@ const FEATURE_DEPENDENCIES = {
   'pages.warehouse.purchase': ['modules.wholesalePos', 'modules.products', 'grants.view_warehouse_products', 'grants.add_warehouse_purchases'],
   'pages.warehouse.transfer': ['modules.wholesalePos', 'modules.products', 'grants.view_warehouse_products', 'grants.add_transfers'],
   'pages.warehouse.adjustment': ['modules.wholesalePos', 'modules.products', 'grants.view_warehouse_products', 'grants.add_warehouse_adjustments'],
+  'pages.warehouse.refund': ['modules.wholesalePos', 'modules.products', 'grants.view_warehouse_products', 'grants.add_warehouse_refunds'],
   'pages.warehouse.approvals': ['modules.wholesalePos', 'modules.products', 'modules.approvalsCenter', 'grants.view_warehouse_approvals', 'grants.approve_warehouse_director', 'grants.approve_warehouse_manager']
 };
 

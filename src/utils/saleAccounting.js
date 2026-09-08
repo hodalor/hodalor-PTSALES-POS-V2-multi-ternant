@@ -46,6 +46,13 @@ function getRefundEventDate(refund) {
   return toDate(refund?.approved_at || refund?.approvedAt || refund?.created_at || refund?.createdAt || null);
 }
 
+function getRefundAreaSaleType(refundArea = '') {
+  const area = String(refundArea || '').trim().toLowerCase();
+  if (area === 'warehouse') return 'warehouse';
+  if (area === 'distribution' || area === 'wholesale') return 'wholesale';
+  return 'retail';
+}
+
 function getRefundReturnedValue(refund, originalSale = null) {
   const requested = Math.abs(toNumber(refund?.requestedAmount));
   if (requested > 0) return requested;
@@ -331,8 +338,8 @@ export function buildRecognizedDayTotals(rows = [], start, end, options = {}) {
     const originalSale = saleMap.get(toId(refund?.saleId)) || null;
     const fallbackSale = originalSale || {
       branchId,
-      posType: String(refund?.refundArea || '').trim().toLowerCase() === 'distribution' ? 'wholesale' : 'retail',
-      inventoryType: String(refund?.refundArea || '').trim().toLowerCase() === 'distribution' ? 'wholesale' : 'retail'
+      posType: getRefundAreaSaleType(refund?.refundArea),
+      inventoryType: getRefundAreaSaleType(refund?.refundArea)
     };
     if (!matchesActivityFilter(fallbackSale, options?.activityFilter, originalSale?.creditSale || null)) continue;
     const refundCashImpact = Math.max(0, getRefundCashImpact(refund, originalSale));
