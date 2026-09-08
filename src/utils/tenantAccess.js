@@ -67,6 +67,8 @@ export const TENANT_GRANT_CATALOG = [
   { key: 'add_refunds', label: 'Create Retail Refund Requests' },
   { key: 'view_distribution_refunds', label: 'Open Distribution Refunds' },
   { key: 'add_distribution_refunds', label: 'Create Distribution Refund Requests' },
+  { key: 'view_warehouse_refunds', label: 'Open Warehouse Refunds' },
+  { key: 'add_warehouse_refunds', label: 'Create Warehouse Refund Requests' },
   { key: 'approve_refunds', label: 'Refund Approvals' },
   { key: 'view_expenses', label: 'Open Expenses' },
   { key: 'add_expenses', label: 'Create or Delete Expenses' },
@@ -257,6 +259,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
       { label: 'Warehouse Purchase', keys: ['pages.warehouse.purchase', 'modules.wholesalePos', 'grants.view_warehouse_products', 'grants.add_warehouse_purchases'], checkedKeys: ['pages.warehouse.purchase', 'grants.view_warehouse_products', 'grants.add_warehouse_purchases'] },
       { label: 'Warehouse Transfer', keys: ['pages.warehouse.transfer', 'modules.wholesalePos', 'grants.view_warehouse_products', 'grants.add_warehouse_transfers'], checkedKeys: ['pages.warehouse.transfer', 'grants.view_warehouse_products', 'grants.add_warehouse_transfers'] },
       { label: 'Warehouse Adjustment', keys: ['pages.warehouse.adjustment', 'modules.wholesalePos', 'grants.view_warehouse_products', 'grants.add_warehouse_adjustments'], checkedKeys: ['pages.warehouse.adjustment', 'grants.view_warehouse_products', 'grants.add_warehouse_adjustments'] },
+      { label: 'Warehouse Refunds', keys: ['pages.warehouse.refund', 'modules.wholesalePos', 'grants.view_warehouse_products', 'grants.view_warehouse_refunds', 'grants.add_warehouse_refunds'], checkedKeys: ['pages.warehouse.refund', 'grants.view_warehouse_products', 'grants.view_warehouse_refunds', 'grants.add_warehouse_refunds'] },
       { label: 'Warehouse Approvals', keys: ['pages.warehouse.approvals', 'modules.wholesalePos', 'modules.approvalsCenter', 'grants.view_warehouse_approvals', 'grants.approve_warehouse_director', 'grants.approve_warehouse_manager'], checkedKeys: ['pages.warehouse.approvals', 'grants.view_warehouse_approvals', 'grants.approve_warehouse_director', 'grants.approve_warehouse_manager'] }
     ]
   },
@@ -397,7 +400,7 @@ export const TENANT_FEATURE_CATALOG = [
       group = 'Permissions / Pricing & Visibility';
     } else if (['view_chat', 'send_chat_messages', 'view_pt_ai'].includes(item.key)) {
       group = 'Permissions / Communication';
-    } else if (['view_wholesale_pos', 'view_warehouse_pos', 'view_purchases', 'add_purchases', 'add_wholesale_purchases', 'add_warehouse_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'add_wholesale_transfers', 'add_warehouse_transfers', 'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'add_wholesale_adjustments', 'add_warehouse_adjustments', 'edit_adjustments', 'approve_adjustments', 'view_credit_control', 'approve_credit_director', 'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_discount_sales', 'approve_distribution_director', 'approve_distribution_manager', 'approve_warehouse_director', 'approve_warehouse_manager', 'view_wholesale_invoices', 'view_warehouse_invoices', 'view_warehouse_approvals'].includes(item.key)) {
+    } else if (['view_wholesale_pos', 'view_warehouse_pos', 'view_purchases', 'add_purchases', 'add_wholesale_purchases', 'add_warehouse_purchases', 'edit_purchases', 'approve_purchases', 'view_transfers', 'add_transfers', 'add_wholesale_transfers', 'add_warehouse_transfers', 'edit_transfers', 'approve_transfers', 'view_adjustments', 'add_adjustments', 'add_wholesale_adjustments', 'add_warehouse_adjustments', 'edit_adjustments', 'approve_adjustments', 'view_credit_control', 'approve_credit_director', 'approve_credit_manager', 'view_credit_repayment_approvals', 'view_approvals', 'approve_discount_sales', 'approve_distribution_director', 'approve_distribution_manager', 'approve_warehouse_director', 'approve_warehouse_manager', 'view_wholesale_invoices', 'view_warehouse_invoices', 'view_warehouse_refunds', 'add_warehouse_refunds', 'view_warehouse_approvals'].includes(item.key)) {
       group = 'Permissions / Distribution Actions';
     } else if (['view_users', 'view_config', 'view_audit', 'view_super_bin', 'view_stock_records', 'view_inventory_consistency', 'view_cashdrawer', 'view_imei_conflicts', 'export_tenant_data', 'import_tenant_data'].includes(item.key)) {
       group = 'Permissions / Admin Actions';

@@ -87,7 +87,7 @@ function Sidebar({ collapsed, onNavigate }) {
     const path = String(location.pathname || '');
     const isRetail = ['/pos','/purchases','/transfers','/adjustments','/refunds','/invoices'].some(prefix => path.startsWith(prefix));
     const isDistribution = ['/wholesale-goods','/wholesale-pos','/wholesale-invoices','/wholesale-purchase','/wholesale-transfer','/wholesale-adjustment','/wholesale-refund'].some(prefix => path.startsWith(prefix));
-    const isWarehouse = ['/warehouse-goods','/warehouse-invoices','/warehouse-purchase','/warehouse-transfer','/warehouse-adjustment','/warehouse-approvals'].some(prefix => path.startsWith(prefix));
+    const isWarehouse = ['/warehouse-goods','/warehouse-invoices','/warehouse-purchase','/warehouse-transfer','/warehouse-adjustment','/warehouse-refund','/warehouse-approvals'].some(prefix => path.startsWith(prefix));
     const isCredit = ['/credit-control','/easybuy/'].some(prefix => path.startsWith(prefix));
     const isExpense = ['/expenses','/expense-approvals'].some(prefix => path.startsWith(prefix));
     const isFinance = ['/cash-reconciliation'].some(prefix => path.startsWith(prefix));
@@ -114,6 +114,7 @@ function Sidebar({ collapsed, onNavigate }) {
           || (isFeatureEnabled(settings, 'pages.warehouse.purchase') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_warehouse_purchases']))
           || (isFeatureEnabled(settings, 'pages.warehouse.transfer') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_warehouse_transfers']))
           || (isFeatureEnabled(settings, 'pages.warehouse.adjustment') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_warehouse_adjustments']))
+          || (isFeatureEnabled(settings, 'pages.warehouse.refund') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_warehouse_refunds','add_warehouse_refunds']))
           || (isFeatureEnabled(settings, 'pages.warehouse.approvals') && can(['Admin','Manager','SuperAdmin'], ['view_warehouse_approvals','approve_warehouse_director','approve_warehouse_manager']))
         );
         const [overdueRows, directorRows, managerRows, warehouseRows] = await Promise.all([
@@ -286,6 +287,7 @@ function Sidebar({ collapsed, onNavigate }) {
           (isFeatureEnabled(settings, 'pages.warehouse.purchase') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_warehouse_purchases'])) ||
           (isFeatureEnabled(settings, 'pages.warehouse.transfer') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_warehouse_transfers'])) ||
           (isFeatureEnabled(settings, 'pages.warehouse.adjustment') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_warehouse_adjustments'])) ||
+          (isFeatureEnabled(settings, 'pages.warehouse.refund') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_warehouse_refunds','add_warehouse_refunds'])) ||
           (isFeatureEnabled(settings, 'pages.warehouse.approvals') && can(['Admin','Manager','SuperAdmin'], ['view_warehouse_approvals','approve_warehouse_director','approve_warehouse_manager']))
         ) && (
         <div>
@@ -334,6 +336,9 @@ function Sidebar({ collapsed, onNavigate }) {
             </NavLink>)}
             {isFeatureEnabled(settings, 'pages.warehouse.adjustment') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['add_warehouse_adjustments']) && (<NavLink to="/warehouse-adjustment" className="sidebar-link" title={t('Warehouse Adjustment')}>
               <span className="sidebar-text">{t('Warehouse Adjustment')}</span>
+            </NavLink>)}
+            {isFeatureEnabled(settings, 'pages.warehouse.refund') && can(['Admin','Manager','Inventory Staff','Cashier','SuperAdmin'], ['view_warehouse_refunds','add_warehouse_refunds']) && (<NavLink to="/warehouse-refund" className="sidebar-link" title={t('Warehouse Refund')}>
+              <span className="sidebar-text">{t('Warehouse Refund')}</span>
             </NavLink>)}
             {isFeatureEnabled(settings, 'pages.warehouse.approvals') && can(['Admin','Manager','SuperAdmin'], ['view_warehouse_approvals','approve_warehouse_director','approve_warehouse_manager']) && (<NavLink to="/warehouse-approvals" className="sidebar-link" title={t('Warehouse Approvals')} style={{ display: 'flex', alignItems: 'center' }}>
               <span className="sidebar-text">{t('Warehouse Approvals')}</span>

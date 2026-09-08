@@ -55,6 +55,7 @@ import WarehouseTransferPage from './pages/WarehouseTransferPage';
 import WarehouseAdjustmentPage from './pages/WarehouseAdjustmentPage';
 import WarehouseApprovalsPage from './pages/WarehouseApprovalsPage';
 import WarehouseGoodsPage from './pages/WarehouseGoodsPage';
+import WarehouseRefundPage from './pages/WarehouseRefundPage';
 import ToastProvider from './components/ToastProvider';
 import LocalizationRuntime from './components/LocalizationRuntime';
 import { LanguageProvider } from './components/LanguageProvider';
@@ -518,9 +519,11 @@ function App() {
         const canLoadSuppliers = section('sections.partners') && allow('modules.suppliers', ['Admin','Manager','Inventory Staff'], ['view_suppliers','see_suppliers']);
         const canLoadRetailRefunds = section('sections.retail') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']);
         const canLoadDistributionRefunds = section('sections.distribution') && allow('pages.distribution.refund', ['Admin','Manager','Inventory Staff','Cashier'], ['view_distribution_refunds','add_distribution_refunds']);
+        const canLoadWarehouseRefunds = section('sections.warehouse') && allow('pages.warehouse.refund', ['Admin','Manager','Inventory Staff','Cashier'], ['view_warehouse_refunds','add_warehouse_refunds']);
         const canLoadSales = allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']);
         const canLoadRefunds = canLoadRetailRefunds
           || canLoadDistributionRefunds
+          || canLoadWarehouseRefunds
           || canLoadSales
           || allow('modules.dashboard', ['Admin','Manager'], ['view_dashboard','see_dashboard'])
           || allow('modules.reports', ['Admin','Manager','Auditor'], ['view_reports','see_reports'])
@@ -664,6 +667,7 @@ function App() {
           (
             (section('sections.retail') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']))
             || (section('sections.distribution') && allow('pages.distribution.refund', ['Admin','Manager','Inventory Staff','Cashier'], ['view_distribution_refunds','add_distribution_refunds']))
+            || (section('sections.warehouse') && allow('pages.warehouse.refund', ['Admin','Manager','Inventory Staff','Cashier'], ['view_warehouse_refunds','add_warehouse_refunds']))
             || allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales'])
             || allow('modules.dashboard', ['Admin','Manager'], ['view_dashboard','see_dashboard'])
             || allow('modules.reports', ['Admin','Manager','Auditor'], ['view_reports','see_reports'])
@@ -733,6 +737,7 @@ function App() {
             <Route path="/warehouse-adjustment" element={<ProtectedRoute feature="pages.warehouse.adjustment" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['add_warehouse_adjustments']}><WarehouseAdjustmentPage /></ProtectedRoute>} />
             <Route path="/warehouse-goods" element={<ProtectedRoute feature="pages.warehouse.goods" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['view_warehouse_products']}><WarehouseGoodsPage /></ProtectedRoute>} />
             <Route path="/warehouse-invoices" element={<ProtectedRoute feature="pages.warehouse.invoices" roles={['Admin','Manager','Cashier']} grant={['view_warehouse_invoices']}><WarehouseInvoicesPage /></ProtectedRoute>} />
+            <Route path="/warehouse-refund" element={<ProtectedRoute feature="pages.warehouse.refund" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['view_warehouse_refunds','add_warehouse_refunds']}><WarehouseRefundPage /></ProtectedRoute>} />
             <Route path="/warehouse-approvals" element={<ProtectedRoute feature="pages.warehouse.approvals" roles={['Admin','Manager','SuperAdmin']} grant={['view_warehouse_approvals','approve_warehouse_director','approve_warehouse_manager']}><WarehouseApprovalsPage /></ProtectedRoute>} />
             <Route path="/sales" element={<ProtectedRoute feature="modules.sales" roles={['Admin','Manager','Cashier']} grant={['view_sales','see_sales']}><SalesPage /></ProtectedRoute>} />
             <Route path="/invoices" element={<ProtectedRoute feature="modules.invoices" roles={['Admin','Manager','Cashier']} grant={['view_invoices','see_invoices']}><InvoicesPage /></ProtectedRoute>} />

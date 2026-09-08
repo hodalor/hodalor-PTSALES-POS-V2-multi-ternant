@@ -286,7 +286,9 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     if (operationType === 'adjustment') {
       return normalizedArea === 'warehouse' ? grants.includes('add_warehouse_adjustments') : grants.includes('add_wholesale_adjustments');
     }
-    if (operationType === 'refund') return grants.includes('add_distribution_refunds');
+    if (operationType === 'refund') {
+      return normalizedArea === 'warehouse' ? grants.includes('add_warehouse_refunds') : grants.includes('add_distribution_refunds');
+    }
     return false;
   }, [grants, normalizedArea, operationType, roleLower]);
   const defaultBranchIdRef = useRef(scopedBranchOptions[0]?.id || '');

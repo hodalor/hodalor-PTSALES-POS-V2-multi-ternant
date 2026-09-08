@@ -58,6 +58,7 @@ export async function refreshAllData(dispatch, getState) {
   const canLoadRefunds = (
     (isFeatureEnabled(settings, 'pages.retail.refunds') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']))
     || (isFeatureEnabled(settings, 'pages.distribution.refund') && allow('pages.distribution.refund', ['Admin','Manager','Inventory Staff','Cashier'], ['view_distribution_refunds','add_distribution_refunds']))
+    || (isFeatureEnabled(settings, 'pages.warehouse.refund') && allow('pages.warehouse.refund', ['Admin','Manager','Inventory Staff','Cashier'], ['view_warehouse_refunds','add_warehouse_refunds']))
     || allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales'])
     || allow('modules.dashboard', ['Admin','Manager'], ['view_dashboard','see_dashboard'])
     || allow('modules.reports', ['Admin','Manager','Auditor'], ['view_reports','see_reports'])

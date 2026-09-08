@@ -19,6 +19,53 @@ function toDataUrl(file) {
   });
 }
 
+function normalizeKnownRefundMode(value = '') {
+  const mode = String(value || '').trim().toLowerCase();
+  if (!mode) return '';
+  if (mode === 'warehouse') return 'warehouse';
+  if (mode === 'distribution' || mode === 'wholesale') return 'distribution';
+  return 'retail';
+}
+
+function normalizeRefundMode(value = '') {
+  return normalizeKnownRefundMode(value) || 'retail';
+}
+
+function getSaleRefundArea(sale = {}) {
+  const inventoryType = String(sale?.inventoryType || sale?.posType || 'retail').trim().toLowerCase();
+  if (inventoryType === 'warehouse') return 'warehouse';
+  if (inventoryType === 'wholesale' || inventoryType === 'distribution') return 'distribution';
+  return 'retail';
+}
+
+function getRefundPageMeta(mode = 'retail') {
+  if (mode === 'warehouse') {
+    return {
+      pageTitle: 'Warehouse Refunds',
+      searchLabel: 'Search Warehouse Sale by Receipt or Invoice',
+      searchPlaceholder: 'e.g., INV-WAREHOUSE-000123 or RCPT-WAREHOUSE-000123',
+      requestButtonLabel: 'Request Warehouse Refund',
+      queueLabel: 'Warehouse refunds queued'
+    };
+  }
+  if (mode === 'distribution') {
+    return {
+      pageTitle: 'Distribution Refunds',
+      searchLabel: 'Search Distribution Sale by Receipt or Invoice',
+      searchPlaceholder: 'e.g., INV-WHOLESALE-000123 or RCPT-WHOLESALE-000123',
+      requestButtonLabel: 'Request Distribution Refund',
+      queueLabel: 'Distribution refunds queued'
+    };
+  }
+  return {
+    pageTitle: 'Refunds',
+    searchLabel: 'Search by Receipt or Invoice',
+    searchPlaceholder: 'e.g., RCPT-XXX-000123 or INV-XXX-000123',
+    requestButtonLabel: 'Request Refund',
+    queueLabel: 'Refunds queued'
+  };
+}
+
 function RefundsPage({ mode = 'retail' }) {
   const dispatch = useDispatch();
   const toast = useToast();
@@ -41,10 +88,12 @@ function RefundsPage({ mode = 'retail' }) {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
+  const normalizedMode = normalizeRefundMode(mode);
+  const pageMeta = getRefundPageMeta(normalizedMode);
   const salesById = useMemo(() => new Map(
     (sales || []).map((row) => [String(row?.id || row?._id || row?.clientId || ''), row])
   ), [sales]);
-  const localSale = useMemo(() => {
+  const localSaleMatch = useMemo(() => {
     const q = query.trim();
     if (!q) return null;
     return sales.find(s =>
@@ -53,6 +102,10 @@ function RefundsPage({ mode = 'retail' }) {
       String(s._id || s.id) === q
     ) || null;
   }, [query, sales]);
+  const localSale = useMemo(() => {
+    if (!localSaleMatch) return null;
+    return getSaleRefundArea(localSaleMatch) === normalizedMode ? localSaleMatch : null;
+  }, [localSaleMatch, normalizedMode]);
   const sale = lookupSale || localSale;
   const eligible = useMemo(() => {
     if (!sale) return 0;
@@ -84,25 +137,32 @@ function RefundsPage({ mode = 'retail' }) {
     };
   }, [eligible, refunds, sale]);
   const roleLower = String(auth.role || '').toLowerCase();
-  const isDistributionMode = String(mode || '').toLowerCase() === 'distribution';
-  const pageTitle = isDistributionMode ? 'Distribution Refunds' : 'Refunds';
-  const searchLabel = isDistributionMode ? 'Search Distribution Sale by Receipt or Invoice' : 'Search by Receipt or Invoice';
-  const searchPlaceholder = isDistributionMode
-    ? 'e.g., INV-WHOLESALE-000123 or RCPT-WHOLESALE-000123'
-    : 'e.g., RCPT-XXX-000123 or INV-XXX-000123';
-  const requestButtonLabel = isDistributionMode ? 'Request Distribution Refund' : 'Request Refund';
+  const visibleRefunds = useMemo(() => {
+    const resolveRequestArea = (request) => {
+      const explicit = normalizeKnownRefundMode(request?.refundArea);
+      if (explicit) return explicit;
+      const linkedSale = salesById.get(String(request?.saleId || ''))
+        || (sales || []).find((row) => (
+          String(row?.invoiceSerial || '').trim().toLowerCase() === String(request?.invoiceSerial || '').trim().toLowerCase()
+          || String(row?.receiptNumber || '').trim().toLowerCase() === String(request?.receiptNumber || '').trim().toLowerCase()
+        ));
+      return getSaleRefundArea(linkedSale);
+    };
+    return (refunds || []).filter((request) => resolveRequestArea(request) === normalizedMode);
+  }, [normalizedMode, refunds, sales, salesById]);
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
   const canRequest = roleLower === 'superadmin'
     || ['admin','manager','cashier'].includes(roleLower)
     || grants.includes('add_refunds')
-    || grants.includes('add_distribution_refunds');
+    || grants.includes('add_distribution_refunds')
+    || grants.includes('add_warehouse_refunds');
   const refundSummary = useMemo(() => ({
-    total: refunds.length,
-    pending: refunds.filter(r => String(r.status || '').includes('pending')).length,
-    approved: refunds.filter(r => String(r.status || '') === 'approved').length,
-    rejected: refunds.filter(r => String(r.status || '') === 'rejected').length,
-    totalAmount: refunds.reduce((sum, r) => sum + (Number(r.amount || r.requestedAmount) || 0), 0)
-  }), [refunds]);
+    total: visibleRefunds.length,
+    pending: visibleRefunds.filter(r => String(r.status || '').includes('pending')).length,
+    approved: visibleRefunds.filter(r => String(r.status || '') === 'approved').length,
+    rejected: visibleRefunds.filter(r => String(r.status || '') === 'rejected').length,
+    totalAmount: visibleRefunds.reduce((sum, r) => sum + (Number(r.amount || r.requestedAmount) || 0), 0)
+  }), [visibleRefunds]);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,20 +173,31 @@ function RefundsPage({ mode = 'retail' }) {
       setLookupLoading(false);
       return () => {};
     }
-    if (localSale) {
-      setLookupSale(localSale);
+    if (localSaleMatch) {
+      if (localSale) setLookupSale(localSale);
+      else setLookupSale(null);
       setLookupError('');
+      if (!localSale) {
+        const actualArea = getRefundPageMeta(getSaleRefundArea(localSaleMatch)).pageTitle;
+        setLookupError(`Sale belongs to ${actualArea}`);
+      }
       setLookupLoading(false);
       return () => {};
     }
     setLookupLoading(true);
     setLookupError('');
     setLookupSale(null);
-    refundsApi.lookupSale(q)
+    refundsApi.lookupSale(q, normalizedMode)
       .then((row) => {
         if (cancelled) return;
         const id = row?.id || row?._id || row?.clientId || '';
-        setLookupSale(row ? { ...row, id: String(id || '') } : null);
+        const resolved = row ? { ...row, id: String(id || '') } : null;
+        if (resolved && getSaleRefundArea(resolved) !== normalizedMode) {
+          setLookupSale(null);
+          setLookupError(`Sale belongs to ${getRefundPageMeta(getSaleRefundArea(resolved)).pageTitle}`);
+          return;
+        }
+        setLookupSale(resolved);
       })
       .catch((error) => {
         if (cancelled) return;
@@ -139,7 +210,7 @@ function RefundsPage({ mode = 'retail' }) {
     return () => {
       cancelled = true;
     };
-  }, [localSale, query]);
+  }, [localSale, localSaleMatch, normalizedMode, query]);
 
   useEffect(() => {
     if (!sale) {
@@ -173,13 +244,21 @@ function RefundsPage({ mode = 'retail' }) {
 
   async function startRequest() {
     const roleOk = ['admin','manager','cashier'].includes(roleLower);
-    const canRequestNow = roleLower === 'superadmin' || roleOk || grants.includes('add_refunds') || grants.includes('add_distribution_refunds');
+    const canRequestNow = roleLower === 'superadmin'
+      || roleOk
+      || grants.includes('add_refunds')
+      || grants.includes('add_distribution_refunds')
+      || grants.includes('add_warehouse_refunds');
     if (!canRequestNow) {
       toast.show('Not authorized to request refunds', { type: 'error' });
       return;
     }
     if (!sale) {
       toast.show('Find a sale first', { type: 'error' });
+      return;
+    }
+    if (getSaleRefundArea(sale) !== normalizedMode) {
+      toast.show(`Sale belongs to ${getRefundPageMeta(getSaleRefundArea(sale)).pageTitle}`, { type: 'error' });
       return;
     }
     if (images.length < 2) {
@@ -227,7 +306,7 @@ function RefundsPage({ mode = 'retail' }) {
       invoiceSerial: sale.invoiceSerial || '',
       receiptNumber: sale.receiptNumber || '',
       branchId: sale.branchId,
-      refundArea: isDistributionMode ? 'distribution' : 'retail',
+      refundArea: normalizedMode,
       initiatorName: auth.user?.name || 'unknown',
       initiatorRole: auth.role || '',
       type: refundType,
@@ -265,7 +344,7 @@ function RefundsPage({ mode = 'retail' }) {
     dispatch(addAudit({
       actor: auth.user?.name || 'unknown',
       actionType: 'refund_initiated',
-      details: { saleId: sale.id, amount: requestedAmount, type: refundType },
+      details: { saleId: sale.id, amount: requestedAmount, type: refundType, refundArea: normalizedMode },
       remark,
       branchId: sale.branchId,
       offline: !navigator.onLine
@@ -281,14 +360,14 @@ function RefundsPage({ mode = 'retail' }) {
   const allRequests = useMemo(() => {
     const me = auth.user?.name || '';
     const roleLower = String(auth.role || '').toLowerCase();
-    let rows = refunds.slice().reverse();
+    let rows = visibleRefunds.slice().reverse();
     if (roleLower === 'cashier') {
       rows = rows.filter(r => String(r.initiatorName || '') === me);
     } else if (roleLower === 'manager') {
       rows = rows.filter(r => r.branchId === settings.currentBranchId);
     }
     return rows;
-  }, [refunds, auth.user, auth.role, settings.currentBranchId]);
+  }, [visibleRefunds, auth.user, auth.role, settings.currentBranchId]);
 
   function getSaleForRequest(request) {
     const direct = salesById.get(String(request?.saleId || ''));
@@ -329,8 +408,8 @@ function RefundsPage({ mode = 'retail' }) {
   return (
     <div style={{ padding: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-        <h1 style={{ margin: 0 }}>{pageTitle}</h1>
-        <OfflineQueueIndicator collection="refundrequests" label={isDistributionMode ? 'Distribution refunds queued' : 'Refunds queued'} />
+        <h1 style={{ margin: 0 }}>{pageMeta.pageTitle}</h1>
+        <OfflineQueueIndicator collection="refundrequests" label={pageMeta.queueLabel} />
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 12 }}>
         <div className="card" style={{ padding: 16 }}><div style={{ color: '#64748b', fontSize: 12 }}>Refund Requests</div><div style={{ fontSize: 28, fontWeight: 800 }}>{refundSummary.total}</div></div>
@@ -342,8 +421,8 @@ function RefundsPage({ mode = 'retail' }) {
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 8, alignItems: 'end' }}>
           <label>
-            {searchLabel}
-            <input className="input" placeholder={searchPlaceholder} value={query} onChange={e => setQuery(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 6 }} />
+            {pageMeta.searchLabel}
+            <input className="input" placeholder={pageMeta.searchPlaceholder} value={query} onChange={e => setQuery(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 6 }} />
           </label>
         </div>
         {query.trim() && (
@@ -357,6 +436,7 @@ function RefundsPage({ mode = 'retail' }) {
               <div>
                 <div style={{ fontWeight: 700 }}>{sale.invoiceSerial || sale.receiptNumber || sale.id}</div>
                 <div style={{ color: '#64748b' }}>{new Date(sale.created_at).toLocaleString()} • {branchLabel(sale.branchId)}</div>
+                <div style={{ marginTop: 4, color: '#64748b' }}>Area: {getRefundPageMeta(getSaleRefundArea(sale)).pageTitle}</div>
                 <div style={{ marginTop: 4 }}>
                   {sale.items.map((it, i) => (
                     <div key={i} style={{ marginBottom: 8 }}>
@@ -450,7 +530,7 @@ function RefundsPage({ mode = 'retail' }) {
             <div style={{ marginTop: 12 }}>
               {(() => {
                 return canRequest ? (
-                  <button className="btn btn-primary" onClick={startRequest} disabled={refundCoverage.hasActiveFull || refundCoverage.remainingAmount <= 0.0001}>{requestButtonLabel}</button>
+                  <button className="btn btn-primary" onClick={startRequest} disabled={refundCoverage.hasActiveFull || refundCoverage.remainingAmount <= 0.0001}>{pageMeta.requestButtonLabel}</button>
                 ) : null;
               })()}
             </div>

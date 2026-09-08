@@ -32,6 +32,13 @@ function normalizePaymentType(value) {
   return 'other';
 }
 
+function getRefundAreaSaleType(refundArea = '') {
+  const area = String(refundArea || '').trim().toLowerCase();
+  if (area === 'warehouse') return 'warehouse';
+  if (area === 'distribution' || area === 'wholesale') return 'wholesale';
+  return 'retail';
+}
+
 function addPaymentBreakdown(target, day, paymentType, amount) {
   if (!day) return;
   const value = Number(amount || 0);
@@ -353,7 +360,7 @@ function DashboardPage() {
       const originalSale = salesById.get(String(refund?.saleId || ''));
       const fallbackSale = originalSale || {
         branchId: refund?.branchId,
-        posType: String(refund?.refundArea || '').trim().toLowerCase() === 'distribution' ? 'wholesale' : 'retail'
+        posType: getRefundAreaSaleType(refund?.refundArea)
       };
       return matchesDashboardActivityFilter(fallbackSale, activityFilter);
     });

@@ -3,9 +3,10 @@ import { fetchJson } from './client';
 export function listRequests() {
   return fetchJson('/api/refunds/requests');
 }
-export function lookupSale(query) {
+export function lookupSale(query, refundArea = '') {
   const params = new URLSearchParams();
   params.set('q', String(query || '').trim());
+  if (String(refundArea || '').trim()) params.set('refundArea', String(refundArea || '').trim());
   return fetchJson(`/api/refunds/lookup-sale?${params.toString()}`);
 }
 export function createRequest(payload) {
