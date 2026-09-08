@@ -3,6 +3,7 @@ import cors from 'cors';
 import morgan from 'morgan';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import { fileURLToPath } from 'node:url';
 import connectDb from './config/db.js';
 import { httpLogger, logger } from './config/logger.js';
 import { runWithRequestContext } from './config/requestContext.js';
@@ -192,41 +193,46 @@ app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
 });
 
-const port = process.env.PORT || 4000;
-const server = app.listen(port, () => {
-  logger.info({ port: Number(port) || 0 }, 'API listening');
-  console.log(`API on ${port}`);
-  ServerLog.create({ level: 'info', message: `Server started on ${port}`, actor: 'server' }).catch(() => {});
-  Promise.resolve().then(async () => {
-    try {
-      await connectDb();
-    } catch (err) {
-      logger.error({ err, port: Number(port) || 0 }, 'Mongo connect error');
-      console.error('Mongo connect error:', err?.message || String(err));
-      ServerLog.create({
-        level: 'error',
-        actor: 'server',
-        message: 'Mongo connect error',
-        errorCode: err && (err.code || err.name) ? String(err.code || err.name) : '',
-        errorMeaning: errorMeaning(err?.code || err?.name),
-        stack: String(err?.stack || '')
-      }).catch(() => {});
-    }
+let serverInstance = null;
+
+export function startServer(port = process.env.PORT || 4000) {
+  if (serverInstance) return serverInstance;
+  serverInstance = app.listen(port, () => {
+    logger.info({ port: Number(port) || 0 }, 'API listening');
+    console.log(`API on ${port}`);
+    ServerLog.create({ level: 'info', message: `Server started on ${port}`, actor: 'server' }).catch(() => {});
+    Promise.resolve().then(async () => {
+      try {
+        await connectDb();
+      } catch (err) {
+        logger.error({ err, port: Number(port) || 0 }, 'Mongo connect error');
+        console.error('Mongo connect error:', err?.message || String(err));
+        ServerLog.create({
+          level: 'error',
+          actor: 'server',
+          message: 'Mongo connect error',
+          errorCode: err && (err.code || err.name) ? String(err.code || err.name) : '',
+          errorMeaning: errorMeaning(err?.code || err?.name),
+          stack: String(err?.stack || '')
+        }).catch(() => {});
+      }
+    });
   });
-});
-server.on('error', (err) => {
-  const code = err && (err.code || err.name);
-  logger.error({ err, port: Number(port) || 0 }, 'Server failed to start');
-  console.error(`Server failed to start on port ${port}:`, err?.message || String(err));
-  ServerLog.create({
-    level: 'error',
-    actor: 'server',
-    message: `Server failed to start on port ${port}`,
-    errorCode: code ? String(code) : '',
-    errorMeaning: errorMeaning(code),
-    stack: String(err?.stack || '')
-  }).catch(() => {});
-});
+  serverInstance.on('error', (err) => {
+    const code = err && (err.code || err.name);
+    logger.error({ err, port: Number(port) || 0 }, 'Server failed to start');
+    console.error(`Server failed to start on port ${port}:`, err?.message || String(err));
+    ServerLog.create({
+      level: 'error',
+      actor: 'server',
+      message: `Server failed to start on port ${port}`,
+      errorCode: code ? String(code) : '',
+      errorMeaning: errorMeaning(code),
+      stack: String(err?.stack || '')
+    }).catch(() => {});
+  });
+  return serverInstance;
+}
 
 process.on('unhandledRejection', (reason) => {
   const code = reason && (reason.code || reason.name);
@@ -240,6 +246,13 @@ process.on('unhandledRejection', (reason) => {
     stack: String(reason && reason.stack || '')
   }).catch(() => {});
 });
+
+export { app };
+
+const isMainModule = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+if (isMainModule) {
+  startServer();
+}
 process.on('uncaughtException', (err) => {
   const code = err && (err.code || err.name);
   logger.error({ err }, 'Uncaught exception');

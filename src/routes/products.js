@@ -7,6 +7,8 @@ import mongoose from 'mongoose';
 import { normalizeTrackType } from '../utils/productUnits.js';
 import { uploadMediaString } from '../utils/mediaStorage.js';
 import { archiveLiveDocument } from '../utils/superBin.js';
+import { validateLogOnly } from '../validation/logOnlyValidation.js';
+import { productWriteSchema } from '../validation/schemas.js';
 
 const r = Router();
 
@@ -301,6 +303,13 @@ r.get('/', async (req, res) => {
 
 r.post('/', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (req, res) => {
   try {
+    validateLogOnly(productWriteSchema, req.body || {}, {
+      scope: 'products.create',
+      route: '/api/products',
+      method: 'POST',
+      tenantId: String(req.user?.tenantId || req.tenantId || ''),
+      userName: String(req.user?.name || '')
+    });
     let body = normalizePricingPayload(req.body || {});
     const pricingValidationMessage = getPricingValidationMessage(body);
     if (pricingValidationMessage) return res.status(400).json({ error: pricingValidationMessage });
@@ -370,6 +379,13 @@ r.post('/', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (req,
 });
 
 r.put('/:id', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (req, res) => {
+  validateLogOnly(productWriteSchema, req.body || {}, {
+    scope: 'products.update',
+    route: '/api/products/:id',
+    method: 'PUT',
+    tenantId: String(req.user?.tenantId || req.tenantId || ''),
+    userName: String(req.user?.name || '')
+  });
   const id = req.params.id;
   const query = productLookupQuery(id);
   const before = await Product.findOne(query);

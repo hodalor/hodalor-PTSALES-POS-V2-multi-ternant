@@ -20,6 +20,8 @@ import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
 import { archiveLiveDocument } from '../utils/superBin.js';
 import { enrichSalesWithAccounting } from '../utils/saleAccounting.js';
 import { assertOutgoingAvailability } from '../utils/inTransitLocks.js';
+import { validateLogOnly } from '../validation/logOnlyValidation.js';
+import { saleCreateSchema } from '../validation/schemas.js';
 
 const r = Router();
 
@@ -299,6 +301,13 @@ r.patch('/:id/credit-package', requireRoleOrPerm(['Admin'], 'backdate_sales'), a
 
 r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async (req, res) => {
   const payload = req.body || {};
+  validateLogOnly(saleCreateSchema, payload, {
+    scope: 'sales.create',
+    route: '/api/sales',
+    method: 'POST',
+    tenantId: String(req.user?.tenantId || req.tenantId || ''),
+    userName: String(req.user?.name || '')
+  });
   let saleTimes;
   try {
     saleTimes = resolveSaleTimestamps(payload, req);
