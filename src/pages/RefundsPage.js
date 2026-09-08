@@ -86,6 +86,62 @@ function canAccessBranch(user = {}, role = '', branchId = '') {
   return accessible.includes(normalizedBranchId);
 }
 
+function getRefundIdentityKey(row = {}) {
+  const clientId = String(row?.clientId || '').trim();
+  if (clientId) return `client:${clientId}`;
+  const id = String(row?.id || row?._id || '').trim();
+  if (id) return `id:${id}`;
+  return [
+    'fallback',
+    String(row?.saleId || '').trim(),
+    String(row?.invoiceSerial || '').trim().toLowerCase(),
+    String(row?.receiptNumber || '').trim().toLowerCase(),
+    String(row?.initiatorName || '').trim().toLowerCase(),
+    String(row?.requestedAmount || '').trim(),
+    String(row?.created_at || row?.createdAt || '').trim()
+  ].join('|');
+}
+
+function getRefundStatusPriority(status = '') {
+  const value = String(status || '').trim().toLowerCase();
+  if (value === 'approved' || value === 'rejected') return 3;
+  if (value === 'pending_approval') return 2;
+  return 1;
+}
+
+function getRefundTimestamp(row = {}) {
+  return new Date(
+    row?.approved_at
+    || row?.rejected_at
+    || row?.updated_at
+    || row?.created_at
+    || row?.createdAt
+    || 0
+  ).getTime();
+}
+
+function getCanonicalRefundRows(rows = []) {
+  const grouped = new Map();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const key = getRefundIdentityKey(row);
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, row);
+      return;
+    }
+    const nextPriority = getRefundStatusPriority(row?.status);
+    const currentPriority = getRefundStatusPriority(existing?.status);
+    if (nextPriority > currentPriority) {
+      grouped.set(key, row);
+      return;
+    }
+    if (nextPriority === currentPriority && getRefundTimestamp(row) >= getRefundTimestamp(existing)) {
+      grouped.set(key, row);
+    }
+  });
+  return Array.from(grouped.values());
+}
+
 function RefundsPage({ mode = 'retail' }) {
   const dispatch = useDispatch();
   const toast = useToast();
@@ -137,23 +193,23 @@ function RefundsPage({ mode = 'retail' }) {
     const saleId = String(sale.id || sale._id || sale.clientId || '').trim();
     const invoiceSerial = String(sale.invoiceSerial || '').trim().toLowerCase();
     const receiptNumber = String(sale.receiptNumber || '').trim().toLowerCase();
-    const linked = (refunds || []).filter((row) => {
-      const status = String(row?.status || '').trim().toLowerCase();
-      if (!['pending_approval', 'approved'].includes(status)) return false;
+    const canonicalRows = getCanonicalRefundRows(refunds || []);
+    const linked = canonicalRows.filter((row) => {
       if (saleId && String(row?.saleId || '').trim() === saleId) return true;
       if (invoiceSerial && String(row?.invoiceSerial || '').trim().toLowerCase() === invoiceSerial) return true;
       if (receiptNumber && String(row?.receiptNumber || '').trim().toLowerCase() === receiptNumber) return true;
       return false;
     });
-    const approvedRows = linked.filter((row) => String(row?.status || '').trim().toLowerCase() === 'approved');
-    const activeAmount = linked.reduce((sum, row) => sum + Math.abs(Number(row?.requestedAmount || 0)), 0);
+    const activeRows = linked.filter((row) => ['pending_approval', 'approved'].includes(String(row?.status || '').trim().toLowerCase()));
+    const approvedRows = activeRows.filter((row) => String(row?.status || '').trim().toLowerCase() === 'approved');
+    const activeAmount = activeRows.reduce((sum, row) => sum + Math.abs(Number(row?.requestedAmount || 0)), 0);
     const approvedAmount = approvedRows.reduce((sum, row) => sum + Math.abs(Number(row?.requestedAmount || 0)), 0);
     return {
       activeAmount,
       approvedAmount,
       remainingAmount: Math.max(0, eligible - activeAmount),
       hasApprovedFull: approvedRows.some((row) => String(row?.type || '').trim().toLowerCase() === 'full'),
-      hasActiveFull: linked.some((row) => String(row?.type || '').trim().toLowerCase() === 'full')
+      hasActiveFull: activeRows.some((row) => String(row?.type || '').trim().toLowerCase() === 'full')
     };
   }, [eligible, refunds, sale]);
   const roleLower = String(auth.role || '').toLowerCase();
