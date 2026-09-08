@@ -24,6 +24,20 @@ function normalizeRefundArea(value = '') {
   return 'retail';
 }
 
+function getSaleRefundArea(sale = {}) {
+  const inventoryType = String(sale?.inventoryType || sale?.posType || 'retail').trim().toLowerCase();
+  if (inventoryType === 'warehouse') return 'warehouse';
+  if (inventoryType === 'distribution' || inventoryType === 'wholesale') return 'distribution';
+  return 'retail';
+}
+
+function inferAreaFromBranch(branch = {}, branchId = '') {
+  const text = `${branchId || ''} ${branch?.name || ''} ${branch?.code || ''}`.trim().toLowerCase();
+  if (text.includes('warehouse')) return 'warehouse';
+  if (text.includes('wholesale') || text.includes('distribution')) return 'distribution';
+  return 'retail';
+}
+
 function getApprovalStatusMeta(status = '') {
   const value = String(status || '').trim().toLowerCase();
   if (value === 'approved') return { label: 'Approved', tone: 'success' };
@@ -40,6 +54,7 @@ function ApprovalsPage() {
   const navigate = useNavigate();
   const products = useSelector((s) => s.products.products);
   const branches = useSelector((s) => s.branches.branches);
+  const sales = useSelector((s) => s.sales.sales || []);
   const refunds = useSelector((s) => s.refunds.requests || []);
   const auth = useSelector((s) => s.auth);
   const [rows, setRows] = useState([]);
@@ -58,6 +73,31 @@ function ApprovalsPage() {
     });
     return map;
   }, [branches]);
+  const branchById = useMemo(() => {
+    const map = new Map();
+    branches.forEach((branch) => {
+      if (branch?.id) map.set(String(branch.id), branch);
+      if (branch?._id) map.set(String(branch._id), branch);
+    });
+    return map;
+  }, [branches]);
+  const salesById = useMemo(() => new Map((sales || []).map((row) => [String(row?.id || row?._id || row?.clientId || ''), row])), [sales]);
+  const resolveRefundArea = useCallback((row = {}) => {
+    const explicit = String(row?.refundArea || '').trim().toLowerCase();
+    if (explicit === 'warehouse' || explicit === 'distribution' || explicit === 'wholesale') return normalizeRefundArea(explicit);
+    const linkedSale = salesById.get(String(row?.saleId || ''))
+      || (sales || []).find((sale) => (
+        String(sale?.invoiceSerial || '').trim().toLowerCase() === String(row?.invoiceSerial || '').trim().toLowerCase()
+        || String(sale?.receiptNumber || '').trim().toLowerCase() === String(row?.receiptNumber || '').trim().toLowerCase()
+      ));
+    if (linkedSale) return getSaleRefundArea(linkedSale);
+    const branchArea = inferAreaFromBranch(branchById.get(String(row?.branchId || '')), row?.branchId);
+    if (branchArea !== 'retail') return branchArea;
+    const refText = `${row?.invoiceSerial || ''} ${row?.receiptNumber || ''}`.trim().toLowerCase();
+    if (refText.includes('warehouse')) return 'warehouse';
+    if (refText.includes('wholesale') || refText.includes('distribution')) return 'distribution';
+    return normalizeRefundArea(explicit);
+  }, [branchById, sales, salesById]);
   const canAccessBranch = useCallback((branchId = '') => {
     if (['superadmin', 'admin'].includes(roleLower)) return true;
     const normalizedBranchId = String(branchId || '').trim();
@@ -70,11 +110,11 @@ function ApprovalsPage() {
   const canReviewRefund = useCallback((row = {}) => {
     if (['superadmin', 'admin'].includes(roleLower)) return true;
     if (grants.includes('approve_refunds')) return true;
-    const area = normalizeRefundArea(row?.refundArea);
+    const area = resolveRefundArea(row);
     if (area === 'warehouse') return roleLower === 'director' || roleLower === 'manager' || grants.includes('approve_warehouse_director') || grants.includes('approve_warehouse_manager');
     if (area === 'distribution') return roleLower === 'director' || roleLower === 'manager' || grants.includes('approve_distribution_director') || grants.includes('approve_distribution_manager');
     return roleLower === 'manager' || grants.includes('approve_retail_director') || grants.includes('approve_retail_manager');
-  }, [grants, roleLower]);
+  }, [grants, roleLower, resolveRefundArea]);
 
   const load = useCallback(async (nextStatus = status, options = {}) => {
     setLoading(true);
@@ -105,10 +145,10 @@ function ApprovalsPage() {
         ...row,
         _id: `refund-${String(row?.id || row?._id || row?.clientId || '')}`,
         referenceModel: 'RefundRequest',
-        actionType: `${normalizeRefundArea(row?.refundArea)}_refund`,
+        actionType: `${resolveRefundArea(row)}_refund`,
         createdAt: row?.created_at || row?.createdAt || null
       }))
-  ), [refunds, status, canAccessBranch, canReviewRefund]);
+  ), [refunds, status, canAccessBranch, canReviewRefund, resolveRefundArea]);
   const grouped = useMemo(() => [...rows, ...refundApprovalRows].slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [rows, refundApprovalRows]);
   const summaryCards = useMemo(() => ([
     {
@@ -150,7 +190,7 @@ function ApprovalsPage() {
         <div style={{ display: 'grid', gap: 4 }}>
           <div style={{ color: '#111827' }}>{row?.invoiceSerial || row?.receiptNumber || row?.saleId || 'Refund Request'}</div>
           <div style={{ color: '#64748b', fontSize: 12 }}>
-            {String(row?.type || '').toUpperCase()} refund in {normalizeRefundArea(row?.refundArea)}
+            {String(row?.type || '').toUpperCase()} refund in {resolveRefundArea(row)}
           </div>
         </div>
       );

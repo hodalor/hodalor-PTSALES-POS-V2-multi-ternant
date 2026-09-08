@@ -30,6 +30,20 @@ function normalizeRefundArea(value = '') {
   return 'retail';
 }
 
+function getSaleRefundArea(sale = {}) {
+  const inventoryType = String(sale?.inventoryType || sale?.posType || 'retail').trim().toLowerCase();
+  if (inventoryType === 'warehouse') return 'warehouse';
+  if (inventoryType === 'distribution' || inventoryType === 'wholesale') return 'distribution';
+  return 'retail';
+}
+
+function inferAreaFromBranch(branch = {}, branchId = '') {
+  const text = `${branchId || ''} ${branch?.name || ''} ${branch?.code || ''}`.trim().toLowerCase();
+  if (text.includes('warehouse')) return 'warehouse';
+  if (text.includes('wholesale') || text.includes('distribution')) return 'distribution';
+  return 'retail';
+}
+
 function RefundApprovalsPage() {
   const dispatch = useDispatch();
   const toast = useToast();
@@ -53,10 +67,36 @@ function RefundApprovalsPage() {
 
   const roleLower = String(auth.role || '').toLowerCase();
   const grants = useMemo(() => (Array.isArray(auth.grants) ? auth.grants : []), [auth.grants]);
+  const branchById = useMemo(() => {
+    const map = new Map();
+    (branches || []).forEach((branch) => {
+      if (branch?.id) map.set(String(branch.id), branch);
+      if (branch?._id) map.set(String(branch._id), branch);
+    });
+    return map;
+  }, [branches]);
+  const salesById = useMemo(() => new Map((sales || []).map((row) => [String(row?.id || row?._id || row?.clientId || ''), row])), [sales]);
 
   function refundId(x) {
     return String(x?.id || x?._id || '');
   }
+
+  const resolveRefundArea = useCallback((row = {}) => {
+    const explicit = String(row?.refundArea || '').trim().toLowerCase();
+    if (explicit === 'warehouse' || explicit === 'distribution' || explicit === 'wholesale') return normalizeRefundArea(explicit);
+    const linkedSale = salesById.get(String(row?.saleId || ''))
+      || (sales || []).find((sale) => (
+        String(sale?.invoiceSerial || '').trim().toLowerCase() === String(row?.invoiceSerial || '').trim().toLowerCase()
+        || String(sale?.receiptNumber || '').trim().toLowerCase() === String(row?.receiptNumber || '').trim().toLowerCase()
+      ));
+    if (linkedSale) return getSaleRefundArea(linkedSale);
+    const branchArea = inferAreaFromBranch(branchById.get(String(row?.branchId || '')), row?.branchId);
+    if (branchArea !== 'retail') return branchArea;
+    const refText = `${row?.invoiceSerial || ''} ${row?.receiptNumber || ''}`.trim().toLowerCase();
+    if (refText.includes('warehouse')) return 'warehouse';
+    if (refText.includes('wholesale') || refText.includes('distribution')) return 'distribution';
+    return normalizeRefundArea(explicit);
+  }, [branchById, sales, salesById]);
 
   const canAccessBranch = useCallback((branchId = '') => {
     if (['superadmin', 'admin'].includes(roleLower)) return true;
@@ -71,7 +111,7 @@ function RefundApprovalsPage() {
   const canReviewRefund = useCallback((row = {}) => {
     if (['superadmin', 'admin'].includes(roleLower)) return true;
     if (grants.includes('approve_refunds')) return true;
-    const area = normalizeRefundArea(row?.refundArea);
+    const area = resolveRefundArea(row);
     if (area === 'warehouse') {
       return roleLower === 'director'
         || roleLower === 'manager'
@@ -87,7 +127,7 @@ function RefundApprovalsPage() {
     return roleLower === 'manager'
       || grants.includes('approve_retail_director')
       || grants.includes('approve_retail_manager');
-  }, [grants, roleLower]);
+  }, [grants, roleLower, resolveRefundArea]);
 
   const filtered = useMemo(() => {
     const currentBranchId = settings.currentBranchId;
@@ -415,7 +455,7 @@ function RefundApprovalsPage() {
                 <td>{r.invoiceSerial || r.receiptNumber || r.saleId}</td>
                 <td>{r.initiatorName}</td>
                 <td>{branchLabel(r.branchId)}</td>
-                <td>{normalizeRefundArea(r.refundArea)}</td>
+                <td>{resolveRefundArea(r)}</td>
                 <td>{String(r.type || '').toUpperCase()}</td>
                 <td>{formatCurrency(r.requestedAmount || 0, settings)}</td>
                 <td>{new Date(r.created_at).toLocaleString()}</td>

@@ -14,6 +14,7 @@ function Sidebar({ collapsed, onNavigate }) {
   const settings = useSelector(s => s.settings);
   const products = useSelector(s => s.products.products || []);
   const sales = useSelector(s => s.sales.sales || []);
+  const branches = useSelector(s => s.branches.branches || []);
   const role = useSelector(s => s.auth.role);
   const grants = useSelector(s => s.auth.grants);
   const offlineTotal = useSelector(s => s.offlineQueue.total);
@@ -22,12 +23,12 @@ function Sidebar({ collapsed, onNavigate }) {
   const refunds = useSelector(s => s.refunds?.requests || []);
   const refundPending = useMemo(() => (refunds || []).filter(r => String(r.status || '') === 'pending_approval').length, [refunds]);
   const warehouseRefundPending = useMemo(() => {
+    const branchById = new Map((branches || []).map((branch) => [String(branch?.id || branch?._id || ''), branch]));
     const salesById = new Map((sales || []).map((row) => [String(row?.id || row?._id || row?.clientId || ''), row]));
     const resolveArea = (row = {}) => {
       const explicit = String(row?.refundArea || '').trim().toLowerCase();
       if (explicit === 'warehouse') return 'warehouse';
       if (explicit === 'distribution' || explicit === 'wholesale') return 'distribution';
-      if (explicit === 'retail') return 'retail';
       const linkedSale = salesById.get(String(row?.saleId || ''))
         || (sales || []).find((sale) => (
           String(sale?.invoiceSerial || '').trim().toLowerCase() === String(row?.invoiceSerial || '').trim().toLowerCase()
@@ -36,6 +37,10 @@ function Sidebar({ collapsed, onNavigate }) {
       const inventoryType = String(linkedSale?.inventoryType || linkedSale?.posType || '').trim().toLowerCase();
       if (inventoryType === 'warehouse') return 'warehouse';
       if (inventoryType === 'wholesale' || inventoryType === 'distribution') return 'distribution';
+      const branch = branchById.get(String(row?.branchId || ''));
+      const branchText = `${row?.branchId || ''} ${branch?.name || ''} ${branch?.code || ''}`.trim().toLowerCase();
+      if (branchText.includes('warehouse')) return 'warehouse';
+      if (branchText.includes('wholesale') || branchText.includes('distribution')) return 'distribution';
       const refText = `${row?.invoiceSerial || ''} ${row?.receiptNumber || ''}`.trim().toLowerCase();
       if (refText.includes('warehouse')) return 'warehouse';
       if (refText.includes('wholesale') || refText.includes('distribution')) return 'distribution';
@@ -45,7 +50,7 @@ function Sidebar({ collapsed, onNavigate }) {
       String(r.status || '') === 'pending_approval'
       && resolveArea(r) === 'warehouse'
     )).length;
-  }, [refunds, sales]);
+  }, [refunds, sales, branches]);
   const pendingStages = ['pending_approval', 'pending_director', 'pending_manager'];
   const { unreadCount: communicationUnreadCount } = useChatNotifications();
   const { t } = useAppLanguage();
