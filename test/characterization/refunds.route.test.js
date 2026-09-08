@@ -10,9 +10,19 @@ const mocks = vi.hoisted(() => ({
   refundCreate: vi.fn(),
   saleFindById: vi.fn(),
   saleFindOne: vi.fn(),
+  creditFindById: vi.fn(),
+  creditFindOne: vi.fn(),
   auditCreate: vi.fn(),
   uploadMediaArray: vi.fn(async () => []),
   enrichSalesWithAccounting: vi.fn(async (rows) => rows),
+  refreshCreditSaleStatus: vi.fn(async (doc) => {
+    if (doc) {
+      doc.balance = Math.max(0, Number(doc.total_amount || 0) - Number(doc.amount_paid || 0));
+      doc.status = doc.balance <= 0 ? 'completed' : 'active';
+    }
+    return doc;
+  }),
+  updateCustomerCreditMetrics: vi.fn(async () => ({})),
   fetch: vi.fn(() => Promise.reject(new Error('debug sink unavailable')))
 }));
 
@@ -38,7 +48,7 @@ vi.mock('../../src/models/Sale.js', () => ({
 }));
 
 vi.mock('../../src/models/Product.js', () => ({ default: {} }));
-vi.mock('../../src/models/CreditSale.js', () => ({ default: { findById: vi.fn(), findOne: vi.fn() } }));
+vi.mock('../../src/models/CreditSale.js', () => ({ default: { findById: mocks.creditFindById, findOne: mocks.creditFindOne } }));
 vi.mock('../../src/utils/productUnits.js', () => ({
   resolveInventoryTypeFromBranch: vi.fn(),
   returnSerializedUnits: vi.fn()
@@ -56,8 +66,8 @@ vi.mock('../../src/utils/saleAccounting.js', () => ({
   enrichSalesWithAccounting: mocks.enrichSalesWithAccounting
 }));
 vi.mock('../../src/utils/credit.js', () => ({
-  refreshCreditSaleStatus: vi.fn(),
-  updateCustomerCreditMetrics: vi.fn()
+  refreshCreditSaleStatus: mocks.refreshCreditSaleStatus,
+  updateCustomerCreditMetrics: mocks.updateCustomerCreditMetrics
 }));
 
 const { default: router } = await import('../../src/routes/refunds.js');
@@ -94,6 +104,8 @@ describe('refunds route characterization', () => {
     });
     mocks.refundFindOne.mockResolvedValue(null);
     mocks.auditCreate.mockResolvedValue({});
+    mocks.creditFindById.mockResolvedValue(null);
+    mocks.creditFindOne.mockResolvedValue(null);
   });
 
   it('rejects warehouse lookups for sales that belong to distribution refunds', async () => {
@@ -197,6 +209,76 @@ describe('refunds route characterization', () => {
       status: 'rejected',
       approverRole: 'Director',
       rejectionRemark: 'Director rejected for review'
+    }));
+  });
+
+  it('reduces linked credit sale totals without letting balances go negative on refund approval', async () => {
+    const saleId = '507f1f77bcf86cd799439012';
+    const creditSaleId = '507f1f77bcf86cd799439013';
+    const refundDoc = {
+      _id: 'refund-credit-1',
+      clientId: 'refund-credit-1',
+      saleId,
+      branchId: 'warehouse-main',
+      refundArea: 'warehouse',
+      requestedAmount: 250,
+      status: 'pending_approval',
+      restockItems: [],
+      save: vi.fn(async function save() { return this; })
+    };
+    const saleDoc = {
+      _id: saleId,
+      branchId: 'warehouse-main',
+      inventoryType: 'warehouse',
+      invoiceSerial: 'INV-WAREHOUSE-CREDIT-001',
+      receiptNumber: 'RCPT-WAREHOUSE-CREDIT-001',
+      total: 1000,
+      tax: 0,
+      creditSaleId,
+      creditBalance: 400,
+      save: vi.fn(async function save() { return this; })
+    };
+    const creditSaleDoc = {
+      _id: creditSaleId,
+      customer_id: 'customer-1',
+      total_amount: 1000,
+      amount_paid: 600,
+      balance: 400,
+      status: 'active',
+      save: vi.fn(async function save() { return this; })
+    };
+    mocks.refundFindOne.mockResolvedValue(refundDoc);
+    mocks.saleFindById.mockResolvedValue(saleDoc);
+    mocks.creditFindById.mockResolvedValue(creditSaleDoc);
+
+    const response = await request(createApp())
+      .post('/approve')
+      .set(authHeader({
+        role: 'Director',
+        grants: ['approve_warehouse_director']
+      }))
+      .send({
+        id: 'refund-credit-1',
+        approverName: 'Warehouse Director',
+        approverRole: 'Director',
+        approvalRemark: 'Approved after QA',
+        restockMode: 'none',
+        restockItems: []
+      })
+      .expect(200);
+
+    expect(mocks.refreshCreditSaleStatus).toHaveBeenCalledWith(creditSaleDoc);
+    expect(creditSaleDoc.total_amount).toBe(750);
+    expect(creditSaleDoc.amount_paid).toBe(600);
+    expect(creditSaleDoc.balance).toBe(150);
+    expect(saleDoc.creditBalance).toBe(150);
+    expect(response.body).toEqual(expect.objectContaining({
+      _id: 'refund-credit-1',
+      settlementMode: 'credit_relief',
+      cashRefundAmount: 0,
+      creditReliefAmount: 250,
+      revisedCreditTotal: 750,
+      revisedCreditBalance: 150
     }));
   });
 });
