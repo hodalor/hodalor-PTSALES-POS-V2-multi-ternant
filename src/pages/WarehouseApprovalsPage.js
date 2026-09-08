@@ -41,6 +41,13 @@ function normalizeRefundArea(value = '') {
   return 'retail';
 }
 
+function getSaleRefundArea(sale = {}) {
+  const inventoryType = String(sale?.inventoryType || sale?.posType || 'retail').trim().toLowerCase();
+  if (inventoryType === 'warehouse') return 'warehouse';
+  if (inventoryType === 'distribution' || inventoryType === 'wholesale') return 'distribution';
+  return 'retail';
+}
+
 function WarehouseApprovalsPage() {
   const toast = useToast();
   const dispatch = useDispatch();
@@ -50,6 +57,7 @@ function WarehouseApprovalsPage() {
   const settings = useSelector(s => s.settings);
   const auth = useSelector(s => s.auth);
   const refunds = useSelector(s => s.refunds.requests || []);
+  const sales = useSelector(s => s.sales.sales || []);
   const [status, setStatus] = useState('pending_director');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -86,6 +94,7 @@ function WarehouseApprovalsPage() {
     branches.forEach(branch => map.set(branch.id, branch.name || branch.code || branch.id));
     return map;
   }, [branches]);
+  const salesById = useMemo(() => new Map((sales || []).map((row) => [String(row.id || row._id || row.clientId || ''), row])), [sales]);
   const selectedAdjustmentLabel = useMemo(() => {
     const types = Array.from(new Set(
       reviewItems
@@ -97,8 +106,22 @@ function WarehouseApprovalsPage() {
     return formatAdjustmentTypeLabel(selectedRow?.adjustmentType || 'increase');
   }, [reviewItems, selectedRow]);
   const warehouseRefundRows = useMemo(() => {
+    const resolveRefundArea = (row = {}) => {
+      const explicit = String(row?.refundArea || '').trim().toLowerCase();
+      if (['warehouse', 'distribution', 'wholesale', 'retail'].includes(explicit)) return normalizeRefundArea(explicit);
+      const linkedSale = salesById.get(String(row?.saleId || ''))
+        || (sales || []).find((sale) => (
+          String(sale?.invoiceSerial || '').trim().toLowerCase() === String(row?.invoiceSerial || '').trim().toLowerCase()
+          || String(sale?.receiptNumber || '').trim().toLowerCase() === String(row?.receiptNumber || '').trim().toLowerCase()
+        ));
+      if (linkedSale) return getSaleRefundArea(linkedSale);
+      const refText = `${row?.invoiceSerial || ''} ${row?.receiptNumber || ''}`.trim().toLowerCase();
+      if (refText.includes('warehouse')) return 'warehouse';
+      if (refText.includes('wholesale') || refText.includes('distribution')) return 'distribution';
+      return normalizeRefundArea(explicit);
+    };
     return (refunds || [])
-      .filter((row) => normalizeRefundArea(row?.refundArea) === 'warehouse')
+      .filter((row) => resolveRefundArea(row) === 'warehouse')
       .filter((row) => canAccessBranch(row?.branchId))
       .filter((row) => {
         const rowStatus = String(row?.status || '').trim().toLowerCase();
@@ -111,7 +134,7 @@ function WarehouseApprovalsPage() {
         operationType: 'refund',
         createdAt: row?.created_at || row?.createdAt || null
       }));
-  }, [refunds, status, canAccessBranch]);
+  }, [refunds, status, canAccessBranch, salesById, sales]);
   const combinedRows = useMemo(() => (
     [...rows, ...warehouseRefundRows]
       .sort((a, b) => new Date(b.createdAt || b.created_at || 0).getTime() - new Date(a.createdAt || a.created_at || 0).getTime())

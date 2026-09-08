@@ -1,6 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { isFeatureEnabled } from '../utils/featureFlags';
 import { listCreditSales } from '../api/credits';
 import { listApprovals } from '../api/approvals';
@@ -13,18 +13,39 @@ function Sidebar({ collapsed, onNavigate }) {
   const appName = useSelector(s => s.settings.appName);
   const settings = useSelector(s => s.settings);
   const products = useSelector(s => s.products.products || []);
+  const sales = useSelector(s => s.sales.sales || []);
   const role = useSelector(s => s.auth.role);
   const grants = useSelector(s => s.auth.grants);
   const offlineTotal = useSelector(s => s.offlineQueue.total);
   const rl = String(role || '').toLowerCase();
   const expensePending = useSelector(s => (s.expenseRequests?.requests || []).filter(r => String(r.status || '') === 'pending_approval').length);
-  const refundPending = useSelector(s => (s.refunds?.requests || []).filter(r => String(r.status || '') === 'pending_approval').length);
-  const warehouseRefundPending = useSelector(s => (
-    (s.refunds?.requests || []).filter((r) => (
+  const refunds = useSelector(s => s.refunds?.requests || []);
+  const refundPending = useMemo(() => (refunds || []).filter(r => String(r.status || '') === 'pending_approval').length, [refunds]);
+  const warehouseRefundPending = useMemo(() => {
+    const salesById = new Map((sales || []).map((row) => [String(row?.id || row?._id || row?.clientId || ''), row]));
+    const resolveArea = (row = {}) => {
+      const explicit = String(row?.refundArea || '').trim().toLowerCase();
+      if (explicit === 'warehouse') return 'warehouse';
+      if (explicit === 'distribution' || explicit === 'wholesale') return 'distribution';
+      if (explicit === 'retail') return 'retail';
+      const linkedSale = salesById.get(String(row?.saleId || ''))
+        || (sales || []).find((sale) => (
+          String(sale?.invoiceSerial || '').trim().toLowerCase() === String(row?.invoiceSerial || '').trim().toLowerCase()
+          || String(sale?.receiptNumber || '').trim().toLowerCase() === String(row?.receiptNumber || '').trim().toLowerCase()
+        ));
+      const inventoryType = String(linkedSale?.inventoryType || linkedSale?.posType || '').trim().toLowerCase();
+      if (inventoryType === 'warehouse') return 'warehouse';
+      if (inventoryType === 'wholesale' || inventoryType === 'distribution') return 'distribution';
+      const refText = `${row?.invoiceSerial || ''} ${row?.receiptNumber || ''}`.trim().toLowerCase();
+      if (refText.includes('warehouse')) return 'warehouse';
+      if (refText.includes('wholesale') || refText.includes('distribution')) return 'distribution';
+      return 'retail';
+    };
+    return (refunds || []).filter((r) => (
       String(r.status || '') === 'pending_approval'
-      && String(r.refundArea || '').trim().toLowerCase() === 'warehouse'
-    )).length
-  ));
+      && resolveArea(r) === 'warehouse'
+    )).length;
+  }, [refunds, sales]);
   const pendingStages = ['pending_approval', 'pending_director', 'pending_manager'];
   const { unreadCount: communicationUnreadCount } = useChatNotifications();
   const { t } = useAppLanguage();

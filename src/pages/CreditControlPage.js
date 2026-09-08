@@ -35,12 +35,12 @@ function getCreditPackageLabel(row) {
 }
 
 function normalizeCreditSaleRow(row = {}) {
-  const totalAmount = toNumber(row.total_amount ?? row.totalAmount ?? row.total);
-  const amountPaid = toNumber(row.amount_paid ?? row.amountPaid ?? row.creditAmountPaidNow ?? row.creditSale?.amount_paid ?? row.creditSale?.amountPaidNow);
+  const totalAmount = Math.max(0, toNumber(row.total_amount ?? row.totalAmount ?? row.total));
+  const amountPaid = Math.max(0, toNumber(row.amount_paid ?? row.amountPaid ?? row.creditAmountPaidNow ?? row.creditSale?.amount_paid ?? row.creditSale?.amountPaidNow));
   const balance = row.balance != null
-    ? toNumber(row.balance)
+    ? Math.max(0, toNumber(row.balance))
     : Math.max(0, totalAmount - amountPaid);
-  const accumulatedPenalty = toNumber(row.accumulated_penalty ?? row.accumulatedPenalty ?? row.creditSale?.accumulated_penalty);
+  const accumulatedPenalty = Math.max(0, toNumber(row.accumulated_penalty ?? row.accumulatedPenalty ?? row.creditSale?.accumulated_penalty));
   const dueDate = row.due_date || row.dueDate || row.creditDueDate || row.creditSale?.due_date || row.creditSale?.dueDate || null;
   const createdAt = row.createdAt || row.created_at || row.saleDate || row.date || null;
   const nowTs = Date.now();
@@ -243,10 +243,10 @@ function CreditControlPage({ initialSection = 'clients', clientFilter = 'all', t
         branchId: row.branchId || '',
         posType: row.posType || 'retail',
         items: row.items || [],
-        total_amount: Number(row.total || 0),
-        amount_paid: Number(row.creditAmountPaidNow || row.creditSale?.amount_paid || 0),
-        balance: Number(row.creditBalance || row.creditSale?.balance || Math.max(0, Number(row.total || 0) - Number(row.creditAmountPaidNow || 0))),
-        accumulated_penalty: Number(row.creditSale?.accumulated_penalty || 0),
+        total_amount: Math.max(0, Number(row.total || 0)),
+        amount_paid: Math.max(0, Number(row.creditAmountPaidNow ?? row.creditSale?.amount_paid ?? 0)),
+        balance: Math.max(0, Number(row.creditBalance ?? row.creditSale?.balance ?? Math.max(0, Number(row.total || 0) - Number(row.creditAmountPaidNow ?? 0)))),
+        accumulated_penalty: Math.max(0, Number(row.creditSale?.accumulated_penalty || 0)),
         creditPackageId: row.creditPackageId || row.creditSale?.creditPackageId || '',
         creditPackageName: row.creditPackageName || row.creditSale?.creditPackageName || '',
         due_date: row.creditDueDate || row.creditSale?.due_date || row.creditSale?.dueDate || null,
