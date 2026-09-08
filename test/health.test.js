@@ -1,14 +1,17 @@
+import express from 'express';
 import request from 'supertest';
 import { beforeAll, describe, expect, it } from 'vitest';
-
-let app;
+import { registerHealthRoutes } from '../src/healthRoutes.js';
 
 describe('GET /health', () => {
-  beforeAll(async () => {
+  let app;
+
+  beforeAll(() => {
     process.env.NODE_ENV = 'test';
     process.env.MONGODB_URI = ' ';
-    ({ app } = await import('../src/server.js'));
-  }, 30000);
+    app = express();
+    registerHealthRoutes(app);
+  });
 
   it('returns healthy status when the database is not configured', async () => {
     const response = await request(app)
