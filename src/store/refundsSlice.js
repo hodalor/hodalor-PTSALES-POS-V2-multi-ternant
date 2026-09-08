@@ -16,8 +16,13 @@ const refundsSlice = createSlice({
       });
       const serverIds = new Set(server.map(r => r.id).filter(Boolean));
       const serverClientIds = new Set(server.map(r => r?.clientId).filter(Boolean).map(String));
-      const offline = state.requests.filter(r => r && r.offline && !serverIds.has(String(r.id)) && (!r.clientId || !serverClientIds.has(String(r.clientId))));
-      state.requests = server.concat(offline);
+      const pendingLocal = state.requests.filter((r) => (
+        r
+        && (r.offline || r.syncPending || r.syncError)
+        && !serverIds.has(String(r.id))
+        && (!r.clientId || !serverClientIds.has(String(r.clientId)))
+      ));
+      state.requests = server.concat(pendingLocal);
     },
     mergeRequests(state, action) {
       const list = Array.isArray(action.payload) ? action.payload : [];
@@ -29,7 +34,7 @@ const refundsSlice = createSlice({
           (clientId && String(item?.clientId || '') === clientId)
         );
         const next = { ...row, id: id || String(row?.clientId || nanoid()) };
-        if (index >= 0) state.requests[index] = { ...state.requests[index], ...next, offline: false };
+        if (index >= 0) state.requests[index] = { ...state.requests[index], ...next, offline: false, syncPending: false, syncError: '' };
         else state.requests.push(next);
       });
     },
@@ -80,9 +85,21 @@ const refundsSlice = createSlice({
         r.approverRole = approverRole || '';
         r.rejectionRemark = remark || '';
       }
+    },
+    updateRequestSyncState(state, action) {
+      const { id, clientId, syncPending, syncError, offline } = action.payload || {};
+      const match = state.requests.find((row) => (
+        (id && String(row?.id || row?._id || '') === String(id))
+        || (clientId && String(row?.clientId || '') === String(clientId))
+      ));
+      if (match) {
+        if (typeof syncPending === 'boolean') match.syncPending = syncPending;
+        if (typeof syncError === 'string') match.syncError = syncError;
+        if (typeof offline === 'boolean') match.offline = offline;
+      }
     }
   }
 });
 
-export const { setRequests, mergeRequests, createRefundRequest, approveRefund, rejectRefund } = refundsSlice.actions;
+export const { setRequests, mergeRequests, createRefundRequest, approveRefund, rejectRefund, updateRequestSyncState } = refundsSlice.actions;
 export default refundsSlice.reducer;

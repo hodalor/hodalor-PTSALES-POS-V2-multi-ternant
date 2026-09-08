@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import { useToast } from '../components/ToastProvider';
 import { approveOperation, deleteOperation, listOperations, rejectOperation } from '../api/wholesale';
 import { findApprovalByReference } from '../api/approvals';
@@ -24,13 +25,31 @@ function getAdjustmentTypePillStyle(label) {
   return { background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857' };
 }
 
+function normalizeBranchIds(value) {
+  if (value === 'all') return 'all';
+  return Array.from(new Set(
+    (Array.isArray(value) ? value : [value])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+  ));
+}
+
+function normalizeRefundArea(value = '') {
+  const area = String(value || '').trim().toLowerCase();
+  if (area === 'warehouse') return 'warehouse';
+  if (area === 'distribution' || area === 'wholesale') return 'distribution';
+  return 'retail';
+}
+
 function WarehouseApprovalsPage() {
   const toast = useToast();
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const products = useSelector(s => s.products.products);
   const branches = useSelector(s => s.branches.branches);
   const settings = useSelector(s => s.settings);
   const auth = useSelector(s => s.auth);
+  const refunds = useSelector(s => s.refunds.requests || []);
   const [status, setStatus] = useState('pending_director');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -39,7 +58,6 @@ function WarehouseApprovalsPage() {
   const [reviewItems, setReviewItems] = useState([]);
   const [syncing, setSyncing] = useState(false);
   const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
   const pageSize = 50;
 
   const roleLower = String(auth.role || '').toLowerCase();
@@ -53,6 +71,15 @@ function WarehouseApprovalsPage() {
   function maskCostValue(value) {
     return canViewCost ? formatCurrency(Number(value || 0), settings) : '****';
   }
+  const canAccessBranch = useCallback((branchId = '') => {
+    if (['superadmin', 'admin'].includes(roleLower)) return true;
+    const normalizedBranchId = String(branchId || '').trim();
+    if (!normalizedBranchId) return false;
+    const assigned = normalizeBranchIds(auth.user?.assignedBranches);
+    if (assigned === 'all') return true;
+    const accessible = normalizeBranchIds([auth.user?.branchId, ...(Array.isArray(assigned) ? assigned : [])]);
+    return accessible.includes(normalizedBranchId);
+  }, [auth.user, roleLower]);
 
   const branchNameById = useMemo(() => {
     const map = new Map();
@@ -69,27 +96,50 @@ function WarehouseApprovalsPage() {
     if (types.length === 1) return formatAdjustmentTypeLabel(types[0]);
     return formatAdjustmentTypeLabel(selectedRow?.adjustmentType || 'increase');
   }, [reviewItems, selectedRow]);
+  const warehouseRefundRows = useMemo(() => {
+    return (refunds || [])
+      .filter((row) => normalizeRefundArea(row?.refundArea) === 'warehouse')
+      .filter((row) => canAccessBranch(row?.branchId))
+      .filter((row) => {
+        const rowStatus = String(row?.status || '').trim().toLowerCase();
+        if (status === 'pending_director' || status === 'pending_manager') return rowStatus === 'pending_approval';
+        return rowStatus === String(status || '').trim().toLowerCase();
+      })
+      .map((row) => ({
+        ...row,
+        rowType: 'refund_request',
+        operationType: 'refund',
+        createdAt: row?.created_at || row?.createdAt || null
+      }));
+  }, [refunds, status, canAccessBranch]);
+  const combinedRows = useMemo(() => (
+    [...rows, ...warehouseRefundRows]
+      .sort((a, b) => new Date(b.createdAt || b.created_at || 0).getTime() - new Date(a.createdAt || a.created_at || 0).getTime())
+  ), [rows, warehouseRefundRows]);
+  const pagedRows = useMemo(() => combinedRows.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize), [combinedRows, page]);
+  const totalRows = combinedRows.length;
 
   const load = useCallback(async (options = {}) => {
     setLoading(true);
     try {
-      const result = await listOperations({ operationArea: 'warehouse', status, force: !!options.force, paged: true, page, pageSize });
-      const merged = (Array.isArray(result?.rows) ? result.rows : [])
+      const result = await listOperations({ operationArea: 'warehouse', status, force: !!options.force });
+      const merged = (Array.isArray(result) ? result : Array.isArray(result?.rows) ? result.rows : [])
         .filter(row => ['purchase', 'transfer', 'adjustment'].includes(String(row.operationType || '').toLowerCase()))
-        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
       setRows(merged);
-      setTotal(Number(result?.total || merged.length));
     } catch (e) {
       toast.show(String(e?.message || 'Failed to load warehouse approvals'), { type: 'error' });
       setRows([]);
-      setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, [page, status, toast]);
+  }, [status, toast]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { setPage(1); }, [status]);
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(totalRows / pageSize));
+    if (page > maxPage) setPage(maxPage);
+  }, [page, totalRows]);
 
   useEffect(() => {
     if (!selectedRow) {
@@ -215,7 +265,7 @@ function WarehouseApprovalsPage() {
       <div className="card" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
         <div>
           <h1 style={{ margin: 0 }}>Warehouse Approvals</h1>
-          <div style={{ color: '#64748b', fontSize: 13 }}>Director and manager reviews for warehouse purchase, transfer, and adjustment requests.</div>
+          <div style={{ color: '#64748b', fontSize: 13 }}>Director and manager reviews for warehouse purchase, transfer, adjustment, and refund requests.</div>
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <button className={status === 'pending_director' ? 'btn btn-primary' : 'btn'} onClick={() => setStatus('pending_director')}>Pending Director</button>
@@ -226,10 +276,10 @@ function WarehouseApprovalsPage() {
         </div>
       </div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-        <div style={{ color: '#64748b', fontSize: 13 }}>Showing {rows.length} of {total} requests</div>
+        <div style={{ color: '#64748b', fontSize: 13 }}>Showing {pagedRows.length} of {totalRows} requests</div>
         <div style={{ display: 'flex', gap: 6 }}>
           <button className="btn" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={loading || page <= 1}>Previous</button>
-          <button className="btn" onClick={() => setPage(p => p + 1)} disabled={loading || page * pageSize >= total}>Next</button>
+          <button className="btn" onClick={() => setPage(p => p + 1)} disabled={loading || page * pageSize >= totalRows}>Next</button>
         </div>
       </div>
       {syncing && (
@@ -254,21 +304,36 @@ function WarehouseApprovalsPage() {
               </tr>
             </thead>
             <tbody>
-              {!loading && rows.map(row => {
+              {!loading && pagedRows.map(row => {
+                const isRefundRow = row.rowType === 'refund_request';
                 const product = products.find(item => String(item.id) === String(row.productId));
-                const rowAdjustmentLabel = String(row.operationType || '').toLowerCase() === 'adjustment'
+                const rowAdjustmentLabel = !isRefundRow && String(row.operationType || '').toLowerCase() === 'adjustment'
                   ? (Array.from(new Set((Array.isArray(row.items) ? row.items : []).map((item) => String(item?.adjustmentType || '').toLowerCase()).filter(Boolean))).length > 1
                     ? 'Mixed Adjustment'
                     : formatAdjustmentTypeLabel((Array.isArray(row.items) && row.items[0]?.adjustmentType) || row.adjustmentType || 'increase'))
                   : '';
-                const route = row.operationType === 'transfer'
+                const route = isRefundRow
+                  ? `${branchNameById.get(row.branchId) || row.branchId || '—'} • warehouse refund`
+                  : row.operationType === 'transfer'
                   ? `${branchNameById.get(row.fromBranchId || row.from) || row.fromBranchId || row.from || '—'} (${row.fromInventoryType || 'warehouse'}) → ${branchNameById.get(row.toBranchId || row.to) || row.toBranchId || row.to || '—'} (${row.toInventoryType || 'warehouse'})`
                   : `${branchNameById.get(row.branchId) || row.branchId || '—'} • ${row.operationArea || 'warehouse'}`;
                 return (
-                  <tr key={row._id || row.clientId} style={{ cursor: 'pointer' }} onClick={() => setSelectedRow(row)}>
+                  <tr
+                    key={row._id || row.clientId}
+                    style={{ cursor: 'pointer' }}
+                    onClick={() => {
+                      if (isRefundRow) navigate(`/refund-approvals?refundId=${encodeURIComponent(String(row.id || row._id || row.clientId || ''))}`);
+                      else setSelectedRow(row);
+                    }}
+                  >
                     <td>{row.operationType}</td>
                     <td>
-                      <div>{product?.name || row.productId}</div>
+                      <div>{isRefundRow ? (row.invoiceSerial || row.receiptNumber || row.saleId || 'Refund Request') : (product?.name || row.productId)}</div>
+                      {isRefundRow && (
+                        <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>
+                          Review in Refund Approvals
+                        </div>
+                      )}
                       {rowAdjustmentLabel && (
                         <div style={{ marginTop: 6 }}>
                           <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 10px', borderRadius: 999, fontSize: 12, fontWeight: 700, ...getAdjustmentTypePillStyle(rowAdjustmentLabel) }}>
@@ -278,14 +343,14 @@ function WarehouseApprovalsPage() {
                       )}
                     </td>
                     <td>{route}</td>
-                    <td>{Number(row.qty || 0)}</td>
-                    <td>{maskCostValue(row.cost || row.requestedAmount || 0)}</td>
+                    <td>{isRefundRow ? '—' : Number(row.qty || 0)}</td>
+                    <td>{maskCostValue(isRefundRow ? row.requestedAmount : (row.cost || row.requestedAmount || 0))}</td>
                     <td>{row.status}</td>
-                    <td>{row.initiatedByName || '—'} {row.initiatedByRole ? `(${row.initiatedByRole})` : ''}</td>
+                    <td>{(row.initiatedByName || row.initiatorName || '—')} {(row.initiatedByRole || row.initiatorRole) ? `(${row.initiatedByRole || row.initiatorRole})` : ''}</td>
                   </tr>
                 );
               })}
-              {!loading && rows.length === 0 && <tr><td colSpan="7" style={{ padding: 12, color: '#64748b' }}>No warehouse approvals found</td></tr>}
+              {!loading && pagedRows.length === 0 && <tr><td colSpan="7" style={{ padding: 12, color: '#64748b' }}>No warehouse approvals found</td></tr>}
               {loading && <tr><td colSpan="7" style={{ padding: 12, color: '#64748b' }}>Loading approvals…</td></tr>}
             </tbody>
           </table>

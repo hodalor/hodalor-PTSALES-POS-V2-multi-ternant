@@ -1,6 +1,6 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { useEffect, useMemo, useState } from 'react';
-import { createRefundRequest, mergeRequests } from '../store/refundsSlice';
+import { createRefundRequest, mergeRequests, updateRequestSyncState } from '../store/refundsSlice';
 import { addAudit } from '../store/auditSlice';
 import { formatCurrency } from '../utils/currency';
 import { useToast } from '../components/ToastProvider';
@@ -64,6 +64,26 @@ function getRefundPageMeta(mode = 'retail') {
     requestButtonLabel: 'Request Refund',
     queueLabel: 'Refunds queued'
   };
+}
+
+function normalizeBranchIds(value) {
+  if (value === 'all') return 'all';
+  return Array.from(new Set(
+    (Array.isArray(value) ? value : [value])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+  ));
+}
+
+function canAccessBranch(user = {}, role = '', branchId = '') {
+  const roleLower = String(role || '').toLowerCase();
+  if (['superadmin', 'admin'].includes(roleLower)) return true;
+  const normalizedBranchId = String(branchId || '').trim();
+  if (!normalizedBranchId) return false;
+  const assigned = normalizeBranchIds(user?.assignedBranches);
+  if (assigned === 'all') return true;
+  const accessible = normalizeBranchIds([user?.branchId, ...(Array.isArray(assigned) ? assigned : [])]);
+  return accessible.includes(normalizedBranchId);
 }
 
 function RefundsPage({ mode = 'retail' }) {
@@ -333,11 +353,16 @@ function RefundsPage({ mode = 'retail' }) {
       toast.show('Saved offline. Will backup when online.', { type: 'success' });
     } else {
       const clientId = crypto.randomUUID();
-      dispatch(createRefundRequest({ ...payload, clientId }));
+      dispatch(createRefundRequest({ ...payload, clientId, syncPending: true, syncError: '' }));
       try {
         const saved = await refundsApi.createRequest({ ...payload, clientId });
         if (saved) dispatch(mergeRequests([saved]));
       } catch (e) {
+        dispatch(updateRequestSyncState({
+          clientId,
+          syncPending: false,
+          syncError: String(e?.message || 'Failed to sync to server')
+        }));
         toast.show('Failed to sync to server', { type: 'error' });
       }
     }
@@ -363,11 +388,11 @@ function RefundsPage({ mode = 'retail' }) {
     let rows = visibleRefunds.slice().reverse();
     if (roleLower === 'cashier') {
       rows = rows.filter(r => String(r.initiatorName || '') === me);
-    } else if (roleLower === 'manager') {
-      rows = rows.filter(r => r.branchId === settings.currentBranchId);
+    } else if (!['superadmin', 'admin'].includes(roleLower)) {
+      rows = rows.filter(r => canAccessBranch(auth.user, auth.role, r.branchId));
     }
     return rows;
-  }, [visibleRefunds, auth.user, auth.role, settings.currentBranchId]);
+  }, [visibleRefunds, auth.user, auth.role]);
 
   function getSaleForRequest(request) {
     const direct = salesById.get(String(request?.saleId || ''));

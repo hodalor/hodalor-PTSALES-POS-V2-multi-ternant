@@ -1,5 +1,6 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { approveRefund, rejectRefund, mergeRequests } from '../store/refundsSlice';
 import { addAudit } from '../store/auditSlice';
 import { recordSale } from '../store/salesSlice';
@@ -13,6 +14,22 @@ import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 
+function normalizeBranchIds(value) {
+  if (value === 'all') return 'all';
+  return Array.from(new Set(
+    (Array.isArray(value) ? value : [value])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+  ));
+}
+
+function normalizeRefundArea(value = '') {
+  const area = String(value || '').trim().toLowerCase();
+  if (area === 'warehouse') return 'warehouse';
+  if (area === 'distribution' || area === 'wholesale') return 'distribution';
+  return 'retail';
+}
+
 function RefundApprovalsPage() {
   const dispatch = useDispatch();
   const toast = useToast();
@@ -23,6 +40,7 @@ function RefundApprovalsPage() {
   const settings = useSelector(s => s.settings);
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);
   const branches = useSelector(s => s.branches.branches);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [filter, setFilter] = useState('pending');
   const [selectedId, setSelectedId] = useState(null);
   const [restockMode, setRestockMode] = useState('none'); // 'none' | 'full' | 'partial'
@@ -34,14 +52,42 @@ function RefundApprovalsPage() {
   const [pageSize, setPageSize] = useState(25);
 
   const roleLower = String(auth.role || '').toLowerCase();
-  const canApprove = ['admin','manager','superadmin'].includes(roleLower);
-  // Remove restriction: anyone with permission should be able to approve, 
-  // but logic inside onApprove will block self-approval if needed.
-  // canSelfApprove logic remains in onApprove.
+  const grants = useMemo(() => (Array.isArray(auth.grants) ? auth.grants : []), [auth.grants]);
 
   function refundId(x) {
     return String(x?.id || x?._id || '');
   }
+
+  const canAccessBranch = useCallback((branchId = '') => {
+    if (['superadmin', 'admin'].includes(roleLower)) return true;
+    const normalizedBranchId = String(branchId || '').trim();
+    if (!normalizedBranchId) return false;
+    const assigned = normalizeBranchIds(auth.user?.assignedBranches);
+    if (assigned === 'all') return true;
+    const accessible = normalizeBranchIds([auth.user?.branchId, ...(Array.isArray(assigned) ? assigned : [])]);
+    return accessible.includes(normalizedBranchId);
+  }, [auth.user, roleLower]);
+
+  const canReviewRefund = useCallback((row = {}) => {
+    if (['superadmin', 'admin'].includes(roleLower)) return true;
+    if (grants.includes('approve_refunds')) return true;
+    const area = normalizeRefundArea(row?.refundArea);
+    if (area === 'warehouse') {
+      return roleLower === 'director'
+        || roleLower === 'manager'
+        || grants.includes('approve_warehouse_director')
+        || grants.includes('approve_warehouse_manager');
+    }
+    if (area === 'distribution') {
+      return roleLower === 'director'
+        || roleLower === 'manager'
+        || grants.includes('approve_distribution_director')
+        || grants.includes('approve_distribution_manager');
+    }
+    return roleLower === 'manager'
+      || grants.includes('approve_retail_director')
+      || grants.includes('approve_retail_manager');
+  }, [grants, roleLower]);
 
   const filtered = useMemo(() => {
     const currentBranchId = settings.currentBranchId;
@@ -49,17 +95,26 @@ function RefundApprovalsPage() {
     let rows = refunds.slice().reverse();
     if (roleLower === 'cashier') {
       rows = rows.filter(r => String(r.initiatorName || '') === me);
-    } else if (roleLower === 'manager') {
-      rows = rows.filter(r => r.branchId === currentBranchId);
-    } else {
+    } else if (!['superadmin', 'admin'].includes(roleLower)) {
+      rows = rows.filter(r => canReviewRefund(r) && canAccessBranch(r.branchId));
       if (onlyBranch) rows = rows.filter(r => r.branchId === currentBranchId);
+    } else if (onlyBranch) {
+      rows = rows.filter(r => r.branchId === currentBranchId);
     }
     if (filter !== 'all') {
       const wanted = (filter === 'pending' ? 'pending_approval' : filter);
       rows = rows.filter(r => r.status === wanted);
     }
     return rows;
-  }, [refunds, filter, settings.currentBranchId, roleLower, auth.user, onlyBranch]);
+  }, [refunds, filter, settings.currentBranchId, roleLower, auth.user, onlyBranch, canAccessBranch, canReviewRefund]);
+
+  useEffect(() => {
+    const requestedId = String(searchParams.get('refundId') || '').trim();
+    if (!requestedId) return;
+    if (filtered.some((row) => refundId(row) === requestedId)) {
+      setSelectedId(requestedId);
+    }
+  }, [filtered, searchParams]);
 
   function branchLabel(id) {
     const b = (branches || []).find(x => x.id === id);
@@ -100,7 +155,7 @@ function RefundApprovalsPage() {
   }
 
   async function onReject(r) {
-    if (!canApprove) return;
+    if (!canReviewRefund(r)) return;
     const remark = await promptDialog('Enter reason for rejection (required)');
     if (!remark || !remark.trim()) {
       toast.show('Rejection reason is required', { type: 'error' });
@@ -141,7 +196,7 @@ function RefundApprovalsPage() {
   }
 
   async function onApprove(r) {
-    if (!canApprove) return;
+    if (!canReviewRefund(r)) return;
     const isSelf = r.initiatorName && (auth.user?.name || '') === r.initiatorName;
     if (isSelf && roleLower !== 'superadmin' && roleLower !== 'admin') {
       toast.show('Initiator cannot approve own refund', { type: 'error' });
@@ -296,7 +351,9 @@ function RefundApprovalsPage() {
       e.preventDefault();
       e.stopPropagation();
     }
-    setSelectedId(String(id || ''));
+    const nextId = String(id || '');
+    setSelectedId(nextId);
+    setSearchParams(nextId ? { refundId: nextId } : {});
     setRestockMode('none');
     setPartialMap({});
     setPartialUnitMap({});
@@ -306,6 +363,7 @@ function RefundApprovalsPage() {
   function closeReview(e) {
     if (e) e.stopPropagation();
     setSelectedId(null);
+    setSearchParams({});
   }
 
   return (
@@ -340,6 +398,7 @@ function RefundApprovalsPage() {
               <th align="left">Ref</th>
               <th align="left">Initiator</th>
               <th align="left">Branch</th>
+              <th align="left">Area</th>
               <th align="left">Type</th>
               <th align="left">Amount</th>
               <th align="left">Created</th>
@@ -356,6 +415,7 @@ function RefundApprovalsPage() {
                 <td>{r.invoiceSerial || r.receiptNumber || r.saleId}</td>
                 <td>{r.initiatorName}</td>
                 <td>{branchLabel(r.branchId)}</td>
+                <td>{normalizeRefundArea(r.refundArea)}</td>
                 <td>{String(r.type || '').toUpperCase()}</td>
                 <td>{formatCurrency(r.requestedAmount || 0, settings)}</td>
                 <td>{new Date(r.created_at).toLocaleString()}</td>
@@ -483,7 +543,7 @@ function RefundApprovalsPage() {
                   </tbody>
                 </table>
               </div>
-              {r.status === 'pending_approval' && canApprove && (
+              {r.status === 'pending_approval' && canReviewRefund(r) && (
                 <div style={{ marginTop: 12, padding: 12, border: '1px solid #e2e8f0', borderRadius: 6, background: '#f8fafc' }}>
                   <div style={{ fontWeight: 700, marginBottom: 8 }}>Decision</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

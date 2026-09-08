@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import { approveApproval, listApprovals, rejectApproval } from '../api/approvals';
 import { useToast } from '../components/ToastProvider';
 import { promptDialog } from '../utils/dialogs';
@@ -7,24 +8,46 @@ import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import LoadingDots from '../components/LoadingDots';
 import { getProductDisplayMeta } from '../utils/inventoryFilters';
 
+function normalizeBranchIds(value) {
+  if (value === 'all') return 'all';
+  return Array.from(new Set(
+    (Array.isArray(value) ? value : [value])
+      .map((item) => String(item || '').trim())
+      .filter(Boolean)
+  ));
+}
+
+function normalizeRefundArea(value = '') {
+  const area = String(value || '').trim().toLowerCase();
+  if (area === 'warehouse') return 'warehouse';
+  if (area === 'distribution' || area === 'wholesale') return 'distribution';
+  return 'retail';
+}
+
 function getApprovalStatusMeta(status = '') {
   const value = String(status || '').trim().toLowerCase();
   if (value === 'approved') return { label: 'Approved', tone: 'success' };
   if (value === 'rejected') return { label: 'Rejected', tone: 'danger' };
   if (value === 'pending_manager') return { label: 'Pending Manager', tone: 'warning' };
   if (value === 'pending_director') return { label: 'Pending Director', tone: 'info' };
+  if (value === 'pending_approval') return { label: 'Pending Approval', tone: 'info' };
   return { label: status || 'Unknown', tone: 'info' };
 }
 
 function ApprovalsPage() {
   const toast = useToast();
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const products = useSelector((s) => s.products.products);
   const branches = useSelector((s) => s.branches.branches);
+  const refunds = useSelector((s) => s.refunds.requests || []);
+  const auth = useSelector((s) => s.auth);
   const [rows, setRows] = useState([]);
   const [status, setStatus] = useState('pending_director');
   const [loading, setLoading] = useState(false);
   const [workingId, setWorkingId] = useState('');
+  const roleLower = String(auth.role || '').toLowerCase();
+  const grants = useMemo(() => (Array.isArray(auth.grants) ? auth.grants : []), [auth.grants]);
 
   const branchNameById = useMemo(() => {
     const map = new Map();
@@ -35,6 +58,23 @@ function ApprovalsPage() {
     });
     return map;
   }, [branches]);
+  const canAccessBranch = useCallback((branchId = '') => {
+    if (['superadmin', 'admin'].includes(roleLower)) return true;
+    const normalizedBranchId = String(branchId || '').trim();
+    if (!normalizedBranchId) return false;
+    const assigned = normalizeBranchIds(auth.user?.assignedBranches);
+    if (assigned === 'all') return true;
+    const accessible = normalizeBranchIds([auth.user?.branchId, ...(Array.isArray(assigned) ? assigned : [])]);
+    return accessible.includes(normalizedBranchId);
+  }, [auth.user, roleLower]);
+  const canReviewRefund = useCallback((row = {}) => {
+    if (['superadmin', 'admin'].includes(roleLower)) return true;
+    if (grants.includes('approve_refunds')) return true;
+    const area = normalizeRefundArea(row?.refundArea);
+    if (area === 'warehouse') return roleLower === 'director' || roleLower === 'manager' || grants.includes('approve_warehouse_director') || grants.includes('approve_warehouse_manager');
+    if (area === 'distribution') return roleLower === 'director' || roleLower === 'manager' || grants.includes('approve_distribution_director') || grants.includes('approve_distribution_manager');
+    return roleLower === 'manager' || grants.includes('approve_retail_director') || grants.includes('approve_retail_manager');
+  }, [grants, roleLower]);
 
   const load = useCallback(async (nextStatus = status, options = {}) => {
     setLoading(true);
@@ -52,7 +92,24 @@ function ApprovalsPage() {
     load(status);
   }, [load, status]);
 
-  const grouped = useMemo(() => rows.slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [rows]);
+  const refundApprovalRows = useMemo(() => (
+    (refunds || [])
+      .filter((row) => canReviewRefund(row) && canAccessBranch(row?.branchId))
+      .filter((row) => {
+        const rowStatus = String(row?.status || '').trim().toLowerCase();
+        if (status === 'all') return true;
+        if (status === 'pending_director' || status === 'pending_manager') return rowStatus === 'pending_approval';
+        return rowStatus === status;
+      })
+      .map((row) => ({
+        ...row,
+        _id: `refund-${String(row?.id || row?._id || row?.clientId || '')}`,
+        referenceModel: 'RefundRequest',
+        actionType: `${normalizeRefundArea(row?.refundArea)}_refund`,
+        createdAt: row?.created_at || row?.createdAt || null
+      }))
+  ), [refunds, status, canAccessBranch, canReviewRefund]);
+  const grouped = useMemo(() => [...rows, ...refundApprovalRows].slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [rows, refundApprovalRows]);
   const summaryCards = useMemo(() => ([
     {
       key: 'total',
@@ -88,6 +145,16 @@ function ApprovalsPage() {
   }
 
   function renderProducts(row) {
+    if (String(row?.referenceModel || '') === 'RefundRequest') {
+      return (
+        <div style={{ display: 'grid', gap: 4 }}>
+          <div style={{ color: '#111827' }}>{row?.invoiceSerial || row?.receiptNumber || row?.saleId || 'Refund Request'}</div>
+          <div style={{ color: '#64748b', fontSize: 12 }}>
+            {String(row?.type || '').toUpperCase()} refund in {normalizeRefundArea(row?.refundArea)}
+          </div>
+        </div>
+      );
+    }
     const items = Array.isArray(row?.items) ? row.items : [];
     if (items.length > 0) {
       const visible = items.slice(0, 3);
@@ -114,6 +181,9 @@ function ApprovalsPage() {
   }
 
   function renderRoute(row) {
+    if (String(row?.referenceModel || '') === 'RefundRequest') {
+      return branchNameById.get(String(row?.branchId || '')) || row?.branchId || '—';
+    }
     if (String(row?.referenceModel || '') !== 'WholesaleOperation') return '—';
     if (String(row?.operationType || '').toLowerCase() === 'transfer') {
       const fromLabel = branchNameById.get(String(row?.fromBranchId || '')) || row?.fromBranchId || '—';
@@ -180,7 +250,7 @@ function ApprovalsPage() {
           <div className="ui-eyebrow">Control Center</div>
           <h1 className="sales-title">Approvals</h1>
           <p className="sales-subtitle">
-            Director and manager approval queue for stock operations and related approval-controlled workflows.
+            Director and manager approval queue for stock operations, refunds, and related approval-controlled workflows.
           </p>
         </div>
         <div className="sales-header-actions">
@@ -241,6 +311,7 @@ function ApprovalsPage() {
                 const statusMeta = getApprovalStatusMeta(row?.status);
                 const busy = workingId === row._id;
                 const isPending = row.status === 'pending_director' || row.status === 'pending_manager';
+                const isRefundRow = String(row?.referenceModel || '') === 'RefundRequest';
                 return (
                   <tr key={row._id}>
                     <td>
@@ -259,7 +330,13 @@ function ApprovalsPage() {
                     </td>
                     <td>{row.createdAt ? new Date(row.createdAt).toLocaleString() : '—'}</td>
                     <td>
-                      {isPending ? (
+                      {isRefundRow ? (
+                        <div className="sales-row-actions">
+                          <button className="btn btn-primary btn-compact" onClick={() => navigate(`/refund-approvals?refundId=${encodeURIComponent(String(row?.id || row?.clientId || ''))}`)}>
+                            Review
+                          </button>
+                        </div>
+                      ) : isPending ? (
                         <div className="sales-row-actions">
                           <button className="btn btn-primary btn-compact" onClick={() => onApprove(row)} disabled={busy}>
                             {busy ? 'Working…' : 'Approve'}
