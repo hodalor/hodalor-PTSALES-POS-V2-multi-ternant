@@ -1,6 +1,4 @@
 import { Router } from 'express';
-import fs from 'node:fs';
-import path from 'node:path';
 import Approval from '../models/Approval.js';
 import CashReconciliation from '../models/CashReconciliation.js';
 import CreditRepayment from '../models/CreditRepayment.js';
@@ -13,28 +11,6 @@ import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
 const r = Router();
 
 r.use(requireAuth);
-
-function reportTransferVisibilityDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
-  const envCandidates = [
-    path.resolve(process.cwd(), '.dbg', 'transfer-visibility-value.env'),
-    path.resolve(process.cwd(), '..', '.dbg', 'transfer-visibility-value.env')
-  ];
-  let url = 'http://127.0.0.1:7777/event';
-  let sessionId = 'transfer-visibility-value';
-  for (const candidate of envCandidates) {
-    try {
-      const text = fs.readFileSync(candidate, 'utf8');
-      url = text.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || url;
-      sessionId = text.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || sessionId;
-      break;
-    } catch {}
-  }
-  fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, runId: 'pre-fix', hypothesisId, location, msg, data, ts: Date.now() })
-  }).catch(() => {});
-}
 
 async function resolveApprovalArea(approval) {
   if (approval?.referenceModel !== 'WholesaleOperation') return '';
@@ -231,28 +207,6 @@ r.get('/', async (req, res) => {
     }
     filteredRows.push(row);
   }
-  // #region debug-point B:approvals-list
-  reportTransferVisibilityDebug({
-    hypothesisId: 'B',
-    location: 'approvals.js:get:list',
-    msg: '[DEBUG] Approvals list resolved transfer references',
-    data: {
-      status: String(req.query.status || ''),
-      totalRows: rows.length,
-      visibleRows: filteredRows.length,
-      transferRows: filteredRows.filter((row) => String(row?.referenceModel || '') === 'WholesaleOperation' && String(row?.operationType || row?.actionType || '').toLowerCase().includes('transfer')).map((row) => ({
-        approvalId: String(row?._id || ''),
-        referenceId: String(row?.referenceId || ''),
-        status: String(row?.status || ''),
-        actionType: String(row?.actionType || ''),
-        hasOperationItems: Array.isArray(row?.items) && row.items.length > 0,
-        operationArea: String(row?.operationArea || ''),
-        fromBranchId: String(row?.fromBranchId || ''),
-        toBranchId: String(row?.toBranchId || '')
-      })).slice(0, 20)
-    }
-  });
-  // #endregion
   res.json(filteredRows);
 });
 

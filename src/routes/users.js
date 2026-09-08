@@ -1,6 +1,4 @@
 import { Router } from 'express';
-import fs from 'node:fs';
-import path from 'node:path';
 import { modelFor as UserModelFor } from '../models/User.js';
 import { modelFor as AuditModelFor } from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
@@ -22,28 +20,6 @@ function normalizeTenantScopedRole(rawRole, tenantId = '') {
   const resolvedTenantId = String(tenantId || '').trim().toLowerCase();
   if (role.toLowerCase() === 'superadmin' && resolvedTenantId && resolvedTenantId !== 'master') return 'Admin';
   return role;
-}
-
-function reportUserFormLeakDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
-  const envCandidates = [
-    path.resolve(process.cwd(), '.dbg', 'user-form-leak.env'),
-    path.resolve(process.cwd(), '..', '.dbg', 'user-form-leak.env')
-  ];
-  let url = 'http://127.0.0.1:7777/event';
-  let sessionId = 'user-form-leak';
-  for (const candidate of envCandidates) {
-    try {
-      const text = fs.readFileSync(candidate, 'utf8');
-      url = text.match(/DEBUG_SERVER_URL=(.+)/)?.[1] || url;
-      sessionId = text.match(/DEBUG_SESSION_ID=(.+)/)?.[1] || sessionId;
-      break;
-    } catch {}
-  }
-  fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, runId: 'pre-fix', hypothesisId, location, msg, data, ts: Date.now() })
-  }).catch(() => {});
 }
 
 function normalizeLanguage(value) {
@@ -75,23 +51,6 @@ r.post('/', requireAdmin, async (req, res) => {
   const { name, role, pin, branchId, assignedBranches, preferredLanguage } = req.body || {};
   const tenantId = String(req.user?.tenantId || req.tenantId || 'master');
   const normalizedRole = normalizeTenantScopedRole(role, tenantId);
-  // #region debug-point C:user-create-payload
-  reportUserFormLeakDebug({
-    hypothesisId: 'C',
-    location: 'users.js:post:create',
-    msg: '[DEBUG] Backend received create user payload',
-    data: {
-      actor: String(req.user?.name || ''),
-      tenantId: String(req.user?.tenantId || req.tenantId || ''),
-      name: String(name || ''),
-      role: normalizedRole,
-      branchId: String(branchId || ''),
-      assignedBranches: assignedBranches === 'all' ? 'all' : (Array.isArray(assignedBranches) ? assignedBranches.map(String) : [String(assignedBranches || '')].filter(Boolean)),
-      preferredLanguage: String(preferredLanguage || ''),
-      pinLength: String(pin || '').length
-    }
-  });
-  // #endregion
   if (!name || !role || !/^\d{4,6}$/.test(String(pin || ''))) {
     return res.status(400).json({ error: 'Invalid input' });
   }
@@ -178,26 +137,6 @@ r.put('/:name', requireAdmin, async (req, res) => {
   const { name: newName, role, pin, branchId, assignedBranches, preferredLanguage, active } = req.body || {};
   const tenantId = String(req.user?.tenantId || req.tenantId || 'master');
   const normalizedRole = role !== undefined ? normalizeTenantScopedRole(role, tenantId) : undefined;
-  // #region debug-point C:user-update-payload
-  reportUserFormLeakDebug({
-    hypothesisId: 'C',
-    location: 'users.js:put:update',
-    msg: '[DEBUG] Backend received update user payload',
-    data: {
-      actor: String(req.user?.name || ''),
-      tenantId: String(req.user?.tenantId || req.tenantId || ''),
-      targetName: String(name || ''),
-      newName: String(newName || ''),
-      role: normalizedRole ?? '',
-      branchId: String(branchId || ''),
-      assignedBranches: assignedBranches === 'all' ? 'all' : (Array.isArray(assignedBranches) ? assignedBranches.map(String) : [String(assignedBranches || '')].filter(Boolean)),
-      preferredLanguage: String(preferredLanguage || ''),
-      active: typeof active === 'boolean' ? active : null,
-      hasPin: Boolean(pin),
-      pinLength: String(pin || '').length
-    }
-  });
-  // #endregion
   const u = await User.findOne({ name });
   if (!u) return res.status(404).json({ error: 'Not found' });
   if (newName && newName !== u.name) {
