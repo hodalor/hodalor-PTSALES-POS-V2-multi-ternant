@@ -164,4 +164,39 @@ describe('refunds route characterization', () => {
       refundArea: 'warehouse'
     }));
   });
+
+  it('allows warehouse director grants to review warehouse refund requests', async () => {
+    const refundDoc = {
+      _id: 'refund-warehouse-1',
+      clientId: 'refund-warehouse-1',
+      saleId: 'sale-warehouse-1',
+      branchId: 'warehouse-main',
+      refundArea: 'warehouse',
+      status: 'pending_approval',
+      save: vi.fn(async function save() { return this; })
+    };
+    mocks.refundFindOne.mockResolvedValue(refundDoc);
+
+    const response = await request(createApp())
+      .post('/reject')
+      .set(authHeader({
+        role: 'Director',
+        grants: ['approve_warehouse_director']
+      }))
+      .send({
+        id: 'refund-warehouse-1',
+        approverName: 'Warehouse Director',
+        approverRole: 'Director',
+        remark: 'Director rejected for review'
+      })
+      .expect(200);
+
+    expect(refundDoc.save).toHaveBeenCalled();
+    expect(response.body).toEqual(expect.objectContaining({
+      _id: 'refund-warehouse-1',
+      status: 'rejected',
+      approverRole: 'Director',
+      rejectionRemark: 'Director rejected for review'
+    }));
+  });
 });

@@ -11,6 +11,7 @@ import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from '../
 import { uploadMediaArray } from '../utils/mediaStorage.js';
 import { enrichSalesWithAccounting } from '../utils/saleAccounting.js';
 import { refreshCreditSaleStatus, updateCustomerCreditMetrics } from '../utils/credit.js';
+import { canApproveAreaDirector, canApproveAreaManager } from '../utils/approvalWorkflow.js';
 
 const r = Router();
 
@@ -196,6 +197,15 @@ async function getRefundCoverageForSale(sale = {}, options = {}) {
   };
 }
 
+function canApproveRefundRequest(user = {}, refund = {}) {
+  const role = String(user?.role || '').trim().toLowerCase();
+  const grants = Array.isArray(user?.grants) ? user.grants : [];
+  if (['superadmin', 'admin'].includes(role)) return true;
+  if (grants.includes('approve_refunds')) return true;
+  const refundArea = normalizeRefundArea(refund?.refundArea || '');
+  return canApproveAreaDirector(user, refundArea) || canApproveAreaManager(user, refundArea);
+}
+
 r.get('/requests', async (req, res) => {
   const rows = await RefundRequest.find().sort({ created_at: -1 }).limit(500);
   res.json(rows);
@@ -289,7 +299,7 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_refun
   res.json(rfd);
 });
 
-r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_refunds'), async (req, res) => {
+r.post('/approve', async (req, res) => {
   const { id, approverName, approverRole, approvalRemark, restockMode, restockItems } = req.body || {};
   const key = String(id || '');
   const or = [];
@@ -297,6 +307,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_refunds'), as
   or.push({ clientId: key });
   const rfd = await RefundRequest.findOne({ $or: or });
   if (!rfd) return res.status(404).json({ error: 'Not found' });
+  if (!canApproveRefundRequest(req.user, rfd)) return res.status(403).json({ error: 'Not allowed to approve this refund' });
   if (rfd.status !== 'pending_approval') return res.json(rfd);
   const saleRef = await resolveRefundSaleReference(rfd);
   if (!saleRef) return res.status(404).json({ error: 'Sale not found for refund approval' });
@@ -463,7 +474,7 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager'], 'approve_refunds'), as
   res.json(rfd);
 });
 
-r.post('/reject', requireRoleOrPerm(['Admin','Manager'], 'approve_refunds'), async (req, res) => {
+r.post('/reject', async (req, res) => {
   const { id, approverName, approverRole, remark } = req.body || {};
   const key = String(id || '');
   const or = [];
@@ -471,6 +482,7 @@ r.post('/reject', requireRoleOrPerm(['Admin','Manager'], 'approve_refunds'), asy
   or.push({ clientId: key });
   const rfd = await RefundRequest.findOne({ $or: or });
   if (!rfd) return res.status(404).json({ error: 'Not found' });
+  if (!canApproveRefundRequest(req.user, rfd)) return res.status(403).json({ error: 'Not allowed to reject this refund' });
   if (rfd.status !== 'pending_approval') return res.json(rfd);
   rfd.status = 'rejected';
   rfd.rejectionRemark = remark || '';
