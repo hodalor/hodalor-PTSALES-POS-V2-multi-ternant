@@ -3812,6 +3812,16 @@ html, body, #root {
 .invoice-items-card {
   padding-top: 14px;
 }
+.invoice-cart-item {
+  grid-template-columns: minmax(0, 1fr) 78px minmax(132px, 150px) 56px minmax(120px, max-content);
+  align-items: start;
+  gap: 10px;
+  padding: 12px 34px 12px 0;
+}
+.invoice-cart-remove-btn {
+  top: 10px;
+  right: 0;
+}
 .invoice-totals-box {
   margin-top: 4px;
 }

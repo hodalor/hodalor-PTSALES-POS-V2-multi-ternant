@@ -696,7 +696,7 @@ function InvoicesPage({ mode = 'retail' }) {
         <div className="sales-section-card invoice-items-card">
         <ul className="cart-list">
           {items.map(item => (
-            <li key={item.id} className="cart-item">
+            <li key={item.id} className="cart-item invoice-cart-item">
               <div className="cart-title">
                 <div>{item.name}</div>
                 {item.brand ? <small style={{ color: '#64748b' }}>{item.brand}</small> : null}
@@ -715,7 +715,15 @@ function InvoicesPage({ mode = 'retail' }) {
                 <div style={{ fontSize: 12, color: '#64748b' }}>Line Total</div>
                 <strong className="price-accent">{formatCurrency((Number(item.qty) || 0) * (Number(item.rate) || 0), settings)}</strong>
               </div>
-              <button className="btn" onClick={() => remove(item.id)}>Remove</button>
+              <button
+                type="button"
+                className="pos-cart-remove-btn invoice-cart-remove-btn"
+                onClick={() => remove(item.id)}
+                aria-label={`Remove ${item.name || 'item'}`}
+                title="Remove item"
+              >
+                X
+              </button>
             </li>
           ))}
         </ul>
