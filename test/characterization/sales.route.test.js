@@ -182,6 +182,20 @@ describe('sales route characterization', () => {
     expect(response.body).toEqual({ error: 'Discounted sales must be approved first' });
   });
 
+  it('accepts null variant ids at the validation boundary for non-variant sale items', async () => {
+    const response = await request(createApp())
+      .post('/')
+      .set(authHeader())
+      .send({
+        branchId: 'main',
+        discount: 5,
+        items: [{ productId: 'p1', qty: 1, variantId: null }]
+      })
+      .expect(403);
+
+    expect(response.body).toEqual({ error: 'Discounted sales must be approved first' });
+  });
+
   it('dedupes repeated sale requests by returning the existing sale for the same clientId even if debug telemetry fails', async () => {
     mocks.saleFindOne.mockResolvedValue({
       _id: 'sale-2',

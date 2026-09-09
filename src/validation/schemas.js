@@ -10,7 +10,7 @@ function requiredIdSchema(message = 'id is required') {
 const saleItemSchema = z.object({
   productId: requiredIdSchema('Each item must include productId and positive qty'),
   qty: zLooseNumber.refine((value) => Number.isFinite(value) && value > 0, 'Each item must include productId and positive qty'),
-  variantId: z.optional(z.union([z.string(), z.number()])).transform((value) => String(value || '').trim()),
+  variantId: z.optional(z.union([z.string(), z.number(), z.null()])).transform((value) => String(value || '').trim()),
   price: z.optional(zLooseNumber),
   requestedPrice: z.optional(zLooseNumber),
   soldUnitIds: z.optional(z.array(z.union([z.string(), z.number()])).default([])),
