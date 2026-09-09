@@ -3776,10 +3776,44 @@ html, body, #root {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
   gap: 16px;
+  align-items: start;
 }
 .invoice-pane {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 16px;
+  min-width: 0;
+  align-self: start;
+}
+.invoice-products-pane {
+  min-width: 0;
+}
+.invoice-form-pane {
+  max-width: 460px;
+  width: 100%;
+  justify-self: end;
+}
+.invoice-pane-head {
+  margin-bottom: 4px;
+}
+.invoice-customer-card {
+  padding: 16px;
+}
+.invoice-card-title {
+  font-weight: 800;
+  margin-bottom: 8px;
+  color: #0f172a;
+}
+.invoice-customer-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+.invoice-items-card {
+  padding-top: 14px;
+}
+.invoice-totals-box {
+  margin-top: 4px;
 }
 
 /* Responsive */
@@ -3794,6 +3828,10 @@ html, body, #root {
   .cashdrawer-action-row,
   .invoice-workspace {
     grid-template-columns: 1fr;
+  }
+  .invoice-form-pane {
+    max-width: none;
+    justify-self: stretch;
   }
   .sidebar {
     position: fixed;

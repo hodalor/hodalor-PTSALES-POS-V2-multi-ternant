@@ -1669,11 +1669,11 @@ function PosPage({ mode = 'retail' }) {
           toast.show(String(e?.message || 'Failed to save offline'), { type: 'error' });
           return;
         }
-        saleForUi = { ...sale, id: offlineId, invoiceSerial: ref, receiptNumber: ref, branchName, offline: true };
+        saleForUi = { ...sale, id: offlineId, invoiceSerial: ref, receiptNumber: ref, branchName, offline: true, syncPending: true };
       } else {
         sale.clientId = crypto.randomUUID();
         const tmpRef = `TMP-${String(Date.now()).padStart(6, '0').slice(-6)}`;
-        saleForUi = { ...sale, id: sale.clientId, invoiceSerial: tmpRef, receiptNumber: tmpRef, branchName };
+        saleForUi = { ...sale, id: sale.clientId, invoiceSerial: tmpRef, receiptNumber: tmpRef, branchName, syncPending: true };
       }
       // #region debug-point A:tmp-receipt-generated
       reportEbkTmpReceiptDebug({

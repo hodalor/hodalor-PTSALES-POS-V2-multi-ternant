@@ -9,6 +9,7 @@ import * as salesApi from '../api/sales';
 import * as usersApi from '../api/users';
 import * as auditsApi from '../api/audits';
 import * as invoicesApi from '../api/invoices';
+import { listQueuedSales } from './queuedSales';
 import { setProducts } from '../store/productsSlice';
 import { setSuppliers } from '../store/suppliersSlice';
 import { setCustomers } from '../store/customersSlice';
@@ -78,11 +79,12 @@ export async function refreshAllData(dispatch, getState) {
     canUseExpenseApprovals ? expensesApi.listRequests() : Promise.resolve([]),
     canUseAdjustmentApprovals ? adjustmentsApi.listRequests() : Promise.resolve([]),
     allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? salesApi.list({ all: true }) : Promise.resolve([]),
+    allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? listQueuedSales() : Promise.resolve([]),
     isFeatureEnabled(settings, 'admin.users') && allow('admin.users', ['Admin'], ['view_users','see_users']) ? usersApi.list() : Promise.resolve([]),
     ((isFeatureEnabled(settings, 'admin.audit') && allow('admin.audit', ['Admin'], ['view_audit','see_audit'])) || (isFeatureEnabled(settings, 'sections.admin') && allow('sections.admin', ['Admin'], ['view_stock_records','see_stock_records']))) ? auditsApi.list({ all: true }) : Promise.resolve([]),
     isFeatureEnabled(settings, 'modules.invoices') && allow('modules.invoices', ['Admin','Manager','Cashier'], ['view_invoices','see_invoices','view_wholesale_invoices','view_warehouse_invoices']) ? invoicesApi.list() : Promise.resolve([])
   ]);
-  const [p, s, c, b, r, pr, tr, er, ar, sl, u, au, invs] = results;
+  const [p, s, c, b, r, pr, tr, er, ar, sl, queuedSl, u, au, invs] = results;
   if (p.status === 'fulfilled' && Array.isArray(p.value)) dispatch(setProducts(p.value));
   if (s.status === 'fulfilled' && Array.isArray(s.value)) dispatch(setSuppliers(s.value));
   if (c.status === 'fulfilled' && Array.isArray(c.value)) dispatch(setCustomers(c.value));
@@ -92,7 +94,13 @@ export async function refreshAllData(dispatch, getState) {
   if (tr.status === 'fulfilled' && Array.isArray(tr.value)) dispatch(setTransferRequests(tr.value));
   if (er.status === 'fulfilled' && Array.isArray(er.value)) dispatch(setExpenseRequests(er.value));
   if (ar.status === 'fulfilled' && Array.isArray(ar.value)) dispatch(setAdjustmentRequests(ar.value));
-  if (sl.status === 'fulfilled' && Array.isArray(sl.value)) dispatch(setSales(sl.value));
+  {
+    const serverSales = sl.status === 'fulfilled' && Array.isArray(sl.value) ? sl.value : [];
+    const queuedSales = queuedSl.status === 'fulfilled' && Array.isArray(queuedSl.value) ? queuedSl.value : [];
+    if ((sl.status === 'fulfilled' || queuedSl.status === 'fulfilled') && (serverSales.length > 0 || queuedSales.length > 0)) {
+      dispatch(setSales(serverSales.concat(queuedSales)));
+    }
+  }
   if (u.status === 'fulfilled' && Array.isArray(u.value)) dispatch(setUsers(u.value));
   if (au.status === 'fulfilled' && Array.isArray(au.value) && au.value.length > 0) dispatch(setAuditEntries(au.value));
   if (invs.status === 'fulfilled' && Array.isArray(invs.value)) dispatch(setInvoices(invs.value));

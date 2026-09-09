@@ -430,9 +430,16 @@ function RefundsPage({ mode = 'retail' }) {
       branchId: sale.branchId,
       offline: !navigator.onLine
     }));
+    setQuery('');
+    setLookupSale(null);
+    setLookupError('');
+    setLookupLoading(false);
     setRemark('');
     setAmount('');
     setImages([]);
+    setRestock(true);
+    setRefundType('full');
+    setSerializedSelections({});
     if (navigator.onLine) toast.show('Refund request submitted for approval', { type: 'success' });
   }
 

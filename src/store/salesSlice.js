@@ -26,7 +26,23 @@ const salesSlice = createSlice({
   reducers: {
     setSales(state, action) {
       const list = Array.isArray(action.payload) ? action.payload : [];
-      const server = list.map(s => {
+      const deduped = [];
+      const indexByKey = new Map();
+      list.forEach((sale) => {
+        const saleId = String(sale?.id || sale?._id || '');
+        const clientId = String(sale?.clientId || '');
+        const key = clientId || saleId || nanoid();
+        const existingIndex = indexByKey.get(key);
+        if (existingIndex == null) {
+          indexByKey.set(key, deduped.length);
+          deduped.push(sale);
+          return;
+        }
+        const existing = deduped[existingIndex];
+        const keepNext = isTemporarySaleRecord(existing) && !isTemporarySaleRecord(sale);
+        if (keepNext) deduped[existingIndex] = sale;
+      });
+      const server = deduped.map(s => {
         const id = s?.id || s?._id || nanoid();
         return { ...s, id: String(id) };
       });

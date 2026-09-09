@@ -14,6 +14,7 @@ import { getProductBrand } from '../utils/productSearch';
 import Modal from '../components/Modal';
 import { getCreditModeLabel, getSaleRangeTotals, getSaleSettlementStatus } from '../utils/saleAccounting';
 import { formatDateTime } from '../utils/dateFormat';
+import { listQueuedSales } from '../offline/queuedSales';
 
 function pad2(value) {
   return String(value).padStart(2, '0');
@@ -232,9 +233,12 @@ function SalesPage() {
       const branchScope = selectedBranchId ? selectedBranchId : '';
       try {
         setLoadingSales(true);
-        const rows = await salesApi.list(branchScope ? { branchId: branchScope, all: true } : { all: true });
+        const [rows, queuedRows] = await Promise.all([
+          salesApi.list(branchScope ? { branchId: branchScope, all: true } : { all: true }),
+          listQueuedSales()
+        ]);
         if (!alive) return;
-        dispatch(setSales(Array.isArray(rows) ? rows : []));
+        dispatch(setSales((Array.isArray(rows) ? rows : []).concat(Array.isArray(queuedRows) ? queuedRows : [])));
       } catch (e) {
         if (!alive) return;
         toast.show(String(e?.message || 'Failed to load sales'), { type: 'error' });

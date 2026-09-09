@@ -572,7 +572,7 @@ function InvoicesPage({ mode = 'retail' }) {
       </div>
       {(tab === 'new' && showNewTab) ? (
       <div className="invoice-workspace">
-        <div className="invoice-pane">
+        <div className="invoice-pane invoice-products-pane">
           <div className="sales-section-head">
             <div>
               <h2 className="sales-section-title">Products</h2>
@@ -620,8 +620,8 @@ function InvoicesPage({ mode = 'retail' }) {
           </div>
           </div>
         </div>
-        <div className="invoice-pane">
-          <div className="sales-section-head">
+        <div className="invoice-pane invoice-form-pane">
+          <div className="sales-section-head invoice-pane-head">
             <div>
               <h2 className="sales-section-title">Invoice</h2>
               <p className="sales-section-note">Fill customer details, review totals, and generate or update the A4 invoice.</p>
@@ -636,9 +636,9 @@ function InvoicesPage({ mode = 'retail' }) {
             <button className="btn" onClick={resetInvoiceForm}>Cancel Edit</button>
           </div>
         )}
-        <div className="sales-section-card">
-          <div style={{ fontWeight: 700, marginBottom: 6 }}>Customer</div>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 8 }}>
+        <div className="sales-section-card invoice-customer-card">
+          <div className="invoice-card-title">Customer</div>
+          <div className="invoice-customer-grid">
             <div style={{ position: 'relative' }}>
               <input
                 className="input"
@@ -693,7 +693,7 @@ function InvoicesPage({ mode = 'retail' }) {
               )}
           </div>
         </div>
-        <div className="sales-section-card">
+        <div className="sales-section-card invoice-items-card">
         <ul className="cart-list">
           {items.map(item => (
             <li key={item.id} className="cart-item">
@@ -719,7 +719,7 @@ function InvoicesPage({ mode = 'retail' }) {
             </li>
           ))}
         </ul>
-        <div className="totals-box">
+        <div className="totals-box invoice-totals-box">
           <div style={{ marginTop: 8 }}>
             <div><span className="price-accent">Subtotal: {formatCurrency(subtotal, settings)}</span></div>
             <div style={{ marginTop: 8 }}>

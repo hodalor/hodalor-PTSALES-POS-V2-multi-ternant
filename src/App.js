@@ -96,6 +96,7 @@ import * as expensesApi from './api/expenses';
 import { setEntries as setAuditEntries } from './store/auditSlice';
 import { setInvoices } from './store/invoicesSlice';
 import { ensureOnlineJwt } from './offline/reAuth';
+import { listQueuedSales } from './offline/queuedSales';
 import { setPurchaseRequests } from './store/purchasesSlice';
 import { setTransferRequests } from './store/transfersSlice';
 import { setExpenseRequests } from './store/expenseRequestsSlice';
@@ -546,16 +547,23 @@ function App() {
         if (alive && criticalProducts.status === 'fulfilled' && Array.isArray(criticalProducts.value)) dispatch(setProducts(criticalProducts.value));
         if (alive) setDataBootstrapReady(true);
 
-        const [s, c, r, sl] = await Promise.allSettled([
+        const [s, c, r, sl, queuedSl] = await Promise.allSettled([
           canLoadSuppliers ? suppliersApi.list() : Promise.resolve([]),
           canLoadCustomers ? customersApi.list() : Promise.resolve([]),
           canLoadRefunds ? refundsApi.listRequests() : Promise.resolve([]),
-          canLoadSales ? salesApi.list({ all: true }) : Promise.resolve([])
+          canLoadSales ? salesApi.list({ all: true }) : Promise.resolve([]),
+          canLoadSales ? listQueuedSales() : Promise.resolve([])
         ]);
         if (alive && s.status === 'fulfilled' && Array.isArray(s.value)) dispatch(setSuppliers(s.value));
         if (alive && c.status === 'fulfilled' && Array.isArray(c.value)) dispatch(setCustomers(c.value));
         if (alive && r.status === 'fulfilled' && Array.isArray(r.value)) dispatch(setRequests(r.value));
-        if (alive && sl.status === 'fulfilled' && Array.isArray(sl.value)) dispatch(setSales(sl.value));
+        if (alive) {
+          const serverSales = sl.status === 'fulfilled' && Array.isArray(sl.value) ? sl.value : [];
+          const queuedSales = queuedSl.status === 'fulfilled' && Array.isArray(queuedSl.value) ? queuedSl.value : [];
+          if ((sl.status === 'fulfilled' || queuedSl.status === 'fulfilled') && (serverSales.length > 0 || queuedSales.length > 0 || canLoadSales)) {
+            dispatch(setSales(serverSales.concat(queuedSales)));
+          }
+        }
       } catch {}
       finally {
         if (alive) setDataBootstrapReady(true);
@@ -660,7 +668,7 @@ function App() {
           if (roleLower !== 'admin') return requested.some(hasGrant);
           return roleOk || requested.some(hasGrant);
         };
-        const [p, s, c, b, r, sl, u, au, invs, pr, tr, exr, adr] = await Promise.allSettled([
+        const [p, s, c, b, r, sl, queuedSl, u, au, invs, pr, tr, exr, adr] = await Promise.allSettled([
           (allow('modules.products', ['Admin','Manager','Inventory Staff'], ['view_products','see_products','view_distribution_products','view_warehouse_products'])
             || (isFeatureEnabled(settings, 'pages.retail.pos') && allow('pages.retail.pos', ['Admin','Manager','Cashier'], ['view_pos','see_pos']))
             || (isFeatureEnabled(settings, 'pages.distribution.pos') && allow('pages.distribution.pos', ['Admin','Manager','Cashier'], ['view_wholesale_pos'])))
@@ -681,6 +689,7 @@ function App() {
             || allow('pages.finance.reconciliation', ['Admin','Manager','Cashier'], ['view_finance_reconciliation','add_finance_reconciliation','approve_finance_reconciliation_director','approve_finance_reconciliation_manager'])
           ) ? refundsApi.listRequests() : Promise.resolve([]),
           allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? salesApi.list({ all: true }) : Promise.resolve([]),
+          allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? listQueuedSales() : Promise.resolve([]),
           section('sections.admin') && allow('admin.users', ['Admin'], ['view_users','see_users']) ? usersApi.list() : Promise.resolve([]),
           (((allow('admin.audit', ['Admin'], ['view_audit','see_audit']) || allow('sections.admin', ['Admin'], ['view_stock_records','see_stock_records'])) && !(roleLower === 'superadmin' && String(authTenantId || '').toLowerCase() === 'master'))) ? auditsApi.list({ all: true }) : Promise.resolve([]),
           allow('modules.invoices', ['Admin','Manager','Cashier'], ['view_invoices','see_invoices','view_wholesale_invoices','view_warehouse_invoices']) ? invoicesApi.list() : Promise.resolve([]),
@@ -698,7 +707,13 @@ function App() {
         if (alive && s.status === 'fulfilled' && Array.isArray(s.value)) dispatch(setSuppliers(s.value));
         if (alive && c.status === 'fulfilled' && Array.isArray(c.value)) dispatch(setCustomers(c.value));
         if (alive && r.status === 'fulfilled' && Array.isArray(r.value)) dispatch(setRequests(r.value));
-        if (alive && sl.status === 'fulfilled' && Array.isArray(sl.value)) dispatch(setSales(sl.value));
+        if (alive) {
+          const serverSales = sl.status === 'fulfilled' && Array.isArray(sl.value) ? sl.value : [];
+          const queuedSales = queuedSl.status === 'fulfilled' && Array.isArray(queuedSl.value) ? queuedSl.value : [];
+          if ((sl.status === 'fulfilled' || queuedSl.status === 'fulfilled') && (serverSales.length > 0 || queuedSales.length > 0)) {
+            dispatch(setSales(serverSales.concat(queuedSales)));
+          }
+        }
         if (alive && u.status === 'fulfilled' && Array.isArray(u.value)) dispatch(setUsers(u.value));
         if (alive && au.status === 'fulfilled' && Array.isArray(au.value) && au.value.length > 0) dispatch(setAuditEntries(au.value));
         if (alive && invs.status === 'fulfilled' && Array.isArray(invs.value)) dispatch(setInvoices(invs.value));
