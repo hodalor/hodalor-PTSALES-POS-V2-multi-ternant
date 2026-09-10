@@ -410,7 +410,6 @@ function App() {
       dispatch(setCustomers([]));
       dispatch(setBranches([]));
       dispatch(setRequests([]));
-      dispatch(setSales([]));
       dispatch(setUsers([]));
       dispatch(setAuditEntries([]));
       dispatch(setInvoices([]));

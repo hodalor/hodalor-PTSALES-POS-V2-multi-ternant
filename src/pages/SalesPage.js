@@ -292,11 +292,14 @@ function SalesPage() {
       }
       return list;
     }
+    if (selectedBranchId) {
+      list = list.filter(sale => String(sale.branchId || '') === String(selectedBranchId));
+      return list;
+    }
     if (!(canSeeAll && showAll)) {
       const scoped = sales.filter(sale => String(sale.branchId || '') === String(effectiveBranchId || ''));
       list = scoped.length > 0 ? scoped : sales;
     }
-    if (selectedBranchId) list = list.filter(sale => String(sale.branchId || '') === String(selectedBranchId));
     return list;
   }, [canSeeAll, canUseCompetitionScope, competitionAllowedBranchIdSet, effectiveBranchId, sales, selectedBranchId, showAll, tab]);
   const filteredSales = useMemo(() => {

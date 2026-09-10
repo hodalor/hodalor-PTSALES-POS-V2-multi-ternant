@@ -1643,9 +1643,56 @@ function PosPage({ mode = 'retail' }) {
       saleDateTime: canBackdateSales && saleDateTimeTouched ? selectedSaleAt : undefined,
       reservationToken
       };
+      // #region debug-point A:warehouse-sale-submit
+      fetch('http://127.0.0.1:7777/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: 'warehouse-sale-queue-fail',
+          runId: 'pre-fix',
+          hypothesisId: 'A',
+          location: 'PosPage.js:completeSale:submit',
+          msg: '[DEBUG] POS sale payload prepared before createSale',
+          data: {
+            clientId: String(sale?.clientId || ''),
+            branchId: String(sale?.branchId || ''),
+            branchName: String(branchName || ''),
+            posType: String(sale?.posType || ''),
+            inventoryType: String(sale?.inventoryType || ''),
+            defaultPriceTier: String(sale?.defaultPriceTier || ''),
+            subtotal: Number(sale?.subtotal || 0),
+            discount: Number(sale?.discount || 0),
+            tax: Number(sale?.tax || 0),
+            total: Number(sale?.total || 0),
+            due: Number(due || 0),
+            paid: Number(paid || 0),
+            easyBuyEnabled: !!easyBuyEnabled,
+            paymentMethods: Array.isArray(sale?.payment_methods)
+              ? sale.payment_methods.map((payment) => ({
+                  type: String(payment?.type || ''),
+                  amount: Number(payment?.amount || 0)
+                }))
+              : [],
+            items: Array.isArray(sale?.items)
+              ? sale.items.map((item) => ({
+                  productId: String(item?.productId || ''),
+                  variantId: String(item?.variantId || ''),
+                  qty: Number(item?.qty || 0),
+                  price: Number(item?.price || 0),
+                  priceTier: String(item?.priceTier || '')
+                }))
+              : []
+          },
+          ts: Date.now()
+        })
+      }).catch(() => {});
+      // #endregion
       const soldUnitIdsForDebug = cart.items.map((item) => item.unitId).filter(Boolean).map(String);
+      const startedOffline = !navigator.onLine;
       let saleForUi = null;
-      if (!navigator.onLine) {
+      let savedOnlineSale = null;
+      let queuedAfterHttpFailure = false;
+      if (startedOffline) {
         const offlineId = `offline-sale-${Date.now()}-${Math.random().toString(16).slice(2)}`;
         sale.clientId = offlineId;
         const ref = `OFF-${String(Date.now()).padStart(6, '0').slice(-6)}`;
@@ -1674,6 +1721,189 @@ function PosPage({ mode = 'retail' }) {
         sale.clientId = crypto.randomUUID();
         const tmpRef = `TMP-${String(Date.now()).padStart(6, '0').slice(-6)}`;
         saleForUi = { ...sale, id: sale.clientId, invoiceSerial: tmpRef, receiptNumber: tmpRef, branchName, syncPending: true };
+        try {
+          savedOnlineSale = await createSale({ ...sale, clientId: sale.clientId });
+          saleForUi = {
+            ...saleForUi,
+            ...savedOnlineSale,
+            id: String(savedOnlineSale?.id || savedOnlineSale?._id || sale.clientId),
+            invoiceSerial: String(savedOnlineSale?.invoiceSerial || saleForUi?.invoiceSerial || ''),
+            receiptNumber: String(savedOnlineSale?.receiptNumber || saleForUi?.receiptNumber || ''),
+            branchName: String(savedOnlineSale?.branchName || branchName || ''),
+            offline: false,
+            syncPending: false
+          };
+          // #region debug-point C:online-save-succeeded
+          reportEbkTmpReceiptDebug({
+            hypothesisId: 'C',
+            location: 'PosPage.js:completeSale:online-save-succeeded',
+            msg: '[DEBUG] POS online sale save completed before local stock commit',
+            data: {
+              clientId: String(sale?.clientId || ''),
+              serverSaleId: String(savedOnlineSale?._id || savedOnlineSale?.id || ''),
+              serverReceiptNumber: String(savedOnlineSale?.receiptNumber || ''),
+              serverInvoiceSerial: String(savedOnlineSale?.invoiceSerial || ''),
+              branchId: String(activeBranchId || ''),
+              hasSerialized: soldUnitIdsForDebug.length > 0
+            }
+          });
+          // #endregion
+          // #region debug-point B:pos-online-sale-saved
+          reportQueuedSalesImeiDebug({
+            hypothesisId: 'B',
+            location: 'PosPage.js:completeSale:online-create-success',
+            msg: '[DEBUG] POS online sale saved before local serialized cache mark',
+            data: {
+              clientId: String(sale?.clientId || ''),
+              serverSaleId: String(savedOnlineSale?._id || savedOnlineSale?.id || ''),
+              branchId: String(activeBranchId || ''),
+              soldUnitIds: soldUnitIdsForDebug,
+              hasSerialized: soldUnitIdsForDebug.length > 0
+            }
+          });
+          // #endregion
+        } catch (e) {
+          const errorStatus = Number(e?.status || 0);
+          const shouldQueueAfterHttpFailure = !errorStatus || errorStatus >= 500 || errorStatus === 408 || errorStatus === 429;
+          // #region debug-point B:warehouse-sale-submit-failed
+          fetch('http://127.0.0.1:7777/event', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: 'warehouse-sale-queue-fail',
+              runId: 'pre-fix',
+              hypothesisId: 'B',
+              location: 'PosPage.js:completeSale:createSale-error',
+              msg: '[DEBUG] POS createSale failed before queue fallback',
+              data: {
+                clientId: String(sale?.clientId || ''),
+                branchId: String(activeBranchId || ''),
+                posType: String(sale?.posType || ''),
+                inventoryType: String(sale?.inventoryType || ''),
+                status: errorStatus,
+                error: String(e?.message || ''),
+                errorData: e?.data || null,
+                queueFallbackEligible: shouldQueueAfterHttpFailure
+              },
+              ts: Date.now()
+            })
+          }).catch(() => {});
+          // #endregion
+          // #region debug-point A:tamale-online-save-failed
+          reportQuantityQueueTamaleDebug({
+            hypothesisId: 'A',
+            location: 'PosPage.js:completeSale:online-save-failed-before-queue',
+            msg: '[DEBUG] POS online sale save failed before queue fallback decision',
+            data: {
+              clientId: String(sale?.clientId || ''),
+              branchId: String(activeBranchId || ''),
+              branchName: String(branchName || ''),
+              online: typeof navigator !== 'undefined' ? !!navigator.onLine : null,
+              status: errorStatus,
+              error: String(e?.message || ''),
+              errorData: e?.data || null,
+              hasSerialized: soldUnitIdsForDebug.length > 0,
+              itemCount: Array.isArray(sale?.items) ? sale.items.length : 0
+            }
+          });
+          // #endregion
+          if (!shouldQueueAfterHttpFailure) {
+            await releaseSerializedCartItemsWithToken(cart.items, sale.reservationToken);
+            toast.show(String(e?.message || 'Failed to record sale'), { type: 'error' });
+            return;
+          }
+          try {
+            await enqueueHttp({ collection: 'sales', label: 'Sale', path: '/api/sales', method: 'POST', body: { ...sale, clientId: sale.clientId } });
+            queuedAfterHttpFailure = true;
+            // #region debug-point B:warehouse-sale-queued-after-http-error
+            fetch('http://127.0.0.1:7777/event', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                sessionId: 'warehouse-sale-queue-fail',
+                runId: 'pre-fix',
+                hypothesisId: 'B',
+                location: 'PosPage.js:completeSale:queued-after-http-error',
+                msg: '[DEBUG] POS queued sale after createSale error',
+                data: {
+                  clientId: String(sale?.clientId || ''),
+                  branchId: String(activeBranchId || ''),
+                  posType: String(sale?.posType || ''),
+                  inventoryType: String(sale?.inventoryType || ''),
+                  createSaleStatus: errorStatus,
+                  createSaleError: String(e?.message || ''),
+                  queuePath: '/api/sales'
+                },
+                ts: Date.now()
+              })
+            }).catch(() => {});
+            // #endregion
+            // #region debug-point A:tamale-queue-fallback
+            reportQuantityQueueTamaleDebug({
+              hypothesisId: 'A',
+              location: 'PosPage.js:completeSale:queued-after-save-failure',
+              msg: '[DEBUG] POS queued sale after online save failure',
+              data: {
+                clientId: String(sale?.clientId || ''),
+                branchId: String(activeBranchId || ''),
+                branchName: String(branchName || ''),
+                online: typeof navigator !== 'undefined' ? !!navigator.onLine : null,
+                createSaleStatus: errorStatus,
+                createSaleError: String(e?.message || ''),
+                hasSerialized: soldUnitIdsForDebug.length > 0,
+                itemCount: Array.isArray(sale?.items) ? sale.items.length : 0
+              }
+            });
+            // #endregion
+            // #region debug-point D:online-save-fell-back-to-queue
+            reportEbkTmpReceiptDebug({
+              hypothesisId: 'D',
+              location: 'PosPage.js:completeSale:online-save-fell-back-to-queue',
+              msg: '[DEBUG] POS online sale save failed and fell back to queue before local stock commit',
+              data: {
+                clientId: String(sale?.clientId || ''),
+                branchId: String(activeBranchId || ''),
+                reservationToken: String(sale?.reservationToken || ''),
+                error: String(e?.message || ''),
+                hasSerialized: soldUnitIdsForDebug.length > 0
+              }
+            });
+            // #endregion
+            // #region debug-point A:pos-online-fallback-queued
+            reportQueuedSalesImeiDebug({
+              hypothesisId: 'A',
+              location: 'PosPage.js:completeSale:online-fallback-queued',
+              msg: '[DEBUG] POS online sale fell back to queue before local serialized cache mark',
+              data: {
+                clientId: String(sale?.clientId || ''),
+                branchId: String(activeBranchId || ''),
+                reservationToken: String(sale?.reservationToken || ''),
+                createSaleError: String(e?.message || ''),
+                soldUnitIds: soldUnitIdsForDebug,
+                hasSerialized: soldUnitIdsForDebug.length > 0
+              }
+            });
+            // #endregion
+          } catch (err) {
+            // #region debug-point E:online-save-and-queue-both-failed
+            reportEbkTmpReceiptDebug({
+              hypothesisId: 'E',
+              location: 'PosPage.js:completeSale:online-save-and-queue-both-failed',
+              msg: '[DEBUG] POS online sale save failed and queue fallback also failed before local stock commit',
+              data: {
+                clientId: String(sale?.clientId || ''),
+                branchId: String(activeBranchId || ''),
+                createSaleError: String(e?.message || ''),
+                queueError: String(err?.message || ''),
+                hasSerialized: soldUnitIdsForDebug.length > 0
+              }
+            });
+            // #endregion
+            await releaseSerializedCartItemsWithToken(cart.items, sale.reservationToken);
+            toast.show(String(e?.message || 'Failed to record sale'), { type: 'error' });
+            return;
+          }
+        }
       }
       // #region debug-point A:tmp-receipt-generated
       reportEbkTmpReceiptDebug({
@@ -1692,106 +1922,123 @@ function PosPage({ mode = 'retail' }) {
         }
       });
       // #endregion
-      const receiptHtml = buildBrandedReceiptHtml({ settings, sale: saleForUi });
       const affectedProductIds = Array.from(new Set(cart.items.map(i => i.productId).filter(Boolean)));
-      cart.items.forEach(i => {
-        if (i.productId) {
-          dispatch(adjustStock({ productId: i.productId, variantId: i.variantId || null, branchId: activeBranchId, inventoryType, delta: -i.quantity }));
-        }
-      });
-      dispatch(recordSale(saleForUi));
+      const shouldFinalizeLocally = Boolean(savedOnlineSale) || startedOffline;
+      if (!shouldFinalizeLocally && queuedAfterHttpFailure) {
+        await releaseSerializedCartItemsWithToken(cart.items, sale.reservationToken);
+      }
+      if (shouldFinalizeLocally) {
+        cart.items.forEach(i => {
+          if (i.productId) {
+            dispatch(adjustStock({
+              productId: i.productId,
+              variantId: i.variantId || null,
+              branchId: activeBranchId,
+              inventoryType,
+              delta: -i.quantity,
+              syncPending: !savedOnlineSale
+            }));
+          }
+        });
+        dispatch(recordSale(saleForUi));
+      }
+      const receiptHtml = shouldFinalizeLocally ? buildBrandedReceiptHtml({ settings, sale: saleForUi }) : '';
       let invoiceForPrint = null;
-      try {
-      const payTerms = (saleForUi.payment_methods || [])
-        .map(p => {
-          const t = String(p.type || '').toLowerCase();
-          if (t === 'cash') return 'Cash';
-          if (t === 'card') return 'Card';
-          if (t === 'mobile' || t === 'momo' || t === 'mobile money') return 'Mobile Money';
-          if (t === 'wallet') return 'Wallet';
-          return t ? (t[0].toUpperCase() + t.slice(1)) : 'Cash';
-        })
-        .join(', ');
-      const invoicePrefix = isWholesale
-        ? (settings.wholesaleInvoicePrefix || 'WINV')
-        : isWarehouse
-          ? (settings.warehouseInvoicePrefix || 'WHINV')
-          : (settings.invoicePrefix || 'INV');
-      const nextInvoiceNumber = isWholesale
-        ? Number(settings.nextWholesaleInvoiceNumber || 1)
-        : isWarehouse
-          ? Number(settings.nextWarehouseInvoiceNumber || 1)
-          : Number(settings.nextInvoiceNumber || 1);
-      const invNumber = saleForUi.invoiceSerial || `${invoicePrefix}-${String(nextInvoiceNumber).padStart(Number(settings.invoiceNumberDigits || 6), '0')}`;
-      const inv = {
-        number: invNumber,
-        date: saleForUi.created_at || new Date().toISOString(),
-        saleId: saleForUi.id || saleForUi._id || '',
-        paymentStatus: easyBuyEnabled ? 'active' : 'paid',
-        source: isWholesale ? 'wholesale-pos' : isWarehouse ? 'warehouse-pos' : 'pos',
-        customer: checkoutCustomer ? {
-          name: checkoutCustomer.name || '',
-          phone: checkoutCustomer.phone || '',
-          email: checkoutCustomer.email || '',
-          address: checkoutCustomer.address || '',
-          businessName: checkoutCustomer.businessName || '',
-          businessAddress: checkoutCustomer.businessAddress || '',
-          taxId: checkoutCustomer.taxId || '',
-          customerCode: checkoutCustomer.customerCode || '',
-          customerId: checkoutCustomer.id
-        } : (saleForUi.customerName ? {
-          name: saleForUi.customerName,
-          phone: saleForUi.customerPhone || '',
-          address: saleForUi.customerAddress || '',
-          businessName: saleForUi.customerBusinessName || '',
-          businessAddress: saleForUi.customerBusinessAddress || '',
-          taxId: saleForUi.customerTaxId || ''
-        } : { name: '—' }),
-        items: (saleForUi.items || []).map(i => ({ name: i.name, spec: i.spec, qty: i.qty, rate: i.price, per: 'pcs', soldUnits: Array.isArray(i.soldUnits) ? i.soldUnits : [] })),
-        subtotal: saleForUi.subtotal || 0,
-        tax: saleForUi.tax || 0,
-        total: saleForUi.total || 0,
-        deliveryNote: 'Physical',
-        paymentTerms: payTerms,
-        supplierRef: '',
-        otherRef: '',
-        buyerOrderNo: '',
-        despatchDocNo: '',
-        deliveryDate: '',
-        despatchedThrough: 'In person',
-        destination: '',
-        termsOfDelivery: ''
-      };
+      if (shouldFinalizeLocally) {
+        try {
+          const payTerms = (saleForUi.payment_methods || [])
+            .map(p => {
+              const t = String(p.type || '').toLowerCase();
+              if (t === 'cash') return 'Cash';
+              if (t === 'card') return 'Card';
+              if (t === 'mobile' || t === 'momo' || t === 'mobile money') return 'Mobile Money';
+              if (t === 'wallet') return 'Wallet';
+              return t ? (t[0].toUpperCase() + t.slice(1)) : 'Cash';
+            })
+            .join(', ');
+          const invoicePrefix = isWholesale
+            ? (settings.wholesaleInvoicePrefix || 'WINV')
+            : isWarehouse
+              ? (settings.warehouseInvoicePrefix || 'WHINV')
+              : (settings.invoicePrefix || 'INV');
+          const nextInvoiceNumber = isWholesale
+            ? Number(settings.nextWholesaleInvoiceNumber || 1)
+            : isWarehouse
+              ? Number(settings.nextWarehouseInvoiceNumber || 1)
+              : Number(settings.nextInvoiceNumber || 1);
+          const invNumber = saleForUi.invoiceSerial || `${invoicePrefix}-${String(nextInvoiceNumber).padStart(Number(settings.invoiceNumberDigits || 6), '0')}`;
+          const inv = {
+            number: invNumber,
+            date: saleForUi.created_at || new Date().toISOString(),
+            saleId: saleForUi.id || saleForUi._id || '',
+            paymentStatus: easyBuyEnabled ? 'active' : 'paid',
+            source: isWholesale ? 'wholesale-pos' : isWarehouse ? 'warehouse-pos' : 'pos',
+            customer: checkoutCustomer ? {
+              name: checkoutCustomer.name || '',
+              phone: checkoutCustomer.phone || '',
+              email: checkoutCustomer.email || '',
+              address: checkoutCustomer.address || '',
+              businessName: checkoutCustomer.businessName || '',
+              businessAddress: checkoutCustomer.businessAddress || '',
+              taxId: checkoutCustomer.taxId || '',
+              customerCode: checkoutCustomer.customerCode || '',
+              customerId: checkoutCustomer.id
+            } : (saleForUi.customerName ? {
+              name: saleForUi.customerName,
+              phone: saleForUi.customerPhone || '',
+              address: saleForUi.customerAddress || '',
+              businessName: saleForUi.customerBusinessName || '',
+              businessAddress: saleForUi.customerBusinessAddress || '',
+              taxId: saleForUi.customerTaxId || ''
+            } : { name: '—' }),
+            items: (saleForUi.items || []).map(i => ({ name: i.name, spec: i.spec, qty: i.qty, rate: i.price, per: 'pcs', soldUnits: Array.isArray(i.soldUnits) ? i.soldUnits : [] })),
+            subtotal: saleForUi.subtotal || 0,
+            tax: saleForUi.tax || 0,
+            total: saleForUi.total || 0,
+            deliveryNote: 'Physical',
+            paymentTerms: payTerms,
+            supplierRef: '',
+            otherRef: '',
+            buyerOrderNo: '',
+            despatchDocNo: '',
+            deliveryDate: '',
+            despatchedThrough: 'In person',
+            destination: '',
+            termsOfDelivery: ''
+          };
         invoiceForPrint = inv;
         dispatch(addInvoice(inv));
-      } catch {}
-      if (navigator.onLine && checkoutCustomer && saleForUi.customerPointsAfter != null) {
+        } catch {}
+      }
+      if (savedOnlineSale && checkoutCustomer && saleForUi.customerPointsAfter != null) {
         dispatch(updateCustomer({ id: checkoutCustomer.id, loyaltyPoints: Number(saleForUi.customerPointsAfter || 0) }));
       }
-      dispatch(addAudit({
-      actor: auth.user?.name || 'unknown',
-      actionType: isWholesale ? 'stock_wholesale_sale_deduct' : isWarehouse ? 'stock_warehouse_sale_deduct' : 'stock_sale_deduct',
-      details: { items: sale.items.map(it => ({ sku: it.sku, qty: it.qty, priceTier: it.priceTier || selectedPriceTier })), branchId: activeBranchId, mode: modeLower },
-      branchId: activeBranchId,
-      offline: !navigator.onLine
-    }));
-    if (canOverrideTax && taxOverridePct !== '' && String(Math.round((taxRate || 0)*100)) !== String(Math.round((settings.taxRate || 0)*100))) {
-      dispatch(addAudit({
-        actor: auth.user?.name || 'unknown',
-        actionType: 'pos_tax_override',
-        details: { from: Math.round((settings.taxRate || 0) * 100), to: Math.round(taxRate * 100) },
-        remark: taxOverrideRemark,
-        branchId: activeBranchId,
-        offline: !navigator.onLine
-      }));
-    }
-      dispatch(addAudit({
-      actor: auth.user?.name || 'unknown',
-      actionType: easyBuyEnabled ? 'credit_sale_complete' : 'sale_complete',
-      details: { total: sale.total, items: sale.items.length, mode: modeLower, easyBuy: easyBuyEnabled, branchId: activeBranchId },
-      branchId: activeBranchId,
-      offline: !navigator.onLine
-    }));
+      if (shouldFinalizeLocally) {
+        dispatch(addAudit({
+          actor: auth.user?.name || 'unknown',
+          actionType: isWholesale ? 'stock_wholesale_sale_deduct' : isWarehouse ? 'stock_warehouse_sale_deduct' : 'stock_sale_deduct',
+          details: { items: sale.items.map(it => ({ sku: it.sku, qty: it.qty, priceTier: it.priceTier || selectedPriceTier })), branchId: activeBranchId, mode: modeLower },
+          branchId: activeBranchId,
+          offline: startedOffline
+        }));
+        if (canOverrideTax && taxOverridePct !== '' && String(Math.round((taxRate || 0)*100)) !== String(Math.round((settings.taxRate || 0)*100))) {
+          dispatch(addAudit({
+            actor: auth.user?.name || 'unknown',
+            actionType: 'pos_tax_override',
+            details: { from: Math.round((settings.taxRate || 0) * 100), to: Math.round(taxRate * 100) },
+            remark: taxOverrideRemark,
+            branchId: activeBranchId,
+            offline: startedOffline
+          }));
+        }
+        dispatch(addAudit({
+          actor: auth.user?.name || 'unknown',
+          actionType: easyBuyEnabled ? 'credit_sale_complete' : 'sale_complete',
+          details: { total: sale.total, items: sale.items.length, mode: modeLower, easyBuy: easyBuyEnabled, branchId: activeBranchId },
+          branchId: activeBranchId,
+          offline: startedOffline
+        }));
+      }
       clearActiveCart();
       rotateReservationToken();
       setSelectedCustomerId('');
@@ -1802,7 +2049,7 @@ function PosPage({ mode = 'retail' }) {
       setEasyBuyAmountPaidNow('');
       setEasyBuyDueDate('');
       resetSaleDateTime();
-      if (escpos) {
+      if (shouldFinalizeLocally && escpos) {
         const text = escposReceipt({
         header: { title: settings.appName, store: settings.receiptHeader, branch: branchName, phone: settings.businessPhone || '', cashier: saleForUi.sellerName, customer: saleForUi.customerName ? `${saleForUi.customerName}${saleForUi.customerCode ? ` (${saleForUi.customerCode})` : ''}` : '', receiptId: saleForUi.id || saleForUi._id, receiptNumber: saleForUi.receiptNumber, invoiceSerial: saleForUi.invoiceSerial },
         items: saleForUi.items,
@@ -1812,7 +2059,7 @@ function PosPage({ mode = 'retail' }) {
         sale: saleForUi
       });
         downloadText('receipt-escpos.txt', (settings.drawerOpenOnCash && payments.some(p => p.type === 'cash')) ? (escposOpenDrawer() + '\n' + text) : text);
-      } else {
+      } else if (shouldFinalizeLocally) {
         // #region debug-point B:before-receipt-print
         reportEbkTmpReceiptDebug({
           hypothesisId: 'B',
@@ -1841,137 +2088,12 @@ function PosPage({ mode = 'retail' }) {
           printReceiptHtml(receiptHtml);
         }
       }
-      if (navigator.onLine) {
-        try {
-          const saved = await createSale({ ...sale, clientId: sale.clientId });
-          if (saved && (saved.invoiceSerial || saved.receiptNumber)) {
-            // no-op: printed already; server holds the official refs
-          }
-          // #region debug-point C:online-save-succeeded
-          reportEbkTmpReceiptDebug({
-            hypothesisId: 'C',
-            location: 'PosPage.js:completeSale:online-save-succeeded',
-            msg: '[DEBUG] POS online sale save completed after local print path',
-            data: {
-              clientId: String(sale?.clientId || ''),
-              serverSaleId: String(saved?._id || saved?.id || ''),
-              serverReceiptNumber: String(saved?.receiptNumber || ''),
-              serverInvoiceSerial: String(saved?.invoiceSerial || ''),
-              branchId: String(activeBranchId || ''),
-              hasSerialized: soldUnitIdsForDebug.length > 0
-            }
-          });
-          // #endregion
-          // #region debug-point B:pos-online-sale-saved
-          reportQueuedSalesImeiDebug({
-            hypothesisId: 'B',
-            location: 'PosPage.js:completeSale:online-create-success',
-            msg: '[DEBUG] POS online sale saved before local serialized cache mark',
-            data: {
-              clientId: String(sale?.clientId || ''),
-              serverSaleId: String(saved?._id || saved?.id || ''),
-              branchId: String(activeBranchId || ''),
-              soldUnitIds: soldUnitIdsForDebug,
-              hasSerialized: soldUnitIdsForDebug.length > 0
-            }
-          });
-          // #endregion
-          productUnitsApi.markSoldProductUnits(soldUnitIdsForDebug);
-          void refreshAffectedProducts(dispatch, affectedProductIds);
-          toast.show('Sale recorded', { type: 'success' });
-        } catch (e) {
-          // #region debug-point A:tamale-online-save-failed
-          reportQuantityQueueTamaleDebug({
-            hypothesisId: 'A',
-            location: 'PosPage.js:completeSale:online-save-failed-before-queue',
-            msg: '[DEBUG] POS online sale save failed before queue fallback decision',
-            data: {
-              clientId: String(sale?.clientId || ''),
-              branchId: String(activeBranchId || ''),
-              branchName: String(branchName || ''),
-              online: typeof navigator !== 'undefined' ? !!navigator.onLine : null,
-              status: Number(e?.status || 0),
-              error: String(e?.message || ''),
-              errorData: e?.data || null,
-              hasSerialized: soldUnitIdsForDebug.length > 0,
-              itemCount: Array.isArray(sale?.items) ? sale.items.length : 0
-            }
-          });
-          // #endregion
-          try {
-            await enqueueHttp({ collection: 'sales', label: 'Sale', path: '/api/sales', method: 'POST', body: { ...sale, clientId: sale.clientId } });
-            // #region debug-point A:tamale-queue-fallback
-            reportQuantityQueueTamaleDebug({
-              hypothesisId: 'A',
-              location: 'PosPage.js:completeSale:queued-after-save-failure',
-              msg: '[DEBUG] POS queued sale after online save failure',
-              data: {
-                clientId: String(sale?.clientId || ''),
-                branchId: String(activeBranchId || ''),
-                branchName: String(branchName || ''),
-                online: typeof navigator !== 'undefined' ? !!navigator.onLine : null,
-                createSaleStatus: Number(e?.status || 0),
-                createSaleError: String(e?.message || ''),
-                hasSerialized: soldUnitIdsForDebug.length > 0,
-                itemCount: Array.isArray(sale?.items) ? sale.items.length : 0
-              }
-            });
-            // #endregion
-            // #region debug-point D:online-save-fell-back-to-queue
-            reportEbkTmpReceiptDebug({
-              hypothesisId: 'D',
-              location: 'PosPage.js:completeSale:online-save-fell-back-to-queue',
-              msg: '[DEBUG] POS online sale save failed after print and fell back to queue',
-              data: {
-                clientId: String(sale?.clientId || ''),
-                branchId: String(activeBranchId || ''),
-                reservationToken: String(sale?.reservationToken || ''),
-                error: String(e?.message || ''),
-                hasSerialized: soldUnitIdsForDebug.length > 0
-              }
-            });
-            // #endregion
-            // #region debug-point A:pos-online-fallback-queued
-            reportQueuedSalesImeiDebug({
-              hypothesisId: 'A',
-              location: 'PosPage.js:completeSale:online-fallback-queued',
-              msg: '[DEBUG] POS online sale fell back to queue before local serialized cache mark',
-              data: {
-                clientId: String(sale?.clientId || ''),
-                branchId: String(activeBranchId || ''),
-                reservationToken: String(sale?.reservationToken || ''),
-                createSaleError: String(e?.message || ''),
-                soldUnitIds: soldUnitIdsForDebug,
-                hasSerialized: soldUnitIdsForDebug.length > 0
-              }
-            });
-            // #endregion
-            productUnitsApi.markSoldProductUnits(soldUnitIdsForDebug);
-            toast.show(sale.items.some(item => Array.isArray(item.soldUnitIds) && item.soldUnitIds.length > 0) ? 'Saved offline. Serialized IMEI sale will sync later and conflicts will be flagged if found.' : 'Network issue: saved offline and will sync later', { type: 'warning' });
-          } catch (err) {
-            // #region debug-point E:online-save-and-queue-both-failed
-            reportEbkTmpReceiptDebug({
-              hypothesisId: 'E',
-              location: 'PosPage.js:completeSale:online-save-and-queue-both-failed',
-              msg: '[DEBUG] POS online sale save failed after print and queue fallback also failed',
-              data: {
-                clientId: String(sale?.clientId || ''),
-                branchId: String(activeBranchId || ''),
-                createSaleError: String(e?.message || ''),
-                queueError: String(err?.message || ''),
-                hasSerialized: soldUnitIdsForDebug.length > 0
-              }
-            });
-            // #endregion
-            await releaseSerializedCartItems(cart.items);
-            cart.items.forEach(i => {
-              if (i.productId) {
-                dispatch(adjustStock({ productId: i.productId, variantId: i.variantId || null, branchId: activeBranchId, inventoryType, delta: i.quantity, syncPending: false }));
-              }
-            });
-            toast.show(String(e?.message || 'Failed to record sale'), { type: 'error' });
-          }
-        }
+      if (savedOnlineSale) {
+        productUnitsApi.markSoldProductUnits(soldUnitIdsForDebug);
+        void refreshAffectedProducts(dispatch, affectedProductIds);
+        toast.show('Sale recorded', { type: 'success' });
+      } else if (queuedAfterHttpFailure) {
+        toast.show(sale.items.some(item => Array.isArray(item.soldUnitIds) && item.soldUnitIds.length > 0) ? 'Queued for retry. Stock was left unchanged until the server confirms the sale.' : 'Network issue: sale queued for retry. Stock was left unchanged until the server confirms the sale.', { type: 'warning' });
       } else {
         // #region debug-point A:pos-offline-local-sold
         reportQueuedSalesImeiDebug({

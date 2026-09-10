@@ -250,13 +250,20 @@ function BackupPage() {
     });
     // #endregion
     if (soldUnitIds.length > 0) {
-      try {
-        await productUnitsApi.releaseProductUnits({
-          unitIds: soldUnitIds,
-          reservationToken: String(sale?.reservationToken || '')
-        });
-      } catch {}
-      productUnitsApi.restoreProductUnitsToStock(soldUnitIds);
+      const online = typeof navigator === 'undefined' ? true : !!navigator.onLine;
+      let releasedCount = 0;
+      if (online) {
+        try {
+          const releaseResult = await productUnitsApi.releaseProductUnits({
+            unitIds: soldUnitIds,
+            reservationToken: String(sale?.reservationToken || '')
+          });
+          releasedCount = Math.max(0, Number(releaseResult?.count || 0));
+        } catch {}
+      }
+      if (!online || releasedCount > 0) {
+        productUnitsApi.restoreProductUnitsToStock(soldUnitIds);
+      }
     }
     // For quantity items, do not manually change local stock here.
     // We remove the queued placeholder sale and then refresh from the server.
