@@ -560,6 +560,27 @@ function App() {
         if (alive) {
           const serverSales = sl.status === 'fulfilled' && Array.isArray(sl.value) ? sl.value : [];
           const queuedSales = queuedSl.status === 'fulfilled' && Array.isArray(queuedSl.value) ? queuedSl.value : [];
+          // #region debug-point D:app-bootstrap-sales-merge
+          fetch('http://127.0.0.1:7777/event', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: 'tenant-sale-leak',
+              runId: 'pre-fix',
+              hypothesisId: 'D',
+              location: 'App.js:bootstrap-sales-merge',
+              msg: '[DEBUG] App bootstrap is merging server and queued sales',
+              data: {
+                activeTenantId: String(authTenantId || localStorage.getItem('ptSales:tenantId') || 'default'),
+                serverSalesCount: serverSales.length,
+                queuedSalesCount: queuedSales.length,
+                queuedSaleTenantIds: queuedSales.map((sale) => String(sale?.tenantId || '')).filter(Boolean).slice(0, 10),
+                queuedSaleRefs: queuedSales.map((sale) => String(sale?.invoiceSerial || sale?.receiptNumber || sale?.clientId || '')).slice(0, 10)
+              },
+              ts: Date.now()
+            })
+          }).catch(() => {});
+          // #endregion
           if ((sl.status === 'fulfilled' || queuedSl.status === 'fulfilled') && (serverSales.length > 0 || queuedSales.length > 0 || canLoadSales)) {
             dispatch(setSales(serverSales.concat(queuedSales)));
           }
@@ -570,7 +591,7 @@ function App() {
       }
     })();
     return () => { alive = false; };
-  }, [dispatch, authInitialized, isAuthed, settings, settingsReady, authRole, authGrants, resolveValidBranchId]);
+  }, [dispatch, authInitialized, isAuthed, settings, settingsReady, authRole, authGrants, authTenantId, resolveValidBranchId]);
   useEffect(() => {
     if (!authInitialized || !isAuthed || !settingsReady) {
       setDataBootstrapReady(false);
@@ -710,6 +731,27 @@ function App() {
         if (alive) {
           const serverSales = sl.status === 'fulfilled' && Array.isArray(sl.value) ? sl.value : [];
           const queuedSales = queuedSl.status === 'fulfilled' && Array.isArray(queuedSl.value) ? queuedSl.value : [];
+          // #region debug-point D:app-refresh-sales-merge
+          fetch('http://127.0.0.1:7777/event', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: 'tenant-sale-leak',
+              runId: 'pre-fix',
+              hypothesisId: 'D',
+              location: 'App.js:refresh-sales-merge',
+              msg: '[DEBUG] App periodic refresh is merging server and queued sales',
+              data: {
+                activeTenantId: String(authTenantId || localStorage.getItem('ptSales:tenantId') || 'default'),
+                serverSalesCount: serverSales.length,
+                queuedSalesCount: queuedSales.length,
+                queuedSaleTenantIds: queuedSales.map((sale) => String(sale?.tenantId || '')).filter(Boolean).slice(0, 10),
+                queuedSaleRefs: queuedSales.map((sale) => String(sale?.invoiceSerial || sale?.receiptNumber || sale?.clientId || '')).slice(0, 10)
+              },
+              ts: Date.now()
+            })
+          }).catch(() => {});
+          // #endregion
           if ((sl.status === 'fulfilled' || queuedSl.status === 'fulfilled') && (serverSales.length > 0 || queuedSales.length > 0)) {
             dispatch(setSales(serverSales.concat(queuedSales)));
           }

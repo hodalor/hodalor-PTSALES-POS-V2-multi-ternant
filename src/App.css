@@ -3813,10 +3813,29 @@ html, body, #root {
   padding-top: 14px;
 }
 .invoice-cart-item {
-  grid-template-columns: minmax(0, 1fr) 78px minmax(132px, 150px) 56px minmax(120px, max-content);
-  align-items: start;
+  grid-template-columns: 78px minmax(132px, 150px) 56px minmax(120px, max-content);
+  grid-template-areas:
+    "title title title title"
+    "qty rate per total";
+  align-items: center;
   gap: 10px;
   padding: 12px 34px 12px 0;
+}
+.invoice-cart-title {
+  grid-area: title;
+  padding-right: 18px;
+}
+.invoice-cart-qty {
+  grid-area: qty;
+}
+.invoice-cart-rate {
+  grid-area: rate;
+}
+.invoice-cart-per {
+  grid-area: per;
+}
+.invoice-cart-total {
+  grid-area: total;
 }
 .invoice-cart-remove-btn {
   top: 10px;

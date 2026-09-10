@@ -697,21 +697,23 @@ function InvoicesPage({ mode = 'retail' }) {
         <ul className="cart-list">
           {items.map(item => (
             <li key={item.id} className="cart-item invoice-cart-item">
-              <div className="cart-title">
+              <div className="cart-title invoice-cart-title">
                 <div>{item.name}</div>
                 {item.brand ? <small style={{ color: '#64748b' }}>{item.brand}</small> : null}
                 {item.spec && <small style={{ color: '#64748b' }}>{item.spec}</small>}
                 <small>{item.sku}</small>
               </div>
-              <input className="input" type="number" min="1" value={item.qty} onChange={e => setQty(item.id, e.target.value)} style={{ width: 70 }} />
-              <div style={{ display: 'grid', gap: 4 }}>
+              <div className="invoice-cart-qty">
+                <input className="input" type="number" min="1" value={item.qty} onChange={e => setQty(item.id, e.target.value)} style={{ width: 70 }} />
+              </div>
+              <div className="invoice-cart-rate" style={{ display: 'grid', gap: 4 }}>
                 <input className="input" type="number" min="0" step="0.01" value={item.rate} onChange={e => setRate(item.id, e.target.value)} style={{ width: 110 }} />
                 <span style={{ fontSize: 12, color: '#64748b' }}>
                   <span className="price-accent">Unit: {formatCurrency(item.rate, settings)}</span>
                 </span>
               </div>
-              <span style={{ width: 50, textAlign: 'center' }}>{item.per}</span>
-              <div style={{ minWidth: 120, textAlign: 'right' }}>
+              <span className="invoice-cart-per" style={{ width: 50, textAlign: 'center' }}>{item.per}</span>
+              <div className="invoice-cart-total" style={{ minWidth: 120, textAlign: 'right' }}>
                 <div style={{ fontSize: 12, color: '#64748b' }}>Line Total</div>
                 <strong className="price-accent">{formatCurrency((Number(item.qty) || 0) * (Number(item.rate) || 0), settings)}</strong>
               </div>

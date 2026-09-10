@@ -67,23 +67,29 @@ function normalizeErrorMessage(error) {
   return raw || 'Unknown sync error';
 }
 
+function getActiveTenantId() {
+  try { return String(localStorage.getItem('ptSales:tenantId') || 'default').trim() || 'default'; } catch { return 'default'; }
+}
+
 export async function enqueue(type, payload) {
   const db = await getDb();
   const ts = Date.now();
   const fingerprint = buildFingerprint(type, payload);
-  const existing = (await db.getAll(STORE)).find((item) => String(item.fingerprint || '') === fingerprint);
+  const tenantId = getActiveTenantId();
+  const existing = (await db.getAll(STORE)).find((item) => (
+    String(item.fingerprint || '') === fingerprint
+    && String(item.tenantId || '') === tenantId
+  ));
   const record = {
     type,
     payload,
     ts,
     fingerprint,
+    tenantId,
     attempts: 0,
     lastError: '',
     lastAttemptAt: 0
   };
-  const tenantId = (() => {
-    try { return String(localStorage.getItem('ptSales:tenantId') || 'default'); } catch { return 'default'; }
-  })();
   const saleBody = payload?.body || payload || {};
   // #region debug-point A:queue-enqueue-tenant
   reportTenantQueueSkewDebug({
@@ -109,9 +115,12 @@ export async function enqueue(type, payload) {
   return db.add(STORE, record);
 }
 
-export async function getAll() {
+export async function getAll(options = {}) {
   const db = await getDb();
-  return db.getAll(STORE);
+  const items = await db.getAll(STORE);
+  if (options?.allTenants) return items;
+  const tenantId = String(options?.tenantId || getActiveTenantId());
+  return items.filter((item) => String(item?.tenantId || '') === tenantId);
 }
 
 export async function clear() {
@@ -136,10 +145,14 @@ export async function removeMany(ids = []) {
   await tx.done;
 }
 
-export async function removeByFingerprint(fingerprint) {
+export async function removeByFingerprint(fingerprint, options = {}) {
   const db = await getDb();
   const items = await db.getAll(STORE);
-  const matches = items.filter((item) => String(item.fingerprint || '') === String(fingerprint || ''));
+  const tenantId = String(options?.tenantId || getActiveTenantId());
+  const matches = items.filter((item) => (
+    String(item.fingerprint || '') === String(fingerprint || '')
+    && String(item?.tenantId || '') === tenantId
+  ));
   await removeMany(matches.map((item) => item.id));
 }
 
@@ -154,7 +167,8 @@ export async function attemptSync(syncHandler) {
   if (syncing) return false;
   syncing = true;
   try {
-    const items = await getAll();
+    const tenantId = getActiveTenantId();
+    const items = await getAll({ tenantId });
     items.sort((a, b) => (a.ts || 0) - (b.ts || 0));
     let allOk = true;
     let total = items.length;
@@ -164,9 +178,6 @@ export async function attemptSync(syncHandler) {
       const isSaleItem = item?.type === 'sale'
         || String(item?.payload?.collection || '') === 'sales'
         || String(item?.payload?.path || '') === '/api/sales';
-      const tenantId = (() => {
-        try { return String(localStorage.getItem('ptSales:tenantId') || 'default'); } catch { return 'default'; }
-      })();
       const body = item?.payload?.body || item?.payload || {};
       // #region debug-point B:queue-sync-item-tenant
       reportTenantQueueSkewDebug({
@@ -226,7 +237,7 @@ export async function attemptSync(syncHandler) {
       } else {
         allOk = false;
         failed += 1;
-        const failedItem = (await getAll()).find((entry) => entry.id === item.id) || item;
+        const failedItem = (await getAll({ tenantId })).find((entry) => entry.id === item.id) || item;
         if (isSaleItem) {
           // #region debug-point E:queue-sale-retained
           reportQueuedSalesImeiDebug({

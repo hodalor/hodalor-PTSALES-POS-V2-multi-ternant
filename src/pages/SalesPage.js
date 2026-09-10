@@ -238,6 +238,28 @@ function SalesPage() {
           listQueuedSales()
         ]);
         if (!alive) return;
+        // #region debug-point C:sales-page-load
+        fetch('http://127.0.0.1:7777/event', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: 'tenant-sale-leak',
+            runId: 'pre-fix',
+            hypothesisId: 'C',
+            location: 'SalesPage.js:load-sales',
+            msg: '[DEBUG] Sales page loaded server and queued sales under active tenant context',
+            data: {
+              activeTenantId: String(auth.user?.tenantId || localStorage.getItem('ptSales:tenantId') || 'default'),
+              branchScope: String(branchScope || ''),
+              serverSalesCount: Array.isArray(rows) ? rows.length : -1,
+              queuedSalesCount: Array.isArray(queuedRows) ? queuedRows.length : -1,
+              queuedSaleTenantIds: (Array.isArray(queuedRows) ? queuedRows : []).map((sale) => String(sale?.tenantId || '')).filter(Boolean).slice(0, 10),
+              queuedSaleRefs: (Array.isArray(queuedRows) ? queuedRows : []).map((sale) => String(sale?.invoiceSerial || sale?.receiptNumber || sale?.clientId || '')).slice(0, 10)
+            },
+            ts: Date.now()
+          })
+        }).catch(() => {});
+        // #endregion
         dispatch(setSales((Array.isArray(rows) ? rows : []).concat(Array.isArray(queuedRows) ? queuedRows : [])));
       } catch (e) {
         if (!alive) return;
@@ -247,7 +269,7 @@ function SalesPage() {
       }
     })();
     return () => { alive = false; };
-  }, [canSeeAll, dispatch, effectiveBranchId, selectedBranchId, showAll, toast]);
+  }, [auth.user?.tenantId, canSeeAll, dispatch, effectiveBranchId, selectedBranchId, showAll, toast]);
   const branchLabel = useCallback((sale) => (
     sale.branchName || (branches.find(b => b.id === sale.branchId)?.name || sale.branchId || '-')
   ), [branches]);
