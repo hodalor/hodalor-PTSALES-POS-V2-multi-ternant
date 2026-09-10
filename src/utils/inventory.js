@@ -26,6 +26,10 @@ export function resolveTierPrice(source, priceTier = 'retail', fallback = 0) {
     const v = Number(source?.agentPrice);
     if (Number.isFinite(v) && v > 0) return v;
   }
+  if (tier === 'warehouse') {
+    const v = Number(source?.warehousePrice);
+    if (Number.isFinite(v) && v > 0) return v;
+  }
   if (tier === 'wholesale') {
     const v = Number(source?.wholesalePrice);
     if (Number.isFinite(v) && v > 0) return v;

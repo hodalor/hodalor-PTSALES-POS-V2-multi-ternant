@@ -647,6 +647,52 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       : [];
     const paidOutsideCredit = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
     if (!creditPayload && paidOutsideCredit + 0.0001 < revenueTotal) {
+      // #region debug-point C:warehouse-payment-incomplete
+      await fetch('http://127.0.0.1:7777/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: 'warehouse-sale-queue-fail',
+          runId: 'pre-fix',
+          hypothesisId: 'C',
+          location: 'sales.js:post:payment-incomplete',
+          msg: '[DEBUG] Backend rejected sale as payment incomplete',
+          data: {
+            clientId: String(payload?.clientId || ''),
+            branchId: String(branchId || ''),
+            posType: String(posType || ''),
+            inventoryType: String(inventoryType || ''),
+            defaultPriceTier: String(defaultPriceTier || ''),
+            revenueTotal: Number(revenueTotal || 0),
+            subtotal: Number(subtotal || 0),
+            discount: Number(discount || 0),
+            tax: Number(tax || 0),
+            paidOutsideCredit: Number(paidOutsideCredit || 0),
+            creditPayloadEnabled: !!creditPayload,
+            requestItems: Array.isArray(payload?.items)
+              ? payload.items.map((item) => ({
+                  productId: String(item?.productId || ''),
+                  variantId: String(item?.variantId || ''),
+                  qty: Number(item?.qty || 0),
+                  price: Number(item?.price || 0),
+                  priceTier: String(item?.priceTier || '')
+                }))
+              : [],
+            finalItems: Array.isArray(finalItems)
+              ? finalItems.map((item) => ({
+                  productId: String(item?.productId || ''),
+                  variantId: String(item?.variantId || ''),
+                  qty: Number(item?.qty || 0),
+                  price: Number(item?.price || 0),
+                  priceTier: String(item?.priceTier || '')
+                }))
+              : [],
+            paymentMethods: payments
+          },
+          ts: Date.now()
+        })
+      }).catch(() => {});
+      // #endregion
       badRequest('Payment incomplete');
     }
     let creditUpfront = 0;
