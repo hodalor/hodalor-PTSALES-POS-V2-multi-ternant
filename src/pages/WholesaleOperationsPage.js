@@ -431,17 +431,36 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const loadOperations = useCallback(async (options = {}) => {
     if (operations.length === 0) setLoading(true);
     try {
-      const workflowResult = await wholesaleApi.listOperations({
-        operationType,
-        status: statusFilter,
-        operationArea: normalizedArea,
-        force: !!options.force
-      });
-      const workflowRows = Array.isArray(workflowResult)
-        ? workflowResult
-        : (Array.isArray(workflowResult?.rows) ? workflowResult.rows : []);
       if (operationType === 'transfer') {
-        const retailTransferRows = await transfersApi.listRequests({ status: statusFilter, limit: 500 });
+        const counterpartArea = normalizedArea === 'warehouse' ? 'wholesale' : 'warehouse';
+        const [primaryWorkflowResult, counterpartWorkflowResult, retailTransferRows] = await Promise.all([
+          wholesaleApi.listOperations({
+            operationType,
+            status: statusFilter,
+            operationArea: normalizedArea,
+            force: !!options.force
+          }),
+          wholesaleApi.listOperations({
+            operationType,
+            status: statusFilter,
+            operationArea: counterpartArea,
+            force: !!options.force
+          }),
+          transfersApi.listRequests({ status: statusFilter, limit: 500 })
+        ]);
+        const rawWorkflowRows = [
+          ...(Array.isArray(primaryWorkflowResult) ? primaryWorkflowResult : (Array.isArray(primaryWorkflowResult?.rows) ? primaryWorkflowResult.rows : [])),
+          ...(Array.isArray(counterpartWorkflowResult) ? counterpartWorkflowResult : (Array.isArray(counterpartWorkflowResult?.rows) ? counterpartWorkflowResult.rows : []))
+        ];
+        const workflowRows = rawWorkflowRows
+          .filter((row) => {
+            const fromInventory = String(row?.fromInventoryType || row?.operationArea || '').toLowerCase();
+            const toInventory = String(row?.toInventoryType || row?.operationArea || '').toLowerCase();
+            return fromInventory === normalizedArea || toInventory === normalizedArea;
+          })
+          .filter((row, index, collection) => (
+            collection.findIndex((entry) => String(entry?._id || entry?.clientId || '') === String(row?._id || row?.clientId || '')) === index
+          ));
         const inboundRetailTransfers = (Array.isArray(retailTransferRows) ? retailTransferRows : [])
           .filter((row) => {
             const fromInventory = inventoryTypeForBranch(row.from || row.fromBranchId);
@@ -469,6 +488,15 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
         setOperations(combined);
         setTotal(combined.length);
       } else {
+        const workflowResult = await wholesaleApi.listOperations({
+          operationType,
+          status: statusFilter,
+          operationArea: normalizedArea,
+          force: !!options.force
+        });
+        const workflowRows = Array.isArray(workflowResult)
+          ? workflowResult
+          : (Array.isArray(workflowResult?.rows) ? workflowResult.rows : []);
         const scopedRows = workflowRows.filter((row) => {
           if (operationType === 'purchase' || operationType === 'adjustment' || operationType === 'refund') {
             return String(row.operationArea || normalizedArea).toLowerCase() === normalizedArea;

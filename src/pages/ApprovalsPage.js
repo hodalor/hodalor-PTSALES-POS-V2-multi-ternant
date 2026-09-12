@@ -3,10 +3,10 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { approveApproval, listApprovals, rejectApproval } from '../api/approvals';
 import { useToast } from '../components/ToastProvider';
-import { promptDialog } from '../utils/dialogs';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import LoadingDots from '../components/LoadingDots';
 import { getProductDisplayMeta } from '../utils/inventoryFilters';
+import Modal from '../components/Modal';
 
 function normalizeBranchIds(value) {
   if (value === 'all') return 'all';
@@ -48,6 +48,83 @@ function getApprovalStatusMeta(status = '') {
   return { label: status || 'Unknown', tone: 'info' };
 }
 
+function normalizeReviewStatus(value) {
+  return String(value || '').toLowerCase() === 'cancelled' ? 'cancelled' : 'accepted';
+}
+
+function normalizeReviewItemsForCompare(items = []) {
+  return (Array.isArray(items) ? items : []).map((item, index) => ({
+    lineId: String(item?.lineId || `${index + 1}`),
+    productId: String(item?.productId || ''),
+    variantId: String(item?.variantId || ''),
+    qty: Math.max(0, Number(item?.qty || 0)),
+    unitIds: Array.isArray(item?.unitIds) ? item.unitIds.map(String).filter(Boolean) : [],
+    selectedUnits: Array.isArray(item?.selectedUnits)
+      ? item.selectedUnits.map((unit) => ({
+          unitId: String(unit?.unitId || ''),
+          imei: String(unit?.imei || '').trim(),
+          serialNumber: String(unit?.serialNumber || '').trim()
+        }))
+      : [],
+    serializedEntries: Array.isArray(item?.serializedEntries)
+      ? item.serializedEntries.map((entry) => ({
+          imei: String(entry?.imei || '').trim(),
+          serialNumber: String(entry?.serialNumber || '').trim()
+        }))
+      : [],
+    status: normalizeReviewStatus(item?.status)
+  }));
+}
+
+function formatAdjustmentTypeLabel(value) {
+  return String(value || '').toLowerCase() === 'decrease' ? 'Decrease' : 'Increase';
+}
+
+function summarizeAdjustmentType(row, items = []) {
+  const itemTypes = Array.from(new Set(
+    (Array.isArray(items) ? items : [])
+      .map((item) => String(item?.adjustmentType || '').toLowerCase())
+      .filter(Boolean)
+  ));
+  if (itemTypes.length > 1) return 'Mixed Adjustment';
+  if (itemTypes.length === 1) return formatAdjustmentTypeLabel(itemTypes[0]);
+  return formatAdjustmentTypeLabel(row?.adjustmentType || 'increase');
+}
+
+function getAdjustmentTypePillStyle(label) {
+  const lower = String(label || '').toLowerCase();
+  if (lower.includes('decrease')) {
+    return { background: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c' };
+  }
+  if (lower.includes('mixed')) {
+    return { background: '#fffbeb', border: '1px solid #fde68a', color: '#92400e' };
+  }
+  return { background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#047857' };
+}
+
+function computeApprovalValue(row = {}) {
+  const items = Array.isArray(row?.items) ? row.items : [];
+  if (items.length > 0) {
+    const summed = items.reduce((sum, item) => sum + (Number(item?.qty || 0) * Number(item?.cost || 0)), 0);
+    if (summed > 0) return summed;
+  }
+  if (String(row?.operationType || '').toLowerCase() === 'refund') return Number(row?.requestedAmount || 0);
+  return Number(row?.cost || 0) * Math.max(1, Number(row?.qty || 0));
+}
+
+function buildReviewConflict(error) {
+  const data = error?.data && typeof error.data === 'object' ? error.data : {};
+  const unavailableUnitCodes = Array.isArray(data?.unavailableUnitCodes) ? data.unavailableUnitCodes.map(String).filter(Boolean) : [];
+  if (unavailableUnitCodes.length === 0 && !Number.isFinite(Number(data?.availableQty)) && !Number.isFinite(Number(data?.lockedQty))) return null;
+  return {
+    message: String(data?.error || error?.message || '').trim(),
+    unavailableUnitCodes,
+    currentStock: Number.isFinite(Number(data?.currentStock)) ? Number(data.currentStock) : null,
+    lockedQty: Number.isFinite(Number(data?.lockedQty)) ? Number(data.lockedQty) : null,
+    availableQty: Number.isFinite(Number(data?.availableQty)) ? Number(data.availableQty) : null
+  };
+}
+
 function ApprovalsPage() {
   const toast = useToast();
   const dispatch = useDispatch();
@@ -61,6 +138,11 @@ function ApprovalsPage() {
   const [status, setStatus] = useState('pending_director');
   const [loading, setLoading] = useState(false);
   const [workingId, setWorkingId] = useState('');
+  const [selectedRow, setSelectedRow] = useState(null);
+  const [reviewItems, setReviewItems] = useState([]);
+  const [decisionRemark, setDecisionRemark] = useState('');
+  const [reviewConflict, setReviewConflict] = useState(null);
+  const [reviewing, setReviewing] = useState(false);
   const roleLower = String(auth.role || '').toLowerCase();
   const grants = useMemo(() => (Array.isArray(auth.grants) ? auth.grants : []), [auth.grants]);
 
@@ -115,6 +197,23 @@ function ApprovalsPage() {
     if (area === 'distribution') return roleLower === 'director' || roleLower === 'manager' || grants.includes('approve_distribution_director') || grants.includes('approve_distribution_manager');
     return roleLower === 'manager' || grants.includes('approve_retail_director') || grants.includes('approve_retail_manager');
   }, [grants, roleLower, resolveRefundArea]);
+  const canApproveAreaStage = useCallback((area = 'distribution', stage = 'director') => {
+    const normalizedArea = String(area || '').toLowerCase() === 'warehouse'
+      ? 'warehouse'
+      : String(area || '').toLowerCase() === 'retail'
+        ? 'retail'
+        : 'distribution';
+    if (stage === 'director') {
+      if (['superadmin', 'admin', 'director'].includes(roleLower)) return true;
+      if (normalizedArea === 'warehouse') return grants.includes('approve_warehouse_director');
+      if (normalizedArea === 'distribution') return grants.includes('approve_distribution_director');
+      return grants.includes('approve_retail_director') || grants.includes('approve_transfers');
+    }
+    if (['superadmin', 'admin', 'manager'].includes(roleLower)) return true;
+    if (normalizedArea === 'warehouse') return grants.includes('approve_warehouse_manager');
+    if (normalizedArea === 'distribution') return grants.includes('approve_distribution_manager');
+    return grants.includes('approve_retail_manager') || grants.includes('approve_transfers');
+  }, [grants, roleLower]);
 
   const load = useCallback(async (nextStatus = status, options = {}) => {
     setLoading(true);
@@ -177,6 +276,79 @@ function ApprovalsPage() {
     }
   ]), [grouped]);
 
+  useEffect(() => {
+    if (!selectedRow || String(selectedRow?.referenceModel || '') !== 'WholesaleOperation') {
+      setReviewItems([]);
+      setDecisionRemark('');
+      setReviewConflict(null);
+      return;
+    }
+    setReviewItems(
+      Array.isArray(selectedRow.items) && selectedRow.items.length > 0
+        ? selectedRow.items.map((item, index) => ({
+            lineId: item.lineId || `${index + 1}`,
+            productId: item.productId,
+            variantId: item.variantId || '',
+            qty: Number(item.qty || 0),
+            unitIds: Array.isArray(item.unitIds) ? item.unitIds.map(String) : [],
+            selectedUnits: Array.isArray(item.selectedUnits) ? item.selectedUnits.map((unit) => ({ unitId: unit?.unitId || '', imei: unit?.imei || '', serialNumber: unit?.serialNumber || '' })) : [],
+            serializedEntries: Array.isArray(item.serializedEntries) ? item.serializedEntries.map((entry) => ({ imei: entry?.imei || '', serialNumber: entry?.serialNumber || '' })) : [],
+            adjustmentType: item.adjustmentType || 'increase',
+            status: normalizeReviewStatus(item.status),
+            reason: item.reason || '',
+            remark: item.remark || ''
+          }))
+        : [{
+            lineId: '1',
+            productId: selectedRow.productId,
+            variantId: selectedRow.variantId || '',
+            qty: Number(selectedRow.qty || 0),
+            unitIds: Array.isArray(selectedRow.unitIds) ? selectedRow.unitIds.map(String) : [],
+            selectedUnits: Array.isArray(selectedRow.selectedUnits) ? selectedRow.selectedUnits.map((unit) => ({ unitId: unit?.unitId || '', imei: unit?.imei || '', serialNumber: unit?.serialNumber || '' })) : [],
+            serializedEntries: Array.isArray(selectedRow.serializedEntries) ? selectedRow.serializedEntries.map((entry) => ({ imei: entry?.imei || '', serialNumber: entry?.serialNumber || '' })) : [],
+            adjustmentType: selectedRow.adjustmentType || 'increase',
+            status: 'accepted',
+            reason: selectedRow.reason || '',
+            remark: selectedRow.remark || ''
+          }]
+    );
+  }, [selectedRow]);
+
+  const selectedAdjustmentLabel = useMemo(
+    () => summarizeAdjustmentType(selectedRow, reviewItems),
+    [reviewItems, selectedRow]
+  );
+  const canActOnSelectedRow = useMemo(() => {
+    if (!selectedRow || String(selectedRow?.referenceModel || '') !== 'WholesaleOperation') return false;
+    const stage = String(selectedRow?.status || '').toLowerCase();
+    if (!['pending_director', 'pending_manager'].includes(stage)) return false;
+    const candidateAreas = Array.from(new Set([
+      String(selectedRow?.operationArea || '').toLowerCase(),
+      String(selectedRow?.fromInventoryType || '').toLowerCase(),
+      String(selectedRow?.toInventoryType || '').toLowerCase()
+    ].filter(Boolean).map((area) => area === 'wholesale' ? 'distribution' : area)));
+    return candidateAreas.some((area) => canApproveAreaStage(area, stage === 'pending_director' ? 'director' : 'manager'));
+  }, [canApproveAreaStage, selectedRow]);
+  const hasManagerTransferReviewChanges = useMemo(() => {
+    if (!selectedRow) return false;
+    if (String(selectedRow?.referenceModel || '') !== 'WholesaleOperation') return false;
+    if (String(selectedRow?.operationType || '').toLowerCase() !== 'transfer') return false;
+    if (String(selectedRow?.status || '').toLowerCase() !== 'pending_manager') return false;
+    const originalSource = Array.isArray(selectedRow?.items) && selectedRow.items.length > 0
+      ? selectedRow.items
+      : [{
+          lineId: '1',
+          productId: selectedRow.productId,
+          variantId: selectedRow.variantId || '',
+          qty: Number(selectedRow.qty || 0),
+          unitIds: Array.isArray(selectedRow.unitIds) ? selectedRow.unitIds.map(String) : [],
+          selectedUnits: Array.isArray(selectedRow.selectedUnits) ? selectedRow.selectedUnits : [],
+          serializedEntries: Array.isArray(selectedRow.serializedEntries) ? selectedRow.serializedEntries : [],
+          status: 'accepted'
+        }];
+    return JSON.stringify(normalizeReviewItemsForCompare(originalSource)) !== JSON.stringify(normalizeReviewItemsForCompare(reviewItems));
+  }, [reviewItems, selectedRow]);
+
   function formatActor(name = '', role = '') {
     const actorName = String(name || '').trim();
     const actorRole = String(role || '').trim();
@@ -234,51 +406,74 @@ function ApprovalsPage() {
     return branchLabel;
   }
 
-  async function onApprove(row) {
-    const remark = await promptDialog('Approval remark (optional)');
-    setWorkingId(row._id || '');
-    try {
-      await approveApproval(row._id, { remark: String(remark || '') });
-      setRows(prev => prev.filter(item => String(item._id) !== String(row._id)));
-      toast.show('Approval updated', { type: 'success' });
-      void load(status, { force: true });
-      if (String(row.referenceModel || '') === 'WholesaleOperation' && String(row.status || '').toLowerCase() === 'pending_manager') {
-        void refreshAffectedProducts(dispatch, [row.productId].filter(Boolean));
-      }
-    } catch (e) {
-      const msg = String(e?.message || '');
-      if (/404|not found/i.test(msg)) {
-        void load(status, { force: true });
-        toast.show('Approval was already processed. List refreshed.', { type: 'warning' });
-      } else {
-        toast.show(msg || 'Failed to approve', { type: 'error' });
-      }
-    } finally {
-      setWorkingId('');
-    }
-  }
-
-  async function onReject(row) {
-    const reason = await promptDialog('Reason for rejection');
-    if (!reason || !String(reason).trim()) {
-      toast.show('Reason is required', { type: 'error' });
+  function openReview(row) {
+    if (String(row?.referenceModel || '') === 'RefundRequest') {
+      navigate(`/refund-approvals?refundId=${encodeURIComponent(String(row?.id || row?.clientId || ''))}`);
       return;
     }
-    setWorkingId(row._id || '');
+    setSelectedRow(row);
+    setDecisionRemark('');
+    setReviewConflict(null);
+  }
+
+  function closeReview() {
+    if (reviewing) return;
+    setSelectedRow(null);
+    setReviewConflict(null);
+    setDecisionRemark('');
+  }
+
+  async function reviewAction(action) {
+    if (!selectedRow || !canActOnSelectedRow || reviewing) return;
+    const remark = String(decisionRemark || '').trim();
+    if (!remark) {
+      toast.show(action === 'approve' ? 'Approval remark is required' : 'Reason is required', { type: 'error' });
+      return;
+    }
+    setReviewing(true);
+    setWorkingId(selectedRow._id || '');
     try {
-      await rejectApproval(row._id, { reason: String(reason || '') });
-      setRows(prev => prev.filter(item => String(item._id) !== String(row._id)));
-      toast.show('Approval rejected', { type: 'success' });
+      const normalizedItems = reviewItems.map((item) => ({ ...item, status: normalizeReviewStatus(item.status) }));
+      if (action === 'approve') {
+        const response = await approveApproval(selectedRow._id, {
+          remark,
+          items: normalizedItems,
+          resubmitToDirector: hasManagerTransferReviewChanges
+        });
+        const nextStatus = String(response?.status || '').toLowerCase();
+        if (nextStatus === 'pending_director') {
+          toast.show('Transfer changes were sent back for director approval', { type: 'success' });
+        } else if (nextStatus === 'pending_manager') {
+          toast.show('Director approval recorded. Waiting for manager approval.', { type: 'success' });
+        } else {
+          toast.show('Approval updated', { type: 'success' });
+        }
+        if (nextStatus === 'approved') {
+          const affectedProductIds = Array.from(new Set(
+            (Array.isArray(selectedRow?.items) && selectedRow.items.length > 0 ? selectedRow.items : [{ productId: selectedRow?.productId }])
+              .map((item) => String(item?.productId || ''))
+              .filter(Boolean)
+          ));
+          void refreshAffectedProducts(dispatch, affectedProductIds);
+        }
+      } else {
+        await rejectApproval(selectedRow._id, { reason: remark });
+        toast.show('Approval rejected', { type: 'success' });
+      }
+      closeReview();
       void load(status, { force: true });
     } catch (e) {
       const msg = String(e?.message || '');
       if (/404|not found/i.test(msg)) {
+        closeReview();
         void load(status, { force: true });
         toast.show('Approval was already processed. List refreshed.', { type: 'warning' });
       } else {
-        toast.show(msg || 'Failed to reject', { type: 'error' });
+        setReviewConflict(buildReviewConflict(e));
+        toast.show(msg || `Failed to ${action}`, { type: 'error' });
       }
     } finally {
+      setReviewing(false);
       setWorkingId('');
     }
   }
@@ -350,10 +545,9 @@ function ApprovalsPage() {
               {grouped.map((row) => {
                 const statusMeta = getApprovalStatusMeta(row?.status);
                 const busy = workingId === row._id;
-                const isPending = row.status === 'pending_director' || row.status === 'pending_manager';
                 const isRefundRow = String(row?.referenceModel || '') === 'RefundRequest';
                 return (
-                  <tr key={row._id}>
+                  <tr key={row._id} onClick={() => openReview(row)} style={{ cursor: 'pointer' }}>
                     <td>
                       <div className="sales-ref-cell">
                         <span className="sales-ref-primary">{row.actionType || '—'}</span>
@@ -370,24 +564,11 @@ function ApprovalsPage() {
                     </td>
                     <td>{row.createdAt ? new Date(row.createdAt).toLocaleString() : '—'}</td>
                     <td>
-                      {isRefundRow ? (
-                        <div className="sales-row-actions">
-                          <button className="btn btn-primary btn-compact" onClick={() => navigate(`/refund-approvals?refundId=${encodeURIComponent(String(row?.id || row?.clientId || ''))}`)}>
-                            Review
-                          </button>
-                        </div>
-                      ) : isPending ? (
-                        <div className="sales-row-actions">
-                          <button className="btn btn-primary btn-compact" onClick={() => onApprove(row)} disabled={busy}>
-                            {busy ? 'Working…' : 'Approve'}
-                          </button>
-                          <button className="btn btn-compact" onClick={() => onReject(row)} disabled={busy}>
-                            {busy ? 'Working…' : 'Reject'}
-                          </button>
-                        </div>
-                      ) : (
-                        <span className={`status-badge ${statusMeta.tone}`}>{statusMeta.label}</span>
-                      )}
+                      <div className="sales-row-actions">
+                        <button className="btn btn-primary btn-compact" onClick={(e) => { e.stopPropagation(); openReview(row); }} disabled={busy}>
+                          {busy ? 'Working…' : (isRefundRow ? 'Review' : 'Open')}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -401,6 +582,120 @@ function ApprovalsPage() {
           </table>
         </div>
       </div>
+      {selectedRow && String(selectedRow?.referenceModel || '') === 'WholesaleOperation' && (
+        <Modal
+          title="Approval Review"
+          onClose={closeReview}
+          footer={(
+            <>
+              <button className="btn" onClick={closeReview} disabled={reviewing}>Close</button>
+              {canActOnSelectedRow && (
+                <>
+                  <button className="btn" onClick={() => reviewAction('reject')} disabled={reviewing}>{reviewing ? 'Working…' : 'Reject'}</button>
+                  <button className="btn btn-primary" onClick={() => reviewAction('approve')} disabled={reviewing}>
+                    {reviewing ? 'Working…' : (hasManagerTransferReviewChanges ? 'Resubmit' : 'Approve')}
+                  </button>
+                </>
+              )}
+            </>
+          )}
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            {String(selectedRow.operationType || '').toLowerCase() === 'adjustment' && (
+              <div style={{ padding: 12, borderRadius: 12, ...getAdjustmentTypePillStyle(selectedAdjustmentLabel) }}>
+                <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.85 }}>Adjustment Type</div>
+                <div style={{ fontSize: 20, fontWeight: 800, marginTop: 4 }}>{selectedAdjustmentLabel}</div>
+              </div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Status</div><strong>{getApprovalStatusMeta(selectedRow.status).label}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Action</div><strong>{selectedRow.actionType || '—'}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Title</div><strong>{selectedRow.transactionTitle || '—'}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Value</div><strong>{computeApprovalValue(selectedRow)}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Initiated By</div><strong>{formatActor(selectedRow.initiatedByName, selectedRow.initiatedByRole)}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Director</div><strong>{formatActor(selectedRow.directorApprovedByName, selectedRow.directorApprovedByRole)}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Manager</div><strong>{formatActor(selectedRow.managerApprovedByName, selectedRow.managerApprovedByRole)}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Route</div><strong>{renderRoute(selectedRow)}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Created</div><strong>{selectedRow.createdAt ? new Date(selectedRow.createdAt).toLocaleString() : '—'}</strong></div>
+            </div>
+            <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Reason</div><strong>{selectedRow.reason || '—'}</strong></div>
+            <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Remark</div><strong>{selectedRow.remark || selectedRow.approvalRemark || selectedRow.rejectionRemark || '—'}</strong></div>
+            {reviewConflict && (
+              <div style={{ padding: 12, borderRadius: 10, background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b' }}>
+                <div style={{ fontWeight: 700 }}>{reviewConflict.message || 'Some items are no longer available for approval'}</div>
+                {reviewConflict.unavailableUnitCodes.length > 0 && (
+                  <div style={{ marginTop: 6, fontSize: 13 }}>Unavailable serials: {reviewConflict.unavailableUnitCodes.join(', ')}</div>
+                )}
+                {reviewConflict.availableQty != null && (
+                  <div style={{ marginTop: 6, fontSize: 13 }}>
+                    Available now: {reviewConflict.availableQty}
+                    {reviewConflict.lockedQty != null ? ` | Locked: ${reviewConflict.lockedQty}` : ''}
+                    {reviewConflict.currentStock != null ? ` | Current stock: ${reviewConflict.currentStock}` : ''}
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th align="left">Product</th>
+                    {String(selectedRow.operationType || '').toLowerCase() === 'adjustment' && <th align="left">Adjustment Type</th>}
+                    <th align="left">Qty</th>
+                    <th align="left">Units</th>
+                    <th align="left">Status</th>
+                    <th align="left">Reason</th>
+                    <th align="left">Remark</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reviewItems.map((item, index) => {
+                    const meta = getProductDisplayMeta(products, item.productId, item.variantId, item);
+                    return (
+                      <tr key={item.lineId || index}>
+                        <td>
+                          <div style={{ color: '#111827' }}>{meta.productName || item.productId || '—'}</div>
+                          {meta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
+                        </td>
+                        {String(selectedRow.operationType || '').toLowerCase() === 'adjustment' && <td>{formatAdjustmentTypeLabel(item.adjustmentType || selectedRow.adjustmentType || 'increase')}</td>}
+                        <td>
+                          <input
+                            className="input"
+                            type="number"
+                            min="0"
+                            value={item.qty}
+                            onChange={(e) => setReviewItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, qty: Number(e.target.value) || 0 } : row))}
+                            style={{ width: 90 }}
+                            disabled={(Array.isArray(item.unitIds) && item.unitIds.length > 0) || (Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0) || !canActOnSelectedRow || reviewing}
+                          />
+                        </td>
+                        <td>{Array.isArray(item.unitIds) && item.unitIds.length > 0 ? item.unitIds.length : (Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0 ? item.serializedEntries.length : '—')}</td>
+                        <td>
+                          <select
+                            className="select"
+                            value={normalizeReviewStatus(item.status)}
+                            onChange={(e) => setReviewItems((prev) => prev.map((row, rowIndex) => rowIndex === index ? { ...row, status: e.target.value } : row))}
+                            disabled={!canActOnSelectedRow || reviewing}
+                          >
+                            <option value="accepted">Accepted</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        </td>
+                        <td>{item.reason || '—'}</td>
+                        <td>{item.remark || '—'}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <label>
+              <div style={{ marginBottom: 6, color: '#94a3b8' }}>Approval / Rejection Remark</div>
+              <textarea className="input" value={decisionRemark} onChange={(e) => setDecisionRemark(e.target.value)} rows={4} style={{ width: '100%', resize: 'vertical' }} />
+            </label>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
