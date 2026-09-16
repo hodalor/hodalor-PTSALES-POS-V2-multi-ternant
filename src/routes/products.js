@@ -7,6 +7,7 @@ import mongoose from 'mongoose';
 import { normalizeTrackType } from '../utils/productUnits.js';
 import { uploadMediaString } from '../utils/mediaStorage.js';
 import { archiveLiveDocument } from '../utils/superBin.js';
+import { normalizeTaxConfig } from '../utils/productTax.js';
 import { formatValidationError, validateEnforced } from '../validation/logOnlyValidation.js';
 import { productWriteSchema } from '../validation/schemas.js';
 
@@ -57,6 +58,12 @@ function normalizePricingPayload(body = {}) {
   out.wholesaleLowStock = toNumberOrZero(out.wholesaleLowStock != null ? out.wholesaleLowStock : out.lowStock || 0);
   out.warehouseLowStock = toNumberOrZero(out.warehouseLowStock != null ? out.warehouseLowStock : out.lowStock || 0);
   out.minimumCreditPercentage = Math.max(0, Math.min(100, Number(out.minimumCreditPercentage || 0)));
+  Object.assign(out, normalizeTaxConfig(out, {
+    retail: out.retailPrice,
+    wholesale: out.wholesalePrice,
+    warehouse: out.warehousePrice,
+    agent: out.agentPrice
+  }));
   out.wholesaleStockByBranch = normalizeStockByBranch(out.wholesaleStockByBranch);
   out.warehouseStockByBranch = normalizeStockByBranch(out.warehouseStockByBranch);
   if (Array.isArray(out.variants)) {
@@ -74,6 +81,15 @@ function normalizePricingPayload(body = {}) {
       if (hasNumber(next.agentPrice)) next.agentPrice = toNumberOrZero(next.agentPrice);
       else next.agentPrice = next.wholesalePrice || out.agentPrice || 0;
       next.costPrice = hasNumber(next.costPrice) ? toNumberOrZero(next.costPrice) : toNumberOrZero(out.costPrice || 0);
+      Object.assign(next, normalizeTaxConfig({
+        ...out,
+        ...next
+      }, {
+        retail: next.retailPrice,
+        wholesale: next.wholesalePrice,
+        warehouse: next.warehousePrice,
+        agent: next.agentPrice
+      }));
       next.wholesaleStockByBranch = normalizeStockByBranch(next.wholesaleStockByBranch);
       next.warehouseStockByBranch = normalizeStockByBranch(next.warehouseStockByBranch);
       return next;
@@ -279,22 +295,43 @@ r.get('/', async (req, res) => {
     obj.wholesaleLowStock = hasNumber(obj.wholesaleLowStock) ? toNumberOrZero(obj.wholesaleLowStock) : obj.lowStock;
     obj.warehouseLowStock = hasNumber(obj.warehouseLowStock) ? toNumberOrZero(obj.warehouseLowStock) : obj.lowStock;
     obj.minimumCreditPercentage = Math.max(0, Math.min(100, Number(obj.minimumCreditPercentage || 0)));
+    Object.assign(obj, normalizeTaxConfig(obj, {
+      retail: obj.retailPrice,
+      wholesale: obj.wholesalePrice,
+      warehouse: obj.warehousePrice,
+      agent: obj.agentPrice
+    }));
     if (Array.isArray(obj.variants)) {
-      obj.variants = obj.variants.map((v, idx) => ({
-        id: v.id || v.label || String(idx),
-        label: v.label,
-        sku: v.sku || '',
-        image: v.image || '',
-        price: v.price,
-        retailPrice: hasNumber(v.retailPrice) ? toNumberOrZero(v.retailPrice) : (hasNumber(v.price) ? toNumberOrZero(v.price) : obj.retailPrice),
-        wholesalePrice: hasNumber(v.wholesalePrice) ? toNumberOrZero(v.wholesalePrice) : (hasNumber(v.retailPrice) ? toNumberOrZero(v.retailPrice) : obj.wholesalePrice),
-        warehousePrice: hasNumber(v.warehousePrice) ? toNumberOrZero(v.warehousePrice) : 0,
-        agentPrice: hasNumber(v.agentPrice) ? toNumberOrZero(v.agentPrice) : (hasNumber(v.wholesalePrice) ? toNumberOrZero(v.wholesalePrice) : obj.agentPrice),
-        costPrice: hasNumber(v.costPrice) ? toNumberOrZero(v.costPrice) : obj.costPrice,
-        stockByBranch: normalizeStockByBranch(v.stockByBranch),
-        wholesaleStockByBranch: normalizeStockByBranch(v.wholesaleStockByBranch),
-        warehouseStockByBranch: normalizeStockByBranch(v.warehouseStockByBranch)
-      }));
+      obj.variants = obj.variants.map((v, idx) => {
+        const nextVariant = {
+          id: v.id || v.label || String(idx),
+          label: v.label,
+          sku: v.sku || '',
+          image: v.image || '',
+          price: v.price,
+          retailPrice: hasNumber(v.retailPrice) ? toNumberOrZero(v.retailPrice) : (hasNumber(v.price) ? toNumberOrZero(v.price) : obj.retailPrice),
+          wholesalePrice: hasNumber(v.wholesalePrice) ? toNumberOrZero(v.wholesalePrice) : (hasNumber(v.retailPrice) ? toNumberOrZero(v.retailPrice) : obj.wholesalePrice),
+          warehousePrice: hasNumber(v.warehousePrice) ? toNumberOrZero(v.warehousePrice) : 0,
+          agentPrice: hasNumber(v.agentPrice) ? toNumberOrZero(v.agentPrice) : (hasNumber(v.wholesalePrice) ? toNumberOrZero(v.wholesalePrice) : obj.agentPrice),
+          costPrice: hasNumber(v.costPrice) ? toNumberOrZero(v.costPrice) : obj.costPrice,
+          stockByBranch: normalizeStockByBranch(v.stockByBranch),
+          wholesaleStockByBranch: normalizeStockByBranch(v.wholesaleStockByBranch),
+          warehouseStockByBranch: normalizeStockByBranch(v.warehouseStockByBranch)
+        };
+        return {
+          ...nextVariant,
+          ...normalizeTaxConfig({
+            ...obj,
+            ...v,
+            ...nextVariant
+          }, {
+            retail: nextVariant.retailPrice,
+            wholesale: nextVariant.wholesalePrice,
+            warehouse: nextVariant.warehousePrice,
+            agent: nextVariant.agentPrice
+          })
+        };
+      });
     }
     return obj;
   });

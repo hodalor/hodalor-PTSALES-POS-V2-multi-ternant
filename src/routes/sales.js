@@ -20,6 +20,7 @@ import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
 import { archiveLiveDocument } from '../utils/superBin.js';
 import { enrichSalesWithAccounting } from '../utils/saleAccounting.js';
 import { assertOutgoingAvailability } from '../utils/inTransitLocks.js';
+import { computeSaleTaxTotals, normalizeTierTaxForPrice } from '../utils/productTax.js';
 import { formatValidationError, validateEnforced } from '../validation/logOnlyValidation.js';
 import { saleCreateSchema } from '../validation/schemas.js';
 
@@ -570,6 +571,11 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       const itemPrice = requestedPrice > 0 && Math.abs(requestedPrice - resolvedTierPrice) <= 0.01
         ? requestedPrice
         : resolvedTierPrice;
+      const normalizedTax = normalizeTierTaxForPrice(
+        { ...(p?.toObject ? p.toObject() : p), ...(variant || {}) },
+        it.priceTier,
+        itemPrice
+      );
       finalItems.push({
         productId: it.productId,
         variantId: it.variantId || null,
@@ -580,6 +586,8 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
         spec: it.spec || '',
         priceTier: it.priceTier,
         price: itemPrice,
+        taxRatePercent: normalizedTax.taxRatePercent,
+        taxAmount: normalizedTax.taxAmount,
         costPrice: Number.isFinite(cp) ? cp : 0
       });
     }
@@ -605,10 +613,15 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       err.status = 400;
       throw err;
     }
-    const subtotal = finalItems.reduce((sum, item) => sum + (Number(item.price || 0) * Number(item.qty || 0)), 0);
     const discount = Math.max(0, Number(payload.discount || 0));
-    const tax = Math.max(0, Number(payload.tax || 0));
-    const revenueTotal = Math.max(0, subtotal - discount + tax);
+    const taxTotals = computeSaleTaxTotals({
+      items: finalItems,
+      discount,
+      overrideTaxRatePercent: payload.taxOverridePct
+    });
+    const subtotal = taxTotals.subtotal;
+    const tax = taxTotals.tax;
+    const revenueTotal = taxTotals.total;
     const profitTotal = revenueTotal - Number(costTotal || 0);
     const loyaltyEnabled = !!settingsData.loyaltyEnabled;
     const earnAmount = Number(settingsData.loyaltyEarnAmount || 0);

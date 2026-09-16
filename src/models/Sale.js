@@ -10,6 +10,8 @@ const SaleItemSchema = new mongoose.Schema({
   spec: String,
   qty: Number,
   price: Number,
+  taxRatePercent: { type: Number, default: 0 },
+  taxAmount: { type: Number, default: 0 },
   costPrice: Number,
   priceTier: { type: String, default: 'retail' },
   soldUnitIds: { type: [String], default: [] },
