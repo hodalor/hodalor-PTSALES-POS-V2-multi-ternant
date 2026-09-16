@@ -18,6 +18,7 @@ import { getAllowedPriceTiers, getDisplayPrice, getDisplayPriceRange, getPreferr
 import { setAllSettings } from '../store/settingsSlice';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { useAppLanguage } from '../utils/localization';
+import { calculateTaxAmountFromPercent, calculateTaxPercentFromAmount, normalizeTaxConfig } from '../utils/productTax';
 import { getProductBrand, getProductSearchText } from '../utils/productSearch';
 import { exportCsv, exportTablePdf } from '../utils/exporters';
 
@@ -48,6 +49,15 @@ function createVariantDraft(overrides = {}) {
     price: '',
     wholesalePrice: '',
     warehousePrice: '',
+    agentPrice: '',
+    taxRatePercent: '',
+    taxAmount: '',
+    wholesaleTaxRatePercent: '',
+    wholesaleTaxAmount: '',
+    warehouseTaxRatePercent: '',
+    warehouseTaxAmount: '',
+    agentTaxRatePercent: '',
+    agentTaxAmount: '',
     costPrice: '',
     quantity: '',
     ...overrides
@@ -61,6 +71,97 @@ function hasValue(value) {
 function toFiniteNumber(value, fallback = 0) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
+}
+
+function formatTaxInput(value, digits = 2) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return '';
+  return String(Number(numeric.toFixed(digits)));
+}
+
+function syncTaxFieldsFromPercent(taxRatePercentValue, salePriceValue) {
+  const raw = String(taxRatePercentValue ?? '').trim();
+  if (!raw) return { taxRatePercent: '', taxAmount: '' };
+  const taxRatePercent = formatTaxInput(Number(raw), 4);
+  const taxAmount = formatTaxInput(calculateTaxAmountFromPercent(raw, salePriceValue), 2);
+  return { taxRatePercent, taxAmount };
+}
+
+function syncTaxFieldsFromAmount(taxAmountValue, salePriceValue) {
+  const raw = String(taxAmountValue ?? '').trim();
+  if (!raw) return { taxRatePercent: '', taxAmount: '' };
+  const taxAmount = formatTaxInput(Number(raw), 2);
+  const taxRatePercent = formatTaxInput(calculateTaxPercentFromAmount(raw, salePriceValue), 4);
+  return { taxRatePercent, taxAmount };
+}
+
+function getTaxFieldNamesForPriceField(priceField = 'price') {
+  if (priceField === 'wholesalePrice') {
+    return { taxRatePercentField: 'wholesaleTaxRatePercent', taxAmountField: 'wholesaleTaxAmount' };
+  }
+  if (priceField === 'warehousePrice') {
+    return { taxRatePercentField: 'warehouseTaxRatePercent', taxAmountField: 'warehouseTaxAmount' };
+  }
+  if (priceField === 'agentPrice') {
+    return { taxRatePercentField: 'agentTaxRatePercent', taxAmountField: 'agentTaxAmount' };
+  }
+  return { taxRatePercentField: 'taxRatePercent', taxAmountField: 'taxAmount' };
+}
+
+function syncScopedTaxFieldsFromPercent(taxRatePercentValue, salePriceValue, priceField = 'price') {
+  const { taxRatePercentField, taxAmountField } = getTaxFieldNamesForPriceField(priceField);
+  const synced = syncTaxFieldsFromPercent(taxRatePercentValue, salePriceValue);
+  return {
+    [taxRatePercentField]: synced.taxRatePercent,
+    [taxAmountField]: synced.taxAmount
+  };
+}
+
+function syncScopedTaxFieldsFromAmount(taxAmountValue, salePriceValue, priceField = 'price') {
+  const { taxRatePercentField, taxAmountField } = getTaxFieldNamesForPriceField(priceField);
+  const synced = syncTaxFieldsFromAmount(taxAmountValue, salePriceValue);
+  return {
+    [taxRatePercentField]: synced.taxRatePercent,
+    [taxAmountField]: synced.taxAmount
+  };
+}
+
+function syncVariantTierTaxFromPrice(row = {}, priceField = 'price', nextPriceValue) {
+  const { taxRatePercentField, taxAmountField } = getTaxFieldNamesForPriceField(priceField);
+  if (String(row[taxRatePercentField] || '').trim()) {
+    return {
+      ...row,
+      ...syncScopedTaxFieldsFromPercent(row[taxRatePercentField], nextPriceValue, priceField),
+      [priceField]: nextPriceValue
+    };
+  }
+  if (String(row[taxAmountField] || '').trim()) {
+    return {
+      ...row,
+      ...syncScopedTaxFieldsFromAmount(row[taxAmountField], nextPriceValue, priceField),
+      [priceField]: nextPriceValue
+    };
+  }
+  return { ...row, [priceField]: nextPriceValue };
+}
+
+function getTierTaxDraft(source = {}) {
+  const normalized = normalizeTaxConfig(source, {
+    retail: source?.retailPrice != null ? source.retailPrice : source?.price,
+    wholesale: source?.wholesalePrice != null ? source.wholesalePrice : (source?.retailPrice != null ? source.retailPrice : source?.price),
+    warehouse: source?.warehousePrice,
+    agent: source?.agentPrice != null ? source.agentPrice : source?.wholesalePrice
+  });
+  return {
+    taxRatePercent: formatTaxInput(normalized.retailTaxRatePercent, 4),
+    taxAmount: formatTaxInput(normalized.retailTaxAmount, 2),
+    wholesaleTaxRatePercent: formatTaxInput(normalized.wholesaleTaxRatePercent, 4),
+    wholesaleTaxAmount: formatTaxInput(normalized.wholesaleTaxAmount, 2),
+    warehouseTaxRatePercent: formatTaxInput(normalized.warehouseTaxRatePercent, 4),
+    warehouseTaxAmount: formatTaxInput(normalized.warehouseTaxAmount, 2),
+    agentTaxRatePercent: formatTaxInput(normalized.agentTaxRatePercent, 4),
+    agentTaxAmount: formatTaxInput(normalized.agentTaxAmount, 2)
+  };
 }
 
 function getProductPricingValidationMessage({
@@ -102,12 +203,14 @@ function getProductPricingValidationMessage({
       && !hasValue(variant.price)
       && !hasValue(variant.wholesalePrice)
       && !hasValue(variant.warehousePrice)
+      && !hasValue(variant.agentPrice)
       && !hasValue(variant.costPrice);
     if (isEmpty) continue;
     const variantCostPrice = hasValue(variant.costPrice) ? toFiniteNumber(variant.costPrice, 0) : unitCostPrice;
     const variantSellingPrice = hasValue(variant.price) ? toFiniteNumber(variant.price, 0) : retailSellingPrice;
     const variantWholesalePrice = hasValue(variant.wholesalePrice) ? toFiniteNumber(variant.wholesalePrice, 0) : toFiniteNumber(wholesalePrice, retailSellingPrice);
     const variantWarehousePrice = hasValue(variant.warehousePrice) ? toFiniteNumber(variant.warehousePrice, 0) : toFiniteNumber(warehousePrice, 0);
+    const variantAgentPrice = hasValue(variant.agentPrice) ? toFiniteNumber(variant.agentPrice, 0) : toFiniteNumber(agentPrice, variantWholesalePrice);
     if (variantCostPrice > 0 && variantSellingPrice > 0 && variantCostPrice > variantSellingPrice) {
       const variantLabel = String(variant.label || '').trim();
       return variantLabel
@@ -125,6 +228,12 @@ function getProductPricingValidationMessage({
       return variantLabel
         ? `Variant "${variantLabel}" cost price cannot be greater than its warehouse selling price`
         : `Variant #${index + 1} cost price cannot be greater than its warehouse selling price`;
+    }
+    if (variantCostPrice > 0 && variantAgentPrice > 0 && variantCostPrice > variantAgentPrice) {
+      const variantLabel = String(variant.label || '').trim();
+      return variantLabel
+        ? `Variant "${variantLabel}" cost price cannot be greater than its agent selling price`
+        : `Variant #${index + 1} cost price cannot be greater than its agent selling price`;
     }
   }
   return '';
@@ -247,6 +356,14 @@ function ProductsPage() {
   const [wholesalePrice, setWholesalePrice] = useState('');
   const [warehousePrice, setWarehousePrice] = useState('');
   const [agentPrice, setAgentPrice] = useState('');
+  const [taxRatePercent, setTaxRatePercent] = useState('');
+  const [taxAmount, setTaxAmount] = useState('');
+  const [wholesaleTaxRatePercent, setWholesaleTaxRatePercent] = useState('');
+  const [wholesaleTaxAmount, setWholesaleTaxAmount] = useState('');
+  const [warehouseTaxRatePercent, setWarehouseTaxRatePercent] = useState('');
+  const [warehouseTaxAmount, setWarehouseTaxAmount] = useState('');
+  const [agentTaxRatePercent, setAgentTaxRatePercent] = useState('');
+  const [agentTaxAmount, setAgentTaxAmount] = useState('');
   const [category, setCategory] = useState(configuredCategories[0] || '');
   const [newCategory, setNewCategory] = useState('');
   const [initialStock, setInitialStock] = useState(0);
@@ -416,6 +533,7 @@ function ProductsPage() {
 
   function resetForm() {
     setName(''); setBrand(''); setSku(''); setPrice(''); setWholesalePrice(''); setWarehousePrice(''); setAgentPrice('');
+    setTaxRatePercent(''); setTaxAmount(''); setWholesaleTaxRatePercent(''); setWholesaleTaxAmount(''); setWarehouseTaxRatePercent(''); setWarehouseTaxAmount(''); setAgentTaxRatePercent(''); setAgentTaxAmount('');
     setCategory(categoryOptions[0] || 'General'); setNewCategory('');
     setInitialStock(0); setEditStockQty(0); setLowStock(0); setWholesaleLowStock(0); setWarehouseLowStock(0); setImagePreview('');
     setCostPrice(''); setExpiryDate('');
@@ -446,6 +564,15 @@ function ProductsPage() {
     setWholesalePrice(String(p.wholesalePrice != null ? p.wholesalePrice : (p.price || 0)));
     setWarehousePrice(String(p.warehousePrice != null ? p.warehousePrice : 0));
     setAgentPrice(String(p.agentPrice != null ? p.agentPrice : (p.price || 0)));
+    const normalizedTaxDraft = getTierTaxDraft(p);
+    setTaxRatePercent(normalizedTaxDraft.taxRatePercent);
+    setTaxAmount(normalizedTaxDraft.taxAmount);
+    setWholesaleTaxRatePercent(normalizedTaxDraft.wholesaleTaxRatePercent);
+    setWholesaleTaxAmount(normalizedTaxDraft.wholesaleTaxAmount);
+    setWarehouseTaxRatePercent(normalizedTaxDraft.warehouseTaxRatePercent);
+    setWarehouseTaxAmount(normalizedTaxDraft.warehouseTaxAmount);
+    setAgentTaxRatePercent(normalizedTaxDraft.agentTaxRatePercent);
+    setAgentTaxAmount(normalizedTaxDraft.agentTaxAmount);
     setCostPrice(p.costPrice != null ? String(p.costPrice) : '');
     setExpiryDate(p.expiryDate ? String(p.expiryDate).slice(0, 10) : '');
     setCategory(p.category || '');
@@ -461,7 +588,7 @@ function ProductsPage() {
     setAllowCredit(p.allowCredit !== false);
     setMinimumCreditPercentage(p.minimumCreditPercentage != null ? String(p.minimumCreditPercentage) : '');
     setTrackType(p.trackType || 'quantity');
-    const hasPricing = (p.costPrice != null && String(p.costPrice) !== '' && Number(p.costPrice) > 0) || !!p.expiryDate || Number(p.wholesalePrice || 0) > 0 || Number(p.warehousePrice || 0) > 0 || Number(p.agentPrice || 0) > 0;
+    const hasPricing = (p.costPrice != null && String(p.costPrice) !== '' && Number(p.costPrice) > 0) || !!p.expiryDate || Number(p.wholesalePrice || 0) > 0 || Number(p.warehousePrice || 0) > 0 || Number(p.agentPrice || 0) > 0 || Object.values(normalizedTaxDraft).some((value) => Number(value || 0) > 0);
     const hasCredit = p.allowCredit === false || Number(p.minimumCreditPercentage || 0) > 0;
     const hasUnits = (p.unitKind && p.unitKind !== 'none') || p.unitValue != null || !!p.unitSymbol || !!p.sizeLabel || !!p.shoeSize;
     const hasAttrs = Array.isArray(p.attributes) && p.attributes.length > 0;
@@ -484,6 +611,15 @@ function ProductsPage() {
       price: v.price != null ? String(v.price) : '',
       wholesalePrice: v.wholesalePrice != null ? String(v.wholesalePrice) : String(p.wholesalePrice != null ? p.wholesalePrice : (p.price || 0)),
       warehousePrice: v.warehousePrice != null ? String(v.warehousePrice) : String(p.warehousePrice != null ? p.warehousePrice : 0),
+      agentPrice: v.agentPrice != null ? String(v.agentPrice) : String(p.agentPrice != null ? p.agentPrice : (p.wholesalePrice != null ? p.wholesalePrice : (p.price || 0))),
+      ...getTierTaxDraft({
+        ...p,
+        ...v,
+        retailPrice: v.retailPrice != null ? v.retailPrice : (v.price != null ? v.price : (p.retailPrice != null ? p.retailPrice : (p.price || 0))),
+        wholesalePrice: v.wholesalePrice != null ? v.wholesalePrice : (p.wholesalePrice != null ? p.wholesalePrice : (p.price || 0)),
+        warehousePrice: v.warehousePrice != null ? v.warehousePrice : (p.warehousePrice != null ? p.warehousePrice : 0),
+        agentPrice: v.agentPrice != null ? v.agentPrice : (p.agentPrice != null ? p.agentPrice : (p.wholesalePrice != null ? p.wholesalePrice : (p.price || 0)))
+      }),
       costPrice: v.costPrice != null ? String(v.costPrice) : '',
       quantity: String(getVariantQuantityForContext(v, currentBranchId, currentInventoryType) || '')
     })) : [createVariantDraft()]);
@@ -715,8 +851,11 @@ function ProductsPage() {
         const v = variants[i];
         const hasLabel = v.label && v.label.trim();
         const hasPrice = v.price !== '' && v.price != null;
+        const hasWholesalePrice = v.wholesalePrice !== '' && v.wholesalePrice != null;
+        const hasWarehousePrice = v.warehousePrice !== '' && v.warehousePrice != null;
+        const hasAgentPrice = v.agentPrice !== '' && v.agentPrice != null;
         const hasCostPrice = v.costPrice !== '' && v.costPrice != null;
-        const isEmpty = !hasLabel && !v.sku && !v.image && !hasPrice && !hasCostPrice;
+        const isEmpty = !hasLabel && !v.sku && !v.image && !hasPrice && !hasWholesalePrice && !hasWarehousePrice && !hasAgentPrice && !hasCostPrice;
         if (isEmpty) continue;
         if (!hasLabel) errors.push(`Variant #${i+1}: Label is required (e.g. Size/Color)`);
     }
@@ -752,6 +891,21 @@ function ProductsPage() {
         let createdOk = false;
         try {
             const cleanAttrs = (attrs || []).filter(a => a.key && a.value).map(a => ({ key: a.key.trim(), value: a.value.trim() }));
+            const normalizedBaseTax = normalizeTaxConfig({
+              taxRatePercent,
+              taxAmount,
+              wholesaleTaxRatePercent,
+              wholesaleTaxAmount,
+              warehouseTaxRatePercent,
+              warehouseTaxAmount,
+              agentTaxRatePercent,
+              agentTaxAmount
+            }, {
+              retail: price,
+              wholesale: wholesalePrice || price || 0,
+              warehouse: warehousePrice || 0,
+              agent: agentPrice || warehousePrice || wholesalePrice || price || 0
+            });
             qty = hasConfiguredVariants ? 0 : (Number(initialStock) || 0);
             const branchStock = currentBranchId && qty > 0
               ? (currentInventoryType === 'warehouse'
@@ -770,6 +924,7 @@ function ProductsPage() {
                 wholesalePrice: Number(wholesalePrice || price || 0),
                 warehousePrice: Number(warehousePrice || 0),
                 agentPrice: Number(agentPrice || warehousePrice || wholesalePrice || price || 0),
+                ...normalizedBaseTax,
                 costPrice: Number(costPrice) || 0,
                 expiryDate: expiryDate ? new Date(expiryDate).toISOString() : null,
                 category,
@@ -790,6 +945,12 @@ function ProductsPage() {
                   const stockMaps = trackType === 'serialized'
                     ? buildVariantStockMaps(0, '', currentInventoryType)
                     : buildVariantStockMaps(v.quantity, currentBranchId, currentInventoryType);
+                  const normalizedVariantTax = normalizeTaxConfig(v, {
+                    retail: v.price !== '' ? v.price : price,
+                    wholesale: v.wholesalePrice !== '' ? v.wholesalePrice : (wholesalePrice || price || 0),
+                    warehouse: v.warehousePrice !== '' ? v.warehousePrice : (warehousePrice || 0),
+                    agent: v.agentPrice !== '' ? v.agentPrice : (agentPrice || warehousePrice || wholesalePrice || price || 0)
+                  });
                   return {
                     id: crypto.randomUUID(),
                     label: v.label.trim(),
@@ -798,6 +959,8 @@ function ProductsPage() {
                     price: v.price !== '' ? Number(v.price) : undefined,
                     wholesalePrice: v.wholesalePrice !== '' ? Number(v.wholesalePrice) : undefined,
                     warehousePrice: v.warehousePrice !== '' ? Number(v.warehousePrice) : undefined,
+                    agentPrice: v.agentPrice !== '' ? Number(v.agentPrice) : undefined,
+                    ...normalizedVariantTax,
                     costPrice: v.costPrice !== '' ? Number(v.costPrice) : undefined,
                     stockByBranch: stockMaps.stockByBranch,
                     wholesaleStockByBranch: stockMaps.wholesaleStockByBranch,
@@ -881,11 +1044,32 @@ function ProductsPage() {
         setSaving(true);
 
         const cleanAttrs = (attrs || []).filter(a => a.key && a.value).map(a => ({ key: a.key.trim(), value: a.value.trim() }));
+        const normalizedBaseTax = normalizeTaxConfig({
+          taxRatePercent,
+          taxAmount,
+          wholesaleTaxRatePercent,
+          wholesaleTaxAmount,
+          warehouseTaxRatePercent,
+          warehouseTaxAmount,
+          agentTaxRatePercent,
+          agentTaxAmount
+        }, {
+          retail: price,
+          wholesale: wholesalePrice || price || 0,
+          warehouse: warehousePrice || 0,
+          agent: agentPrice || warehousePrice || wholesalePrice || price || 0
+        });
         const nextIdByIdx = new Map();
         const variantsLocal = (variants || []).filter(v => v.label).map((v, idx) => {
             const id = v.id || nextIdByIdx.get(idx) || crypto.randomUUID();
             nextIdByIdx.set(idx, id);
             const prev = original?.variants?.find(x => x.id === id);
+            const normalizedVariantTax = normalizeTaxConfig(v, {
+              retail: v.price !== '' ? v.price : price,
+              wholesale: v.wholesalePrice !== '' ? v.wholesalePrice : (wholesalePrice || price || 0),
+              warehouse: v.warehousePrice !== '' ? v.warehousePrice : (warehousePrice || 0),
+              agent: v.agentPrice !== '' ? v.agentPrice : (agentPrice || warehousePrice || wholesalePrice || price || 0)
+            });
             return {
               id,
               label: v.label.trim(),
@@ -894,6 +1078,8 @@ function ProductsPage() {
               price: v.price !== '' ? Number(v.price) : undefined,
               wholesalePrice: v.wholesalePrice !== '' ? Number(v.wholesalePrice) : undefined,
               warehousePrice: v.warehousePrice !== '' ? Number(v.warehousePrice) : undefined,
+              agentPrice: v.agentPrice !== '' ? Number(v.agentPrice) : undefined,
+              ...normalizedVariantTax,
               costPrice: v.costPrice !== '' ? Number(v.costPrice) : undefined,
               stockByBranch: prev?.stockByBranch || {},
               wholesaleStockByBranch: prev?.wholesaleStockByBranch || {},
@@ -911,6 +1097,7 @@ function ProductsPage() {
             wholesalePrice: Number(wholesalePrice || price || 0),
             warehousePrice: Number(warehousePrice || 0),
             agentPrice: Number(agentPrice || warehousePrice || wholesalePrice || price || 0),
+            ...normalizedBaseTax,
             costPrice: Number(costPrice) || 0,
             expiryDate: expiryDate ? new Date(expiryDate).toISOString() : null,
             category,
@@ -1683,25 +1870,65 @@ function ProductsPage() {
                 {visiblePriceTiers.includes('retail') && (
                   <div>
                       <label className="label">{t('Retail Price')}</label>
-                      <input className="input" placeholder={t('Retail selling price')} type="number" value={price} onChange={e => setPrice(e.target.value)} style={{ display: 'block', width: '100%', maxWidth: 220 }} />
+                      <input className="input" placeholder={t('Retail selling price')} type="number" value={price} onChange={e => {
+                        const nextPrice = e.target.value;
+                        setPrice(nextPrice);
+                        if (String(taxRatePercent || '').trim()) {
+                          setTaxAmount(syncTaxFieldsFromPercent(taxRatePercent, nextPrice).taxAmount);
+                        } else if (String(taxAmount || '').trim()) {
+                          const synced = syncTaxFieldsFromAmount(taxAmount, nextPrice);
+                          setTaxRatePercent(synced.taxRatePercent);
+                          setTaxAmount(synced.taxAmount);
+                        }
+                      }} style={{ display: 'block', width: '100%', maxWidth: 220 }} />
                   </div>
                 )}
                 {visiblePriceTiers.includes('wholesale') && (
                   <div>
                       <label className="label">{t('Wholesale Price')}</label>
-                      <input className="input" placeholder={t('Wholesale selling price')} type="number" value={wholesalePrice} onChange={e => setWholesalePrice(e.target.value)} style={{ display: 'block', width: '100%', maxWidth: 220 }} />
+                      <input className="input" placeholder={t('Wholesale selling price')} type="number" value={wholesalePrice} onChange={e => {
+                        const nextPrice = e.target.value;
+                        setWholesalePrice(nextPrice);
+                        if (String(wholesaleTaxRatePercent || '').trim()) {
+                          setWholesaleTaxAmount(syncTaxFieldsFromPercent(wholesaleTaxRatePercent, nextPrice).taxAmount);
+                        } else if (String(wholesaleTaxAmount || '').trim()) {
+                          const synced = syncTaxFieldsFromAmount(wholesaleTaxAmount, nextPrice);
+                          setWholesaleTaxRatePercent(synced.taxRatePercent);
+                          setWholesaleTaxAmount(synced.taxAmount);
+                        }
+                      }} style={{ display: 'block', width: '100%', maxWidth: 220 }} />
                   </div>
                 )}
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(180px, 240px))', gap: 16, justifyContent: 'space-between' }}>
               <div>
                 <label className="label">{t('Warehouse Price')}</label>
-                <input className="input" placeholder={t('Warehouse selling price')} type="number" value={warehousePrice} onChange={e => setWarehousePrice(e.target.value)} style={{ display: 'block', width: '100%', maxWidth: 220 }} />
+                <input className="input" placeholder={t('Warehouse selling price')} type="number" value={warehousePrice} onChange={e => {
+                  const nextPrice = e.target.value;
+                  setWarehousePrice(nextPrice);
+                  if (String(warehouseTaxRatePercent || '').trim()) {
+                    setWarehouseTaxAmount(syncTaxFieldsFromPercent(warehouseTaxRatePercent, nextPrice).taxAmount);
+                  } else if (String(warehouseTaxAmount || '').trim()) {
+                    const synced = syncTaxFieldsFromAmount(warehouseTaxAmount, nextPrice);
+                    setWarehouseTaxRatePercent(synced.taxRatePercent);
+                    setWarehouseTaxAmount(synced.taxAmount);
+                  }
+                }} style={{ display: 'block', width: '100%', maxWidth: 220 }} />
               </div>
               {visiblePriceTiers.includes('agent') && (
                 <div>
                   <label className="label">{t('Agent Price')}</label>
-                  <input className="input" placeholder={t('Agent selling price')} type="number" value={agentPrice} onChange={e => setAgentPrice(e.target.value)} style={{ display: 'block', width: '100%', maxWidth: 220 }} />
+                  <input className="input" placeholder={t('Agent selling price')} type="number" value={agentPrice} onChange={e => {
+                    const nextPrice = e.target.value;
+                    setAgentPrice(nextPrice);
+                    if (String(agentTaxRatePercent || '').trim()) {
+                      setAgentTaxAmount(syncTaxFieldsFromPercent(agentTaxRatePercent, nextPrice).taxAmount);
+                    } else if (String(agentTaxAmount || '').trim()) {
+                      const synced = syncTaxFieldsFromAmount(agentTaxAmount, nextPrice);
+                      setAgentTaxRatePercent(synced.taxRatePercent);
+                      setAgentTaxAmount(synced.taxAmount);
+                    }
+                  }} style={{ display: 'block', width: '100%', maxWidth: 220 }} />
                 </div>
               )}
               <div>
@@ -1776,6 +2003,78 @@ function ProductsPage() {
                   </button>
                   {pricingOpen && (
                     <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <label>
+                        <div className="label" style={{ color: '#cbd5e1' }}>{t('Retail Tax Percent')}</div>
+                        <div className="section-note" style={{ marginTop: 4 }}>{t('Enter tax as a percentage of the retail selling price.')}</div>
+                        <input className="input" type="number" min="0" max="100" step="0.0001" placeholder={t('e.g. 16')} value={taxRatePercent} onChange={e => {
+                          const synced = syncTaxFieldsFromPercent(e.target.value, price);
+                          setTaxRatePercent(synced.taxRatePercent);
+                          setTaxAmount(synced.taxAmount);
+                        }} />
+                      </label>
+                      <label>
+                        <div className="label" style={{ color: '#cbd5e1' }}>{t('Retail Tax Amount')}</div>
+                        <div className="section-note" style={{ marginTop: 4 }}>{t('Enter retail tax amount per unit. The percentage updates automatically from the retail selling price.')}</div>
+                        <input className="input" type="number" min="0" step="0.01" placeholder={t('e.g. 4.80')} value={taxAmount} onChange={e => {
+                          const synced = syncTaxFieldsFromAmount(e.target.value, price);
+                          setTaxRatePercent(synced.taxRatePercent);
+                          setTaxAmount(synced.taxAmount);
+                        }} />
+                      </label>
+                      <label>
+                        <div className="label" style={{ color: '#cbd5e1' }}>{t('Wholesale Tax Percent')}</div>
+                        <div className="section-note" style={{ marginTop: 4 }}>{t('Tax percentage for the wholesale or distribution selling price.')}</div>
+                        <input className="input" type="number" min="0" max="100" step="0.0001" placeholder={t('e.g. 10')} value={wholesaleTaxRatePercent} onChange={e => {
+                          const synced = syncTaxFieldsFromPercent(e.target.value, wholesalePrice || price);
+                          setWholesaleTaxRatePercent(synced.taxRatePercent);
+                          setWholesaleTaxAmount(synced.taxAmount);
+                        }} />
+                      </label>
+                      <label>
+                        <div className="label" style={{ color: '#cbd5e1' }}>{t('Wholesale Tax Amount')}</div>
+                        <div className="section-note" style={{ marginTop: 4 }}>{t('Tax amount per unit for the wholesale or distribution price.')}</div>
+                        <input className="input" type="number" min="0" step="0.01" placeholder={t('e.g. 2.40')} value={wholesaleTaxAmount} onChange={e => {
+                          const synced = syncTaxFieldsFromAmount(e.target.value, wholesalePrice || price);
+                          setWholesaleTaxRatePercent(synced.taxRatePercent);
+                          setWholesaleTaxAmount(synced.taxAmount);
+                        }} />
+                      </label>
+                      <label>
+                        <div className="label" style={{ color: '#cbd5e1' }}>{t('Warehouse Tax Percent')}</div>
+                        <div className="section-note" style={{ marginTop: 4 }}>{t('Tax percentage for the warehouse selling price.')}</div>
+                        <input className="input" type="number" min="0" max="100" step="0.0001" placeholder={t('e.g. 7.5')} value={warehouseTaxRatePercent} onChange={e => {
+                          const synced = syncTaxFieldsFromPercent(e.target.value, warehousePrice);
+                          setWarehouseTaxRatePercent(synced.taxRatePercent);
+                          setWarehouseTaxAmount(synced.taxAmount);
+                        }} />
+                      </label>
+                      <label>
+                        <div className="label" style={{ color: '#cbd5e1' }}>{t('Warehouse Tax Amount')}</div>
+                        <div className="section-note" style={{ marginTop: 4 }}>{t('Tax amount per unit for the warehouse price.')}</div>
+                        <input className="input" type="number" min="0" step="0.01" placeholder={t('e.g. 1.75')} value={warehouseTaxAmount} onChange={e => {
+                          const synced = syncTaxFieldsFromAmount(e.target.value, warehousePrice);
+                          setWarehouseTaxRatePercent(synced.taxRatePercent);
+                          setWarehouseTaxAmount(synced.taxAmount);
+                        }} />
+                      </label>
+                      <label>
+                        <div className="label" style={{ color: '#cbd5e1' }}>{t('Agent Tax Percent')}</div>
+                        <div className="section-note" style={{ marginTop: 4 }}>{t('Tax percentage for the agent selling price.')}</div>
+                        <input className="input" type="number" min="0" max="100" step="0.0001" placeholder={t('e.g. 5')} value={agentTaxRatePercent} onChange={e => {
+                          const synced = syncTaxFieldsFromPercent(e.target.value, agentPrice || wholesalePrice || price);
+                          setAgentTaxRatePercent(synced.taxRatePercent);
+                          setAgentTaxAmount(synced.taxAmount);
+                        }} />
+                      </label>
+                      <label>
+                        <div className="label" style={{ color: '#cbd5e1' }}>{t('Agent Tax Amount')}</div>
+                        <div className="section-note" style={{ marginTop: 4 }}>{t('Tax amount per unit for the agent price.')}</div>
+                        <input className="input" type="number" min="0" step="0.01" placeholder={t('e.g. 1.20')} value={agentTaxAmount} onChange={e => {
+                          const synced = syncTaxFieldsFromAmount(e.target.value, agentPrice || wholesalePrice || price);
+                          setAgentTaxRatePercent(synced.taxRatePercent);
+                          setAgentTaxAmount(synced.taxAmount);
+                        }} />
+                      </label>
                       <label>
                         <div className="label" style={{ color: '#cbd5e1' }}>{t('Cost Price (per unit)')}</div>
                         <div className="section-note" style={{ marginTop: 4 }}>{t('Your purchase price (capital). Used to calculate profit. It must not be greater than the selling price.')}</div>
@@ -1965,20 +2264,29 @@ function ProductsPage() {
                         {t('Use variants when one product has different options with their own SKU/price/stock (e.g. colors, sizes, 500mL vs 1L).')}
                       </div>
                       <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
-                        <div style={{ minWidth: 1500, display: 'grid', gap: 8 }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: '140px minmax(220px, 1.2fr) minmax(220px, 1fr) 150px 150px 150px 150px 170px 110px', gap: 8, color: '#94a3b8', fontSize: 12, fontWeight: 700, padding: '0 4px' }}>
+                        <div style={{ minWidth: 2950, display: 'grid', gap: 8 }}>
+                          <div style={{ display: 'grid', gridTemplateColumns: '140px minmax(220px, 1.2fr) minmax(220px, 1fr) 140px 140px 140px 140px 140px 140px 140px 140px 140px 140px 140px 140px 150px 170px 110px', gap: 8, color: '#94a3b8', fontSize: 12, fontWeight: 700, padding: '0 4px' }}>
                             <div>{t('Image')}</div>
                             <div>{t('Label')}</div>
                             <div>{t('SKU')}</div>
                             <div>{t('Retail Price')}</div>
                             <div>{t('Distribution Price')}</div>
                             <div>{t('Warehouse Price')}</div>
+                            <div>{t('Agent Price')}</div>
+                            <div>{t('Retail Tax %')}</div>
+                            <div>{t('Retail Tax Amount')}</div>
+                            <div>{t('Distribution Tax %')}</div>
+                            <div>{t('Distribution Tax Amount')}</div>
+                            <div>{t('Warehouse Tax %')}</div>
+                            <div>{t('Warehouse Tax Amount')}</div>
+                            <div>{t('Agent Tax %')}</div>
+                            <div>{t('Agent Tax Amount')}</div>
                             <div>{t('Cost Price')}</div>
                             <div>{t('Quantity')}</div>
                             <div>{t('Action')}</div>
                           </div>
                           {variants.map((row, idx) => (
-                            <div key={idx} style={{ display: 'grid', gridTemplateColumns: '140px minmax(220px, 1.2fr) minmax(220px, 1fr) 150px 150px 150px 150px 170px 110px', gap: 8, alignItems: 'start', minWidth: 1500 }}>
+                            <div key={idx} style={{ display: 'grid', gridTemplateColumns: '140px minmax(220px, 1.2fr) minmax(220px, 1fr) 140px 140px 140px 140px 140px 140px 140px 140px 140px 140px 140px 140px 150px 170px 110px', gap: 8, alignItems: 'start', minWidth: 2950 }}>
                               <div style={{ display: 'grid', gap: 6 }}>
                                 {row.image ? (
                                   <img src={row.image} alt={row.label || `variant-${idx + 1}`} style={{ width: 88, height: 88, objectFit: 'cover', borderRadius: 10, border: '1px solid #334155' }} />
@@ -2002,15 +2310,51 @@ function ProductsPage() {
                               }} style={{ width: '100%' }} />
                               <input className="input" type="number" placeholder={t('Price (e.g. 25.00)')} value={row.price} onChange={e => {
                                 const v = e.target.value;
-                                setVariants(prev => prev.map((r, i) => i === idx ? { ...r, price: v } : r));
+                                setVariants(prev => prev.map((r, i) => i === idx ? syncVariantTierTaxFromPrice(r, 'price', v) : r));
                               }} style={{ width: '100%' }} />
                               <input className="input" type="number" placeholder={t('Distribution price')} value={row.wholesalePrice} onChange={e => {
                                 const v = e.target.value;
-                                setVariants(prev => prev.map((r, i) => i === idx ? { ...r, wholesalePrice: v } : r));
+                                setVariants(prev => prev.map((r, i) => i === idx ? syncVariantTierTaxFromPrice(r, 'wholesalePrice', v) : r));
                               }} style={{ width: '100%' }} />
                               <input className="input" type="number" placeholder={t('Warehouse price')} value={row.warehousePrice} onChange={e => {
                                 const v = e.target.value;
-                                setVariants(prev => prev.map((r, i) => i === idx ? { ...r, warehousePrice: v } : r));
+                                setVariants(prev => prev.map((r, i) => i === idx ? syncVariantTierTaxFromPrice(r, 'warehousePrice', v) : r));
+                              }} style={{ width: '100%' }} />
+                              <input className="input" type="number" placeholder={t('Agent price')} value={row.agentPrice} onChange={e => {
+                                const v = e.target.value;
+                                setVariants(prev => prev.map((r, i) => i === idx ? syncVariantTierTaxFromPrice(r, 'agentPrice', v) : r));
+                              }} style={{ width: '100%' }} />
+                              <input className="input" type="number" min="0" max="100" step="0.0001" placeholder={t('Tax %')} value={row.taxRatePercent} onChange={e => {
+                                const v = e.target.value;
+                                setVariants(prev => prev.map((r, i) => i === idx ? { ...r, ...syncScopedTaxFieldsFromPercent(v, r.price, 'price') } : r));
+                              }} style={{ width: '100%' }} />
+                              <input className="input" type="number" min="0" step="0.01" placeholder={t('Tax amount')} value={row.taxAmount} onChange={e => {
+                                const v = e.target.value;
+                                setVariants(prev => prev.map((r, i) => i === idx ? { ...r, ...syncScopedTaxFieldsFromAmount(v, r.price, 'price') } : r));
+                              }} style={{ width: '100%' }} />
+                              <input className="input" type="number" min="0" max="100" step="0.0001" placeholder={t('Distribution tax %')} value={row.wholesaleTaxRatePercent} onChange={e => {
+                                const v = e.target.value;
+                                setVariants(prev => prev.map((r, i) => i === idx ? { ...r, ...syncScopedTaxFieldsFromPercent(v, r.wholesalePrice || wholesalePrice || price, 'wholesalePrice') } : r));
+                              }} style={{ width: '100%' }} />
+                              <input className="input" type="number" min="0" step="0.01" placeholder={t('Distribution tax amount')} value={row.wholesaleTaxAmount} onChange={e => {
+                                const v = e.target.value;
+                                setVariants(prev => prev.map((r, i) => i === idx ? { ...r, ...syncScopedTaxFieldsFromAmount(v, r.wholesalePrice || wholesalePrice || price, 'wholesalePrice') } : r));
+                              }} style={{ width: '100%' }} />
+                              <input className="input" type="number" min="0" max="100" step="0.0001" placeholder={t('Warehouse tax %')} value={row.warehouseTaxRatePercent} onChange={e => {
+                                const v = e.target.value;
+                                setVariants(prev => prev.map((r, i) => i === idx ? { ...r, ...syncScopedTaxFieldsFromPercent(v, r.warehousePrice || warehousePrice, 'warehousePrice') } : r));
+                              }} style={{ width: '100%' }} />
+                              <input className="input" type="number" min="0" step="0.01" placeholder={t('Warehouse tax amount')} value={row.warehouseTaxAmount} onChange={e => {
+                                const v = e.target.value;
+                                setVariants(prev => prev.map((r, i) => i === idx ? { ...r, ...syncScopedTaxFieldsFromAmount(v, r.warehousePrice || warehousePrice, 'warehousePrice') } : r));
+                              }} style={{ width: '100%' }} />
+                              <input className="input" type="number" min="0" max="100" step="0.0001" placeholder={t('Agent tax %')} value={row.agentTaxRatePercent} onChange={e => {
+                                const v = e.target.value;
+                                setVariants(prev => prev.map((r, i) => i === idx ? { ...r, ...syncScopedTaxFieldsFromPercent(v, r.agentPrice || agentPrice || wholesalePrice || price, 'agentPrice') } : r));
+                              }} style={{ width: '100%' }} />
+                              <input className="input" type="number" min="0" step="0.01" placeholder={t('Agent tax amount')} value={row.agentTaxAmount} onChange={e => {
+                                const v = e.target.value;
+                                setVariants(prev => prev.map((r, i) => i === idx ? { ...r, ...syncScopedTaxFieldsFromAmount(v, r.agentPrice || agentPrice || wholesalePrice || price, 'agentPrice') } : r));
                               }} style={{ width: '100%' }} />
                               <input className="input" type="number" placeholder={t('Cost Price')} value={row.costPrice} onChange={e => {
                                 const v = e.target.value;

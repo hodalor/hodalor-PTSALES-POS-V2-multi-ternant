@@ -75,7 +75,7 @@ export function escposReceipt({ header, items, totals, footer, settings, sale })
   lines.push('--------------------------------');
   lines.push(text(`Subtotal    ${fmt(totals.subtotal)}`));
   lines.push(text(`Discount   -${fmt(totals.discount)}`));
-  lines.push(text(`Tax         ${fmt(totals.tax)}`));
+  if (showTaxInfo) lines.push(text(`Tax         ${fmt(totals.tax)}`));
   lines.push(text(`DUE(VAT)    ${fmt(totals.total)}`));
   lines.push(text(`ITEMS       ${qtySum}`));
   if (showPaymentInfo) {

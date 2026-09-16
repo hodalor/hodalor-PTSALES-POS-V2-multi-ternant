@@ -56,6 +56,7 @@ export default function ReceiptPublicPage() {
   }
 
   const qtySum = sale.items.reduce((s, it) => s + (Number(it.qty)||0), 0);
+  const showTaxInfo = !!settings?.receiptShowTaxInfo;
 
   return (
     <div style={{ padding: 16, maxWidth: 480, margin: '0 auto' }}>
@@ -87,7 +88,7 @@ export default function ReceiptPublicPage() {
             ))}
             <tr><td style={{ color: '#64748b' }}>Subtotal</td><td style={{ textAlign: 'right' }}>{formatCurrency(sale.subtotal || 0, settings)}</td></tr>
             <tr><td style={{ color: '#64748b' }}>Discount</td><td style={{ textAlign: 'right' }}>-{formatCurrency(sale.discount || 0, settings)}</td></tr>
-            <tr><td style={{ color: '#64748b' }}>Tax</td><td style={{ textAlign: 'right' }}>{formatCurrency(sale.tax || 0, settings)}</td></tr>
+            {showTaxInfo && <tr><td style={{ color: '#64748b' }}>Tax</td><td style={{ textAlign: 'right' }}>{formatCurrency(sale.tax || 0, settings)}</td></tr>}
             <tr><td style={{ fontWeight: 700 }}>DUE (VAT INCL)</td><td style={{ textAlign: 'right', fontWeight: 700 }}>{formatCurrency(sale.total || 0, settings)}</td></tr>
           </tbody>
         </table>

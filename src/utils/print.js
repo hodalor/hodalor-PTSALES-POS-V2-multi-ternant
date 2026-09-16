@@ -310,7 +310,7 @@ export function buildBrandedReceiptHtml({ settings, sale }) {
           </tr>`).join('')}
         <tr><td class="muted">${t('Subtotal')}</td><td class="right">${formatCurrency(sale.subtotal || 0, settings)}</td></tr>
         <tr><td class="muted">${t('Discount')}</td><td class="right">-${formatCurrency(sale.discount || 0, settings)}</td></tr>
-        <tr><td class="muted">${t('Tax')}</td><td class="right">${formatCurrency(sale.tax || 0, settings)}</td></tr>
+        ${showTaxInfo ? `<tr><td class="muted">${t('Tax')}</td><td class="right">${formatCurrency(sale.tax || 0, settings)}</td></tr>` : ''}
         <tr><td class="title">${t('Amount Due (VAT Incl)').toUpperCase()}</td><td class="right title">${formatCurrency(sale.total || 0, settings)}</td></tr>
         <tr><td class="muted">${t('Total Items').toUpperCase()}</td><td class="right">${qtySum}</td></tr>
       </tbody>

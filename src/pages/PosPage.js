@@ -25,6 +25,7 @@ import * as productUnitsApi from '../api/productUnits';
 import Modal from '../components/Modal';
 import BarcodeScannerModal from '../components/BarcodeScannerModal';
 import FilterSearchSelect from '../components/FilterSearchSelect';
+import { computeSaleTaxTotals, normalizeTierTaxForPrice } from '../utils/productTax';
 import { getAllowedPriceTiers, getDisplayPrice, getPreferredPriceTier, getPriceTierLabel } from '../utils/priceVisibility';
 import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
@@ -344,6 +345,8 @@ function PosPage({ mode = 'retail' }) {
             warehouse: getDisplayPrice({ ...p, ...v, price: v.price != null ? v.price : p.price, retailPrice: v.retailPrice, wholesalePrice: v.wholesalePrice, warehousePrice: v.warehousePrice, agentPrice: v.agentPrice }, 'warehouse'),
             agent: getDisplayPrice({ ...p, ...v, price: v.price != null ? v.price : p.price, retailPrice: v.retailPrice, wholesalePrice: v.wholesalePrice, agentPrice: v.agentPrice }, 'agent')
           };
+          const activePrice = prices[selectedPriceTier] ?? prices[getPreferredPriceTier(allowedPriceTiers, initialPriceTier)] ?? prices.retail;
+          const normalizedTax = normalizeTierTaxForPrice({ ...p, ...v }, selectedPriceTier, activePrice);
           out.push({
             id: `${p.id}:${v.id}`,
             productId: p.id,
@@ -354,8 +357,10 @@ function PosPage({ mode = 'retail' }) {
             name: `${p.name} (${v.label})`,
             brand: getProductBrand(p),
             sku: v.sku || `${p.sku}-${v.label}`,
-            price: prices[selectedPriceTier] ?? prices[getPreferredPriceTier(allowedPriceTiers, initialPriceTier)] ?? prices.retail,
+            price: activePrice,
             prices,
+            taxRatePercent: normalizedTax.taxRatePercent,
+            taxAmount: normalizedTax.taxAmount,
             image: v.image || p.image,
             category: p.category || '',
             stockByBranch: v.stockByBranch || {},
@@ -373,11 +378,15 @@ function PosPage({ mode = 'retail' }) {
           });
         });
       } else {
+        const activePrice = basePrices[selectedPriceTier] ?? basePrices[getPreferredPriceTier(allowedPriceTiers, initialPriceTier)] ?? basePrices.retail;
+        const normalizedTax = normalizeTierTaxForPrice(p, selectedPriceTier, activePrice);
         out.push({
           ...p,
           brand: getProductBrand(p),
-          price: basePrices[selectedPriceTier] ?? basePrices[getPreferredPriceTier(allowedPriceTiers, initialPriceTier)] ?? basePrices.retail,
+          price: activePrice,
           prices: basePrices,
+          taxRatePercent: normalizedTax.taxRatePercent,
+          taxAmount: normalizedTax.taxAmount,
           stockByBranch: inventoryType === 'wholesale' ? (p.wholesaleStockByBranch || {}) : inventoryType === 'warehouse' ? (p.warehouseStockByBranch || {}) : (p.stockByBranch || {}),
           lowStock: inventoryType === 'wholesale'
             ? Number(p.wholesaleLowStock != null ? p.wholesaleLowStock : (p.lowStock || 0))
@@ -753,6 +762,8 @@ function PosPage({ mode = 'retail' }) {
         spec: i.spec,
         qty: i.quantity,
         price: i.price,
+        taxRatePercent: Number(i.taxRatePercent || 0),
+        taxAmount: Number(i.taxAmount || 0),
         priceTier: i.priceTier || selectedPriceTier,
         productId: i.productId,
         variantId: i.variantId || null,
@@ -763,6 +774,7 @@ function PosPage({ mode = 'retail' }) {
       discount,
       tax,
       total,
+      taxOverridePct: overrideTaxRatePercent != null ? overrideTaxRatePercent : undefined,
       payment_methods: payments.map(p => ({ type: p.type, amount: Number(p.amount) || 0 })),
       creditMode: easyBuyEnabled ? (isNonRetail ? 'distribution_credit' : 'retail_easybuy') : 'none',
       creditPackageId: easyBuyEnabled ? creditPackageName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : '',
@@ -1132,7 +1144,8 @@ function PosPage({ mode = 'retail' }) {
   }, [cart.items, serializedPickerProduct]);
   const manualDiscount = cart.discount || 0;
   const canOverrideTax = ['Admin','Manager'].includes(auth.role) || String(auth.role || '').toLowerCase() === 'superadmin';
-  const taxRate = canOverrideTax && taxOverridePct !== '' ? Math.max(0, Math.min(1, Number(taxOverridePct) / 100)) : Number(settings.taxRate ?? 0);
+  const overrideTaxRatePercent = canOverrideTax && taxOverridePct !== '' ? Math.max(0, Math.min(100, Number(taxOverridePct))) : null;
+  const taxRate = overrideTaxRatePercent != null ? (overrideTaxRatePercent / 100) : null;
   const estimatedCostTotal = cart.items.reduce((sum, item) => {
     return sum + ((Number(item.costPrice || 0) || 0) * (Number(item.quantity || 0) || 0));
   }, 0);
@@ -1146,8 +1159,13 @@ function PosPage({ mode = 'retail' }) {
   if (loyaltyDiscount > cap) loyaltyDiscount = cap;
   const discount = Math.max(0, Number(manualDiscount || 0) + Number(loyaltyDiscount || 0));
   const requiresDiscountApproval = discount > 0;
-  const tax = Math.max(0, (subtotal - discount) * taxRate);
-  const total = Math.max(0, subtotal - discount + tax);
+  const taxTotals = computeSaleTaxTotals({
+    items: cart.items,
+    discount,
+    overrideTaxRatePercent
+  });
+  const tax = taxTotals.tax;
+  const total = taxTotals.total;
   const paid = easyBuyEnabled ? Math.max(0, Number(easyBuyAmountPaidNow || 0)) : payments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
   const due = Math.max(0, total - paid);
   const change = easyBuyEnabled ? 0 : Math.max(0, paid - total);
@@ -1263,6 +1281,8 @@ function PosPage({ mode = 'retail' }) {
       brand: product.brand || getProductBrand(product),
       sku: product.sku,
       price: product.price,
+      taxRatePercent: Number(product.taxRatePercent || 0),
+      taxAmount: Number(product.taxAmount || 0),
       priceTier: selectedPriceTier,
       prices: product.prices || { retail: product.price, wholesale: product.price, warehouse: product.warehousePrice || 0, agent: product.price },
       allowCredit: product.allowCredit !== false,
@@ -1299,6 +1319,8 @@ function PosPage({ mode = 'retail' }) {
           brand: product.brand || getProductBrand(product),
           sku: product.sku,
           price: product.price,
+          taxRatePercent: Number(product.taxRatePercent || 0),
+          taxAmount: Number(product.taxAmount || 0),
           priceTier: selectedPriceTier,
           prices: product.prices || { retail: product.price, wholesale: product.price, warehouse: product.warehousePrice || 0, agent: product.price },
           allowCredit: product.allowCredit !== false,
@@ -1364,6 +1386,8 @@ function PosPage({ mode = 'retail' }) {
       brand: p.brand || getProductBrand(p),
       sku: p.sku,
       price: p.price,
+      taxRatePercent: Number(p.taxRatePercent || 0),
+      taxAmount: Number(p.taxAmount || 0),
       priceTier: selectedPriceTier,
       prices: p.prices || { retail: p.price, wholesale: p.price, warehouse: p.warehousePrice || 0, agent: p.price },
       allowCredit: p.allowCredit !== false,
@@ -1599,6 +1623,8 @@ function PosPage({ mode = 'retail' }) {
         spec: i.spec,
         qty: i.quantity,
         price: i.price,
+        taxRatePercent: Number(i.taxRatePercent || 0),
+        taxAmount: Number(i.taxAmount || 0),
         priceTier: i.priceTier || selectedPriceTier,
         productId: i.productId,
         variantId: i.variantId || null,
@@ -1609,6 +1635,7 @@ function PosPage({ mode = 'retail' }) {
       discount,
       tax,
       total,
+      taxOverridePct: overrideTaxRatePercent != null ? overrideTaxRatePercent : undefined,
       payment_methods: payments.map(p => ({ type: p.type, amount: Number(p.amount) || 0 })),
       creditMode: easyBuyEnabled ? (isNonRetail ? 'distribution_credit' : 'retail_easybuy') : 'none',
       creditPackageId: easyBuyEnabled ? creditPackageName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') : '',
@@ -2690,7 +2717,7 @@ function PosPage({ mode = 'retail' }) {
           <div style={{ marginTop: 10 }}>
             <div className="pos-summary-row"><span>{t('Subtotal')}</span><strong>{formatCurrency(subtotal, settings)}</strong></div>
             <div className="pos-summary-row"><span>{t('Discount')}</span><strong>{formatCurrency(discount, settings)}</strong></div>
-            <div className="pos-summary-row"><span>{t('Tax')} ({Math.round((taxRate || 0) * 100)}%)</span><strong>{formatCurrency(tax, settings)}</strong></div>
+            <div className="pos-summary-row"><span>{overrideTaxRatePercent != null ? `${t('Tax')} (${Math.round((taxRate || 0) * 100)}%)` : t('Tax')}</span><strong>{formatCurrency(tax, settings)}</strong></div>
             <div className="pos-summary-row total"><span>{t('Total')}</span><strong>{formatCurrency(total, settings)}</strong></div>
           </div>
           <div className="pos-payments-card">

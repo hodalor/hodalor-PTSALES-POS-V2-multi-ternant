@@ -1,4 +1,5 @@
 import { createSlice, nanoid } from '@reduxjs/toolkit';
+import { normalizeTaxConfig } from '../utils/productTax';
 
 function pad12Digits(n) {
   const s = String(n).replace(/\D/g, '');
@@ -28,6 +29,10 @@ const initialState = {
 };
 
 function normalizeVariant(v, parent, idx) {
+  const retailPrice = v.retailPrice != null ? Number(v.retailPrice) : (v.price != null ? Number(v.price) : Number(parent.retailPrice != null ? parent.retailPrice : parent.price || 0));
+  const wholesalePrice = v.wholesalePrice != null ? Number(v.wholesalePrice) : (v.retailPrice != null ? Number(v.retailPrice) : Number(parent.wholesalePrice != null ? parent.wholesalePrice : parent.price || 0));
+  const warehousePrice = v.warehousePrice != null ? Number(v.warehousePrice) : 0;
+  const agentPrice = v.agentPrice != null ? Number(v.agentPrice) : (v.wholesalePrice != null ? Number(v.wholesalePrice) : Number(parent.agentPrice != null ? parent.agentPrice : parent.price || 0));
   return {
     id: v.id || v.label || String(idx),
     label: v.label,
@@ -35,10 +40,16 @@ function normalizeVariant(v, parent, idx) {
     sku: v.sku || '',
     image: v.image || '',
     price: v.price,
-    retailPrice: v.retailPrice != null ? Number(v.retailPrice) : (v.price != null ? Number(v.price) : Number(parent.retailPrice != null ? parent.retailPrice : parent.price || 0)),
-    wholesalePrice: v.wholesalePrice != null ? Number(v.wholesalePrice) : (v.retailPrice != null ? Number(v.retailPrice) : Number(parent.wholesalePrice != null ? parent.wholesalePrice : parent.price || 0)),
-    warehousePrice: v.warehousePrice != null ? Number(v.warehousePrice) : 0,
-    agentPrice: v.agentPrice != null ? Number(v.agentPrice) : (v.wholesalePrice != null ? Number(v.wholesalePrice) : Number(parent.agentPrice != null ? parent.agentPrice : parent.price || 0)),
+    retailPrice,
+    wholesalePrice,
+    warehousePrice,
+    agentPrice,
+    ...normalizeTaxConfig({ ...parent, ...v }, {
+      retail: retailPrice,
+      wholesale: wholesalePrice,
+      warehouse: warehousePrice,
+      agent: agentPrice
+    }),
     costPrice: v.costPrice != null ? Number(v.costPrice) : Number(parent.costPrice || 0),
     stockByBranch: v.stockByBranch || {},
     wholesaleStockByBranch: v.wholesaleStockByBranch || {},
@@ -49,16 +60,26 @@ function normalizeVariant(v, parent, idx) {
 function normalizeProduct(p) {
   const rawId = p.id || p._id || null;
   const id = rawId != null ? String(rawId) : null;
+  const retailPrice = p.retailPrice != null ? Number(p.retailPrice) : Number(p.price || 0);
+  const wholesalePrice = p.wholesalePrice != null ? Number(p.wholesalePrice) : Number(p.retailPrice != null ? p.retailPrice : p.price || 0);
+  const warehousePrice = p.warehousePrice != null ? Number(p.warehousePrice) : 0;
+  const agentPrice = p.agentPrice != null ? Number(p.agentPrice) : Number(p.wholesalePrice != null ? p.wholesalePrice : (p.retailPrice != null ? p.retailPrice : p.price || 0));
   const variants = Array.isArray(p.variants) ? p.variants.map((v, idx) => normalizeVariant(v, p, idx)) : [];
   return {
     ...p,
     id,
     brand: String(p.brand || '').trim(),
     trackType: p.trackType || 'quantity',
-    retailPrice: p.retailPrice != null ? Number(p.retailPrice) : Number(p.price || 0),
-    wholesalePrice: p.wholesalePrice != null ? Number(p.wholesalePrice) : Number(p.retailPrice != null ? p.retailPrice : p.price || 0),
-    warehousePrice: p.warehousePrice != null ? Number(p.warehousePrice) : 0,
-    agentPrice: p.agentPrice != null ? Number(p.agentPrice) : Number(p.wholesalePrice != null ? p.wholesalePrice : (p.retailPrice != null ? p.retailPrice : p.price || 0)),
+    retailPrice,
+    wholesalePrice,
+    warehousePrice,
+    agentPrice,
+    ...normalizeTaxConfig(p, {
+      retail: retailPrice,
+      wholesale: wholesalePrice,
+      warehouse: warehousePrice,
+      agent: agentPrice
+    }),
     stockByBranch: p.stockByBranch || {},
     wholesaleStockByBranch: p.wholesaleStockByBranch || {},
     warehouseStockByBranch: p.warehouseStockByBranch || {},
