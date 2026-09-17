@@ -391,6 +391,7 @@ function DashboardPage() {
     let last30Revenue = 0;
     let last30Profit = 0;
     let last30Cost = 0;
+    let taxPayable = 0;
     let itemsSold = 0;
     let creditOut = 0;
     let retailCreditOut = 0;
@@ -558,6 +559,16 @@ function DashboardPage() {
         row.cost += qty * (Number.isFinite(cp) ? cp : 0);
         row.profit = row.revenue - row.cost;
         if (customerRow) customerRow.products += qty;
+      }
+      const adjustment = getSaleAdjustment(sale);
+      const baseSaleRevenue = adjustment ? Number(adjustment.baseRevenue || 0) : Number(sale.total || 0);
+      const adjustedSaleRevenue = adjustment ? Number(adjustment.adjustedRevenue || 0) : Number(sale.total || 0);
+      const saleTax = Math.max(0, Number(sale.tax || 0));
+      if (saleTax > 0 && adjustedSaleRevenue > 0) {
+        const taxScale = baseSaleRevenue > 0
+          ? Math.max(0, Math.min(1, adjustedSaleRevenue / Math.max(0.0001, baseSaleRevenue)))
+          : 1;
+        taxPayable += saleTax * taxScale;
       }
     }
     for (const refund of approvedRefundsForSalesMath) {
@@ -867,6 +878,7 @@ function DashboardPage() {
       last30Revenue,
       last30Profit,
       last30Cost,
+      taxPayable,
       marginPct,
       cashierLeaderboard,
       customerLeaderboardByAmount,
@@ -940,6 +952,8 @@ function DashboardPage() {
     { key: 'transactions', label: t('Sales Count'), value: metrics.transactionCount, subtitle: t('Sales created in selected range'), accent: '#f59e0b', tint: '#fef3c7', badge: 'TX' },
     { key: 'margin', label: t('Margin'), value: maskProfitText(`${metrics.marginPct}%`), subtitle: t('Gross margin percentage'), accent: '#ec4899', tint: '#fce7f3', badge: 'MG' },
     { key: 'refunded', label: t('Refunded'), value: maskRevenue(metrics.approvedRefundAmount), subtitle: periodMode === 'all_time' ? t('Approved refunds for all time') : t('Approved refunds in selected range'), accent: '#dc2626', tint: '#fee2e2', badge: 'RF' }
+    ,
+    { key: 'tax_payable', label: t('Tax To Be Paid'), value: maskRevenue(metrics.taxPayable), subtitle: periodMode === 'all_time' ? t('Tax from taxable products sold after refund adjustments') : t('Tax from taxable products sold in selected range'), accent: '#0f766e', tint: '#dcfce7', badge: 'TXP' }
   ].filter((card) => !card.hidden);
   const primarySummaryCards = summaryCards.filter((card) => card.primary);
   const secondarySummaryCards = summaryCards.filter((card) => !card.primary);
