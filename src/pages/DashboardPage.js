@@ -164,7 +164,7 @@ function DashboardPage() {
     start.setDate(start.getDate() - 29);
     return formatLocalDateKey(start);
   }, []);
-  const defaultFromIso = todayIso;
+  const defaultFromIso = defaultRevenueChartFromIso;
   const [periodMode, setPeriodMode] = useState('range');
   const [dateFrom, setDateFrom] = useState(defaultFromIso);
   const [dateTo, setDateTo] = useState(todayIso);
@@ -194,13 +194,17 @@ function DashboardPage() {
     if (canUseScopedDashboardBranches) return branches.filter((branch) => allowedDashboardBranchIdSet.has(String(branch.id || '').trim()));
     return branches.filter((branch) => String(branch.id || '').trim() === String(settings.currentBranchId || '').trim());
   }, [allowedDashboardBranchIdSet, branches, canUseScopedDashboardBranches, canViewBranchCompetitionAll, canViewCashierCompetitionAll, settings.currentBranchId]);
+  const shouldDefaultToAllDashboardBranches = useMemo(() => (
+    canSelectAllDashboardBranches && allowedDashboardBranchIds.length > 1
+  ), [allowedDashboardBranchIds.length, canSelectAllDashboardBranches]);
   const defaultDashboardBranchId = useMemo(() => {
+    if (shouldDefaultToAllDashboardBranches) return '';
     const current = String(settings.currentBranchId || '').trim();
     if (current && (allowedDashboardBranchIdSet.has(current) || branches.some((branch) => String(branch.id || '').trim() === current))) {
       return current;
     }
     return allowedDashboardBranchIds[0] || '';
-  }, [allowedDashboardBranchIdSet, allowedDashboardBranchIds, branches, settings.currentBranchId]);
+  }, [allowedDashboardBranchIdSet, allowedDashboardBranchIds, branches, settings.currentBranchId, shouldDefaultToAllDashboardBranches]);
   const [branchId, setBranchId] = useState(() => (
     defaultDashboardBranchId
   ));
@@ -229,10 +233,13 @@ function DashboardPage() {
       setBranchId(defaultDashboardBranchId);
       return;
     }
-    if (!defaultDashboardBranchId) return;
+    if (!shouldDefaultToAllDashboardBranches && !defaultDashboardBranchId) return;
     if (!dashboardBranchInitRef.current) {
       dashboardBranchInitRef.current = true;
-      setBranchId((prev) => prev || defaultDashboardBranchId);
+      setBranchId((prev) => {
+        if (shouldDefaultToAllDashboardBranches) return '';
+        return prev || defaultDashboardBranchId;
+      });
       return;
     }
     const current = String(branchId || '').trim();
@@ -240,7 +247,7 @@ function DashboardPage() {
     if (current !== String(defaultDashboardBranchId || '').trim() && !allowedDashboardBranchIdSet.has(current) && !branches.some((branch) => String(branch.id || '').trim() === current)) {
       setBranchId(defaultDashboardBranchId);
     }
-  }, [allowedDashboardBranchIdSet, branchId, branches, canSelectAllDashboardBranches, defaultDashboardBranchId, canUseScopedDashboardBranches, isPrivilegedDashboardViewer]);
+  }, [allowedDashboardBranchIdSet, branchId, branches, canSelectAllDashboardBranches, defaultDashboardBranchId, canUseScopedDashboardBranches, isPrivilegedDashboardViewer, shouldDefaultToAllDashboardBranches]);
 
   const matchBranch = useCallback((value) => {
     const key = String(value || '').trim();
@@ -674,8 +681,8 @@ function DashboardPage() {
       }
     }
     const useRevenueChartDefaultWindow = periodMode === 'range'
-      && String(dateFrom || '') === String(todayIso || '')
-      && String(dateTo || '') === String(todayIso || '');
+      && String(dateFrom || defaultFromIso || '') === String(defaultRevenueChartFromIso || '')
+      && String(dateTo || todayIso || '') === String(todayIso || '');
     const revenueChartFromIso = periodMode === 'all_time'
       ? ''
       : (useRevenueChartDefaultWindow ? defaultRevenueChartFromIso : (dateFrom || defaultFromIso));
