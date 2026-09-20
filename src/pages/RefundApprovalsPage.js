@@ -140,7 +140,8 @@ function RefundApprovalsPage() {
         || grants.includes('approve_distribution_director')
         || grants.includes('approve_distribution_manager');
     }
-    return roleLower === 'manager'
+    return roleLower === 'director'
+      || roleLower === 'manager'
       || grants.includes('approve_retail_director')
       || grants.includes('approve_retail_manager');
   }, [grants, roleLower, resolveRefundArea]);
