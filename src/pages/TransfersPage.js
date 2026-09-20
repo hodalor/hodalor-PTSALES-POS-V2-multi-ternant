@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useToast } from '../components/ToastProvider';
 import BranchSelect from '../components/BranchSelect';
 import { exportCsv, exportTablePdf } from '../utils/exporters';
+import { sortByLatest } from '../utils/sortByLatest';
 import * as transfersApi from '../api/transfers';
 import * as wholesaleApi from '../api/wholesale';
 import * as productUnitsApi from '../api/productUnits';
@@ -246,7 +247,7 @@ function TransfersPage() {
   const transfers = useMemo(() => {
     const fromTs = periodMode === 'all_time' ? 0 : (dateFrom ? new Date(dateFrom).getTime() : 0);
     const toTs = periodMode === 'all_time' ? Number.MAX_SAFE_INTEGER : (dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER);
-    return baseTransfers.filter(e => {
+    return sortByLatest(baseTransfers.filter(e => {
       const ts = new Date(e.ts).getTime();
       if (ts < fromTs || ts > toTs) return false;
       if (fActor && e.actor !== fActor) return false;
@@ -255,7 +256,7 @@ function TransfersPage() {
       if (fTo && d.to !== fTo) return false;
       if (!matchesFilterText([d.product, d.variant, e.remark, e.actor, byId.get(d.from), byId.get(d.to)], recordQuery)) return false;
       return true;
-    }).slice().reverse();
+    }), (row) => row?.ts);
   }, [baseTransfers, byId, dateFrom, dateTo, fActor, fFrom, fTo, periodMode, recordQuery]);
 
   function onExportCsv() {

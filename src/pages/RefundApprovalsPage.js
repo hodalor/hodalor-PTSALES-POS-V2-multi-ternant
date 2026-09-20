@@ -9,6 +9,7 @@ import { formatCurrency } from '../utils/currency';
 import { promptDialog } from '../utils/dialogs';
 import { useToast } from '../components/ToastProvider';
 import { exportCsv, exportTablePdf } from '../utils/exporters';
+import { sortByLatest } from '../utils/sortByLatest';
 import * as refundsApi from '../api/refunds';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
@@ -92,6 +93,27 @@ function RefundApprovalsPage() {
     return map;
   }, [branches]);
   const salesById = useMemo(() => new Map((sales || []).map((row) => [String(row?.id || row?._id || row?.clientId || ''), row])), [sales]);
+  const canReviewRefundAcrossBranches = useMemo(() => (
+    roleLower === 'director'
+    || grants.includes('approve_refunds')
+  ), [grants, roleLower]);
+  const accessibleBranchIds = useMemo(() => {
+    if (['superadmin', 'admin'].includes(roleLower)) return 'all';
+    const assigned = normalizeBranchIds(auth.user?.assignedBranches);
+    if (assigned === 'all') return 'all';
+    const seed = normalizeBranchIds([auth.user?.branchId, ...(Array.isArray(assigned) ? assigned : [])]);
+    const expanded = new Set(seed);
+    seed.forEach((value) => {
+      (branches || []).forEach((branch) => {
+        const aliases = [
+          String(branch?.id || '').trim(),
+          String(branch?._id || '').trim()
+        ].filter(Boolean);
+        if (aliases.includes(String(value || '').trim())) aliases.forEach((alias) => expanded.add(alias));
+      });
+    });
+    return Array.from(expanded);
+  }, [auth.user?.assignedBranches, auth.user?.branchId, branches, roleLower]);
 
   function refundId(x) {
     return String(x?.id || x?._id || '');
@@ -115,14 +137,18 @@ function RefundApprovalsPage() {
   }, [branchById, sales, salesById]);
 
   const canAccessBranch = useCallback((branchId = '') => {
-    if (['superadmin', 'admin'].includes(roleLower)) return true;
+    if (['superadmin', 'admin'].includes(roleLower) || canReviewRefundAcrossBranches) return true;
     const normalizedBranchId = String(branchId || '').trim();
     if (!normalizedBranchId) return false;
-    const assigned = normalizeBranchIds(auth.user?.assignedBranches);
-    if (assigned === 'all') return true;
-    const accessible = normalizeBranchIds([auth.user?.branchId, ...(Array.isArray(assigned) ? assigned : [])]);
-    return accessible.includes(normalizedBranchId);
-  }, [auth.user, roleLower]);
+    if (accessibleBranchIds === 'all') return true;
+    if (accessibleBranchIds.includes(normalizedBranchId)) return true;
+    const branch = branchById.get(normalizedBranchId);
+    if (!branch) return false;
+    return [
+      String(branch?.id || '').trim(),
+      String(branch?._id || '').trim()
+    ].filter(Boolean).some((value) => accessibleBranchIds.includes(value));
+  }, [accessibleBranchIds, branchById, canReviewRefundAcrossBranches, roleLower]);
 
   const canReviewRefund = useCallback((row = {}) => {
     if (['superadmin', 'admin'].includes(roleLower)) return true;
@@ -149,7 +175,7 @@ function RefundApprovalsPage() {
   const filtered = useMemo(() => {
     const currentBranchId = settings.currentBranchId;
     const me = auth.user?.name || '';
-    let rows = refunds.slice().reverse();
+    let rows = sortByLatest(refunds, (row) => row?.created_at || row?.createdAt);
     if (roleLower === 'cashier') {
       rows = rows.filter(r => String(r.initiatorName || '') === me);
     } else if (!['superadmin', 'admin'].includes(roleLower)) {

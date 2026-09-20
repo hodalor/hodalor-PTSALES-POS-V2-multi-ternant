@@ -7,6 +7,7 @@ import { removeEntries as removeAuditEntries, setEntries as setAuditEntries } fr
 import { useToast } from '../components/ToastProvider';
 import InlineSpinner from '../components/InlineSpinner';
 import { getProductDisplayMeta, matchesFilterText } from '../utils/inventoryFilters';
+import { sortByLatest } from '../utils/sortByLatest';
 
 function makeBranchLookup(branches = []) {
   const map = new Map();
@@ -325,7 +326,7 @@ function StockRecordsPage() {
   const rows = useMemo(() => {
     const fromTs = periodMode === 'all_time' ? 0 : (dateFrom ? new Date(dateFrom).getTime() : 0);
     const toTs = periodMode === 'all_time' ? Number.MAX_SAFE_INTEGER : (dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER);
-    return allRows.filter(r => {
+    return sortByLatest(allRows.filter(r => {
       const ts = new Date(r.ts).getTime();
       if (ts < fromTs || ts > toTs) return false;
       if (fActor && r.actor !== fActor) return false;
@@ -334,7 +335,7 @@ function StockRecordsPage() {
       if (fInventoryType && r.inventoryType !== fInventoryType) return false;
       if (!matchesFilterText([r.product, r.variant, r.remark, r.actor, resolveBranchLabel(r.branchId, r.branchName), r.action], fProduct)) return false;
       return true;
-    }).slice().reverse();
+    }), (row) => row?.ts);
   }, [allRows, dateFrom, dateTo, fActor, fBranch, fInventoryType, fProduct, fSource, periodMode, resolveBranchLabel]);
   const summary = useMemo(() => ({
     records: rows.length,

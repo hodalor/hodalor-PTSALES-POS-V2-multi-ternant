@@ -4,6 +4,7 @@ import { adjustStock } from '../store/productsSlice';
 import { useToast } from '../components/ToastProvider';
 import BranchSelect from '../components/BranchSelect';
 import { exportCsv, exportTablePdf } from '../utils/exporters';
+import { sortByLatest } from '../utils/sortByLatest';
 import * as adjustmentsApi from '../api/adjustments';
 import * as productUnitsApi from '../api/productUnits';
 import * as auditsApi from '../api/audits';
@@ -189,7 +190,7 @@ function AdjustmentsPage() {
     const baseRows = audit.filter(e => e.actionType === 'stock_adjust' || e.actionType === 'stock_damage_remove');
     const fromTs = periodMode === 'all_time' ? 0 : (dateFrom ? new Date(dateFrom).getTime() : 0);
     const toTs = periodMode === 'all_time' ? Number.MAX_SAFE_INTEGER : (dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER);
-    return baseRows.filter(e => {
+    return sortByLatest(baseRows.filter(e => {
       const ts = new Date(e.ts).getTime();
       if (ts < fromTs || ts > toTs) return false;
       if (fActor && e.actor !== fActor) return false;
@@ -211,12 +212,12 @@ function AdjustmentsPage() {
         type: e.actionType === 'stock_adjust' ? 'Adjust' : 'Damage/Expired',
         remark: e.remark || ''
       };
-    }).slice().reverse();
+    }), (row) => row?.ts);
   }, [audit, byId, dateFrom, dateTo, fActor, fBranch, periodMode, recordQuery]);
   const requestRows = useMemo(() => {
     const fromTs = periodMode === 'all_time' ? 0 : (dateFrom ? new Date(dateFrom).getTime() : 0);
     const toTs = periodMode === 'all_time' ? Number.MAX_SAFE_INTEGER : (dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER);
-    return (Array.isArray(recordRequestRows) ? recordRequestRows : [])
+    return sortByLatest((Array.isArray(recordRequestRows) ? recordRequestRows : [])
       .filter((row) => ['approved', 'rejected'].includes(String(row.status || '').toLowerCase()))
       .map((row) => {
         const product = products.find((p) => String(p.id) === String(row.productId));
@@ -244,9 +245,7 @@ function AdjustmentsPage() {
         if (fBranch && row.branchId !== fBranch) return false;
         if (!matchesFilterText([...getOperationSearchValues(row, products, byId), row.product, row.variant, row.remark, row.actor, byId.get(row.branchId)], recordQuery)) return false;
         return true;
-      })
-      .slice()
-      .reverse();
+      }), (row) => row?.ts);
   }, [recordRequestRows, byId, dateFrom, dateTo, fActor, fBranch, periodMode, products, recordQuery]);
   const rows = useMemo(() => {
     if (auditRows.length === 0) return requestRows;

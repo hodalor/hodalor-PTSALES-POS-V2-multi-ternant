@@ -7,6 +7,7 @@ import { addAudit } from '../store/auditSlice';
 import { formatCurrency } from '../utils/currency';
 import { useSelector as useReduxSelector } from 'react-redux';
 import { exportCsv, exportTablePdf } from '../utils/exporters';
+import { sortByLatest } from '../utils/sortByLatest';
 import * as purchasesApi from '../api/purchases';
 import * as auditsApi from '../api/audits';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
@@ -154,14 +155,14 @@ function PurchasesPage() {
   const purchases = useMemo(() => {
     const fromTs = periodMode === 'all_time' ? 0 : (dateFrom ? new Date(dateFrom).getTime() : 0);
     const toTs = periodMode === 'all_time' ? Number.MAX_SAFE_INTEGER : (dateTo ? new Date(dateTo).getTime() : Number.MAX_SAFE_INTEGER);
-    return basePurchases.filter(e => {
+    return sortByLatest(basePurchases.filter(e => {
       const ts = new Date(e.ts).getTime();
       if (ts < fromTs || ts > toTs) return false;
       if (fActor && e.actor !== fActor) return false;
       if (fBranch && e.branchId !== fBranch) return false;
       if (!matchesFilterText([(e.details || {}).product, (e.details || {}).variant, (e.details || {}).supplier, e.remark, e.actor, byId.get(e.branchId)], recordQuery)) return false;
       return true;
-    }).slice().reverse();
+    }), (row) => row?.ts);
   }, [basePurchases, byId, dateFrom, dateTo, fActor, fBranch, periodMode, recordQuery]);
 
   useEffect(() => {

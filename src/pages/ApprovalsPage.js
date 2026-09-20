@@ -195,7 +195,7 @@ function ApprovalsPage() {
     const area = resolveRefundArea(row);
     if (area === 'warehouse') return roleLower === 'director' || roleLower === 'manager' || grants.includes('approve_warehouse_director') || grants.includes('approve_warehouse_manager');
     if (area === 'distribution') return roleLower === 'director' || roleLower === 'manager' || grants.includes('approve_distribution_director') || grants.includes('approve_distribution_manager');
-    return roleLower === 'manager' || grants.includes('approve_retail_director') || grants.includes('approve_retail_manager');
+    return roleLower === 'director' || roleLower === 'manager' || grants.includes('approve_retail_director') || grants.includes('approve_retail_manager');
   }, [grants, roleLower, resolveRefundArea]);
   const canApproveAreaStage = useCallback((area = 'distribution', stage = 'director') => {
     const normalizedArea = String(area || '').toLowerCase() === 'warehouse'

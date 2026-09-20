@@ -5,6 +5,7 @@ import { addAudit } from '../store/auditSlice';
 import { formatCurrency } from '../utils/currency';
 import { useToast } from '../components/ToastProvider';
 import { exportCsv, exportTablePdf } from '../utils/exporters';
+import { sortByLatest } from '../utils/sortByLatest';
 import * as refundsApi from '../api/refunds';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
@@ -448,7 +449,7 @@ function RefundsPage({ mode = 'retail' }) {
   const allRequests = useMemo(() => {
     const me = auth.user?.name || '';
     const roleLower = String(auth.role || '').toLowerCase();
-    let rows = visibleRefunds.slice().reverse();
+    let rows = sortByLatest(visibleRefunds, (row) => row?.created_at || row?.createdAt);
     if (roleLower === 'cashier') {
       rows = rows.filter(r => String(r.initiatorName || '') === me);
     } else if (!['superadmin', 'admin'].includes(roleLower)) {
