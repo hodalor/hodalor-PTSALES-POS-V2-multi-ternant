@@ -18,7 +18,7 @@ const refundsSlice = createSlice({
       const serverClientIds = new Set(server.map(r => r?.clientId).filter(Boolean).map(String));
       const pendingLocal = state.requests.filter((r) => (
         r
-        && (r.offline || r.syncPending || r.syncError)
+        && (r.offline || r.syncPending)
         && !serverIds.has(String(r.id))
         && (!r.clientId || !serverClientIds.has(String(r.clientId)))
       ));
@@ -97,9 +97,18 @@ const refundsSlice = createSlice({
         if (typeof syncError === 'string') match.syncError = syncError;
         if (typeof offline === 'boolean') match.offline = offline;
       }
+    },
+    removeRequest(state, action) {
+      const { id, clientId } = action.payload || {};
+      state.requests = state.requests.filter((row) => (
+        !(
+          (id && String(row?.id || row?._id || '') === String(id))
+          || (clientId && String(row?.clientId || '') === String(clientId))
+        )
+      ));
     }
   }
 });
 
-export const { setRequests, mergeRequests, createRefundRequest, approveRefund, rejectRefund, updateRequestSyncState } = refundsSlice.actions;
+export const { setRequests, mergeRequests, createRefundRequest, approveRefund, rejectRefund, updateRequestSyncState, removeRequest } = refundsSlice.actions;
 export default refundsSlice.reducer;

@@ -1,6 +1,6 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { useEffect, useMemo, useState } from 'react';
-import { createRefundRequest, mergeRequests, updateRequestSyncState } from '../store/refundsSlice';
+import { createRefundRequest, mergeRequests, removeRequest, updateRequestSyncState } from '../store/refundsSlice';
 import { addAudit } from '../store/auditSlice';
 import { formatCurrency } from '../utils/currency';
 import { useToast } from '../components/ToastProvider';
@@ -407,30 +407,39 @@ function RefundsPage({ mode = 'retail' }) {
         toast.show('Failed to save offline', { type: 'error' });
         return;
       }
+      dispatch(addAudit({
+        actor: auth.user?.name || 'unknown',
+        actionType: 'refund_initiated',
+        details: { saleId: sale.id, amount: requestedAmount, type: refundType, refundArea: normalizedMode },
+        remark,
+        branchId: sale.branchId,
+        offline: true
+      }));
       toast.show('Saved offline. Will backup when online.', { type: 'success' });
     } else {
       const clientId = crypto.randomUUID();
-      dispatch(createRefundRequest({ ...payload, clientId, syncPending: true, syncError: '' }));
       try {
         const saved = await refundsApi.createRequest({ ...payload, clientId });
         if (saved) dispatch(mergeRequests([saved]));
+        dispatch(addAudit({
+          actor: auth.user?.name || 'unknown',
+          actionType: 'refund_initiated',
+          details: { saleId: sale.id, amount: requestedAmount, type: refundType, refundArea: normalizedMode },
+          remark,
+          branchId: sale.branchId,
+          offline: false
+        }));
       } catch (e) {
+        dispatch(removeRequest({ clientId }));
         dispatch(updateRequestSyncState({
           clientId,
           syncPending: false,
           syncError: String(e?.message || 'Failed to sync to server')
         }));
-        toast.show('Failed to sync to server', { type: 'error' });
+        toast.show(String(e?.message || 'Failed to sync to server'), { type: 'error' });
+        return;
       }
     }
-    dispatch(addAudit({
-      actor: auth.user?.name || 'unknown',
-      actionType: 'refund_initiated',
-      details: { saleId: sale.id, amount: requestedAmount, type: refundType, refundArea: normalizedMode },
-      remark,
-      branchId: sale.branchId,
-      offline: !navigator.onLine
-    }));
     setQuery('');
     setLookupSale(null);
     setLookupError('');
@@ -449,7 +458,10 @@ function RefundsPage({ mode = 'retail' }) {
   const allRequests = useMemo(() => {
     const me = auth.user?.name || '';
     const roleLower = String(auth.role || '').toLowerCase();
-    let rows = sortByLatest(visibleRefunds, (row) => row?.created_at || row?.createdAt);
+    let rows = sortByLatest(
+      visibleRefunds.filter((row) => !(row?.syncError && !row?.offline && !row?.syncPending)),
+      (row) => row?.created_at || row?.createdAt
+    );
     if (roleLower === 'cashier') {
       rows = rows.filter(r => String(r.initiatorName || '') === me);
     } else if (!['superadmin', 'admin'].includes(roleLower)) {
