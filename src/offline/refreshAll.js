@@ -57,7 +57,7 @@ export async function refreshAllData(dispatch, getState) {
     || (isFeatureEnabled(settings, 'pages.distribution.pos') && allow('pages.distribution.pos', ['Admin','Manager','Cashier'], ['view_wholesale_pos']))
   );
   const canLoadRefunds = (
-    (isFeatureEnabled(settings, 'pages.retail.refunds') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds']))
+    (isFeatureEnabled(settings, 'pages.retail.refunds') && allow('pages.retail.refunds', ['Admin','Manager','Cashier'], ['view_refunds','see_refunds','add_refunds']))
     || (isFeatureEnabled(settings, 'pages.distribution.refund') && allow('pages.distribution.refund', ['Admin','Manager','Inventory Staff','Cashier'], ['view_distribution_refunds','add_distribution_refunds']))
     || (isFeatureEnabled(settings, 'pages.warehouse.refund') && allow('pages.warehouse.refund', ['Admin','Manager','Inventory Staff','Cashier'], ['view_warehouse_refunds','add_warehouse_refunds']))
     || (isFeatureEnabled(settings, 'modules.refundApprovals') && allow('modules.refundApprovals', ['Admin','Manager','Director'], ['approve_refunds','approve_retail_director','approve_retail_manager','approve_distribution_director','approve_distribution_manager','approve_warehouse_director','approve_warehouse_manager']))

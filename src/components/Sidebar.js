@@ -190,7 +190,7 @@ function Sidebar({ collapsed, onNavigate }) {
           (isFeatureEnabled(settings, 'pages.retail.purchases') && can(['Admin','Manager','Inventory Staff','SuperAdmin'],['view_purchases','see_purchases'])) ||
           (isFeatureEnabled(settings, 'pages.retail.transfers') && can(['Admin','Manager','Inventory Staff','SuperAdmin'],['view_transfers','see_transfers'])) ||
           (isFeatureEnabled(settings, 'pages.retail.adjustments') && can(['Admin','Manager','Inventory Staff','SuperAdmin'],['view_adjustments','see_adjustments'])) ||
-          (isFeatureEnabled(settings, 'pages.retail.refunds') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_refunds','see_refunds'])) ||
+          (isFeatureEnabled(settings, 'pages.retail.refunds') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_refunds','see_refunds','add_refunds'])) ||
           (isFeatureEnabled(settings, 'modules.invoices') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_invoices','see_invoices']))
         )) && (
         <div>
@@ -245,7 +245,7 @@ function Sidebar({ collapsed, onNavigate }) {
               <span className="sidebar-text">{t('Retail Invoices')}</span>
             </NavLink>
             )}
-            {isFeatureEnabled(settings, 'pages.retail.refunds') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_refunds','see_refunds']) && (
+            {isFeatureEnabled(settings, 'pages.retail.refunds') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_refunds','see_refunds','add_refunds']) && (
             <NavLink to="/refunds" className="sidebar-link" title={t('Refunds')}>
               <span className="sidebar-text">{t('Refunds')}</span>
             </NavLink>
