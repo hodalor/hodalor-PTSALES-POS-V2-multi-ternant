@@ -106,6 +106,8 @@ function isRetryableStorageError(error) {
   if (['econnreset', 'etimedout', 'eai_again', 'enotfound', 'und_err_socket'].includes(code)) return true;
   return [
     'premature close',
+    'stream was destroyed',
+    'cannot call write after a stream was destroyed',
     'socket hang up',
     'connection reset',
     'fetch failed',

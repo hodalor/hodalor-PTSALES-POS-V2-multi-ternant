@@ -254,6 +254,7 @@ function generateEAN13() {
 
 function productRouteErrorMessage(err) {
   const code = String(err?.code || err?.name || '').trim();
+  const message = String(err?.message || '').trim();
   if (code === '11000' || code === 'E11000') {
     const dupField = Object.keys(err?.keyPattern || err?.keyValue || {})[0] || 'record';
     if (dupField === 'sku') return 'A product with this SKU already exists';
@@ -263,7 +264,10 @@ function productRouteErrorMessage(err) {
     const first = Object.values(err?.errors || {})[0];
     return String(first?.message || 'Product validation failed');
   }
-  return String(err?.message || 'Failed to save product');
+  if (/stream was destroyed|cannot call write after a stream was destroyed/i.test(message)) {
+    return 'Temporary media upload problem. Please try saving the product again.';
+  }
+  return message || 'Failed to save product';
 }
 
 r.get('/', async (req, res) => {

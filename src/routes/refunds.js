@@ -259,60 +259,67 @@ r.get('/lookup-sale', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_ref
 });
 
 r.post('/requests', requireRoleOrPerm(['Admin','Manager','Cashier'], ['add_refunds', 'add_distribution_refunds', 'add_warehouse_refunds']), async (req, res) => {
-  const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim();
-  const payload = {
-    ...(req.body || {}),
-    images: await uploadMediaArray(req.body?.images, (_value, index) => ({
-      tenantId,
-      folder: 'refunds',
-      originalName: `${req.body?.saleId || req.body?.receiptNumber || 'refund'}-${index + 1}`
-    }))
-  };
-  const clientId = String(payload.clientId || '').trim();
-  if (clientId) {
-    const existing = await RefundRequest.findOne({ clientId });
-    if (existing) return res.json(existing);
+  try {
+    const tenantId = String(req.user?.tenantId || req.tenantId || 'master').trim();
+    const payload = {
+      ...(req.body || {}),
+      images: await uploadMediaArray(req.body?.images, (_value, index) => ({
+        tenantId,
+        folder: 'refunds',
+        originalName: `${req.body?.saleId || req.body?.receiptNumber || 'refund'}-${index + 1}`
+      }))
+    };
+    const clientId = String(payload.clientId || '').trim();
+    if (clientId) {
+      const existing = await RefundRequest.findOne({ clientId });
+      if (existing) return res.json(existing);
+    }
+    const saleRef = await resolveRefundSaleReference(payload);
+    if (!saleRef) return res.status(404).json({ error: 'Sale not found for refund' });
+    const requestedRefundAreaRaw = String(payload?.refundArea || '').trim();
+    const requestedRefundArea = requestedRefundAreaRaw ? normalizeRefundArea(requestedRefundAreaRaw) : '';
+    const saleRefundArea = getSaleRefundArea(saleRef);
+    if (requestedRefundArea && requestedRefundArea !== saleRefundArea) {
+      return res.status(400).json({ error: `Sale belongs to ${saleRefundArea} refunds` });
+    }
+    const coverage = await getRefundCoverageForSale(saleRef);
+    if (coverage.hasActiveFull || coverage.remainingAmount <= 0.0001) {
+      return res.status(400).json({ error: 'Sale already refunded' });
+    }
+    const requestedType = String(payload?.type || 'full').trim().toLowerCase();
+    let requestedAmount = Math.abs(Number(payload?.requestedAmount || 0));
+    if (requestedType === 'full') {
+      requestedAmount = coverage.remainingAmount;
+    }
+    if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
+      return res.status(400).json({ error: 'Refund amount must be greater than zero' });
+    }
+    if (requestedAmount > coverage.remainingAmount + 0.0001) {
+      return res.status(400).json({ error: `Refund amount exceeds remaining refundable amount of ${coverage.remainingAmount.toFixed(2)}` });
+    }
+    const rfd = await RefundRequest.create({
+      ...payload,
+      saleId: String(saleRef?._id || saleRef?.clientId || payload?.saleId || ''),
+      invoiceSerial: saleRef?.invoiceSerial || payload?.invoiceSerial || '',
+      receiptNumber: saleRef?.receiptNumber || payload?.receiptNumber || '',
+      branchId: saleRef?.branchId || payload?.branchId || '',
+      refundArea: saleRefundArea,
+      requestedAmount,
+      clientId: clientId || undefined
+    });
+    await Audit.create({
+      actor: rfd.initiatorName || 'unknown',
+      actionType: 'refund_initiated',
+      details: { saleId: rfd.saleId, amount: rfd.requestedAmount, type: rfd.type },
+      branchId: rfd.branchId
+    });
+    return res.json(rfd);
+  } catch (err) {
+    const message = /stream was destroyed|cannot call write after a stream was destroyed/i.test(String(err?.message || ''))
+      ? 'Temporary media upload problem. Please try the refund request again.'
+      : String(err?.message || 'Failed to save refund request');
+    return res.status(500).json({ error: message });
   }
-  const saleRef = await resolveRefundSaleReference(payload);
-  if (!saleRef) return res.status(404).json({ error: 'Sale not found for refund' });
-  const requestedRefundAreaRaw = String(payload?.refundArea || '').trim();
-  const requestedRefundArea = requestedRefundAreaRaw ? normalizeRefundArea(requestedRefundAreaRaw) : '';
-  const saleRefundArea = getSaleRefundArea(saleRef);
-  if (requestedRefundArea && requestedRefundArea !== saleRefundArea) {
-    return res.status(400).json({ error: `Sale belongs to ${saleRefundArea} refunds` });
-  }
-  const coverage = await getRefundCoverageForSale(saleRef);
-  if (coverage.hasActiveFull || coverage.remainingAmount <= 0.0001) {
-    return res.status(400).json({ error: 'Sale already refunded' });
-  }
-  const requestedType = String(payload?.type || 'full').trim().toLowerCase();
-  let requestedAmount = Math.abs(Number(payload?.requestedAmount || 0));
-  if (requestedType === 'full') {
-    requestedAmount = coverage.remainingAmount;
-  }
-  if (!Number.isFinite(requestedAmount) || requestedAmount <= 0) {
-    return res.status(400).json({ error: 'Refund amount must be greater than zero' });
-  }
-  if (requestedAmount > coverage.remainingAmount + 0.0001) {
-    return res.status(400).json({ error: `Refund amount exceeds remaining refundable amount of ${coverage.remainingAmount.toFixed(2)}` });
-  }
-  const rfd = await RefundRequest.create({
-    ...payload,
-    saleId: String(saleRef?._id || saleRef?.clientId || payload?.saleId || ''),
-    invoiceSerial: saleRef?.invoiceSerial || payload?.invoiceSerial || '',
-    receiptNumber: saleRef?.receiptNumber || payload?.receiptNumber || '',
-    branchId: saleRef?.branchId || payload?.branchId || '',
-    refundArea: saleRefundArea,
-    requestedAmount,
-    clientId: clientId || undefined
-  });
-  await Audit.create({
-    actor: rfd.initiatorName || 'unknown',
-    actionType: 'refund_initiated',
-    details: { saleId: rfd.saleId, amount: rfd.requestedAmount, type: rfd.type },
-    branchId: rfd.branchId
-  });
-  res.json(rfd);
 });
 
 r.post('/approve', async (req, res) => {
