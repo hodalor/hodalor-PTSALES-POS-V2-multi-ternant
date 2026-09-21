@@ -20,6 +20,13 @@ function toDataUrl(file) {
   });
 }
 
+function createClientId(prefix = 'refund') {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 function normalizeKnownRefundMode(value = '') {
   const mode = String(value || '').trim().toLowerCase();
   if (!mode) return '';
@@ -157,6 +164,7 @@ function RefundsPage({ mode = 'retail' }) {
   const [amount, setAmount] = useState('');
   const [remark, setRemark] = useState('');
   const [images, setImages] = useState([]);
+  const [requesting, setRequesting] = useState(false);
   const [restock, setRestock] = useState(true);
   const [serializedSelections, setSerializedSelections] = useState({});
   const [lookupSale, setLookupSale] = useState(null);
@@ -320,137 +328,145 @@ function RefundsPage({ mode = 'retail' }) {
   }
 
   async function startRequest() {
-    const roleOk = ['admin','manager','cashier'].includes(roleLower);
-    const canRequestNow = roleLower === 'superadmin'
-      || roleOk
-      || grants.includes('add_refunds')
-      || grants.includes('add_distribution_refunds')
-      || grants.includes('add_warehouse_refunds');
-    if (!canRequestNow) {
-      toast.show('Not authorized to request refunds', { type: 'error' });
-      return;
-    }
-    if (!sale) {
-      toast.show('Find a sale first', { type: 'error' });
-      return;
-    }
-    if (getSaleRefundArea(sale) !== normalizedMode) {
-      toast.show(`Sale belongs to ${getRefundPageMeta(getSaleRefundArea(sale)).pageTitle}`, { type: 'error' });
-      return;
-    }
-    if (images.length < 2) {
-      toast.show('Upload at least two images', { type: 'error' });
-      return;
-    }
-    if (!remark.trim()) {
-      toast.show('Remark is required', { type: 'error' });
-      return;
-    }
-    if (refundCoverage.hasActiveFull || refundCoverage.remainingAmount <= 0.0001) {
-      toast.show('Sale already refunded', { type: 'error' });
-      return;
-    }
-    let requestedAmount = refundCoverage.remainingAmount;
-    if (refundType === 'partial') {
-      const v = Number(amount);
-      if (!Number.isFinite(v) || v <= 0) {
-        toast.show('Enter a valid refundable amount', { type: 'error' });
+    if (requesting) return;
+    setRequesting(true);
+    try {
+      const roleOk = ['admin','manager','cashier'].includes(roleLower);
+      const canRequestNow = roleLower === 'superadmin'
+        || roleOk
+        || grants.includes('add_refunds')
+        || grants.includes('add_distribution_refunds')
+        || grants.includes('add_warehouse_refunds');
+      if (!canRequestNow) {
+        toast.show('Not authorized to request refunds', { type: 'error' });
         return;
       }
-      if (v > refundCoverage.remainingAmount) {
-        toast.show(`Amount exceeds remaining refundable amount of ${formatCurrency(refundCoverage.remainingAmount, settings)}`, { type: 'error' });
+      if (!sale) {
+        toast.show('Find a sale first', { type: 'error' });
         return;
       }
-      requestedAmount = Math.round(v * 100) / 100;
-    }
-    const restockItems = restock || refundType === 'partial'
-      ? (sale.items || []).map((item, index) => {
-          const key = `${index}:${item.sku || ''}`;
-          const unitIds = Array.isArray(serializedSelections[key]) ? serializedSelections[key] : [];
-          const soldUnits = Array.isArray(item.soldUnits) ? item.soldUnits : [];
-          const qty = soldUnits.length > 0 ? unitIds.length : Number(item.qty || 0);
-          return {
-            sku: item.sku,
-            productId: item.productId || '',
-            variantId: item.variantId || '',
-            qty,
-            unitIds
-          };
-        }).filter(item => item.qty > 0)
-      : [];
-    const payload = {
-      saleId: sale.id || sale._id || sale.clientId || '',
-      invoiceSerial: sale.invoiceSerial || '',
-      receiptNumber: sale.receiptNumber || '',
-      branchId: sale.branchId,
-      refundArea: normalizedMode,
-      initiatorName: auth.user?.name || 'unknown',
-      initiatorRole: auth.role || '',
-      type: refundType,
-      requestedAmount,
-      remark,
-      images,
-      restock: refundType === 'full' ? !!restock : false,
-      restockItems
-    };
-    if (!navigator.onLine) {
-      if (!offlineBackupAllowed) {
-        toast.show('Offline: cannot submit refund request', { type: 'error' });
+      if (getSaleRefundArea(sale) !== normalizedMode) {
+        toast.show(`Sale belongs to ${getRefundPageMeta(getSaleRefundArea(sale)).pageTitle}`, { type: 'error' });
         return;
       }
-      const clientId = `offline-refund-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-      const localPayload = { ...payload, id: clientId, clientId, offline: true, created_at: new Date().toISOString(), status: 'pending_approval' };
-      dispatch(createRefundRequest(localPayload));
-      try {
-        await enqueueHttp({ collection: 'refundrequests', label: 'Refund request', path: '/api/refunds/requests', method: 'POST', body: { ...payload, clientId } });
-      } catch (e) {
-        toast.show('Failed to save offline', { type: 'error' });
+      if (images.length < 2) {
+        toast.show('Upload at least two images', { type: 'error' });
         return;
       }
-      dispatch(addAudit({
-        actor: auth.user?.name || 'unknown',
-        actionType: 'refund_initiated',
-        details: { saleId: sale.id, amount: requestedAmount, type: refundType, refundArea: normalizedMode },
-        remark,
+      if (!remark.trim()) {
+        toast.show('Remark is required', { type: 'error' });
+        return;
+      }
+      if (refundCoverage.hasActiveFull || refundCoverage.remainingAmount <= 0.0001) {
+        toast.show('Sale already refunded', { type: 'error' });
+        return;
+      }
+      let requestedAmount = refundCoverage.remainingAmount;
+      if (refundType === 'partial') {
+        const v = Number(amount);
+        if (!Number.isFinite(v) || v <= 0) {
+          toast.show('Enter a valid refundable amount', { type: 'error' });
+          return;
+        }
+        if (v > refundCoverage.remainingAmount) {
+          toast.show(`Amount exceeds remaining refundable amount of ${formatCurrency(refundCoverage.remainingAmount, settings)}`, { type: 'error' });
+          return;
+        }
+        requestedAmount = Math.round(v * 100) / 100;
+      }
+      const restockItems = restock || refundType === 'partial'
+        ? (sale.items || []).map((item, index) => {
+            const key = `${index}:${item.sku || ''}`;
+            const unitIds = Array.isArray(serializedSelections[key]) ? serializedSelections[key] : [];
+            const soldUnits = Array.isArray(item.soldUnits) ? item.soldUnits : [];
+            const qty = soldUnits.length > 0 ? unitIds.length : Number(item.qty || 0);
+            return {
+              sku: item.sku,
+              productId: item.productId || '',
+              variantId: item.variantId || '',
+              qty,
+              unitIds
+            };
+          }).filter(item => item.qty > 0)
+        : [];
+      const payload = {
+        saleId: sale.id || sale._id || sale.clientId || '',
+        invoiceSerial: sale.invoiceSerial || '',
+        receiptNumber: sale.receiptNumber || '',
         branchId: sale.branchId,
-        offline: true
-      }));
-      toast.show('Saved offline. Will backup when online.', { type: 'success' });
-    } else {
-      const clientId = crypto.randomUUID();
-      try {
-        const saved = await refundsApi.createRequest({ ...payload, clientId });
-        if (saved) dispatch(mergeRequests([saved]));
+        refundArea: normalizedMode,
+        initiatorName: auth.user?.name || 'unknown',
+        initiatorRole: auth.role || '',
+        type: refundType,
+        requestedAmount,
+        remark,
+        images,
+        restock: refundType === 'full' ? !!restock : false,
+        restockItems
+      };
+      if (!navigator.onLine) {
+        if (!offlineBackupAllowed) {
+          toast.show('Offline: cannot submit refund request', { type: 'error' });
+          return;
+        }
+        const clientId = `offline-refund-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        const localPayload = { ...payload, id: clientId, clientId, offline: true, created_at: new Date().toISOString(), status: 'pending_approval' };
+        dispatch(createRefundRequest(localPayload));
+        try {
+          await enqueueHttp({ collection: 'refundrequests', label: 'Refund request', path: '/api/refunds/requests', method: 'POST', body: { ...payload, clientId } });
+        } catch (e) {
+          toast.show('Failed to save offline', { type: 'error' });
+          return;
+        }
         dispatch(addAudit({
           actor: auth.user?.name || 'unknown',
           actionType: 'refund_initiated',
           details: { saleId: sale.id, amount: requestedAmount, type: refundType, refundArea: normalizedMode },
           remark,
           branchId: sale.branchId,
-          offline: false
+          offline: true
         }));
-      } catch (e) {
-        dispatch(removeRequest({ clientId }));
-        dispatch(updateRequestSyncState({
-          clientId,
-          syncPending: false,
-          syncError: String(e?.message || 'Failed to sync to server')
-        }));
-        toast.show(String(e?.message || 'Failed to sync to server'), { type: 'error' });
-        return;
+        toast.show('Saved offline. Will backup when online.', { type: 'success' });
+      } else {
+        const clientId = createClientId();
+        try {
+          const saved = await refundsApi.createRequest({ ...payload, clientId });
+          if (saved) dispatch(mergeRequests([saved]));
+          dispatch(addAudit({
+            actor: auth.user?.name || 'unknown',
+            actionType: 'refund_initiated',
+            details: { saleId: sale.id, amount: requestedAmount, type: refundType, refundArea: normalizedMode },
+            remark,
+            branchId: sale.branchId,
+            offline: false
+          }));
+        } catch (e) {
+          dispatch(removeRequest({ clientId }));
+          dispatch(updateRequestSyncState({
+            clientId,
+            syncPending: false,
+            syncError: String(e?.message || 'Failed to sync to server')
+          }));
+          toast.show(String(e?.message || 'Failed to sync to server'), { type: 'error' });
+          return;
+        }
       }
+      setQuery('');
+      setLookupSale(null);
+      setLookupError('');
+      setLookupLoading(false);
+      setRemark('');
+      setAmount('');
+      setImages([]);
+      setRestock(true);
+      setRefundType('full');
+      setSerializedSelections({});
+      if (navigator.onLine) toast.show('Refund request submitted for approval', { type: 'success' });
+    } catch (error) {
+      toast.show(String(error?.message || 'Failed to submit refund request'), { type: 'error' });
+    } finally {
+      setRequesting(false);
     }
-    setQuery('');
-    setLookupSale(null);
-    setLookupError('');
-    setLookupLoading(false);
-    setRemark('');
-    setAmount('');
-    setImages([]);
-    setRestock(true);
-    setRefundType('full');
-    setSerializedSelections({});
-    if (navigator.onLine) toast.show('Refund request submitted for approval', { type: 'success' });
   }
 
   // no approve/reject here; approvals moved to Refund Approvals page
@@ -631,7 +647,7 @@ function RefundsPage({ mode = 'retail' }) {
             <div style={{ marginTop: 12 }}>
               {(() => {
                 return canRequest ? (
-                  <button className="btn btn-primary" onClick={startRequest} disabled={refundCoverage.hasActiveFull || refundCoverage.remainingAmount <= 0.0001}>{pageMeta.requestButtonLabel}</button>
+                  <button className="btn btn-primary" type="button" onClick={startRequest} disabled={requesting || refundCoverage.hasActiveFull || refundCoverage.remainingAmount <= 0.0001}>{requesting ? 'Submitting...' : pageMeta.requestButtonLabel}</button>
                 ) : null;
               })()}
             </div>
