@@ -155,6 +155,18 @@ function getSaleTypeLabel(sale) {
       : 'Retail';
 }
 
+function getSaleItemsSearchText(sale, productBrandById) {
+  return Array.isArray(sale?.items)
+    ? sale.items.map((item) => [
+        String(item?.name || ''),
+        String(item?.spec || ''),
+        String(item?.sku || ''),
+        String(item?.brand || ''),
+        String(productBrandById.get(String(item?.productId || '')) || '')
+      ].join(' ')).join(' ')
+    : '';
+}
+
 function SalesPage() {
   const dispatch = useDispatch();
   const sales = useSelector(s => s.sales.sales);
@@ -194,6 +206,7 @@ function SalesPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const [searchTerm, setSearchTerm] = useState('');
+  const [productSearchTerm, setProductSearchTerm] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [periodMode, setPeriodMode] = useState('range');
@@ -344,18 +357,14 @@ function SalesPage() {
     } else if (recordSourceFilter === 'server') {
       list = list.filter((sale) => !isTemporarySaleRecord(sale));
     }
+    const productQuery = String(productSearchTerm || '').trim().toLowerCase();
+    if (productQuery) {
+      list = list.filter((sale) => getSaleItemsSearchText(sale, productBrandById).toLowerCase().includes(productQuery));
+    }
     const q = String(searchTerm || '').trim().toLowerCase();
     if (q) {
       list = list.filter((sale) => {
-        const itemText = Array.isArray(sale.items)
-          ? sale.items.map((item) => [
-              String(item.name || ''),
-              String(item.spec || ''),
-              String(item.sku || ''),
-              String(item.brand || ''),
-              String(productBrandById.get(String(item.productId || '')) || '')
-            ].join(' ')).join(' ')
-          : '';
+        const itemText = getSaleItemsSearchText(sale, productBrandById);
         const fields = [
           String(sale.invoiceSerial || ''),
           String(sale.receiptNumber || ''),
@@ -374,7 +383,7 @@ function SalesPage() {
     }
     list = list.filter((sale) => !isRefundSale(sale));
     return list;
-  }, [auth.user?.name, branchLabel, canUseCompetitionScope, creditKind, creditPackageFilter, dateFrom, dateTo, filteredByBranch, periodMode, productBrandById, recordSourceFilter, roleLower, saleKind, searchTerm, settlementFilter]);
+  }, [auth.user?.name, branchLabel, canUseCompetitionScope, creditKind, creditPackageFilter, dateFrom, dateTo, filteredByBranch, periodMode, productBrandById, productSearchTerm, recordSourceFilter, roleLower, saleKind, searchTerm, settlementFilter]);
 
   const creditPackageOptions = useMemo(() => {
     return Array.from(new Set(
@@ -660,6 +669,10 @@ function SalesPage() {
               <label className="sales-filter-field">
                 <div className="sales-filter-label">Search</div>
                 <input className="input" value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setPage(1); }} placeholder="Invoice, receipt, temp ref, customer, product, brand, SKU" />
+              </label>
+              <label className="sales-filter-field">
+                <div className="sales-filter-label">Product Search</div>
+                <input className="input" value={productSearchTerm} onChange={e => { setProductSearchTerm(e.target.value); setPage(1); }} placeholder="Search product name, brand, spec, or SKU" />
               </label>
               <label className="sales-filter-field">
                 <div className="sales-filter-label">Period</div>
