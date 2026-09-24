@@ -19,6 +19,7 @@ const TENANT_ADMIN_ALLOWED_KEYS = new Set([
   'webRtcIceServers',
   'receiptHeader',
   'receiptFooter',
+  'receiptShowBranchName',
   'receiptShowPaymentInfo',
   'receiptShowTaxInfo',
   'receiptShowQrSection',
@@ -85,6 +86,7 @@ function normalizeSettingsData(input = {}) {
   if (!String(next.chatNotificationSound || '').trim()) next.chatNotificationSound = 'bright';
   if (!String(next.callNotificationSound || '').trim()) next.callNotificationSound = 'bright';
   if (!String(next.webRtcIceServers || '').trim()) next.webRtcIceServers = 'stun:stun.l.google.com:19302';
+  next.receiptShowBranchName = next.receiptShowBranchName !== false;
   next.receiptShowPaymentInfo = !!next.receiptShowPaymentInfo;
   next.receiptShowTaxInfo = !!next.receiptShowTaxInfo;
   next.receiptShowQrSection = !!next.receiptShowQrSection;
