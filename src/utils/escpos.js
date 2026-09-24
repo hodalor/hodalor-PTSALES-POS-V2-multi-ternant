@@ -55,11 +55,12 @@ export function escposReceipt({ header, items, totals, footer, settings, sale })
   const taxableVal = Math.max(0, Number(sale?.subtotal || totals?.subtotal || 0) - Number(sale?.discount || totals?.discount || 0));
   const vatVal = Number(sale?.tax || totals?.tax || 0);
   const showPaymentInfo = !!settings?.receiptShowPaymentInfo;
+  const showBranchName = settings?.receiptShowBranchName !== false;
   const showTaxInfo = !!settings?.receiptShowTaxInfo;
   const showQrSection = !!settings?.receiptShowQrSection;
   lines.push(center(header?.title || 'RECEIPT'));
   if (header?.store) lines.push(center(header.store));
-  if (header?.branch) lines.push(center(header.branch));
+  if (showBranchName && header?.branch) lines.push(center(header.branch));
   if (header?.phone) lines.push(center(`Tel: ${header.phone}`));
   if (header?.cashier) lines.push(text(`CASHIER: ${header.cashier}`));
   if (header?.customer) lines.push(text(`CUSTOMER: ${header.customer}`));

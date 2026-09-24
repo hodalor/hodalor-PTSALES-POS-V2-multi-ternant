@@ -56,6 +56,7 @@ export default function ReceiptPublicPage() {
   }
 
   const qtySum = sale.items.reduce((s, it) => s + (Number(it.qty)||0), 0);
+  const showBranchName = settings?.receiptShowBranchName !== false;
   const showTaxInfo = !!settings?.receiptShowTaxInfo;
 
   return (
@@ -69,7 +70,7 @@ export default function ReceiptPublicPage() {
       </div>
       <div className="card" style={{ marginTop: 12 }}>
         <div className="center"><img src="/logo512.png" alt="logo" style={{ maxHeight: 60 }} /></div>
-        <div className="center" style={{ fontWeight: 700 }}>{sale.branchName || sale.branchId || '-'}</div>
+        {showBranchName && <div className="center" style={{ fontWeight: 700 }}>{sale.branchName || sale.branchId || '-'}</div>}
         {settings.businessPhone && <div className="center" style={{ color: '#64748b' }}>{settings.businessPhone}</div>}
         <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr auto', gap: 4 }}>
           <div>Cashier: {sale.sellerName || '—'}</div>

@@ -1,5 +1,5 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { setAppName, setFooterText, setCurrentBranch, setReceiptHeader, setReceiptFooter, setReceiptShowPaymentInfo, setReceiptShowTaxInfo, setReceiptShowQrSection, setDistributionPosDefaultPrintMode, setWarehousePosDefaultPrintMode, setBusinessPhone, setBusinessWebsite, setBusinessTpin, setReceiptQrBaseUrl, setInvoicePrefix, setNextInvoiceNumber, setWholesaleInvoicePrefix, setNextWholesaleInvoiceNumber, setWarehouseInvoicePrefix, setNextWarehouseInvoiceNumber, setReceiptPrefix, setNextReceiptNumber, setDrawerOpenOnCash, setTaxRate, setCurrencyCode, setCurrencySymbol, setCurrencyPosition, setRefreshIntervalSec, addCurrency, removeCurrency, setActiveCurrency, setLoyaltyEnabled, setLoyaltyEarnAmount, setLoyaltyEarnPoints, setLoyaltyRedeemValue, setLoyaltyMinRedeemPoints, setLoyaltyMaxRedeemPercent, setClientAppName, setClientLogoUrl, setPreferredLanguage, setInvoiceCompanyAddress, setInvoiceFooter, setInvoiceDeclaration, setInvoiceSignatoryLabel, setInvoiceTitle, setInvoiceWordsLabel, setInvoiceGeneratedNote, setInvoiceNumberDigits, setInvoicePaidStampEnabled, setInvoicePaidStampLabel, setInvoicePaidStampThankYou, setInvoicePaidStampShowDate, setInvoicePaidStampColor, setReceiptBrandName, setAllSettings, addSettingsCategory, removeSettingsCategory } from '../store/settingsSlice';
+import { setAppName, setFooterText, setCurrentBranch, setReceiptHeader, setReceiptFooter, setReceiptShowBranchName, setReceiptShowPaymentInfo, setReceiptShowTaxInfo, setReceiptShowQrSection, setDistributionPosDefaultPrintMode, setWarehousePosDefaultPrintMode, setBusinessPhone, setBusinessWebsite, setBusinessTpin, setReceiptQrBaseUrl, setInvoicePrefix, setNextInvoiceNumber, setWholesaleInvoicePrefix, setNextWholesaleInvoiceNumber, setWarehouseInvoicePrefix, setNextWarehouseInvoiceNumber, setReceiptPrefix, setNextReceiptNumber, setDrawerOpenOnCash, setTaxRate, setCurrencyCode, setCurrencySymbol, setCurrencyPosition, setRefreshIntervalSec, addCurrency, removeCurrency, setActiveCurrency, setLoyaltyEnabled, setLoyaltyEarnAmount, setLoyaltyEarnPoints, setLoyaltyRedeemValue, setLoyaltyMinRedeemPoints, setLoyaltyMaxRedeemPercent, setClientAppName, setClientLogoUrl, setPreferredLanguage, setInvoiceCompanyAddress, setInvoiceFooter, setInvoiceDeclaration, setInvoiceSignatoryLabel, setInvoiceTitle, setInvoiceWordsLabel, setInvoiceGeneratedNote, setInvoiceNumberDigits, setInvoicePaidStampEnabled, setInvoicePaidStampLabel, setInvoicePaidStampThankYou, setInvoicePaidStampShowDate, setInvoicePaidStampColor, setReceiptBrandName, setAllSettings, addSettingsCategory, removeSettingsCategory } from '../store/settingsSlice';
 import { addBranch, removeBranch, setBranches, updateBranch } from '../store/branchesSlice';
 import * as branchesApi from '../api/branches';
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
@@ -75,6 +75,7 @@ function ConfigSettingsPage() {
     'receiptBrandName',
     'receiptHeader',
     'receiptFooter',
+    'receiptShowBranchName',
     'receiptShowPaymentInfo',
     'receiptShowTaxInfo',
     'receiptShowQrSection',
@@ -1239,6 +1240,10 @@ function ConfigSettingsPage() {
             <div style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
               Section 1 stays on by default. Turn on the extra sections only when the tenant wants more receipt detail.
             </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <input type="checkbox" checked={settings.receiptShowBranchName !== false} onChange={e => dispatch(setReceiptShowBranchName(e.target.checked))} />
+              <span>Show Branch Name in Receipt Header</span>
+            </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
               <input type="checkbox" checked={!!settings.receiptShowPaymentInfo} onChange={e => dispatch(setReceiptShowPaymentInfo(e.target.checked))} />
               <span>Show Section 2: Payment Info</span>

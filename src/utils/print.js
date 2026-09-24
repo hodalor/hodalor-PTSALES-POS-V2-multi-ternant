@@ -57,25 +57,24 @@ export function printReceiptHtml(html) {
       <title>${t('Receipt')}</title>
       <style>
         @page {
-          size: 80mm auto;
-          margin: 0;
+          size: auto;
+          margin: 10mm;
         }
         html, body {
           margin: 0;
           padding: 0;
-          width: 80mm;
-          min-width: 80mm;
           background: #fff;
           color: #111;
           font-family: monospace;
         }
         body {
-          padding: 6mm 4mm;
+          padding: 12px;
           box-sizing: border-box;
         }
         .root {
           position: relative;
-          width: 100%;
+          width: min(100%, 80mm);
+          margin: 0 auto;
           box-sizing: border-box;
         }
         .paid-stamp { position: absolute; top: 4px; right: 4px; pointer-events: none; }
@@ -101,17 +100,28 @@ export function printReceiptHtml(html) {
         .qr svg { width: 160px; height: 160px; }
         @media print {
           html, body {
-            width: 80mm;
-            min-width: 80mm;
             height: auto;
             overflow: hidden;
           }
           body {
-            padding: 4mm 3mm;
+            padding: 0;
           }
           .root {
-            page-break-after: avoid;
-            page-break-inside: avoid;
+            width: 100%;
+            max-width: none;
+            margin: 0;
+          }
+          .center-logo img {
+            max-height: 90px !important;
+          }
+          .title {
+            font-size: 16px;
+          }
+          .small {
+            font-size: 13px;
+          }
+          td {
+            padding: 4px 0;
           }
           img, svg { max-width: none; }
         }
@@ -193,6 +203,7 @@ export function buildBrandedReceiptHtml({ settings, sale }) {
   const vatVal = Number(sale.tax) || 0;
   const head = settings?.receiptHeader ? `<div class="center small">${settings.receiptHeader}</div>` : '';
   const foot = (settings?.receiptFooter || website) ? `<div class="center small" style="margin-top:8px">${[website, settings?.receiptFooter].filter(Boolean).join(' • ')}</div>` : '';
+  const showBranchName = settings?.receiptShowBranchName !== false;
   const showPaymentInfo = !!settings?.receiptShowPaymentInfo;
   const showTaxInfo = !!settings?.receiptShowTaxInfo;
   const showQrSection = !!settings?.receiptShowQrSection;
@@ -287,9 +298,9 @@ export function buildBrandedReceiptHtml({ settings, sale }) {
         </div>
       </div>
     ` : ''}
-    <div class="center"><img src="${logoSrc}" alt="${t('Logo')}" style="max-height:60px" onerror="if(this.src.endsWith('/clientlogo512.png')) this.src='/logo512.png'; else this.src='/clientlogo512.png';"/></div>
+    <div class="center center-logo"><img src="${logoSrc}" alt="${t('Logo')}" style="max-height:60px" onerror="if(this.src.endsWith('/clientlogo512.png')) this.src='/logo512.png'; else this.src='/clientlogo512.png';"/></div>
     <div class="center title">${brandName}</div>
-    <div class="center small">${t('Branch').toUpperCase()}: ${branch}</div>
+    ${showBranchName ? `<div class="center small">${t('Branch').toUpperCase()}: ${branch}</div>` : ''}
     ${phone ? `<div class="center small">${phone}</div>` : ''}
     <div class="hr"></div>
     <div class="title">${t('Sale Info').toUpperCase()}</div>
