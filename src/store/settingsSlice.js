@@ -120,10 +120,10 @@ const settingsSlice = createSlice({
       state.receiptShowBranchName = state.receiptShowBranchName !== false;
       state.receiptShowTaxInfo = !!state.receiptShowTaxInfo;
       state.receiptShowQrSection = !!state.receiptShowQrSection;
-      state.distributionPosDefaultPrintMode = ['receipt', 'invoice', 'both'].includes(String(state.distributionPosDefaultPrintMode || '').trim().toLowerCase())
+      state.distributionPosDefaultPrintMode = ['receipt', 'invoice'].includes(String(state.distributionPosDefaultPrintMode || '').trim().toLowerCase())
         ? String(state.distributionPosDefaultPrintMode || '').trim().toLowerCase()
         : initialState.distributionPosDefaultPrintMode;
-      state.warehousePosDefaultPrintMode = ['receipt', 'invoice', 'both'].includes(String(state.warehousePosDefaultPrintMode || '').trim().toLowerCase())
+      state.warehousePosDefaultPrintMode = ['receipt', 'invoice'].includes(String(state.warehousePosDefaultPrintMode || '').trim().toLowerCase())
         ? String(state.warehousePosDefaultPrintMode || '').trim().toLowerCase()
         : initialState.warehousePosDefaultPrintMode;
       const currencies = Array.isArray(state.currencies)
@@ -217,11 +217,11 @@ const settingsSlice = createSlice({
     },
     setDistributionPosDefaultPrintMode(state, action) {
       const next = String(action.payload || '').trim().toLowerCase();
-      state.distributionPosDefaultPrintMode = ['receipt', 'invoice', 'both'].includes(next) ? next : 'receipt';
+      state.distributionPosDefaultPrintMode = ['receipt', 'invoice'].includes(next) ? next : 'receipt';
     },
     setWarehousePosDefaultPrintMode(state, action) {
       const next = String(action.payload || '').trim().toLowerCase();
-      state.warehousePosDefaultPrintMode = ['receipt', 'invoice', 'both'].includes(next) ? next : 'receipt';
+      state.warehousePosDefaultPrintMode = ['receipt', 'invoice'].includes(next) ? next : 'receipt';
     },
     setClientAppName(state, action) {
       state.clientAppName = String(action.payload || '');

@@ -1270,7 +1270,6 @@ function ConfigSettingsPage() {
             >
               <option value="receipt">Receipt Only</option>
               <option value="invoice">Invoice Only</option>
-              <option value="both">Both Receipt and Invoice</option>
             </select>
           </div>
           <div style={{ marginTop: 12, padding: 12, borderRadius: 14, border: '1px solid #e2e8f0', background: '#f8fafc' }}>
@@ -1286,7 +1285,6 @@ function ConfigSettingsPage() {
             >
               <option value="receipt">Receipt Only</option>
               <option value="invoice">Invoice Only</option>
-              <option value="both">Both Receipt and Invoice</option>
             </select>
           </div>
           {isMasterSuperAdmin && (

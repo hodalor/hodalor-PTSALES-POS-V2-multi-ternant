@@ -1,6 +1,7 @@
 import { useDispatch, useSelector } from 'react-redux';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { buildBrandedReceiptHtml, printReceiptHtml } from '../utils/print';
+import { buildInvoiceA4Html, printInvoiceA4 } from '../utils/invoicePrint';
 import { escposReceipt, downloadText } from '../utils/escpos';
 import { formatCurrency } from '../utils/currency';
 import { exportCsv, exportTablePdf } from '../utils/exporters';
@@ -137,6 +138,11 @@ function isTemporarySaleRecord(sale) {
     || isTemporaryReference(sale?.invoiceSerial)
     || isTemporaryReference(sale?.receiptNumber)
   );
+}
+
+function normalizeSavedPrintMode(value, fallback = 'receipt') {
+  const next = String(value || '').trim().toLowerCase();
+  return ['receipt', 'invoice'].includes(next) ? next : fallback;
 }
 
 function getSaleRecordLabel(sale) {
@@ -459,6 +465,78 @@ function SalesPage() {
     }
     return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue);
   }, [approvedRefundInfoMap, byId, dateFrom, dateTo, filteredSales, periodMode]);
+
+  function getSaleInventoryType(sale) {
+    const source = String(sale?.source || '').toLowerCase();
+    if (source.includes('warehouse')) return 'warehouse';
+    if (source.includes('wholesale') || source.includes('distribution')) return 'wholesale';
+    return String(sale?.inventoryType || 'retail').toLowerCase();
+  }
+
+  function getReprintModeForSale(sale) {
+    const inventoryType = getSaleInventoryType(sale);
+    if (inventoryType === 'warehouse') return normalizeSavedPrintMode(settings?.warehousePosDefaultPrintMode, 'receipt');
+    if (inventoryType === 'wholesale' || inventoryType === 'distribution') return normalizeSavedPrintMode(settings?.distributionPosDefaultPrintMode, 'receipt');
+    return 'receipt';
+  }
+
+  function buildInvoiceForSale(sale) {
+    const inventoryType = getSaleInventoryType(sale);
+    const isWholesale = inventoryType === 'wholesale' || inventoryType === 'distribution';
+    const isWarehouse = inventoryType === 'warehouse';
+    const payTerms = (sale?.payment_methods || sale?.payments || [])
+      .map((payment) => {
+        const type = String(payment?.type || '').toLowerCase();
+        if (type === 'cash') return 'Cash';
+        if (type === 'card') return 'Card';
+        if (type === 'mobile' || type === 'momo' || type === 'mobile money') return 'Mobile Money';
+        if (type === 'wallet') return 'Wallet';
+        return type ? `${type[0].toUpperCase()}${type.slice(1)}` : 'Cash';
+      })
+      .filter(Boolean)
+      .join(', ');
+    return {
+      number: sale?.invoiceSerial || sale?.receiptNumber || sale?.id || sale?._id || '',
+      date: sale?.created_at || sale?.createdAt || new Date().toISOString(),
+      saleId: sale?.id || sale?._id || '',
+      paymentStatus: String(sale?.paymentStatus || '').toLowerCase() || 'paid',
+      source: isWholesale ? 'wholesale-pos' : isWarehouse ? 'warehouse-pos' : 'pos',
+      customer: {
+        name: sale?.customerName || '—',
+        phone: sale?.customerPhone || '',
+        email: sale?.customerEmail || '',
+        address: sale?.customerAddress || '',
+        businessName: sale?.customerBusinessName || '',
+        businessAddress: sale?.customerBusinessAddress || '',
+        taxId: sale?.customerTaxId || '',
+        customerCode: sale?.customerCode || '',
+        customerId: sale?.customerId || ''
+      },
+      items: (sale?.items || []).map((item) => ({
+        name: item?.name,
+        spec: item?.spec,
+        qty: item?.qty,
+        rate: item?.price,
+        per: 'pcs',
+        soldUnits: Array.isArray(item?.soldUnits) ? item.soldUnits : []
+      })),
+      subtotal: sale?.subtotal || 0,
+      discount: sale?.discount || 0,
+      tax: sale?.tax || 0,
+      total: sale?.total || 0,
+      deliveryNote: 'Physical',
+      paymentTerms: payTerms,
+      supplierRef: '',
+      otherRef: '',
+      buyerOrderNo: '',
+      despatchDocNo: '',
+      deliveryDate: '',
+      despatchedThrough: 'In person',
+      destination: '',
+      termsOfDelivery: ''
+    };
+  }
+
   function reprint(sale, escpos = false) {
     if (escpos) {
       const text = escposReceipt({
@@ -470,6 +548,11 @@ function SalesPage() {
         sale: { ...sale, branchName: branchLabel(sale) }
       });
       downloadText(`receipt-${sale.id || sale._id}.txt`, text);
+      return;
+    }
+    if (getReprintModeForSale(sale) === 'invoice') {
+      const html = buildInvoiceA4Html({ settings, invoice: buildInvoiceForSale(sale) });
+      printInvoiceA4(html);
       return;
     }
     const html = buildBrandedReceiptHtml({ settings, sale: { ...sale, branchName: branchLabel(sale) } });

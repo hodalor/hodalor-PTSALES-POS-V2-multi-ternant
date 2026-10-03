@@ -88,7 +88,7 @@ function createReservationToken() {
 
 function normalizePosPrintMode(value, fallback = 'receipt') {
   const next = String(value || '').trim().toLowerCase();
-  return ['receipt', 'invoice', 'both'].includes(next) ? next : fallback;
+  return ['receipt', 'invoice'].includes(next) ? next : fallback;
 }
 
 function pad2(value) {
@@ -286,7 +286,7 @@ function PosPage({ mode = 'retail' }) {
       return 'receipt';
     }
   });
-  const activePrintMode = isNonRetail ? normalizePosPrintMode(quickPrintMode, posDefaultPrintMode) : 'receipt';
+  const activePrintMode = normalizePosPrintMode(quickPrintMode, posDefaultPrintMode);
   const canBackdateSales = useMemo(() => (
     roleLower === 'superadmin' || roleLower === 'admin' || (Array.isArray(auth.grants) && auth.grants.includes('backdate_sales'))
   ), [auth.grants, roleLower]);
@@ -300,17 +300,15 @@ function PosPage({ mode = 'retail' }) {
   }
 
   useEffect(() => {
-    if (!isNonRetail) return;
     setQuickPrintMode((prev) => normalizePosPrintMode(prev, posDefaultPrintMode));
-  }, [isNonRetail, posDefaultPrintMode]);
+  }, [posDefaultPrintMode]);
 
   useEffect(() => {
-    if (!isNonRetail) return undefined;
     try {
       localStorage.setItem(quickPrintModeStorageKey, normalizePosPrintMode(quickPrintMode, posDefaultPrintMode));
     } catch {}
     return undefined;
-  }, [isNonRetail, posDefaultPrintMode, quickPrintMode, quickPrintModeStorageKey]);
+  }, [posDefaultPrintMode, quickPrintMode, quickPrintModeStorageKey]);
 
   useEffect(() => {
     if (!isFixedBranchUser) return;
@@ -2134,15 +2132,8 @@ function PosPage({ mode = 'retail' }) {
 
         if (escpos) {
           printEscposReceipt();
-        } else if (isNonRetail) {
-          if (activePrintMode === 'invoice' && invoiceForPrint) {
-            printInvoiceA4(buildInvoiceA4Html({ settings, invoice: invoiceForPrint }));
-          } else if (activePrintMode === 'both' && invoiceForPrint) {
-            printInvoiceA4(buildInvoiceA4Html({ settings, invoice: invoiceForPrint }));
-            printReceiptForMode();
-          } else {
-            printReceiptForMode();
-          }
+        } else if (activePrintMode === 'invoice' && invoiceForPrint) {
+          printInvoiceA4(buildInvoiceA4Html({ settings, invoice: invoiceForPrint }));
         } else {
           printReceiptForMode();
         }
@@ -2858,65 +2849,31 @@ function PosPage({ mode = 'retail' }) {
               </div>
             </div>
           )}
-          {canOverrideTax && (
-            <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <label style={{ color: '#64748b' }}>{t('Tax override (%)')}</label>
-                <input className="input" type="number" min="0" max="100" step="0.01" value={taxOverridePct} onChange={e => setTaxOverridePct(e.target.value)} style={{ width: 140 }} />
-              </div>
-              {taxOverridePct !== '' && (
-                <input className="input" placeholder={t('Remark for override (required)')} value={taxOverrideRemark} onChange={e => setTaxOverrideRemark(e.target.value)} />
-              )}
-            </div>
-          )}
-          {isNonRetail && (
-            <div style={{
-              marginTop: 10,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 10,
-              flexWrap: 'wrap',
-              padding: '10px 12px',
-              border: '1px solid #dbe3f0',
-              borderRadius: 14,
-              background: '#f8fbff'
-            }}>
-              <div style={{ minWidth: 0 }}>
-                <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>{t('Print on complete')}</div>
-                <div style={{ color: '#64748b', fontSize: 12 }}>
-                  {t('Choose what Complete & Print should open from this POS screen. ESC/POS still prints directly without browser prompt.')}
+          <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'nowrap' }}>
+              {canOverrideTax ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'nowrap', flex: '1 1 auto', minWidth: 0 }}>
+                  <label style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{t('Tax override (%)')}</label>
+                  <input className="input" type="number" min="0" max="100" step="0.01" value={taxOverridePct} onChange={e => setTaxOverridePct(e.target.value)} style={{ width: 120, minWidth: 120 }} />
                 </div>
-              </div>
-              <div style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
-                {[
-                  { value: 'receipt', label: t('Receipt') },
-                  { value: 'invoice', label: t('Invoice') },
-                  { value: 'both', label: t('Both') }
-                ].map((option) => {
-                  const selected = activePrintMode === option.value;
-                  return (
-                    <button
-                      key={option.value}
-                      type="button"
-                      className="btn"
-                      onClick={() => setQuickPrintMode(option.value)}
-                      style={{
-                        minWidth: 88,
-                        borderRadius: 999,
-                        borderColor: selected ? '#2563eb' : '#cbd5e1',
-                        background: selected ? '#dbeafe' : '#ffffff',
-                        color: selected ? '#1d4ed8' : '#334155',
-                        fontWeight: selected ? 700 : 600
-                      }}
-                    >
-                      {option.label}
-                    </button>
-                  );
-                })}
+              ) : <div style={{ flex: '1 1 0' }} />}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flex: '0 0 auto' }}>
+                <label style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{t('Print')}</label>
+                <select
+                  className="select"
+                  value={activePrintMode}
+                  onChange={e => setQuickPrintMode(e.target.value)}
+                  style={{ width: 124, minWidth: 124 }}
+                >
+                  <option value="receipt">{t('Receipt')}</option>
+                  <option value="invoice">{t('Invoice')}</option>
+                </select>
               </div>
             </div>
-          )}
+            {canOverrideTax && taxOverridePct !== '' && (
+              <input className="input" placeholder={t('Remark for override (required)')} value={taxOverrideRemark} onChange={e => setTaxOverrideRemark(e.target.value)} />
+            )}
+          </div>
         </div>
         <div className="pos-action-row">
           {requiresDiscountApproval ? (
