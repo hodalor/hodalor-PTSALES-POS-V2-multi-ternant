@@ -86,6 +86,11 @@ function createReservationToken() {
   return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `RES-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function normalizePosPrintMode(value, fallback = 'receipt') {
+  const next = String(value || '').trim().toLowerCase();
+  return ['receipt', 'invoice', 'both'].includes(next) ? next : fallback;
+}
+
 function pad2(value) {
   return String(value).padStart(2, '0');
 }
@@ -156,6 +161,7 @@ function PosPage({ mode = 'retail' }) {
   const creditModeLabel = isNonRetail ? t('Credit Sale') : t('Credit');
   const modeLabel = isWholesale ? t('Distribution POS') : isWarehouse ? t('Warehouse POS') : t('POS');
   const reservationStorageKey = `ptsales:pos-reservation-token:${modeLower || 'retail'}`;
+  const quickPrintModeStorageKey = `ptsales:pos-print-mode:${modeLower || 'retail'}`;
   const initialPriceTier = isWholesale ? 'wholesale' : isWarehouse ? 'warehouse' : 'retail';
   const defaultCustomerType = isNonRetail ? 'distribution' : 'retail';
   const roleLower = String(auth.role || '').toLowerCase();
@@ -270,15 +276,17 @@ function PosPage({ mode = 'retail' }) {
   const removeHeldSale = (id) => dispatch(removeHeld({ id, scope: cartScope }));
   const patchHeldSale = (payload) => dispatch(updateHeld({ ...payload, scope: cartScope }));
   const setCartDiscountValue = (value) => dispatch(setDiscount({ value, scope: cartScope }));
-  const distributionDefaultPrintMode = useMemo(() => {
-    const next = String(settings?.distributionPosDefaultPrintMode || '').trim().toLowerCase();
-    return ['receipt', 'invoice', 'both'].includes(next) ? next : 'receipt';
-  }, [settings?.distributionPosDefaultPrintMode]);
-  const warehouseDefaultPrintMode = useMemo(() => {
-    const next = String(settings?.warehousePosDefaultPrintMode || '').trim().toLowerCase();
-    return ['receipt', 'invoice', 'both'].includes(next) ? next : 'receipt';
-  }, [settings?.warehousePosDefaultPrintMode]);
+  const distributionDefaultPrintMode = useMemo(() => normalizePosPrintMode(settings?.distributionPosDefaultPrintMode, 'receipt'), [settings?.distributionPosDefaultPrintMode]);
+  const warehouseDefaultPrintMode = useMemo(() => normalizePosPrintMode(settings?.warehousePosDefaultPrintMode, 'receipt'), [settings?.warehousePosDefaultPrintMode]);
   const posDefaultPrintMode = isWholesale ? distributionDefaultPrintMode : isWarehouse ? warehouseDefaultPrintMode : 'receipt';
+  const [quickPrintMode, setQuickPrintMode] = useState(() => {
+    try {
+      return normalizePosPrintMode(localStorage.getItem(quickPrintModeStorageKey), 'receipt');
+    } catch {
+      return 'receipt';
+    }
+  });
+  const activePrintMode = isNonRetail ? normalizePosPrintMode(quickPrintMode, posDefaultPrintMode) : 'receipt';
   const canBackdateSales = useMemo(() => (
     roleLower === 'superadmin' || roleLower === 'admin' || (Array.isArray(auth.grants) && auth.grants.includes('backdate_sales'))
   ), [auth.grants, roleLower]);
@@ -290,6 +298,19 @@ function PosPage({ mode = 'retail' }) {
     setSaleDateTimeTouched(false);
     setSaleDateTimeEditing(false);
   }
+
+  useEffect(() => {
+    if (!isNonRetail) return;
+    setQuickPrintMode((prev) => normalizePosPrintMode(prev, posDefaultPrintMode));
+  }, [isNonRetail, posDefaultPrintMode]);
+
+  useEffect(() => {
+    if (!isNonRetail) return undefined;
+    try {
+      localStorage.setItem(quickPrintModeStorageKey, normalizePosPrintMode(quickPrintMode, posDefaultPrintMode));
+    } catch {}
+    return undefined;
+  }, [isNonRetail, posDefaultPrintMode, quickPrintMode, quickPrintModeStorageKey]);
 
   useEffect(() => {
     if (!isFixedBranchUser) return;
@@ -2076,17 +2097,7 @@ function PosPage({ mode = 'retail' }) {
       setEasyBuyAmountPaidNow('');
       setEasyBuyDueDate('');
       resetSaleDateTime();
-      if (shouldFinalizeLocally && escpos) {
-        const text = escposReceipt({
-        header: { title: settings.appName, store: settings.receiptHeader, branch: branchName, phone: settings.businessPhone || '', cashier: saleForUi.sellerName, customer: saleForUi.customerName ? `${saleForUi.customerName}${saleForUi.customerCode ? ` (${saleForUi.customerCode})` : ''}` : '', receiptId: saleForUi.id || saleForUi._id, receiptNumber: saleForUi.receiptNumber, invoiceSerial: saleForUi.invoiceSerial },
-        items: saleForUi.items,
-        totals: { subtotal, discount, tax, total },
-        footer: { note: settings.receiptFooter },
-        settings,
-        sale: saleForUi
-      });
-        downloadText('receipt-escpos.txt', (settings.drawerOpenOnCash && payments.some(p => p.type === 'cash')) ? (escposOpenDrawer() + '\n' + text) : text);
-      } else if (shouldFinalizeLocally) {
+      if (shouldFinalizeLocally) {
         // #region debug-point B:before-receipt-print
         reportEbkTmpReceiptDebug({
           hypothesisId: 'B',
@@ -2097,22 +2108,43 @@ function PosPage({ mode = 'retail' }) {
             branchId: String(activeBranchId || ''),
             receiptNumber: String(saleForUi?.receiptNumber || ''),
             invoiceSerial: String(saleForUi?.invoiceSerial || ''),
-            printMode: String(posDefaultPrintMode || 'receipt'),
+            printMode: String(activePrintMode || 'receipt'),
             isNonRetail: !!isNonRetail
           }
         });
         // #endregion
-        if (isNonRetail) {
-          if (posDefaultPrintMode === 'invoice' && invoiceForPrint) {
+        const printEscposReceipt = () => {
+          const text = escposReceipt({
+            header: { title: settings.appName, store: settings.receiptHeader, branch: branchName, phone: settings.businessPhone || '', cashier: saleForUi.sellerName, customer: saleForUi.customerName ? `${saleForUi.customerName}${saleForUi.customerCode ? ` (${saleForUi.customerCode})` : ''}` : '', receiptId: saleForUi.id || saleForUi._id, receiptNumber: saleForUi.receiptNumber, invoiceSerial: saleForUi.invoiceSerial },
+            items: saleForUi.items,
+            totals: { subtotal, discount, tax, total },
+            footer: { note: settings.receiptFooter },
+            settings,
+            sale: saleForUi
+          });
+          downloadText('receipt-escpos.txt', (settings.drawerOpenOnCash && payments.some(p => p.type === 'cash')) ? (escposOpenDrawer() + '\n' + text) : text);
+        };
+        const printBrowserReceipt = () => {
+          printReceiptHtml(receiptHtml);
+        };
+        const printReceiptForMode = () => {
+          if (escpos) printEscposReceipt();
+          else printBrowserReceipt();
+        };
+
+        if (escpos) {
+          printEscposReceipt();
+        } else if (isNonRetail) {
+          if (activePrintMode === 'invoice' && invoiceForPrint) {
             printInvoiceA4(buildInvoiceA4Html({ settings, invoice: invoiceForPrint }));
-          } else if (posDefaultPrintMode === 'both' && invoiceForPrint) {
+          } else if (activePrintMode === 'both' && invoiceForPrint) {
             printInvoiceA4(buildInvoiceA4Html({ settings, invoice: invoiceForPrint }));
-            printReceiptHtml(receiptHtml);
+            printReceiptForMode();
           } else {
-            printReceiptHtml(receiptHtml);
+            printReceiptForMode();
           }
         } else {
-          printReceiptHtml(receiptHtml);
+          printReceiptForMode();
         }
       }
       if (savedOnlineSale) {
@@ -2837,6 +2869,54 @@ function PosPage({ mode = 'retail' }) {
               )}
             </div>
           )}
+          {isNonRetail && (
+            <div style={{
+              marginTop: 10,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 10,
+              flexWrap: 'wrap',
+              padding: '10px 12px',
+              border: '1px solid #dbe3f0',
+              borderRadius: 14,
+              background: '#f8fbff'
+            }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 2 }}>{t('Print on complete')}</div>
+                <div style={{ color: '#64748b', fontSize: 12 }}>
+                  {t('Choose what Complete & Print should open from this POS screen. ESC/POS still prints directly without browser prompt.')}
+                </div>
+              </div>
+              <div style={{ display: 'inline-flex', gap: 6, flexWrap: 'wrap' }}>
+                {[
+                  { value: 'receipt', label: t('Receipt') },
+                  { value: 'invoice', label: t('Invoice') },
+                  { value: 'both', label: t('Both') }
+                ].map((option) => {
+                  const selected = activePrintMode === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className="btn"
+                      onClick={() => setQuickPrintMode(option.value)}
+                      style={{
+                        minWidth: 88,
+                        borderRadius: 999,
+                        borderColor: selected ? '#2563eb' : '#cbd5e1',
+                        background: selected ? '#dbeafe' : '#ffffff',
+                        color: selected ? '#1d4ed8' : '#334155',
+                        fontWeight: selected ? 700 : 600
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
         <div className="pos-action-row">
           {requiresDiscountApproval ? (
@@ -2846,13 +2926,13 @@ function PosPage({ mode = 'retail' }) {
             </button>
           ) : (
             <>
-              <button className="btn btn-primary" onClick={() => completeSale(false)} disabled={cart.items.length === 0 || saving}>
+              <button type="button" className="btn btn-primary" onClick={() => completeSale(false)} disabled={cart.items.length === 0 || saving}>
                 <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>
                 {saving ? t('Processing...') : t('Complete & Print')}
               </button>
-              <button className="btn" onClick={() => completeSale(true)} disabled={cart.items.length === 0 || saving}>
+              <button type="button" className="btn" onClick={() => completeSale(true)} disabled={cart.items.length === 0 || saving}>
                 <svg viewBox="0 0 24 24" fill="none"><path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="2"/><path d="M6 17h12v4H6z" stroke="currentColor" strokeWidth="2"/><path d="M4 9h16a2 2 0 012 2v2H2v-2a2 2 0 012-2z" stroke="currentColor" strokeWidth="2"/></svg>
-                {saving ? t('Processing...') : t('Complete (ESC/POS)')}
+                {saving ? t('Processing...') : t('Complete (ESC/POS Receipt)')}
               </button>
             </>
           )}
