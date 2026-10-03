@@ -34,53 +34,9 @@ import { getBranchStock } from '../utils/branchStock';
 import { filterBranchesByType, normalizeBranchType } from '../utils/branchTypes';
 import { getProductBrand, getProductSearchText } from '../utils/productSearch';
 
-function reportQueuedSalesImeiDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
-  fetch('http://127.0.0.1:7777/event', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sessionId: 'queued-sales-imei',
-      runId: 'pre-fix',
-      hypothesisId,
-      location,
-      msg,
-      data,
-      ts: Date.now()
-    })
-  }).catch(() => {});
-}
-
-function reportEbkTmpReceiptDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
-  fetch('http://127.0.0.1:7777/event', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sessionId: 'ebk-tmp-receipt',
-      runId: 'pre-fix',
-      hypothesisId,
-      location,
-      msg,
-      data,
-      ts: Date.now()
-    })
-  }).catch(() => {});
-}
-
-function reportQuantityQueueTamaleDebug({ hypothesisId = 'A', location = '', msg = '', data = {} } = {}) {
-  fetch('http://127.0.0.1:7777/event', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sessionId: 'quantity-queue-tamale',
-      runId: 'pre-fix',
-      hypothesisId,
-      location,
-      msg,
-      data,
-      ts: Date.now()
-    })
-  }).catch(() => {});
-}
+function reportQueuedSalesImeiDebug() {}
+function reportEbkTmpReceiptDebug() {}
+function reportQuantityQueueTamaleDebug() {}
 
 function createReservationToken() {
   return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `RES-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -1545,6 +1501,8 @@ function PosPage({ mode = 'retail' }) {
     if (saving || completeSaleLockRef.current) return;
     completeSaleLockRef.current = true;
     setSaving(true);
+    let reservedPrintWindow = null;
+    let printWindowUsed = false;
     try {
       if (!easyBuyEnabled && due > 0) {
         toast.show('Payment incomplete', { type: 'error' });
@@ -1602,6 +1560,18 @@ function PosPage({ mode = 'retail' }) {
         if (!taxOverrideRemark.trim()) {
           toast.show('Enter a remark for tax override', { type: 'error' });
           return;
+        }
+      }
+      if (!escpos) {
+        reservedPrintWindow = window.open('', 'PTSALES_PRINT', activePrintMode === 'invoice' ? 'width=1000,height=800' : 'width=400,height=600');
+        if (reservedPrintWindow) {
+          try {
+            reservedPrintWindow.document.open();
+            reservedPrintWindow.document.write('<html><head><title>Preparing print...</title></head><body style="font-family:Arial,sans-serif;padding:16px;color:#0f172a">Preparing document...</body></html>');
+            reservedPrintWindow.document.close();
+          } catch {}
+        } else {
+          toast.show('Browser blocked the print window. Please allow pop-ups for this site.', { type: 'warning' });
         }
       }
       let checkoutCustomer = selectedCustomer;
@@ -1689,50 +1659,6 @@ function PosPage({ mode = 'retail' }) {
       saleDateTime: canBackdateSales && saleDateTimeTouched ? selectedSaleAt : undefined,
       reservationToken
       };
-      // #region debug-point A:warehouse-sale-submit
-      fetch('http://127.0.0.1:7777/event', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId: 'warehouse-sale-queue-fail',
-          runId: 'pre-fix',
-          hypothesisId: 'A',
-          location: 'PosPage.js:completeSale:submit',
-          msg: '[DEBUG] POS sale payload prepared before createSale',
-          data: {
-            clientId: String(sale?.clientId || ''),
-            branchId: String(sale?.branchId || ''),
-            branchName: String(branchName || ''),
-            posType: String(sale?.posType || ''),
-            inventoryType: String(sale?.inventoryType || ''),
-            defaultPriceTier: String(sale?.defaultPriceTier || ''),
-            subtotal: Number(sale?.subtotal || 0),
-            discount: Number(sale?.discount || 0),
-            tax: Number(sale?.tax || 0),
-            total: Number(sale?.total || 0),
-            due: Number(due || 0),
-            paid: Number(paid || 0),
-            easyBuyEnabled: !!easyBuyEnabled,
-            paymentMethods: Array.isArray(sale?.payment_methods)
-              ? sale.payment_methods.map((payment) => ({
-                  type: String(payment?.type || ''),
-                  amount: Number(payment?.amount || 0)
-                }))
-              : [],
-            items: Array.isArray(sale?.items)
-              ? sale.items.map((item) => ({
-                  productId: String(item?.productId || ''),
-                  variantId: String(item?.variantId || ''),
-                  qty: Number(item?.qty || 0),
-                  price: Number(item?.price || 0),
-                  priceTier: String(item?.priceTier || '')
-                }))
-              : []
-          },
-          ts: Date.now()
-        })
-      }).catch(() => {});
-      // #endregion
       const soldUnitIdsForDebug = cart.items.map((item) => item.unitId).filter(Boolean).map(String);
       const startedOffline = !navigator.onLine;
       let saleForUi = null;
@@ -1811,30 +1737,6 @@ function PosPage({ mode = 'retail' }) {
         } catch (e) {
           const errorStatus = Number(e?.status || 0);
           const shouldQueueAfterHttpFailure = !errorStatus || errorStatus >= 500 || errorStatus === 408 || errorStatus === 429;
-          // #region debug-point B:warehouse-sale-submit-failed
-          fetch('http://127.0.0.1:7777/event', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              sessionId: 'warehouse-sale-queue-fail',
-              runId: 'pre-fix',
-              hypothesisId: 'B',
-              location: 'PosPage.js:completeSale:createSale-error',
-              msg: '[DEBUG] POS createSale failed before queue fallback',
-              data: {
-                clientId: String(sale?.clientId || ''),
-                branchId: String(activeBranchId || ''),
-                posType: String(sale?.posType || ''),
-                inventoryType: String(sale?.inventoryType || ''),
-                status: errorStatus,
-                error: String(e?.message || ''),
-                errorData: e?.data || null,
-                queueFallbackEligible: shouldQueueAfterHttpFailure
-              },
-              ts: Date.now()
-            })
-          }).catch(() => {});
-          // #endregion
           // #region debug-point A:tamale-online-save-failed
           reportQuantityQueueTamaleDebug({
             hypothesisId: 'A',
@@ -1861,29 +1763,6 @@ function PosPage({ mode = 'retail' }) {
           try {
             await enqueueHttp({ collection: 'sales', label: 'Sale', path: '/api/sales', method: 'POST', body: { ...sale, clientId: sale.clientId } });
             queuedAfterHttpFailure = true;
-            // #region debug-point B:warehouse-sale-queued-after-http-error
-            fetch('http://127.0.0.1:7777/event', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                sessionId: 'warehouse-sale-queue-fail',
-                runId: 'pre-fix',
-                hypothesisId: 'B',
-                location: 'PosPage.js:completeSale:queued-after-http-error',
-                msg: '[DEBUG] POS queued sale after createSale error',
-                data: {
-                  clientId: String(sale?.clientId || ''),
-                  branchId: String(activeBranchId || ''),
-                  posType: String(sale?.posType || ''),
-                  inventoryType: String(sale?.inventoryType || ''),
-                  createSaleStatus: errorStatus,
-                  createSaleError: String(e?.message || ''),
-                  queuePath: '/api/sales'
-                },
-                ts: Date.now()
-              })
-            }).catch(() => {});
-            // #endregion
             // #region debug-point A:tamale-queue-fallback
             reportQuantityQueueTamaleDebug({
               hypothesisId: 'A',
@@ -2123,7 +2002,8 @@ function PosPage({ mode = 'retail' }) {
           downloadText('receipt-escpos.txt', (settings.drawerOpenOnCash && payments.some(p => p.type === 'cash')) ? (escposOpenDrawer() + '\n' + text) : text);
         };
         const printBrowserReceipt = () => {
-          printReceiptHtml(receiptHtml);
+          printWindowUsed = true;
+          printReceiptHtml(receiptHtml, reservedPrintWindow);
         };
         const printReceiptForMode = () => {
           if (escpos) printEscposReceipt();
@@ -2133,7 +2013,8 @@ function PosPage({ mode = 'retail' }) {
         if (escpos) {
           printEscposReceipt();
         } else if (activePrintMode === 'invoice' && invoiceForPrint) {
-          printInvoiceA4(buildInvoiceA4Html({ settings, invoice: invoiceForPrint }));
+          printWindowUsed = true;
+          printInvoiceA4(buildInvoiceA4Html({ settings, invoice: invoiceForPrint }), reservedPrintWindow);
         } else {
           printReceiptForMode();
         }
@@ -2163,6 +2044,9 @@ function PosPage({ mode = 'retail' }) {
         toast.show('Saved offline. Will backup when online.', { type: 'success' });
       }
     } finally {
+      if (!printWindowUsed && reservedPrintWindow && !reservedPrintWindow.closed) {
+        try { reservedPrintWindow.close(); } catch {}
+      }
       completeSaleLockRef.current = false;
       setSaving(false);
     }

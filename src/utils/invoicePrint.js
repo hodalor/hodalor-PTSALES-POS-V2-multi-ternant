@@ -224,9 +224,9 @@ export function buildInvoiceA4Html({ settings, invoice }) {
   `;
 }
 
-export function printInvoiceA4(html) {
+export function printInvoiceA4(html, targetWindow = null) {
   const t = translateDocumentLanguage;
-  const w = window.open('', 'PRINT', 'width=1000,height=800');
+  const w = targetWindow || window.open('', 'PRINT', 'width=1000,height=800');
   if (!w) return;
   w.document.open();
   w.document.write(`

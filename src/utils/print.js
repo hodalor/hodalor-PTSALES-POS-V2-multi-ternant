@@ -46,8 +46,8 @@ function getReceiptCreditLabel(sale, t) {
   return creditMode === 'distribution_credit' ? t('Distribution Credit') : t('EasyBuy');
 }
 
-export function printReceiptHtml(html) {
-  const w = window.open('', 'PRINT', 'width=400,height=600');
+export function printReceiptHtml(html, targetWindow = null) {
+  const w = targetWindow || window.open('', 'PRINT', 'width=400,height=600');
   if (!w) return;
   const t = translateDocumentLanguage;
   w.document.open();

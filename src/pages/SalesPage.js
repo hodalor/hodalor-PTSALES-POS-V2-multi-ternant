@@ -180,7 +180,6 @@ function SalesPage() {
   const products = useSelector(s => s.products.products);
   const settings = useSelector(s => s.settings);
   const branches = useSelector(s => s.branches.branches);
-  const currentBranchId = useSelector(s => s.settings.currentBranchId);
   const auth = useSelector(s => s.auth);
   const roleLower = String(auth.role || '').toLowerCase();
   const grants = Array.isArray(auth.grants) ? auth.grants : [];
@@ -200,11 +199,6 @@ function SalesPage() {
     const ids = new Set(Array.isArray(assigned) ? assigned.map(String) : [String(assigned)]);
     return (branches || []).filter(branch => ids.has(String(branch.id)));
   }, [assigned, branches, canSeeAll]);
-  const effectiveBranchId = useMemo(() => {
-    if ((branches || []).some(branch => String(branch.id) === String(currentBranchId || ''))) return currentBranchId;
-    return allowedBranches[0]?.id || branches[0]?.id || '';
-  }, [allowedBranches, branches, currentBranchId]);
-  const [showAll, setShowAll] = useState(false);
   const [saleKind, setSaleKind] = useState('all'); // all, retail, wholesale, warehouse
   const [creditKind, setCreditKind] = useState('all'); // all, non_credit, retail_easybuy, wholesale_credit, warehouse_credit
   const [creditPackageFilter, setCreditPackageFilter] = useState('all');
@@ -257,28 +251,6 @@ function SalesPage() {
           listQueuedSales()
         ]);
         if (!alive) return;
-        // #region debug-point C:sales-page-load
-        fetch('http://127.0.0.1:7777/event', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sessionId: 'tenant-sale-leak',
-            runId: 'pre-fix',
-            hypothesisId: 'C',
-            location: 'SalesPage.js:load-sales',
-            msg: '[DEBUG] Sales page loaded server and queued sales under active tenant context',
-            data: {
-              activeTenantId: String(auth.user?.tenantId || localStorage.getItem('ptSales:tenantId') || 'default'),
-              branchScope: String(branchScope || ''),
-              serverSalesCount: Array.isArray(rows) ? rows.length : -1,
-              queuedSalesCount: Array.isArray(queuedRows) ? queuedRows.length : -1,
-              queuedSaleTenantIds: (Array.isArray(queuedRows) ? queuedRows : []).map((sale) => String(sale?.tenantId || '')).filter(Boolean).slice(0, 10),
-              queuedSaleRefs: (Array.isArray(queuedRows) ? queuedRows : []).map((sale) => String(sale?.invoiceSerial || sale?.receiptNumber || sale?.clientId || '')).slice(0, 10)
-            },
-            ts: Date.now()
-          })
-        }).catch(() => {});
-        // #endregion
         dispatch(setSales((Array.isArray(rows) ? rows : []).concat(Array.isArray(queuedRows) ? queuedRows : [])));
       } catch (e) {
         if (!alive) return;
@@ -288,7 +260,7 @@ function SalesPage() {
       }
     })();
     return () => { alive = false; };
-  }, [auth.user?.tenantId, canSeeAll, dispatch, effectiveBranchId, selectedBranchId, showAll, toast]);
+  }, [dispatch, selectedBranchId, toast]);
   const branchLabel = useCallback((sale) => (
     sale.branchName || (branches.find(b => b.id === sale.branchId)?.name || sale.branchId || '-')
   ), [branches]);
@@ -305,9 +277,6 @@ function SalesPage() {
         list = list.filter(sale => String(sale.branchId || '') === String(selectedBranchId));
       } else if (canUseCompetitionScope) {
         list = list.filter(sale => competitionAllowedBranchIdSet.has(String(sale.branchId || '')));
-      } else {
-        const scoped = sales.filter(sale => String(sale.branchId || '') === String(effectiveBranchId || ''));
-        list = scoped.length > 0 ? scoped : sales;
       }
       return list;
     }
@@ -315,12 +284,8 @@ function SalesPage() {
       list = list.filter(sale => String(sale.branchId || '') === String(selectedBranchId));
       return list;
     }
-    if (!(canSeeAll && showAll)) {
-      const scoped = sales.filter(sale => String(sale.branchId || '') === String(effectiveBranchId || ''));
-      list = scoped.length > 0 ? scoped : sales;
-    }
     return list;
-  }, [canSeeAll, canUseCompetitionScope, competitionAllowedBranchIdSet, effectiveBranchId, sales, selectedBranchId, showAll, tab]);
+  }, [canUseCompetitionScope, competitionAllowedBranchIdSet, sales, selectedBranchId, tab]);
   const filteredSales = useMemo(() => {
     let list = filteredByBranch;
     const fromDate = periodMode === 'all_time' ? null : parseRangeStart(dateFrom);
@@ -726,12 +691,6 @@ function SalesPage() {
         </div>
         <div className="sales-header-actions">
           <OfflineQueueIndicator collection="sales" label="Sales queued" />
-          {canSeeAll && (
-            <label className="sales-toggle-pill">
-              <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)} />
-              <span>All branches</span>
-            </label>
-          )}
         </div>
       </div>
       <div className="sales-tabbar">
@@ -897,7 +856,7 @@ function SalesPage() {
           <div className="sales-section-head">
             <div>
               <h2 className="sales-section-title">Branch Comparison</h2>
-              <p className="sales-section-note">{canSeeAll && showAll ? 'Showing all branches' : 'Enable “All branches” to compare branches.'}</p>
+              <p className="sales-section-note">Branch totals follow the current branch and date filters.</p>
             </div>
           </div>
           <div className="table-wrap">
