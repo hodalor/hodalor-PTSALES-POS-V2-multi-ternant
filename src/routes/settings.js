@@ -90,10 +90,10 @@ function normalizeSettingsData(input = {}) {
   next.receiptShowPaymentInfo = !!next.receiptShowPaymentInfo;
   next.receiptShowTaxInfo = !!next.receiptShowTaxInfo;
   next.receiptShowQrSection = !!next.receiptShowQrSection;
-  next.distributionPosDefaultPrintMode = ['receipt', 'invoice', 'both'].includes(String(next.distributionPosDefaultPrintMode || '').trim().toLowerCase())
+  next.distributionPosDefaultPrintMode = ['receipt', 'invoice'].includes(String(next.distributionPosDefaultPrintMode || '').trim().toLowerCase())
     ? String(next.distributionPosDefaultPrintMode || '').trim().toLowerCase()
     : 'receipt';
-  next.warehousePosDefaultPrintMode = ['receipt', 'invoice', 'both'].includes(String(next.warehousePosDefaultPrintMode || '').trim().toLowerCase())
+  next.warehousePosDefaultPrintMode = ['receipt', 'invoice'].includes(String(next.warehousePosDefaultPrintMode || '').trim().toLowerCase())
     ? String(next.warehousePosDefaultPrintMode || '').trim().toLowerCase()
     : 'receipt';
   next.systemUpgradeNoticeEnabled = !!next.systemUpgradeNoticeEnabled;
