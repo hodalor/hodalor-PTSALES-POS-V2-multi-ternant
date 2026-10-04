@@ -2,9 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import { approveApproval, listApprovals, rejectApproval } from '../api/approvals';
+import { listCreditCustomers, listCreditSales, listRepayments } from '../api/credits';
 import { useToast } from '../components/ToastProvider';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import LoadingDots from '../components/LoadingDots';
+import { formatCurrency } from '../utils/currency';
+import { formatDateTime } from '../utils/dateFormat';
 import { getProductDisplayMeta } from '../utils/inventoryFilters';
 import Modal from '../components/Modal';
 
@@ -133,6 +136,7 @@ function ApprovalsPage() {
   const branches = useSelector((s) => s.branches.branches);
   const sales = useSelector((s) => s.sales.sales || []);
   const refunds = useSelector((s) => s.refunds.requests || []);
+  const settings = useSelector((s) => s.settings);
   const auth = useSelector((s) => s.auth);
   const [rows, setRows] = useState([]);
   const [status, setStatus] = useState('pending_director');
@@ -143,6 +147,9 @@ function ApprovalsPage() {
   const [decisionRemark, setDecisionRemark] = useState('');
   const [reviewConflict, setReviewConflict] = useState(null);
   const [reviewing, setReviewing] = useState(false);
+  const [repaymentsById, setRepaymentsById] = useState({});
+  const [creditSalesById, setCreditSalesById] = useState({});
+  const [creditCustomersById, setCreditCustomersById] = useState({});
   const roleLower = String(auth.role || '').toLowerCase();
   const grants = useMemo(() => (Array.isArray(auth.grants) ? auth.grants : []), [auth.grants]);
 
@@ -249,6 +256,10 @@ function ApprovalsPage() {
       }))
   ), [refunds, status, canAccessBranch, canReviewRefund, resolveRefundArea]);
   const grouped = useMemo(() => [...rows, ...refundApprovalRows].slice().sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), [rows, refundApprovalRows]);
+  const hasCreditRepaymentRows = useMemo(
+    () => grouped.some((row) => String(row?.referenceModel || '') === 'CreditRepayment'),
+    [grouped]
+  );
   const summaryCards = useMemo(() => ([
     {
       key: 'total',
@@ -275,6 +286,33 @@ function ApprovalsPage() {
       accent: '#7c3aed'
     }
   ]), [grouped]);
+
+  useEffect(() => {
+    if (!hasCreditRepaymentRows) return undefined;
+    let alive = true;
+    (async () => {
+      try {
+        const [repayments, creditSales, customers] = await Promise.all([
+          listRepayments({}),
+          listCreditSales(),
+          listCreditCustomers()
+        ]);
+        if (!alive) return;
+        setRepaymentsById(Object.fromEntries(
+          (Array.isArray(repayments) ? repayments : []).map((row) => [String(row?._id || row?.id || ''), row])
+        ));
+        setCreditSalesById(Object.fromEntries(
+          (Array.isArray(creditSales) ? creditSales : []).map((row) => [String(row?._id || row?.saleId || ''), row])
+        ));
+        setCreditCustomersById(Object.fromEntries(
+          (Array.isArray(customers) ? customers : []).map((row) => [String(row?._id || row?.id || ''), row])
+        ));
+      } catch {}
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [hasCreditRepaymentRows]);
 
   useEffect(() => {
     if (!selectedRow || String(selectedRow?.referenceModel || '') !== 'WholesaleOperation') {
@@ -318,8 +356,40 @@ function ApprovalsPage() {
     () => summarizeAdjustmentType(selectedRow, reviewItems),
     [reviewItems, selectedRow]
   );
+  const getRepaymentForApproval = useCallback((row = {}) => (
+    repaymentsById[String(row?.referenceId || '')] || null
+  ), [repaymentsById]);
+  const getCreditSaleForRepayment = useCallback((repayment = {}) => (
+    creditSalesById[String(repayment?.creditSaleId || '')] || null
+  ), [creditSalesById]);
+  const getCreditCustomerForRepayment = useCallback((repayment = {}, creditSale = null) => (
+    creditCustomersById[String(repayment?.customerId || creditSale?.customer_id || creditSale?.customerId || '')] || null
+  ), [creditCustomersById]);
+  const selectedRepayment = useMemo(
+    () => (String(selectedRow?.referenceModel || '') === 'CreditRepayment' ? getRepaymentForApproval(selectedRow) : null),
+    [getRepaymentForApproval, selectedRow]
+  );
+  const selectedCreditSale = useMemo(
+    () => getCreditSaleForRepayment(selectedRepayment),
+    [getCreditSaleForRepayment, selectedRepayment]
+  );
+  const selectedCreditCustomer = useMemo(
+    () => getCreditCustomerForRepayment(selectedRepayment, selectedCreditSale),
+    [getCreditCustomerForRepayment, selectedCreditSale, selectedRepayment]
+  );
   const canActOnSelectedRow = useMemo(() => {
-    if (!selectedRow || String(selectedRow?.referenceModel || '') !== 'WholesaleOperation') return false;
+    if (!selectedRow) return false;
+    if (String(selectedRow?.referenceModel || '') === 'CreditRepayment') {
+      const stage = String(selectedRow?.status || '').toLowerCase();
+      if (stage === 'pending_director') {
+        return ['superadmin', 'admin', 'director'].includes(roleLower) || grants.includes('approve_credit_director');
+      }
+      if (stage === 'pending_manager') {
+        return ['superadmin', 'admin', 'manager'].includes(roleLower) || grants.includes('approve_credit_manager');
+      }
+      return false;
+    }
+    if (String(selectedRow?.referenceModel || '') !== 'WholesaleOperation') return false;
     const stage = String(selectedRow?.status || '').toLowerCase();
     if (!['pending_director', 'pending_manager'].includes(stage)) return false;
     const candidateAreas = Array.from(new Set([
@@ -328,7 +398,7 @@ function ApprovalsPage() {
       String(selectedRow?.toInventoryType || '').toLowerCase()
     ].filter(Boolean).map((area) => area === 'wholesale' ? 'distribution' : area)));
     return candidateAreas.some((area) => canApproveAreaStage(area, stage === 'pending_director' ? 'director' : 'manager'));
-  }, [canApproveAreaStage, selectedRow]);
+  }, [canApproveAreaStage, grants, roleLower, selectedRow]);
   const hasManagerTransferReviewChanges = useMemo(() => {
     if (!selectedRow) return false;
     if (String(selectedRow?.referenceModel || '') !== 'WholesaleOperation') return false;
@@ -367,6 +437,21 @@ function ApprovalsPage() {
         </div>
       );
     }
+    if (String(row?.referenceModel || '') === 'CreditRepayment') {
+      const repayment = getRepaymentForApproval(row);
+      const creditSale = getCreditSaleForRepayment(repayment);
+      const customer = getCreditCustomerForRepayment(repayment, creditSale);
+      return (
+        <div style={{ display: 'grid', gap: 4 }}>
+          <div style={{ color: '#111827' }}>{customer?.name || 'Credit repayment'}</div>
+          <div style={{ color: '#64748b', fontSize: 12 }}>
+            {repayment ? formatCurrency(Number(repayment.amount || 0), settings) : 'Repayment request'}
+            {repayment?.paymentMethod ? ` • ${repayment.paymentMethod}` : ''}
+            {customer?.businessName ? ` • ${customer.businessName}` : ''}
+          </div>
+        </div>
+      );
+    }
     const items = Array.isArray(row?.items) ? row.items : [];
     if (items.length > 0) {
       const visible = items.slice(0, 3);
@@ -395,6 +480,12 @@ function ApprovalsPage() {
   function renderRoute(row) {
     if (String(row?.referenceModel || '') === 'RefundRequest') {
       return branchNameById.get(String(row?.branchId || '')) || row?.branchId || '—';
+    }
+    if (String(row?.referenceModel || '') === 'CreditRepayment') {
+      const repayment = getRepaymentForApproval(row);
+      const creditSale = getCreditSaleForRepayment(repayment);
+      const branchId = String(creditSale?.branchId || row?.branchId || '').trim();
+      return branchNameById.get(branchId) || branchId || '—';
     }
     if (String(row?.referenceModel || '') !== 'WholesaleOperation') return '—';
     if (String(row?.operationType || '').toLowerCase() === 'transfer') {
@@ -433,32 +524,55 @@ function ApprovalsPage() {
     setReviewing(true);
     setWorkingId(selectedRow._id || '');
     try {
-      const normalizedItems = reviewItems.map((item) => ({ ...item, status: normalizeReviewStatus(item.status) }));
-      if (action === 'approve') {
-        const response = await approveApproval(selectedRow._id, {
-          remark,
-          items: normalizedItems,
-          resubmitToDirector: hasManagerTransferReviewChanges
-        });
-        const nextStatus = String(response?.status || '').toLowerCase();
-        if (nextStatus === 'pending_director') {
-          toast.show('Transfer changes were sent back for director approval', { type: 'success' });
-        } else if (nextStatus === 'pending_manager') {
-          toast.show('Director approval recorded. Waiting for manager approval.', { type: 'success' });
+      if (String(selectedRow?.referenceModel || '') === 'CreditRepayment') {
+        if (action === 'approve') {
+          const response = await approveApproval(selectedRow._id, {
+            remark,
+            approverName: auth.user?.name || 'unknown',
+            approverRole: auth.role || ''
+          });
+          const nextStatus = String(response?.status || '').toLowerCase();
+          if (nextStatus === 'pending_manager') {
+            toast.show('Director approval recorded. Waiting for manager approval.', { type: 'success' });
+          } else {
+            toast.show('Repayment approval updated', { type: 'success' });
+          }
         } else {
-          toast.show('Approval updated', { type: 'success' });
-        }
-        if (nextStatus === 'approved') {
-          const affectedProductIds = Array.from(new Set(
-            (Array.isArray(selectedRow?.items) && selectedRow.items.length > 0 ? selectedRow.items : [{ productId: selectedRow?.productId }])
-              .map((item) => String(item?.productId || ''))
-              .filter(Boolean)
-          ));
-          void refreshAffectedProducts(dispatch, affectedProductIds);
+          await rejectApproval(selectedRow._id, {
+            reason: remark,
+            approverName: auth.user?.name || 'unknown',
+            approverRole: auth.role || ''
+          });
+          toast.show('Repayment approval rejected', { type: 'success' });
         }
       } else {
-        await rejectApproval(selectedRow._id, { reason: remark });
-        toast.show('Approval rejected', { type: 'success' });
+        const normalizedItems = reviewItems.map((item) => ({ ...item, status: normalizeReviewStatus(item.status) }));
+        if (action === 'approve') {
+          const response = await approveApproval(selectedRow._id, {
+            remark,
+            items: normalizedItems,
+            resubmitToDirector: hasManagerTransferReviewChanges
+          });
+          const nextStatus = String(response?.status || '').toLowerCase();
+          if (nextStatus === 'pending_director') {
+            toast.show('Transfer changes were sent back for director approval', { type: 'success' });
+          } else if (nextStatus === 'pending_manager') {
+            toast.show('Director approval recorded. Waiting for manager approval.', { type: 'success' });
+          } else {
+            toast.show('Approval updated', { type: 'success' });
+          }
+          if (nextStatus === 'approved') {
+            const affectedProductIds = Array.from(new Set(
+              (Array.isArray(selectedRow?.items) && selectedRow.items.length > 0 ? selectedRow.items : [{ productId: selectedRow?.productId }])
+                .map((item) => String(item?.productId || ''))
+                .filter(Boolean)
+            ));
+            void refreshAffectedProducts(dispatch, affectedProductIds);
+          }
+        } else {
+          await rejectApproval(selectedRow._id, { reason: remark });
+          toast.show('Approval rejected', { type: 'success' });
+        }
       }
       closeReview();
       void load(status, { force: true });
@@ -468,6 +582,10 @@ function ApprovalsPage() {
         closeReview();
         void load(status, { force: true });
         toast.show('Approval was already processed. List refreshed.', { type: 'warning' });
+      } else if (/timed out/i.test(msg)) {
+        closeReview();
+        void load(status, { force: true });
+        toast.show('Approval is processing. The list has been refreshed.', { type: 'success' });
       } else {
         setReviewConflict(buildReviewConflict(e));
         toast.show(msg || `Failed to ${action}`, { type: 'error' });
@@ -689,6 +807,47 @@ function ApprovalsPage() {
                 </tbody>
               </table>
             </div>
+            <label>
+              <div style={{ marginBottom: 6, color: '#94a3b8' }}>Approval / Rejection Remark</div>
+              <textarea className="input" value={decisionRemark} onChange={(e) => setDecisionRemark(e.target.value)} rows={4} style={{ width: '100%', resize: 'vertical' }} />
+            </label>
+          </div>
+        </Modal>
+      )}
+      {selectedRow && String(selectedRow?.referenceModel || '') === 'CreditRepayment' && (
+        <Modal
+          title="Credit Repayment Review"
+          onClose={closeReview}
+          footer={(
+            <>
+              <button className="btn" onClick={closeReview} disabled={reviewing}>Close</button>
+              {canActOnSelectedRow && (
+                <>
+                  <button className="btn" onClick={() => reviewAction('reject')} disabled={reviewing}>{reviewing ? 'Working…' : 'Reject'}</button>
+                  <button className="btn btn-primary" onClick={() => reviewAction('approve')} disabled={reviewing}>{reviewing ? 'Working…' : 'Approve'}</button>
+                </>
+              )}
+            </>
+          )}
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Status</div><strong>{getApprovalStatusMeta(selectedRow.status).label}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Action</div><strong>{selectedRow.actionType || '—'}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Amount</div><strong>{selectedRepayment ? formatCurrency(Number(selectedRepayment.amount || 0), settings) : '—'}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Payment Method</div><strong>{selectedRepayment?.paymentMethod || '—'}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Customer</div><strong>{selectedCreditCustomer?.name || '—'}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Business Name</div><strong>{selectedCreditCustomer?.businessName || '—'}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Initiated By</div><strong>{formatActor(selectedRow.initiatedByName, selectedRow.initiatedByRole)}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Director</div><strong>{formatActor(selectedRow.directorApprovedByName, selectedRow.directorApprovedByRole)}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Manager</div><strong>{formatActor(selectedRow.managerApprovedByName, selectedRow.managerApprovedByRole)}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Branch</div><strong>{renderRoute(selectedRow)}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Credit Sale ID</div><strong>{selectedRepayment?.creditSaleId || selectedRow.referenceId || '—'}</strong></div>
+              <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Created</div><strong>{formatDateTime(selectedRow.createdAt)}</strong></div>
+            </div>
+            <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Repayment Remark</div><strong>{selectedRepayment?.remark || '—'}</strong></div>
+            <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Director Remark</div><strong>{selectedRow.directorRemark || '—'}</strong></div>
+            <div><div style={{ color: '#94a3b8', fontSize: 12 }}>Manager Remark</div><strong>{selectedRow.managerRemark || '—'}</strong></div>
             <label>
               <div style={{ marginBottom: 6, color: '#94a3b8' }}>Approval / Rejection Remark</div>
               <textarea className="input" value={decisionRemark} onChange={(e) => setDecisionRemark(e.target.value)} rows={4} style={{ width: '100%', resize: 'vertical' }} />
