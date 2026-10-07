@@ -134,8 +134,18 @@ function CashReconciliationPage() {
       ? allBacklogRows.filter((row) => String(row.branchId || '') === String(submitBranchId || ''))
       : allBacklogRows
   ), [allBacklogRows, submitBranchId]);
+  const refundAdjustmentDates = useMemo(() => (
+    backlogRows
+      .filter((row) => Number(row.expectedAmount || 0) < 0 || row.isRefundAdjustment)
+      .map((row) => String(row.date))
+  ), [backlogRows]);
   const visibleAccounts = useMemo(() => accounts.filter((account) => account.sharedAcrossBranches || !submitBranchId || (Array.isArray(account.branchIds) && account.branchIds.some((branchId) => String(branchId) === String(submitBranchId)))), [accounts, submitBranchId]);
-  const selectedBacklogRows = useMemo(() => backlogRows.filter((row) => selectedDates.includes(String(row.date))), [backlogRows, selectedDates]);
+  const selectedBacklogRows = useMemo(() => {
+    const selected = new Set(selectedDates.map((date) => String(date)));
+    // Always net approved refund adjustment days into the deposit amount.
+    refundAdjustmentDates.forEach((date) => selected.add(String(date)));
+    return backlogRows.filter((row) => selected.has(String(row.date)));
+  }, [backlogRows, refundAdjustmentDates, selectedDates]);
   const expectedAmount = useMemo(() => selectedBacklogRows.reduce((sum, row) => sum + Number(row.expectedAmount || 0), 0), [selectedBacklogRows]);
   const paymentSummary = useMemo(() => {
     const map = new Map();
@@ -204,8 +214,12 @@ function CashReconciliationPage() {
   }, [loadPage]);
 
   useEffect(() => {
-    setSelectedDates((prev) => prev.filter((date) => backlogRows.some((row) => String(row.date) === String(date))));
-  }, [backlogRows]);
+    setSelectedDates((prev) => {
+      const valid = prev.filter((date) => backlogRows.some((row) => String(row.date) === String(date)));
+      const merged = Array.from(new Set([...valid, ...refundAdjustmentDates])).sort();
+      return merged;
+    });
+  }, [backlogRows, refundAdjustmentDates]);
 
   useEffect(() => {
     if (!submitModalOpen) return;
@@ -214,10 +228,12 @@ function CashReconciliationPage() {
       return;
     }
     setSelectedDates((prev) => {
-      if (prev.length > 0 && prev.every((date) => backlogRows.some((row) => String(row.date) === String(date)))) return prev;
-      return backlogRows.map((row) => String(row.date)).sort();
+      const base = (prev.length > 0 && prev.every((date) => backlogRows.some((row) => String(row.date) === String(date))))
+        ? prev
+        : backlogRows.map((row) => String(row.date));
+      return Array.from(new Set([...base, ...refundAdjustmentDates])).sort();
     });
-  }, [backlogRows, submitModalOpen]);
+  }, [backlogRows, refundAdjustmentDates, submitModalOpen]);
 
   useEffect(() => {
     if (!submitModalOpen) return;
@@ -225,7 +241,9 @@ function CashReconciliationPage() {
   }, [loadBacklog, submitBranchId, submitModalOpen]);
 
   function toggleDate(date) {
-    setSelectedDates((prev) => prev.includes(date) ? prev.filter((item) => item !== date) : [...prev, date].sort());
+    const key = String(date || '');
+    if (refundAdjustmentDates.includes(key)) return;
+    setSelectedDates((prev) => prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key].sort());
   }
 
   function updateAllocation(index, patch) {
@@ -269,8 +287,16 @@ function CashReconciliationPage() {
       toast.show('Select the branch to reconcile', { type: 'error' });
       return;
     }
-    if (selectedDates.length === 0) {
+    const datesToSubmit = Array.from(new Set([
+      ...selectedDates.map((date) => String(date)),
+      ...refundAdjustmentDates
+    ])).sort();
+    if (datesToSubmit.length === 0) {
       toast.show('Select at least one backlog day', { type: 'error' });
+      return;
+    }
+    if (expectedAmount <= 0.005) {
+      toast.show('Net amount to deposit must be greater than zero after refunds', { type: 'error' });
       return;
     }
     if (Math.abs(enteredAmount - expectedAmount) > 0.005) {
@@ -298,7 +324,7 @@ function CashReconciliationPage() {
     }
     const payload = {
       branchId: submitBranchId,
-      selectedDates,
+      selectedDates: datesToSubmit,
       note: String(note || '').trim(),
       allocations: normalizedAllocations
     };
@@ -697,7 +723,7 @@ function CashReconciliationPage() {
               </div>
               <div style={{ color: '#64748b', fontSize: 13 }}>
                 {submitBranchId
-                  ? 'The system loads only dates with sales that are not yet deposited for the selected branch.'
+                  ? 'Unreconciled sales days and approved refund adjustments are loaded for this branch. Refund days stay selected so the deposit amount is reduced automatically.'
                   : 'The system is showing unreconciled sales dates across all branches you are allowed to see. Select one branch to tick dates and submit a deposit.'}
               </div>
               {loadingBacklog ? (
@@ -730,18 +756,36 @@ function CashReconciliationPage() {
                       </td>
                     </tr>
                   ) : null}
-                  {backlogRows.map((row) => (
-                    <tr key={`${row.branchId}:${row.date}`}>
-                      <td><input type="checkbox" checked={selectedDates.includes(String(row.date))} onChange={() => toggleDate(String(row.date))} disabled={!canSelectBacklogRows || String(row.status || '') === 'pending_approval'} /></td>
-                      <td>{row.date}</td>
-                      <td>{row.branchName}</td>
-                      <td align="right">{formatCurrency(row.expectedAmount || 0, settings)}</td>
-                      <td>
-                        {(row.paymentBreakdown || []).map((item) => `${item.paymentMethod}: ${formatCurrency(item.amount || 0, settings)}`).join(' • ') || '—'}
-                        {String(row.status || '') === 'pending_approval' ? ' • Pending approval' : ''}
-                      </td>
-                    </tr>
-                  ))}
+                  {backlogRows.map((row) => {
+                    const dateKey = String(row.date);
+                    const isRefundAdjustment = Number(row.expectedAmount || 0) < 0 || !!row.isRefundAdjustment;
+                    const checked = selectedDates.includes(dateKey) || isRefundAdjustment;
+                    return (
+                      <tr key={`${row.branchId}:${row.date}`} style={isRefundAdjustment ? { background: '#fff7ed' } : undefined}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleDate(dateKey)}
+                            disabled={!canSelectBacklogRows || String(row.status || '') === 'pending_approval' || isRefundAdjustment}
+                            title={isRefundAdjustment ? 'Approved refunds are always included so deposit totals stay correct' : undefined}
+                          />
+                        </td>
+                        <td>
+                          {row.date}
+                          {isRefundAdjustment ? <div style={{ color: '#c2410c', fontSize: 12, fontWeight: 600 }}>Refund adjustment</div> : null}
+                        </td>
+                        <td>{row.branchName}</td>
+                        <td align="right" style={isRefundAdjustment ? { color: '#c2410c', fontWeight: 700 } : undefined}>
+                          {formatCurrency(row.expectedAmount || 0, settings)}
+                        </td>
+                        <td>
+                          {(row.paymentBreakdown || []).map((item) => `${item.paymentMethod}: ${formatCurrency(item.amount || 0, settings)}`).join(' • ') || '—'}
+                          {String(row.status || '') === 'pending_approval' ? ' • Pending approval' : ''}
+                        </td>
+                      </tr>
+                    );
+                  })}
                   {!loadingBacklog && backlogRows.length === 0 && (
                     <tr><td colSpan="5" style={{ padding: 12, color: '#64748b' }}>No unreconciled sales days found for the selected branch scope.</td></tr>
                   )}
