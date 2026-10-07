@@ -157,7 +157,16 @@ function normalizeSaleFinancials(row = {}) {
   };
 }
 
-r.get('/', requireRoleOrPerm(['Admin','Manager','Cashier'], ['view_sales','see_sales']), async (req, res) => {
+r.get('/', requireRoleOrPerm(['Admin','Manager','Cashier'], [
+  'view_sales',
+  'see_sales',
+  'view_dashboard',
+  'see_dashboard',
+  'view_reports',
+  'see_reports',
+  'view_finance_reconciliation',
+  'add_finance_reconciliation'
+]), async (req, res) => {
   const role = String(req.user?.role || '').toLowerCase();
   const grants = Array.isArray(req.user?.grants) ? req.user.grants : [];
   const query = {};

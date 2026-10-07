@@ -77,6 +77,30 @@ function sameAmount(a, b) {
   return Math.abs(Number(a || 0) - Number(b || 0)) < 0.005;
 }
 
+function hasCashActivity(amount) {
+  return Math.abs(Number(amount || 0)) >= 0.005;
+}
+
+function reconciliationTotalsOptions(extra = {}) {
+  return {
+    refundAttribution: 'unreconciled_sale_date',
+    ...extra
+  };
+}
+
+function mergeRequiredRefundAdjustmentDates(branchId, selectedDates = [], totals, coverage) {
+  const merged = new Set(uniqueDateKeys(selectedDates));
+  Array.from(totals.values()).forEach((row) => {
+    if (normalizeString(row?.branchId) !== normalizeString(branchId)) return;
+    if (Number(row?.total || 0) >= -0.004999) return;
+    const key = `${normalizeString(row.branchId)}:${normalizeDateKey(row.date)}`;
+    if (coverage?.coveredAny?.has(key)) return;
+    const day = normalizeDateKey(row.date);
+    if (day) merged.add(day);
+  });
+  return Array.from(merged).sort();
+}
+
 async function resolveScope(req) {
   const grants = Array.isArray(req.user?.grants) ? req.user.grants : [];
   const allowedBranchIds = await resolveAllowedBranchIds(req.user, grants);
@@ -118,11 +142,20 @@ async function resolveRequestedBranchIds(req, scope) {
 }
 
 async function listSalesTotalsByDay(branchIds, start, end, options = {}) {
-  return listRecognizedSalesTotalsByDay(branchIds, start, end, options);
+  return listRecognizedSalesTotalsByDay(branchIds, start, end, reconciliationTotalsOptions(options));
 }
 
 async function listSalesAmountsByDay(branchIds, start, end, options = {}) {
-  return listRecognizedSalesTotalsByDay(branchIds, start, end, options);
+  return listRecognizedSalesTotalsByDay(branchIds, start, end, reconciliationTotalsOptions(options));
+}
+
+async function listReconciliationTotalsWithCoverage(branchIds, start, end, options = {}) {
+  const coverage = await loadCoverageSets(branchIds, start, end);
+  const totals = await listSalesTotalsByDay(branchIds, start, end, {
+    ...options,
+    coveredApproved: coverage.coveredApproved
+  });
+  return { totals, coverage };
 }
 
 async function loadCoverageSets(branchIds, start, end) {
@@ -204,22 +237,25 @@ r.get('/backlog', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_fina
     ? startOfLocalDay(parseDateKey(req.query.from))
     : null;
   const start = explicitFrom || minDate(tenantCreatedStart, earliestSaleStart) || buildRange(undefined, req.query.to, 120).start;
-  const [totals, coverage, branchNames] = await Promise.all([
-    listSalesTotalsByDay(branchIds, start, end, { activityFilter }),
-    loadCoverageSets(branchIds, start, end),
+  const [{ totals, coverage }, branchNames] = await Promise.all([
+    listReconciliationTotalsWithCoverage(branchIds, start, end, { activityFilter }),
     branchNameMap()
   ]);
   const rows = Array.from(totals.values())
-    .filter((row) => Number(row.total || 0) > 0 && !coverage.coveredApproved.has(`${row.branchId}:${row.date}`))
+    .filter((row) => hasCashActivity(row.total) && !coverage.coveredApproved.has(`${row.branchId}:${row.date}`))
     .sort((a, b) => `${a.date}:${a.branchId}`.localeCompare(`${b.date}:${b.branchId}`))
-    .map((row) => ({
-      status: coverage.coveredAny.has(`${row.branchId}:${row.date}`) ? 'pending_approval' : 'awaiting_submission',
-      branchId: row.branchId,
-      branchName: branchNames.get(row.branchId) || row.branchId,
-      date: row.date,
-      expectedAmount: Number(row.total || 0),
-      paymentBreakdown: Object.entries(row.paymentBreakdown || {}).map(([paymentMethod, amount]) => ({ paymentMethod, amount: Number(amount || 0) }))
-    }));
+    .map((row) => {
+      const expectedAmount = Number(row.total || 0);
+      return {
+        status: coverage.coveredAny.has(`${row.branchId}:${row.date}`) ? 'pending_approval' : 'awaiting_submission',
+        branchId: row.branchId,
+        branchName: branchNames.get(row.branchId) || row.branchId,
+        date: row.date,
+        expectedAmount,
+        isRefundAdjustment: expectedAmount < 0,
+        paymentBreakdown: Object.entries(row.paymentBreakdown || {}).map(([paymentMethod, amount]) => ({ paymentMethod, amount: Number(amount || 0) }))
+      };
+    });
   res.json(rows);
 });
 
@@ -236,46 +272,47 @@ r.get('/summary', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['view_fina
   ]);
   const useFilteredWindowForAwaiting = !!(fromKey || toKey);
   const backlogStart = useFilteredWindowForAwaiting ? start : (minDate(tenantCreatedStart, earliestSaleStart) || start);
-  const [totals, coverage, backlogTotals, backlogCoverage] = backlogStart.getTime() === start.getTime()
+  const [windowResult, backlogResult] = backlogStart.getTime() === start.getTime()
     ? await Promise.all([
-      listSalesAmountsByDay(branchIds, start, end, { activityFilter }),
-      loadCoverageSets(branchIds, start, end),
-      Promise.resolve(null),
+      listReconciliationTotalsWithCoverage(branchIds, start, end, { activityFilter }),
       Promise.resolve(null)
     ])
     : await Promise.all([
-      listSalesAmountsByDay(branchIds, start, end, { activityFilter }),
-      loadCoverageSets(branchIds, start, end),
-      listSalesAmountsByDay(branchIds, backlogStart, end, { activityFilter }),
-      loadCoverageSets(branchIds, backlogStart, end)
+      listReconciliationTotalsWithCoverage(branchIds, start, end, { activityFilter }),
+      listReconciliationTotalsWithCoverage(branchIds, backlogStart, end, { activityFilter })
     ]);
-  const awaitingTotals = backlogTotals || totals;
-  const awaitingCoverage = backlogCoverage || coverage;
+  const { totals, coverage } = windowResult;
+  const awaitingTotals = backlogResult?.totals || totals;
+  const awaitingCoverage = backlogResult?.coverage || coverage;
   let depositedAmount = 0;
   let awaitingAmount = 0;
   let pendingApprovalAmount = 0;
   let backlogDays = 0;
   Array.from(totals.values()).forEach((row) => {
-    if (Number(row.total || 0) <= 0) return;
+    const amount = Number(row.total || 0);
+    if (!hasCashActivity(amount)) return;
     const key = `${row.branchId}:${row.date}`;
     if (coverage.coveredApproved.has(key)) {
-      depositedAmount += Number(row.total || 0);
+      depositedAmount += amount;
     } else if (coverage.coveredAny.has(key)) {
-      pendingApprovalAmount += Number(row.total || 0);
+      pendingApprovalAmount += amount;
     }
   });
   Array.from(awaitingTotals.values()).forEach((row) => {
-    if (Number(row.total || 0) <= 0) return;
+    const amount = Number(row.total || 0);
+    if (!hasCashActivity(amount)) return;
     const key = `${row.branchId}:${row.date}`;
     if (!awaitingCoverage.coveredApproved.has(key)) {
-      awaitingAmount += Number(row.total || 0);
+      // Include negative refund days so approved refunds always reduce pending deposit.
+      awaitingAmount += amount;
       backlogDays += 1;
     }
   });
   res.json({
     depositedAmount,
-    awaitingAmount,
-    pendingApprovalAmount,
+    // Never report a negative "amount still to deposit" — over-refunded cash shows as 0 pending.
+    awaitingAmount: Math.max(0, awaitingAmount),
+    pendingApprovalAmount: Math.max(0, pendingApprovalAmount),
     backlogDays
   });
 });
@@ -312,28 +349,33 @@ r.post('/', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['add_finance_rec
   const activityFilter = normalizeString(req.body?.activityFilter || 'all').toLowerCase() || 'all';
   if (!branchId) return res.status(400).json({ error: 'Branch is required' });
   if (!scope.allBranchesAllowed && !scope.allowedBranchIdSet.has(branchId)) return res.status(403).json({ error: 'You cannot submit reconciliation for that branch' });
-  const selectedDates = uniqueDateKeys(req.body?.selectedDates);
-  if (selectedDates.length === 0) return res.status(400).json({ error: 'Select at least one sales day to reconcile' });
-  const range = {
-    start: startOfLocalDay(parseDateKey(selectedDates[0])),
-    end: endOfLocalDay(parseDateKey(selectedDates[selectedDates.length - 1]))
-  };
-  const [totals, coverage, accounts, branches] = await Promise.all([
-    listSalesTotalsByDay([branchId], range.start, range.end, { activityFilter }),
-    loadCoverageSets([branchId], range.start, range.end),
+  const requestedDates = uniqueDateKeys(req.body?.selectedDates);
+  if (requestedDates.length === 0) return res.status(400).json({ error: 'Select at least one sales day to reconcile' });
+  const rangeStart = startOfLocalDay(parseDateKey(requestedDates[0]));
+  // Extend through today so later-approved refunds still reduce expected deposit for selected sales days.
+  const rangeEnd = endOfLocalDay(new Date());
+  if (!rangeStart || !rangeEnd) return res.status(400).json({ error: 'Select at least one sales day to reconcile' });
+  const [{ totals, coverage }, accounts, branches] = await Promise.all([
+    listReconciliationTotalsWithCoverage([branchId], rangeStart, rangeEnd, { activityFilter }),
     ReconciliationAccountModel.find({ active: true }).lean(),
     BranchModel.find({}).lean()
   ]);
+  // Force-include uncovered refund adjustment days so cashiers cannot omit approved refunds.
+  const selectedDates = mergeRequiredRefundAdjustmentDates(branchId, requestedDates, totals, coverage);
+  if (selectedDates.length === 0) return res.status(400).json({ error: 'Select at least one sales day to reconcile' });
   for (const day of selectedDates) {
     const totalRow = totals.get(`${branchId}:${day}`);
-    if (!totalRow || Number(totalRow.total || 0) <= 0) {
-      return res.status(400).json({ error: `No sales found for ${day} on the selected branch` });
+    if (!totalRow || !hasCashActivity(totalRow.total)) {
+      return res.status(400).json({ error: `No sales or refund activity found for ${day} on the selected branch` });
     }
     if (coverage.coveredAny.has(`${branchId}:${day}`)) {
       return res.status(400).json({ error: `${day} already has a submitted or approved reconciliation` });
     }
   }
   const expectedAmount = selectedDates.reduce((sum, day) => sum + Number(totals.get(`${branchId}:${day}`)?.total || 0), 0);
+  if (expectedAmount <= 0.005) {
+    return res.status(400).json({ error: 'Net amount to deposit must be greater than zero after refunds' });
+  }
   const paymentMap = new Map();
   selectedDates.forEach((day) => {
     const row = totals.get(`${branchId}:${day}`);

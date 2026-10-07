@@ -317,12 +317,17 @@ export function buildRecognizedDayTotals(rows = [], start, end, options = {}) {
         });
       }
       const row = totals.get(key);
-      row.total += Math.max(0, toNumber(event?.amount));
+      const eventAmount = toNumber(event?.amount);
+      // Refund-sale ledger rows are negative; cash impact is applied via approved RefundRequest below.
+      // Never let them inflate payment mix or cancel the approved-refund deduction.
+      if (eventAmount <= 0 || String(event?.source || '') === 'refund') return;
+      row.total += eventAmount;
       if (String(event?.source || '') === 'credit_repayment') {
         const paymentMethod = String(event?.paymentMethod || 'cash').trim().toLowerCase() || 'cash';
-        row.paymentBreakdown[paymentMethod] = (row.paymentBreakdown[paymentMethod] || 0) + Math.max(0, toNumber(event?.amount));
+        row.paymentBreakdown[paymentMethod] = (row.paymentBreakdown[paymentMethod] || 0) + eventAmount;
       } else {
         paymentMethodBreakdown.forEach((amount, paymentMethod) => {
+          if (amount <= 0) return;
           row.paymentBreakdown[paymentMethod] = (row.paymentBreakdown[paymentMethod] || 0) + amount;
         });
       }
@@ -331,10 +336,9 @@ export function buildRecognizedDayTotals(rows = [], start, end, options = {}) {
   for (const refund of Array.isArray(options?.refunds) ? options.refunds : []) {
     if (String(refund?.status || '').trim().toLowerCase() !== 'approved') continue;
     const paidAt = getRefundEventDate(refund);
-    if (!eventWithinRange({ paidAt }, start, end)) continue;
     const branchId = toId(refund?.branchId);
-    const day = formatLocalDateKey(paidAt);
-    if (!branchId || !day) continue;
+    const approvalDay = paidAt ? formatLocalDateKey(paidAt) : '';
+    if (!branchId || !approvalDay) continue;
     const originalSale = saleMap.get(toId(refund?.saleId)) || null;
     const fallbackSale = originalSale || {
       branchId,
@@ -344,6 +348,25 @@ export function buildRecognizedDayTotals(rows = [], start, end, options = {}) {
     if (!matchesActivityFilter(fallbackSale, options?.activityFilter, originalSale?.creditSale || null)) continue;
     const refundCashImpact = Math.max(0, getRefundCashImpact(refund, originalSale));
     if (refundCashImpact <= 0) continue;
+    const salePaidAt = originalSale
+      ? (toDate(originalSale?.created_at)
+        || toDate(originalSale?.saleCapturedAt)
+        || toDate(originalSale?.recordedAt)
+        || null)
+      : null;
+    const saleDay = salePaidAt ? formatLocalDateKey(salePaidAt) : '';
+    const saleKey = saleDay ? `${branchId}:${saleDay}` : '';
+    const coveredApproved = options?.coveredApproved instanceof Set ? options.coveredApproved : null;
+    const saleDayInQueryWindow = !!(salePaidAt && eventWithinRange({ paidAt: salePaidAt }, start, end));
+    const approvalInRange = !!(paidAt && eventWithinRange({ paidAt }, start, end));
+    // Prefer reducing the original unreconciled sales day so cashiers are not asked to deposit
+    // cash that was later refunded. If that sales day was already deposited/approved, or the
+    // sale sits outside this query window, keep the cash impact on the refund approval day.
+    const attributeToSaleDay = String(options?.refundAttribution || '') === 'unreconciled_sale_date'
+      && saleDayInQueryWindow
+      && (!coveredApproved || !coveredApproved.has(saleKey));
+    if (!attributeToSaleDay && !approvalInRange) continue;
+    const day = attributeToSaleDay ? saleDay : approvalDay;
     const key = `${branchId}:${day}`;
     if (!totals.has(key)) {
       totals.set(key, {
@@ -363,7 +386,7 @@ export function buildRecognizedDayTotals(rows = [], start, end, options = {}) {
 export async function listRecognizedSalesTotalsByDay(branchIds = [], start, end, options = {}) {
   const normalizedBranchIds = Array.from(new Set((Array.isArray(branchIds) ? branchIds : [branchIds]).map(toId).filter(Boolean)));
   if (normalizedBranchIds.length === 0) return new Map();
-  const approvedRefunds = await RefundRequest.find({
+  const periodRefunds = await RefundRequest.find({
     branchId: { $in: normalizedBranchIds },
     status: 'approved',
     approved_at: { $gte: start, $lte: end }
@@ -376,6 +399,22 @@ export async function listRecognizedSalesTotalsByDay(branchIds = [], start, end,
     ]
   }).lean();
   const seenSaleIds = new Set(regularRows.map((row) => toId(row?._id)).filter(Boolean));
+  const periodSaleIds = Array.from(seenSaleIds);
+  // Also load refunds for sales created in-window even if approved later, so pending deposit
+  // and day expected amounts drop as soon as the refund is approved.
+  const linkedSaleRefunds = periodSaleIds.length > 0
+    ? await RefundRequest.find({
+      branchId: { $in: normalizedBranchIds },
+      status: 'approved',
+      saleId: { $in: periodSaleIds }
+    }).lean()
+    : [];
+  const refundsById = new Map();
+  [...periodRefunds, ...linkedSaleRefunds].forEach((row) => {
+    const key = toId(row?._id);
+    if (key) refundsById.set(key, row);
+  });
+  const approvedRefunds = Array.from(refundsById.values());
   const missingRefundSaleIds = Array.from(new Set(
     approvedRefunds
       .map((refund) => toId(refund?.saleId))

@@ -177,4 +177,72 @@ describe('cash reconciliations route characterization', () => {
       status: 'pending_director'
     });
   });
+
+  it('includes negative refund days in awaiting deposit so cashiers are not overstated', async () => {
+    mocks.listRecognizedSalesTotalsByDay.mockResolvedValue(new Map([
+      ['main:2026-09-02', {
+        branchId: 'main',
+        date: '2026-09-02',
+        total: 127636,
+        paymentBreakdown: { cash: 127636 }
+      }],
+      ['main:2026-09-20', {
+        branchId: 'main',
+        date: '2026-09-20',
+        total: -2090,
+        paymentBreakdown: { refund: -2090 }
+      }]
+    ]));
+
+    const response = await request(createApp())
+      .get('/summary')
+      .query({ branchId: 'main', from: '2026-09-01', to: '2026-09-30' })
+      .set(authHeader({
+        role: 'Admin',
+        grants: ['view_finance_reconciliation', 'add_finance_reconciliation']
+      }))
+      .expect(200);
+
+    expect(response.body.awaitingAmount).toBe(125546);
+    expect(response.body.backlogDays).toBe(2);
+  });
+
+  it('returns refund adjustment days in backlog instead of dropping them', async () => {
+    mocks.listRecognizedSalesTotalsByDay.mockResolvedValue(new Map([
+      ['main:2026-09-02', {
+        branchId: 'main',
+        date: '2026-09-02',
+        total: 5000,
+        paymentBreakdown: { cash: 5000 }
+      }],
+      ['main:2026-09-20', {
+        branchId: 'main',
+        date: '2026-09-20',
+        total: -2090,
+        paymentBreakdown: { refund: -2090 }
+      }]
+    ]));
+
+    const response = await request(createApp())
+      .get('/backlog')
+      .query({ branchId: 'main', from: '2026-09-01', to: '2026-09-30' })
+      .set(authHeader({
+        role: 'Admin',
+        grants: ['view_finance_reconciliation', 'add_finance_reconciliation']
+      }))
+      .expect(200);
+
+    expect(response.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        date: '2026-09-20',
+        expectedAmount: -2090,
+        isRefundAdjustment: true
+      }),
+      expect.objectContaining({
+        date: '2026-09-02',
+        expectedAmount: 5000,
+        isRefundAdjustment: false
+      })
+    ]));
+  });
 });
