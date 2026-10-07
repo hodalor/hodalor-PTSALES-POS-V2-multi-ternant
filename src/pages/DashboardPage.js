@@ -4,6 +4,8 @@ import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import { formatCurrency } from '../utils/currency';
 import { Chart, BarElement, LineElement, PointElement, CategoryScale, LinearScale, ArcElement, Tooltip, Legend, Filler } from 'chart.js';
 import * as expensesApi from '../api/expenses';
+import * as salesApi from '../api/sales';
+import * as refundsApi from '../api/refunds';
 import { getCashReconciliationSummary } from '../api/cashReconciliations';
 import { isFeatureEnabled } from '../utils/featureFlags';
 import BranchSelect from '../components/BranchSelect';
@@ -123,8 +125,8 @@ function enumerateDateKeys(fromKey, toKey) {
 }
 
 function DashboardPage() {
-  const sales = useSelector(s => s.sales.sales);
-  const refunds = useSelector(s => s.refunds.requests || []);
+  const storeSales = useSelector(s => s.sales.sales);
+  const storeRefunds = useSelector(s => s.refunds.requests || []);
   const products = useSelector(s => s.products.products);
   const branches = useSelector(s => s.branches.branches);
   const settings = useSelector(s => s.settings);
@@ -158,6 +160,12 @@ function DashboardPage() {
   const [expenses, setExpenses] = useState([]);
   const [financeSummary, setFinanceSummary] = useState({ depositedAmount: 0, awaitingAmount: 0, pendingApprovalAmount: 0, backlogDays: 0 });
   const [financeSummaryLoading, setFinanceSummaryLoading] = useState(false);
+  const [dashboardMetricsLoading, setDashboardMetricsLoading] = useState(false);
+  const [dashboardSales, setDashboardSales] = useState(null);
+  const [dashboardRefunds, setDashboardRefunds] = useState(null);
+  // Prefer freshly fetched dashboard rows; fall back to store so we never blank the UI on a failed refresh.
+  const sales = Array.isArray(dashboardSales) ? dashboardSales : (Array.isArray(storeSales) ? storeSales : []);
+  const refunds = Array.isArray(dashboardRefunds) ? dashboardRefunds : (Array.isArray(storeRefunds) ? storeRefunds : []);
   const todayIso = useMemo(() => formatLocalDateKey(new Date()), []);
   const defaultRevenueChartFromIso = useMemo(() => {
     const start = new Date();
@@ -291,6 +299,29 @@ function DashboardPage() {
 
   useEffect(() => {
     let alive = true;
+    (async () => {
+      setDashboardMetricsLoading(true);
+      try {
+        // Always load the full sales set for dashboard math. Branch filtering stays client-side
+        // so we never overwrite other branches' in-memory sales elsewhere in the app.
+        const [salesRows, refundRows] = await Promise.all([
+          salesApi.list({ all: true }),
+          refundsApi.listRequests()
+        ]);
+        if (!alive) return;
+        if (Array.isArray(salesRows)) setDashboardSales(salesRows);
+        if (Array.isArray(refundRows)) setDashboardRefunds(refundRows);
+      } catch {
+        // Keep prior dashboard/store data. Never blank summary cards because a refresh failed.
+      } finally {
+        if (alive) setDashboardMetricsLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
     let loadingTimer = null;
     (async () => {
       if (!canUseFinanceReconciliation) {
@@ -298,21 +329,19 @@ function DashboardPage() {
         if (alive) setFinanceSummary({ depositedAmount: 0, awaitingAmount: 0, pendingApprovalAmount: 0, backlogDays: 0 });
         return;
       }
-      const cached = financeSummaryCacheRef.current.get(financeSummaryRequestKey);
-      if (cached && alive) {
-        setFinanceSummary(cached);
-        setFinanceSummaryLoading(false);
-      } else {
-        loadingTimer = setTimeout(() => {
-          if (alive) setFinanceSummaryLoading(true);
-        }, 180);
-      }
+      // Always revalidate pending deposit for the selected filters. Stale cache previously
+      // kept an inflated awaiting amount after refunds were approved.
+      financeSummaryCacheRef.current.delete(financeSummaryRequestKey);
+      loadingTimer = setTimeout(() => {
+        if (alive) setFinanceSummaryLoading(true);
+      }, 180);
       try {
         const data = await getCashReconciliationSummary({
           branchId: financeSummaryBranchId || undefined,
           activityFilter: activityFilter || 'all',
           from: periodMode === 'all_time' ? undefined : (dateFrom || defaultFromIso),
-          to: periodMode === 'all_time' ? undefined : (dateTo || todayIso)
+          to: periodMode === 'all_time' ? undefined : (dateTo || todayIso),
+          _ts: Date.now()
         });
         if (!alive) return;
         const nextSummary = {
@@ -327,9 +356,7 @@ function DashboardPage() {
       } catch {
         if (!alive) return;
         setFinanceSummaryLoading(false);
-        if (!cached) {
-          setFinanceSummary({ depositedAmount: 0, awaitingAmount: 0, pendingApprovalAmount: 0, backlogDays: 0 });
-        }
+        // Keep the last successfully loaded summary for this session; never invent zeros that hide a real backlog.
       }
     })();
     return () => {
@@ -941,26 +968,26 @@ function DashboardPage() {
     };
   }, [customerLeaderboard, customerLeaderboardMode, t]);
 
+  const salesCardsLoading = dashboardMetricsLoading && !Array.isArray(dashboardSales);
   const summaryCards = [
-    { key: 'sales', label: t('Total Sales (Repayment + Actual Sales)'), value: maskRevenue(metrics.todayTotal), subtitle: periodMode === 'all_time' ? t('Recognized sales and repayments for all time') : t('Recognized sales and repayments in selected range'), accent: '#2563eb', tint: '#dbeafe', badge: 'RV', primary: true },
-    { key: 'profit', label: t('Total Profit (Repayment Profit + Actual Sales Profit)'), value: maskProfit(metrics.todayProfit), subtitle: canViewProfit ? t('Recognized profit for sales and repayments') : t('Profit access masked'), accent: '#7c3aed', tint: '#ede9fe', badge: 'PF', primary: true },
-    { key: 'items', label: t('Items Sold'), value: metrics.itemsSold, subtitle: t('Units from sales created in range'), accent: '#0f766e', tint: '#ccfbf1', badge: 'IT', primary: true },
-    { key: 'credit_out', label: t('Total Credit Sales'), value: maskRevenue(metrics.creditOut), subtitle: t('Outstanding balance across all credit sales'), accent: '#b45309', tint: '#ffedd5', badge: 'CR', primary: true },
-    { key: 'total_credit_recovered', label: t('Total Credit Recovered'), value: maskRevenue(metrics.totalCreditRecovered), subtitle: periodMode === 'all_time' ? t('All credit repayments received') : t('Credit repayments received in selected range'), accent: '#10b981', tint: '#d1fae5', badge: 'TR', primary: true },
+    { key: 'sales', label: t('Total Sales (Repayment + Actual Sales)'), value: maskRevenue(metrics.todayTotal), subtitle: periodMode === 'all_time' ? t('Recognized sales and repayments for all time') : t('Recognized sales and repayments in selected range'), accent: '#2563eb', tint: '#dbeafe', badge: 'RV', primary: true, loading: salesCardsLoading },
+    { key: 'profit', label: t('Total Profit (Repayment Profit + Actual Sales Profit)'), value: maskProfit(metrics.todayProfit), subtitle: canViewProfit ? t('Recognized profit for sales and repayments') : t('Profit access masked'), accent: '#7c3aed', tint: '#ede9fe', badge: 'PF', primary: true, loading: salesCardsLoading },
+    { key: 'items', label: t('Items Sold'), value: metrics.itemsSold, subtitle: t('Units from sales created in range'), accent: '#0f766e', tint: '#ccfbf1', badge: 'IT', primary: true, loading: salesCardsLoading },
+    { key: 'credit_out', label: t('Total Credit Sales'), value: maskRevenue(metrics.creditOut), subtitle: t('Outstanding balance across all credit sales'), accent: '#b45309', tint: '#ffedd5', badge: 'CR', primary: true, loading: salesCardsLoading },
+    { key: 'total_credit_recovered', label: t('Total Credit Recovered'), value: maskRevenue(metrics.totalCreditRecovered), subtitle: periodMode === 'all_time' ? t('All credit repayments received') : t('Credit repayments received in selected range'), accent: '#10b981', tint: '#d1fae5', badge: 'TR', primary: true, loading: salesCardsLoading },
     { key: 'awaiting', label: t('Pending Deposit'), value: maskRevenue(pendingDepositValue), subtitle: financeSummaryLoading ? t('Refreshing finance summary') : (creditOnlyDashboardView ? t('No pending deposit in credit-only view') : t('Money waiting to be deposited after refunds')), accent: '#ef4444', tint: '#fee2e2', badge: 'PD', loading: financeSummaryLoading, primary: canUseFinanceReconciliation, hidden: !canUseFinanceReconciliation },
-    { key: 'cashflow', label: t('Cash Available'), value: maskProfit(finance.net), subtitle: t('Recognized revenue minus expenses'), accent: '#16a34a', tint: '#dcfce7', badge: 'CF' },
+    { key: 'cashflow', label: t('Cash Available'), value: maskProfit(finance.net), subtitle: t('Recognized revenue minus expenses'), accent: '#16a34a', tint: '#dcfce7', badge: 'CF', loading: salesCardsLoading },
     { key: 'deposited', label: t('Money Deposited'), value: maskRevenue(financeSummary.depositedAmount), subtitle: financeSummaryLoading ? t('Refreshing finance summary') : t('Approved reconciliations'), accent: '#14b8a6', tint: '#ccfbf1', badge: 'MD', loading: financeSummaryLoading, hidden: !canUseFinanceReconciliation },
-    { key: 'retail_credit_out', label: t('Retail Credit Sales'), value: maskRevenue(metrics.retailCreditOut), subtitle: t('Outstanding retail credit balance'), accent: '#0ea5e9', tint: '#e0f2fe', badge: 'RE' },
-    { key: 'wholesale_credit_out', label: t('Wholesale Credit Sales'), value: maskRevenue(metrics.wholesaleCreditOut), subtitle: t('Outstanding wholesale credit balance'), accent: '#7c2d12', tint: '#ffedd5', badge: 'WC' },
-    { key: 'warehouse_credit_out', label: t('Warehouse Credit Sales'), value: maskRevenue(metrics.warehouseCreditOut), subtitle: t('Outstanding warehouse credit balance'), accent: '#4338ca', tint: '#e0e7ff', badge: 'WHC' },
-    { key: 'retail_credit_recovered', label: t('Retail Credit Repayment'), value: maskRevenue(metrics.retailCreditRecovered), subtitle: periodMode === 'all_time' ? t('All retail credit repayments received') : t('Retail credit repayments in selected range'), accent: '#22c55e', tint: '#dcfce7', badge: 'RR' },
-    { key: 'wholesale_credit_recovered', label: t('Wholesale Credit Repayment'), value: maskRevenue(metrics.wholesaleCreditRecovered), subtitle: periodMode === 'all_time' ? t('All wholesale credit repayments received') : t('Wholesale credit repayments in selected range'), accent: '#a855f7', tint: '#f3e8ff', badge: 'WR' },
-    { key: 'warehouse_credit_recovered', label: t('Warehouse Credit Repayment'), value: maskRevenue(metrics.warehouseCreditRecovered), subtitle: periodMode === 'all_time' ? t('All warehouse credit repayments received') : t('Warehouse credit repayments in selected range'), accent: '#2563eb', tint: '#dbeafe', badge: 'WHR' },
-    { key: 'transactions', label: t('Sales Count'), value: metrics.transactionCount, subtitle: t('Sales created in selected range'), accent: '#f59e0b', tint: '#fef3c7', badge: 'TX' },
-    { key: 'margin', label: t('Margin'), value: maskProfitText(`${metrics.marginPct}%`), subtitle: t('Gross margin percentage'), accent: '#ec4899', tint: '#fce7f3', badge: 'MG' },
-    { key: 'refunded', label: t('Refunded'), value: maskRevenue(metrics.approvedRefundAmount), subtitle: periodMode === 'all_time' ? t('Approved refunds for all time') : t('Approved refunds in selected range'), accent: '#dc2626', tint: '#fee2e2', badge: 'RF' }
-    ,
-    { key: 'tax_payable', label: t('Tax To Be Paid'), value: maskRevenue(metrics.taxPayable), subtitle: periodMode === 'all_time' ? t('Tax from taxable products sold after refund adjustments') : t('Tax from taxable products sold in selected range'), accent: '#0f766e', tint: '#dcfce7', badge: 'TXP' }
+    { key: 'retail_credit_out', label: t('Retail Credit Sales'), value: maskRevenue(metrics.retailCreditOut), subtitle: t('Outstanding retail credit balance'), accent: '#0ea5e9', tint: '#e0f2fe', badge: 'RE', loading: salesCardsLoading },
+    { key: 'wholesale_credit_out', label: t('Wholesale Credit Sales'), value: maskRevenue(metrics.wholesaleCreditOut), subtitle: t('Outstanding wholesale credit balance'), accent: '#7c2d12', tint: '#ffedd5', badge: 'WC', loading: salesCardsLoading },
+    { key: 'warehouse_credit_out', label: t('Warehouse Credit Sales'), value: maskRevenue(metrics.warehouseCreditOut), subtitle: t('Outstanding warehouse credit balance'), accent: '#4338ca', tint: '#e0e7ff', badge: 'WHC', loading: salesCardsLoading },
+    { key: 'retail_credit_recovered', label: t('Retail Credit Repayment'), value: maskRevenue(metrics.retailCreditRecovered), subtitle: periodMode === 'all_time' ? t('All retail credit repayments received') : t('Retail credit repayments in selected range'), accent: '#22c55e', tint: '#dcfce7', badge: 'RR', loading: salesCardsLoading },
+    { key: 'wholesale_credit_recovered', label: t('Wholesale Credit Repayment'), value: maskRevenue(metrics.wholesaleCreditRecovered), subtitle: periodMode === 'all_time' ? t('All wholesale credit repayments received') : t('Wholesale credit repayments in selected range'), accent: '#a855f7', tint: '#f3e8ff', badge: 'WR', loading: salesCardsLoading },
+    { key: 'warehouse_credit_recovered', label: t('Warehouse Credit Repayment'), value: maskRevenue(metrics.warehouseCreditRecovered), subtitle: periodMode === 'all_time' ? t('All warehouse credit repayments received') : t('Warehouse credit repayments in selected range'), accent: '#2563eb', tint: '#dbeafe', badge: 'WHR', loading: salesCardsLoading },
+    { key: 'transactions', label: t('Sales Count'), value: metrics.transactionCount, subtitle: t('Sales created in selected range'), accent: '#f59e0b', tint: '#fef3c7', badge: 'TX', loading: salesCardsLoading },
+    { key: 'margin', label: t('Margin'), value: maskProfitText(`${metrics.marginPct}%`), subtitle: t('Gross margin percentage'), accent: '#ec4899', tint: '#fce7f3', badge: 'MG', loading: salesCardsLoading },
+    { key: 'refunded', label: t('Refunded'), value: maskRevenue(metrics.approvedRefundAmount), subtitle: periodMode === 'all_time' ? t('Approved refunds for all time') : t('Approved refunds in selected range'), accent: '#dc2626', tint: '#fee2e2', badge: 'RF', loading: salesCardsLoading },
+    { key: 'tax_payable', label: t('Tax To Be Paid'), value: maskRevenue(metrics.taxPayable), subtitle: periodMode === 'all_time' ? t('Tax from taxable products sold after refund adjustments') : t('Tax from taxable products sold in selected range'), accent: '#0f766e', tint: '#dcfce7', badge: 'TXP', loading: salesCardsLoading }
   ].filter((card) => !card.hidden);
   const primarySummaryCards = summaryCards.filter((card) => card.primary);
   const secondarySummaryCards = summaryCards.filter((card) => !card.primary);
@@ -975,7 +1002,7 @@ function DashboardPage() {
           <div className="dashboard-card-label">{card.label}</div>
           <div className="dashboard-card-value">
             {card.loading ? (
-              <LoadingDots label={t('Loading finance summary')} />
+              <LoadingDots label={t('Loading summary')} />
             ) : card.value}
           </div>
         </div>

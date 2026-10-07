@@ -523,7 +523,10 @@ function App() {
         const canLoadRefundApprovalData = allow('modules.refundApprovals', ['Admin','Manager','Director'], ['approve_refunds','approve_retail_director','approve_retail_manager','approve_distribution_director','approve_distribution_manager','approve_warehouse_director','approve_warehouse_manager'])
           || allow('modules.approvalsCenter', ['Admin','Manager','Director'], ['view_approvals','approve_retail_director','approve_retail_manager','approve_distribution_director','approve_distribution_manager','approve_warehouse_director','approve_warehouse_manager'])
           || (section('sections.warehouse') && allow('pages.warehouse.approvals', ['Admin','Manager','Director'], ['view_warehouse_approvals','approve_warehouse_director','approve_warehouse_manager']));
-        const canLoadSales = allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']);
+        const canLoadSales = allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales'])
+          || allow('modules.dashboard', ['Admin','Manager'], ['view_dashboard','see_dashboard'])
+          || allow('modules.reports', ['Admin','Manager','Auditor'], ['view_reports','see_reports'])
+          || allow('pages.finance.reconciliation', ['Admin','Manager','Cashier'], ['view_finance_reconciliation','add_finance_reconciliation','approve_finance_reconciliation_director','approve_finance_reconciliation_manager']);
         const canLoadRefunds = canLoadRetailRefunds
           || canLoadDistributionRefunds
           || canLoadWarehouseRefunds
@@ -708,8 +711,18 @@ function App() {
             || allow('modules.reports', ['Admin','Manager','Auditor'], ['view_reports','see_reports'])
             || allow('pages.finance.reconciliation', ['Admin','Manager','Cashier'], ['view_finance_reconciliation','add_finance_reconciliation','approve_finance_reconciliation_director','approve_finance_reconciliation_manager'])
           ) ? refundsApi.listRequests() : Promise.resolve([]),
-          allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? salesApi.list({ all: true }) : Promise.resolve([]),
-          allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales']) ? listQueuedSales() : Promise.resolve([]),
+          (
+            allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales'])
+            || allow('modules.dashboard', ['Admin','Manager'], ['view_dashboard','see_dashboard'])
+            || allow('modules.reports', ['Admin','Manager','Auditor'], ['view_reports','see_reports'])
+            || allow('pages.finance.reconciliation', ['Admin','Manager','Cashier'], ['view_finance_reconciliation','add_finance_reconciliation','approve_finance_reconciliation_director','approve_finance_reconciliation_manager'])
+          ) ? salesApi.list({ all: true }) : Promise.resolve([]),
+          (
+            allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales'])
+            || allow('modules.dashboard', ['Admin','Manager'], ['view_dashboard','see_dashboard'])
+            || allow('modules.reports', ['Admin','Manager','Auditor'], ['view_reports','see_reports'])
+            || allow('pages.finance.reconciliation', ['Admin','Manager','Cashier'], ['view_finance_reconciliation','add_finance_reconciliation','approve_finance_reconciliation_director','approve_finance_reconciliation_manager'])
+          ) ? listQueuedSales() : Promise.resolve([]),
           section('sections.admin') && allow('admin.users', ['Admin'], ['view_users','see_users']) ? usersApi.list() : Promise.resolve([]),
           (((allow('admin.audit', ['Admin'], ['view_audit','see_audit']) || allow('sections.admin', ['Admin'], ['view_stock_records','see_stock_records'])) && !(roleLower === 'superadmin' && String(authTenantId || '').toLowerCase() === 'master'))) ? auditsApi.list({ all: true }) : Promise.resolve([]),
           allow('modules.invoices', ['Admin','Manager','Cashier'], ['view_invoices','see_invoices','view_wholesale_invoices','view_warehouse_invoices']) ? invoicesApi.list() : Promise.resolve([]),
