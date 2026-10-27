@@ -135,12 +135,31 @@ export function printReceiptHtml(html, targetWindow = null) {
             try { window.focus(); } catch(e) {}
             try { window.print(); } catch(e) {}
           }
-          if (document.readyState === 'complete') {
-            setTimeout(doPrint, 300);
-          } else {
-            window.addEventListener('load', function() { setTimeout(doPrint, 300); });
+          function whenReady(cb) {
+            var started = Date.now();
+            function run() {
+              var images = Array.prototype.slice.call(document.images || []);
+              var pending = images.filter(function(img) { return !img.complete; });
+              if (pending.length === 0 || Date.now() - started > 180) {
+                setTimeout(cb, 40);
+                return;
+              }
+              var left = pending.length;
+              function tick() {
+                left -= 1;
+                if (left <= 0) setTimeout(cb, 40);
+              }
+              pending.forEach(function(img) {
+                img.addEventListener('load', tick, { once: true });
+                img.addEventListener('error', tick, { once: true });
+              });
+              setTimeout(function() { setTimeout(cb, 40); }, 180);
+            }
+            if (document.readyState === 'complete') run();
+            else window.addEventListener('load', run, { once: true });
           }
-          window.addEventListener('afterprint', function() { setTimeout(function(){ window.close(); }, 200); });
+          whenReady(doPrint);
+          window.addEventListener('afterprint', function() { setTimeout(function(){ window.close(); }, 120); });
         })();
       </script>
     </body></html>

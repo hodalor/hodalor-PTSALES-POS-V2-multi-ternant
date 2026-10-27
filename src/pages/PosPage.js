@@ -1567,13 +1567,21 @@ function PosPage({ mode = 'retail' }) {
         if (reservedPrintWindow) {
           try {
             reservedPrintWindow.document.open();
-            reservedPrintWindow.document.write('<html><head><title>Preparing print...</title></head><body style="font-family:Arial,sans-serif;padding:16px;color:#0f172a">Preparing document...</body></html>');
+            reservedPrintWindow.document.write('<html><head><title>Preparing print...</title></head><body style="font-family:Arial,sans-serif;padding:16px;color:#0f172a"><div style="font-size:16px;font-weight:700;margin-bottom:8px">Preparing receipt...</div><div style="color:#64748b">Saving sale and building document. This should only take a moment.</div></body></html>');
             reservedPrintWindow.document.close();
           } catch {}
         } else {
           toast.show('Browser blocked the print window. Please allow pop-ups for this site.', { type: 'warning' });
         }
       }
+      const updatePrintWindowStatus = (title, detail) => {
+        if (!reservedPrintWindow || reservedPrintWindow.closed) return;
+        try {
+          reservedPrintWindow.document.open();
+          reservedPrintWindow.document.write(`<html><head><title>${title}</title></head><body style="font-family:Arial,sans-serif;padding:16px;color:#0f172a"><div style="font-size:16px;font-weight:700;margin-bottom:8px">${title}</div><div style="color:#64748b">${detail}</div></body></html>`);
+          reservedPrintWindow.document.close();
+        } catch {}
+      };
       let checkoutCustomer = selectedCustomer;
       try {
         if (!checkoutCustomer && (easyBuyEnabled || quickCustomerHasAny)) {
@@ -1694,6 +1702,7 @@ function PosPage({ mode = 'retail' }) {
         const tmpRef = `TMP-${String(Date.now()).padStart(6, '0').slice(-6)}`;
         saleForUi = { ...sale, id: sale.clientId, invoiceSerial: tmpRef, receiptNumber: tmpRef, branchName, syncPending: true };
         try {
+          updatePrintWindowStatus('Saving sale...', 'Recording the sale on the server, then print will open automatically.');
           savedOnlineSale = await createSale({ ...sale, clientId: sale.clientId });
           saleForUi = {
             ...saleForUi,
@@ -1935,6 +1944,54 @@ function PosPage({ mode = 'retail' }) {
         dispatch(addInvoice(inv));
         } catch {}
       }
+      if (shouldFinalizeLocally) {
+        updatePrintWindowStatus('Opening print...', 'Sale saved. Preparing the receipt for printing.');
+        // #region debug-point B:before-receipt-print
+        reportEbkTmpReceiptDebug({
+          hypothesisId: 'B',
+          location: 'PosPage.js:completeSale:before-receipt-print',
+          msg: '[DEBUG] POS is about to print local receipt before online sale confirmation',
+          data: {
+            clientId: String(sale?.clientId || ''),
+            branchId: String(activeBranchId || ''),
+            receiptNumber: String(saleForUi?.receiptNumber || ''),
+            invoiceSerial: String(saleForUi?.invoiceSerial || ''),
+            printMode: String(activePrintMode || 'receipt'),
+            isNonRetail: !!isNonRetail
+          }
+        });
+        // #endregion
+        const printEscposReceipt = () => {
+          const text = escposReceipt({
+            header: { title: settings.appName, store: settings.receiptHeader, branch: branchName, phone: settings.businessPhone || '', cashier: saleForUi.sellerName, customer: saleForUi.customerName ? `${saleForUi.customerName}${saleForUi.customerCode ? ` (${saleForUi.customerCode})` : ''}` : '', receiptId: saleForUi.id || saleForUi._id, receiptNumber: saleForUi.receiptNumber, invoiceSerial: saleForUi.invoiceSerial },
+            items: saleForUi.items,
+            totals: { subtotal, discount, tax, total },
+            footer: { note: settings.receiptFooter },
+            settings,
+            sale: saleForUi
+          });
+          downloadText('receipt-escpos.txt', (settings.drawerOpenOnCash && payments.some(p => p.type === 'cash')) ? (escposOpenDrawer() + '\n' + text) : text);
+        };
+        const printBrowserReceipt = () => {
+          printWindowUsed = true;
+          printReceiptHtml(receiptHtml, reservedPrintWindow);
+        };
+        const printReceiptForMode = () => {
+          if (escpos) printEscposReceipt();
+          else printBrowserReceipt();
+        };
+
+        // Print first so cashiers are not blocked by local cleanup work.
+        if (escpos) {
+          printEscposReceipt();
+        } else if (activePrintMode === 'invoice' && invoiceForPrint) {
+          printWindowUsed = true;
+          printInvoiceA4(buildInvoiceA4Html({ settings, invoice: invoiceForPrint }), reservedPrintWindow);
+        } else {
+          printReceiptForMode();
+        }
+      }
+
       if (savedOnlineSale && checkoutCustomer && saleForUi.customerPointsAfter != null) {
         dispatch(updateCustomer({ id: checkoutCustomer.id, loyaltyPoints: Number(saleForUi.customerPointsAfter || 0) }));
       }
@@ -1974,53 +2031,8 @@ function PosPage({ mode = 'retail' }) {
       setEasyBuyAmountPaidNow('');
       setEasyBuyDueDate('');
       resetSaleDateTime();
-      if (shouldFinalizeLocally) {
-        // #region debug-point B:before-receipt-print
-        reportEbkTmpReceiptDebug({
-          hypothesisId: 'B',
-          location: 'PosPage.js:completeSale:before-receipt-print',
-          msg: '[DEBUG] POS is about to print local receipt before online sale confirmation',
-          data: {
-            clientId: String(sale?.clientId || ''),
-            branchId: String(activeBranchId || ''),
-            receiptNumber: String(saleForUi?.receiptNumber || ''),
-            invoiceSerial: String(saleForUi?.invoiceSerial || ''),
-            printMode: String(activePrintMode || 'receipt'),
-            isNonRetail: !!isNonRetail
-          }
-        });
-        // #endregion
-        const printEscposReceipt = () => {
-          const text = escposReceipt({
-            header: { title: settings.appName, store: settings.receiptHeader, branch: branchName, phone: settings.businessPhone || '', cashier: saleForUi.sellerName, customer: saleForUi.customerName ? `${saleForUi.customerName}${saleForUi.customerCode ? ` (${saleForUi.customerCode})` : ''}` : '', receiptId: saleForUi.id || saleForUi._id, receiptNumber: saleForUi.receiptNumber, invoiceSerial: saleForUi.invoiceSerial },
-            items: saleForUi.items,
-            totals: { subtotal, discount, tax, total },
-            footer: { note: settings.receiptFooter },
-            settings,
-            sale: saleForUi
-          });
-          downloadText('receipt-escpos.txt', (settings.drawerOpenOnCash && payments.some(p => p.type === 'cash')) ? (escposOpenDrawer() + '\n' + text) : text);
-        };
-        const printBrowserReceipt = () => {
-          printWindowUsed = true;
-          printReceiptHtml(receiptHtml, reservedPrintWindow);
-        };
-        const printReceiptForMode = () => {
-          if (escpos) printEscposReceipt();
-          else printBrowserReceipt();
-        };
-
-        if (escpos) {
-          printEscposReceipt();
-        } else if (activePrintMode === 'invoice' && invoiceForPrint) {
-          printWindowUsed = true;
-          printInvoiceA4(buildInvoiceA4Html({ settings, invoice: invoiceForPrint }), reservedPrintWindow);
-        } else {
-          printReceiptForMode();
-        }
-      }
       if (savedOnlineSale) {
-        productUnitsApi.markSoldProductUnits(soldUnitIdsForDebug);
+        void Promise.resolve(productUnitsApi.markSoldProductUnits(soldUnitIdsForDebug)).catch(() => {});
         void refreshAffectedProducts(dispatch, affectedProductIds);
         toast.show('Sale recorded', { type: 'success' });
       } else if (queuedAfterHttpFailure) {
@@ -2040,7 +2052,7 @@ function PosPage({ mode = 'retail' }) {
           }
         });
         // #endregion
-        productUnitsApi.markSoldProductUnits(soldUnitIdsForDebug);
+        void Promise.resolve(productUnitsApi.markSoldProductUnits(soldUnitIdsForDebug)).catch(() => {});
         toast.show('Saved offline. Will backup when online.', { type: 'success' });
       }
     } finally {
