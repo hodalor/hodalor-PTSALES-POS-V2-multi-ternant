@@ -3,7 +3,7 @@ import Customer from '../models/Customer.js';
 import Branch from '../models/Branch.js';
 import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
-import { requireAuth, requireAdmin, requireRoleOrPerm } from '../middleware/auth.js';
+import { requireAuth, requireAdmin, requireRoleOrPerm, userHasPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
 import { uploadMediaString } from '../utils/mediaStorage.js';
 import { archiveLiveDocument } from '../utils/superBin.js';
@@ -114,7 +114,10 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_customers'), a
     businessEmail: String(payload.businessEmail || '').trim() || '',
     photo: String(payload.photo || '').trim() || '',
     vip: Boolean(payload.vip),
-    anniversaryDate: payload.anniversaryDate ? new Date(payload.anniversaryDate) : undefined
+    anniversaryDate: payload.anniversaryDate ? new Date(payload.anniversaryDate) : undefined,
+    maxCreditLimit: (await userHasPerm(req, 'set_customer_credit_limit'))
+      ? Math.max(0, Number(payload.maxCreditLimit || 0) || 0)
+      : 0
   };
   if (doc.dob && Number.isNaN(doc.dob.getTime())) doc.dob = undefined;
   if (doc.anniversaryDate && Number.isNaN(doc.anniversaryDate.getTime())) doc.anniversaryDate = undefined;
@@ -181,8 +184,12 @@ r.put('/:id', requireRoleOrPerm(['Admin','Manager','Cashier'], 'edit_customers')
     businessEmail: payload.businessEmail != null ? String(payload.businessEmail || '').trim() : undefined,
     photo: payload.photo != null ? String(payload.photo || '').trim() : undefined,
     vip: payload.vip != null ? Boolean(payload.vip) : undefined,
-    anniversaryDate: payload.anniversaryDate != null ? (payload.anniversaryDate ? new Date(payload.anniversaryDate) : null) : undefined
+    anniversaryDate: payload.anniversaryDate != null ? (payload.anniversaryDate ? new Date(payload.anniversaryDate) : null) : undefined,
+    maxCreditLimit: payload.maxCreditLimit != null ? Math.max(0, Number(payload.maxCreditLimit || 0) || 0) : undefined
   };
+  if (patch.maxCreditLimit != null && !(await userHasPerm(req, 'set_customer_credit_limit'))) {
+    delete patch.maxCreditLimit;
+  }
   if (patch.name === '') return res.status(400).json({ error: 'Name is required' });
   if (patch.dob && Number.isNaN(patch.dob.getTime())) patch.dob = null;
   if (patch.anniversaryDate && Number.isNaN(patch.anniversaryDate.getTime())) patch.anniversaryDate = null;

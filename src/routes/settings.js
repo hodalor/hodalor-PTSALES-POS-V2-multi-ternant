@@ -54,7 +54,14 @@ const TENANT_ADMIN_ALLOWED_KEYS = new Set([
   'systemUpgradeNoticeMessage',
   'currentBranchId',
   'categories',
-  'creditPackages'
+  'creditPackages',
+  'enforceCustomerCreditLimits',
+  'minimumUpfrontPaymentPercent',
+  'minimumUpfrontPaymentFixed',
+  'penaltyPerDay',
+  'maxOverdueAllowed',
+  'maxCreditLimitPerCustomer',
+  'partialPaymentAllowed'
 ]);
 
 function normalizeSettingsData(input = {}) {
@@ -109,6 +116,13 @@ function normalizeSettingsData(input = {}) {
   next.creditPackages = Array.isArray(next.creditPackages)
     ? Array.from(new Set(next.creditPackages.map((value) => String(value || '').trim()).filter(Boolean)))
     : [];
+  next.enforceCustomerCreditLimits = !!next.enforceCustomerCreditLimits;
+  next.minimumUpfrontPaymentPercent = Math.max(0, Math.min(100, Number(next.minimumUpfrontPaymentPercent || 0) || 0));
+  next.minimumUpfrontPaymentFixed = Math.max(0, Number(next.minimumUpfrontPaymentFixed || 0) || 0);
+  next.penaltyPerDay = Math.max(0, Number(next.penaltyPerDay || 0) || 0);
+  next.maxOverdueAllowed = Math.max(0, Number(next.maxOverdueAllowed || 0) || 0);
+  next.maxCreditLimitPerCustomer = Math.max(0, Number(next.maxCreditLimitPerCustomer || 0) || 0);
+  next.partialPaymentAllowed = next.partialPaymentAllowed !== false;
   return next;
 }
 

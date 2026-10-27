@@ -67,7 +67,8 @@ vi.mock('../../src/utils/saleAccounting.js', () => ({
 }));
 vi.mock('../../src/utils/credit.js', () => ({
   refreshCreditSaleStatus: mocks.refreshCreditSaleStatus,
-  updateCustomerCreditMetrics: mocks.updateCustomerCreditMetrics
+  updateCustomerCreditMetrics: mocks.updateCustomerCreditMetrics,
+  evaluateCustomerCreditSale: vi.fn(() => ({ ok: true }))
 }));
 
 const { default: router } = await import('../../src/routes/refunds.js');

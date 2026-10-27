@@ -122,7 +122,8 @@ vi.mock('../../src/utils/credit.js', () => ({
   computeCreditStatus: vi.fn((row) => row),
   customerRankFromScore: vi.fn(() => 'bronze'),
   refreshCreditSaleStatus: vi.fn(async () => {}),
-  updateCustomerCreditMetrics: vi.fn()
+  updateCustomerCreditMetrics: vi.fn(),
+  evaluateCustomerCreditSale: vi.fn(() => ({ ok: true }))
 }));
 
 vi.mock('../../src/utils/productUnits.js', () => ({

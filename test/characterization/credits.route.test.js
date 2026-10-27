@@ -67,7 +67,8 @@ vi.mock('../../src/utils/credit.js', () => ({
   computeCreditStatus: vi.fn((row) => row),
   customerRankFromScore: vi.fn(() => 'bronze'),
   refreshCreditSaleStatus: mocks.refreshCreditSaleStatus,
-  updateCustomerCreditMetrics: mocks.updateCustomerCreditMetrics
+  updateCustomerCreditMetrics: mocks.updateCustomerCreditMetrics,
+  evaluateCustomerCreditSale: vi.fn(() => ({ ok: true }))
 }));
 
 vi.mock('../../src/utils/superBin.js', () => ({

@@ -10,6 +10,44 @@ export function customerRankFromScore(score = 100) {
   return 'Bronze';
 }
 
+export function parseCreditLimit(value) {
+  if (value == null || value === '') return 0;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return n;
+}
+
+export function evaluateCustomerCreditSale({ enforce, customer, outstanding, requestedBalance } = {}) {
+  const limit = parseCreditLimit(customer?.maxCreditLimit);
+  const used = Math.max(0, Number(outstanding || 0) || 0);
+  const remaining = limit > 0 ? Math.max(0, limit - used) : 0;
+  const requested = Math.max(0, Number(requestedBalance || 0) || 0);
+  if (!enforce) {
+    return { ok: true, enforce: false, limit, remaining, used };
+  }
+  if (!(limit > 0)) {
+    return {
+      ok: false,
+      enforce: true,
+      limit: 0,
+      remaining: 0,
+      used,
+      message: 'Credit sales are only allowed for customers with a credit limit set'
+    };
+  }
+  if (requested - remaining > 0.005) {
+    return {
+      ok: false,
+      enforce: true,
+      limit,
+      remaining,
+      used,
+      message: `This sale exceeds the remaining credit of ${remaining.toFixed(2)}`
+    };
+  }
+  return { ok: true, enforce: true, limit, remaining, used };
+}
+
 export function computeCreditStatus(doc, now = new Date()) {
   const total = Math.max(0, Number(doc?.total_amount || 0));
   const paid = Math.max(0, Number(doc?.amount_paid || 0));

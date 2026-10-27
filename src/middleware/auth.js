@@ -86,6 +86,24 @@ export function requireRoleOrPerm(roles = [], perm = '') {
   };
 }
 
+export async function userHasPerm(req, perm = '') {
+  const key = String(perm || '').trim();
+  if (!key) return false;
+  const role = String(req.user?.role || '').toLowerCase();
+  if (isMasterSuperAdmin(req.user, req.tenantId) || role === 'superadmin' || role === 'admin') return true;
+  const grants = Array.isArray(req.user?.grants) ? req.user.grants : [];
+  if (grants.includes(key)) return true;
+  try {
+    const doc = await Settings.findOne({ key: 'default' });
+    const map = doc?.data?.userGrants || {};
+    const arr = map?.[req.user?.name];
+    const filtered = Array.isArray(arr) ? filterGrantsByFeatureFlags(arr, doc?.data?.featureFlags || {}) : [];
+    return filtered.includes(key);
+  } catch {
+    return false;
+  }
+}
+
 export function requireFeature(featureKey = '') {
   const key = String(featureKey || '').trim();
   return async (req, res, next) => {

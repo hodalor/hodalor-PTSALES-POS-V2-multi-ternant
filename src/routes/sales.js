@@ -14,7 +14,7 @@ import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
 import { getMapQty, getStockTarget, markInventoryModified, resolveTierPrice, setMapQty } from '../utils/inventory.js';
 import { makeInventoryLine, withInventoryAudit } from '../utils/inventoryAudit.js';
-import { refreshCreditSaleStatus, updateCustomerCreditMetrics } from '../utils/credit.js';
+import { evaluateCustomerCreditSale, refreshCreditSaleStatus, updateCustomerCreditMetrics } from '../utils/credit.js';
 import { normalizeTrackType, releaseSerializedUnits, sellSerializedUnits } from '../utils/productUnits.js';
 import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
 import { archiveLiveDocument } from '../utils/superBin.js';
@@ -771,10 +771,20 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       if (creditUpfront + 0.0001 < requiredUpfront) {
         badRequest(`Minimum upfront payment is ${requiredUpfront.toFixed(2)}`);
       }
-      const maxCreditLimit = Math.max(0, Number(customerDoc.maxCreditLimit || settingsData.maxCreditLimitPerCustomer || 0));
       const requestedBalance = Math.max(0, revenueTotal - creditUpfront);
-      if (maxCreditLimit > 0 && (Number(customerDoc.outstandingBalance || 0) + requestedBalance) > maxCreditLimit) {
-        badRequest('Customer exceeds the configured credit limit');
+      let liveOutstanding = Math.max(0, Number(customerDoc.outstandingBalance || 0) || 0);
+      try {
+        const metrics = await updateCustomerCreditMetrics(customerId);
+        liveOutstanding = Math.max(0, Number(metrics?.summary?.outstandingBalance ?? liveOutstanding) || 0);
+      } catch {}
+      const creditLimitCheck = evaluateCustomerCreditSale({
+        enforce: !!settingsData.enforceCustomerCreditLimits,
+        customer: customerDoc,
+        outstanding: liveOutstanding,
+        requestedBalance
+      });
+      if (!creditLimitCheck.ok) {
+        badRequest(creditLimitCheck.message || 'Customer exceeds the configured credit limit');
       }
     }
 

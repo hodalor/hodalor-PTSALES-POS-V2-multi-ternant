@@ -85,7 +85,8 @@ vi.mock('../../src/utils/inventoryAudit.js', () => ({
 
 vi.mock('../../src/utils/credit.js', () => ({
   refreshCreditSaleStatus: vi.fn(),
-  updateCustomerCreditMetrics: vi.fn()
+  updateCustomerCreditMetrics: vi.fn(),
+  evaluateCustomerCreditSale: vi.fn(() => ({ ok: true }))
 }));
 
 vi.mock('../../src/utils/productUnits.js', () => ({
