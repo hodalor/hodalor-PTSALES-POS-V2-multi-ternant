@@ -419,18 +419,32 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
   let customerName = String(payload.customerName || '').trim();
   let customerPhone = String(payload.customerPhone || '').trim();
   let customerDoc = null;
-  if (customerId || customerCode) {
-    let cust = null;
+  const invoiceCounterField = posType === 'wholesale'
+    ? 'data.nextWholesaleInvoiceNumber'
+    : posType === 'warehouse'
+      ? 'data.nextWarehouseInvoiceNumber'
+      : 'data.nextInvoiceNumber';
+  const customerLookupPromise = (async () => {
+    if (!customerId && !customerCode) return null;
     if (customerId) {
-      if (mongoose.isValidObjectId(customerId)) cust = await Customer.findById(customerId);
-      else cust = await Customer.findOne({ clientId: customerId });
-      customerId = cust ? String(cust._id) : '';
-    } else {
-      cust = await Customer.findOne({ customerCode });
-      customerId = cust ? String(cust._id) : '';
+      if (mongoose.isValidObjectId(customerId)) return Customer.findById(customerId);
+      return Customer.findOne({ clientId: customerId });
     }
+    return Customer.findOne({ customerCode });
+  })();
+  const [cust, branchRow, settingsUpdate] = await Promise.all([
+    customerLookupPromise,
+    Branch.findOne({ id: branchId }).catch(() => null),
+    Settings.findOneAndUpdate(
+      { key: 'default' },
+      { $inc: { [invoiceCounterField]: 1, 'data.nextReceiptNumber': 1 } },
+      { new: true, upsert: true }
+    ).catch(() => null)
+  ]);
+  if (customerId || customerCode) {
     if (!cust) return res.status(400).json({ error: 'Customer not found' });
     customerDoc = cust;
+    customerId = String(cust._id || '');
     customerCode = String(cust.customerCode || customerCode || '');
     customerName = String(cust.name || customerName || '');
     customerPhone = String(cust.phone || customerPhone || '');
@@ -441,29 +455,14 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
     customerPhone = '';
   }
 
-  let branchCode = branchId;
-  try {
-    const b = await Branch.findOne({ id: branchId });
-    if (b?.code) branchCode = b.code;
-  } catch {}
-
+  const branchCode = branchRow?.code || branchId;
   let invoiceNum = 1;
   let receiptNum = 1;
   let invoicePrefix = 'INV';
   let receiptPrefix = 'RCPT';
   let settingsData = {};
-  try {
-    const invoiceCounterField = posType === 'wholesale'
-      ? 'data.nextWholesaleInvoiceNumber'
-      : posType === 'warehouse'
-        ? 'data.nextWarehouseInvoiceNumber'
-        : 'data.nextInvoiceNumber';
-    const updated = await Settings.findOneAndUpdate(
-      { key: 'default' },
-      { $inc: { [invoiceCounterField]: 1, 'data.nextReceiptNumber': 1 } },
-      { new: true, upsert: true }
-    );
-    settingsData = updated?.data || {};
+  if (settingsUpdate) {
+    settingsData = settingsUpdate?.data || {};
     invoicePrefix = posType === 'wholesale'
       ? String(settingsData.wholesaleInvoicePrefix || 'WINV')
       : posType === 'warehouse'
@@ -476,8 +475,6 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
         ? settingsData.nextWarehouseInvoiceNumber
         : settingsData.nextInvoiceNumber || 1) - 1);
     receiptNum = Math.max(1, Number(settingsData.nextReceiptNumber || 1) - 1);
-  } catch {
-    // keep defaults
   }
 
   const invoiceSerial = `${invoicePrefix}-${branchCode}-${String(invoiceNum).padStart(6,'0')}`;
@@ -488,8 +485,37 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
   const finalItems = [];
   const touchedSerializedUnits = [];
   try {
+    const productIds = Array.from(new Set(cleaned.map((it) => String(it.productId || '')).filter(Boolean)));
+    const productOr = productIds.flatMap((pid) => {
+      const clause = productLookupQuery(pid);
+      return Array.isArray(clause.$or) ? clause.$or : [clause];
+    });
+    const products = productOr.length > 0
+      ? await Product.find({ $or: productOr })
+      : [];
+    const productByKey = new Map();
+    products.forEach((product) => {
+      const idKey = String(product?.id || '').trim();
+      const mongoKey = String(product?._id || '').trim();
+      if (idKey) productByKey.set(idKey, product);
+      if (mongoKey) productByKey.set(mongoKey, product);
+    });
+
+    const allSerializedUnitIds = Array.from(new Set(
+      cleaned.flatMap((it) => (Array.isArray(it.soldUnitIds) ? it.soldUnitIds : [])).map(String).filter(Boolean)
+    ));
+    const serializedUnitRows = allSerializedUnitIds.length > 0
+      ? await ProductUnit.find({
+        _id: { $in: allSerializedUnitIds },
+        branchId,
+        inventoryType
+      })
+      : [];
+    const serializedUnitById = new Map(serializedUnitRows.map((row) => [String(row._id), row]));
+    const dirtyProducts = new Map();
+
     for (const it of cleaned) {
-      const p = await Product.findOne(productLookupQuery(it.productId));
+      const p = productByKey.get(String(it.productId || ''));
       if (!p) {
         const err = new Error(`Product not found: ${it.productId}`);
         err.status = 400;
@@ -509,37 +535,29 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
           err.status = 400;
           throw err;
         }
-        const rows = await ProductUnit.find({
-          _id: { $in: it.soldUnitIds },
-          productId: String(p.id || p._id),
-          variantId: String(it.variantId || ''),
-          branchId,
-          inventoryType
-        });
+        const rows = it.soldUnitIds.map((unitId) => serializedUnitById.get(String(unitId))).filter(Boolean);
         if (rows.length !== it.soldUnitIds.length) {
           const err = new Error(`Some serialized units were not found for ${p.name}`);
           err.status = 400;
           throw err;
         }
-        rows.forEach(row => {
+        const productKey = String(p.id || p._id);
+        for (const row of rows) {
+          if (String(row.productId || '') !== productKey
+            || String(row.variantId || '') !== String(it.variantId || '')
+            || String(row.branchId || '') !== String(branchId)
+            || String(row.inventoryType || '') !== String(inventoryType)) {
+            const err = new Error(`Some serialized units were not found for ${p.name}`);
+            err.status = 400;
+            throw err;
+          }
           if (row.status === 'sold') {
             const err = new Error(`Serialized unit already sold: ${row.imei || row.serialNumber}`);
             err.status = 409;
             throw err;
           }
           touchedSerializedUnits.push(String(row._id));
-        });
-        await assertOutgoingAvailability({
-          product: p,
-          productId: String(p.id || p._id || it.productId),
-          variantId: String(it.variantId || ''),
-          branchId,
-          inventoryType,
-          qty: it.qty,
-          unitIds: it.soldUnitIds,
-          reservationToken: String(payload.reservationToken || ''),
-          purpose: 'sale'
-        });
+        }
       }
       const target = getStockTarget(p, it.variantId, inventoryType);
       if (!target) {
@@ -568,7 +586,7 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       touched.push({ target, branchId, prev });
       setMapQty(target.container, branchId, Math.max(0, prev - it.qty));
       markInventoryModified(target);
-      await p.save();
+      dirtyProducts.set(String(p._id || p.id || it.productId), p);
       const cp = variant?.costPrice != null ? Number(variant.costPrice || 0) : Number(p.costPrice || 0);
       if (Number.isFinite(cp) && cp > 0) costTotal += cp * it.qty;
       const requestedPrice = Math.max(0, Number(it.requestedPrice || 0));
@@ -600,6 +618,8 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
         costPrice: Number.isFinite(cp) ? cp : 0
       });
     }
+    // One save per touched product instead of one save per cart line.
+    await Promise.all(Array.from(dirtyProducts.values()).map((product) => product.save()));
   } catch (e) {
     try {
       for (let i = touched.length - 1; i >= 0; i--) {
@@ -649,7 +669,9 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       const reqRedeemed = Math.max(0, Math.floor(Number(payload.loyaltyPointsRedeemed || 0)));
       if (reqRedeemed > 0) {
         if (reqRedeemed < minRedeemPoints) badRequest(`Minimum redeem is ${minRedeemPoints} point(s)`);
-        const cust = await Customer.findById(customerId);
+        const cust = customerDoc && String(customerDoc._id) === String(customerId)
+          ? customerDoc
+          : await Customer.findById(customerId);
         if (!cust) badRequest('Customer not found');
         const bal = Math.max(0, Math.floor(Number(cust.loyaltyPoints || 0)));
         redeemed = Math.min(reqRedeemed, bal);
