@@ -19,6 +19,15 @@ import { CHAT_SOUND_OPTIONS, playChatSound, startOutgoingCallTone, stopIncomingR
 import { LANGUAGE_OPTIONS, useAppLanguage } from '../utils/localization';
 import { clearPendingTenantLimitPayment, clearTenantLimitPaymentUrlQuery, getTenantLimitPaymentVerificationPayload } from '../utils/tenantLimitPayments';
 
+const SETTINGS_TABS = [
+  { id: 'identity', label: 'Identity' },
+  { id: 'documents', label: 'Documents' },
+  { id: 'credit', label: 'Credit' },
+  { id: 'catalog', label: 'Catalog' },
+  { id: 'locations', label: 'Locations' },
+  { id: 'system', label: 'System' }
+];
+
 function ConfigSettingsPage() {
   const dispatch = useDispatch();
   const settings = useSelector(s => s.settings);
@@ -45,6 +54,7 @@ function ConfigSettingsPage() {
   const [savingReconciliationAccount, setSavingReconciliationAccount] = useState(false);
   const [testingChatSound, setTestingChatSound] = useState(false);
   const [testingCallSound, setTestingCallSound] = useState(false);
+  const [settingsTab, setSettingsTab] = useState('identity');
   const [reconciliationForm, setReconciliationForm] = useState({
     name: '',
     bankName: '',
@@ -111,7 +121,14 @@ function ConfigSettingsPage() {
     'currentBranchId',
     'categories',
     'creditPackages',
-    'userGrants'
+    'userGrants',
+    'enforceCustomerCreditLimits',
+    'minimumUpfrontPaymentPercent',
+    'minimumUpfrontPaymentFixed',
+    'penaltyPerDay',
+    'maxOverdueAllowed',
+    'maxCreditLimitPerCustomer',
+    'partialPaymentAllowed'
   ]));
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);
   const setSetting = (key, value) => dispatch(setAllSettings({ ...(settings || {}), [key]: value }));
@@ -229,6 +246,76 @@ function ConfigSettingsPage() {
           <animateTransform attributeName="transform" type="rotate" from="0 12 12" to="360 12 12" dur="0.8s" repeatCount="indefinite" />
         </path>
       </svg>
+    );
+  }
+
+  async function saveSettings() {
+    if (savingSettings) return;
+    const before = initialTaxRef.current || 0;
+    const after = settings.taxRate || 0;
+    if (before !== after) {
+      if (!canEditTax) {
+        toast.show('Not permitted to change tax rate', { type: 'error' });
+        return;
+      }
+      const { promptDialog } = await import('../utils/dialogs');
+      const remark = await promptDialog('Enter remark for tax rate change');
+      if (!remark.trim()) {
+        toast.show('Remark is required for tax change', { type: 'error' });
+        return;
+      }
+      dispatch(addAudit({
+        actor: auth.user?.name || 'unknown',
+        actionType: 'tax_rate_change',
+        details: { from: Math.round(before * 100), to: Math.round(after * 100) },
+        remark
+      }));
+      initialTaxRef.current = after;
+    }
+    try {
+      setSavingSettings(true);
+      if (!navigator.onLine) {
+        if (!offlineBackupAllowed) {
+          toast.show('Offline: connect internet and try again.', { type: 'error' });
+          return;
+        }
+        const payload = buildSettingsPayload();
+        if (Object.keys(payload).length === 0) {
+          toast.show('No settings changes to save', { type: 'success' });
+          return;
+        }
+        await enqueueHttp({ collection: 'settings', label: 'Settings', path: '/api/settings', method: 'PUT', body: payload });
+        toast.show('Saved offline. Will backup when online.', { type: 'success' });
+        return;
+      }
+      const payload = buildSettingsPayload();
+      if (Object.keys(payload).length === 0) {
+        toast.show('No settings changes to save', { type: 'success' });
+        return;
+      }
+      await settingsApi.save(payload);
+      initialSettingsRef.current = { ...(initialSettingsRef.current || {}), ...payload };
+      initialSettingsCapturedRef.current = true;
+      setSettingsSavedPulse(true);
+      setTimeout(() => setSettingsSavedPulse(false), 1600);
+      toast.show('Settings saved', { type: 'success' });
+    } catch (e) {
+      toast.show(String(e?.message || 'Failed to save settings'), { type: 'error' });
+    } finally {
+      setSavingSettings(false);
+    }
+  }
+
+  function renderSaveBar() {
+    return (
+      <div className="card config-savebar" style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button className="btn btn-primary" onClick={saveSettings} disabled={savingSettings}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            {savingSettings && <Spinner />}
+            {savingSettings ? 'Saving…' : settingsSavedPulse ? 'Saved' : 'Save'}
+          </span>
+        </button>
+      </div>
     );
   }
 
@@ -775,15 +862,32 @@ function ConfigSettingsPage() {
       <div className="config-header" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 16, gap: 12 }}>
         <div>
           <h1 style={{ margin: 0 }}>Configuration</h1>
-          <div className="config-subtitle">Manage branding, invoicing, categories, branches, currency, and tenant behavior from one place.</div>
+          <div className="config-subtitle">Manage branding, invoicing, credit limits, categories, branches, currency, and tenant behavior from one place.</div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <OfflineQueueIndicator collection="settings" label="Settings queued" />
           <OfflineQueueIndicator collection="branches" label="Branches queued" />
         </div>
       </div>
-      <div className="config-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
+      <div className="page-tabs config-tabs" role="tablist" aria-label="Settings sections">
+        {SETTINGS_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={settingsTab === tab.id}
+            className={settingsTab === tab.id ? 'btn btn-primary' : 'btn'}
+            onClick={() => setSettingsTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      <div className="config-grid" style={{ display: 'grid', gridTemplateColumns: (settingsTab === 'credit' || settingsTab === 'catalog') ? '1fr 1fr' : '1fr', gap: 16, alignItems: 'start' }}>
+        {settingsTab !== 'locations' && (
         <div className="config-column" style={{ display: 'grid', gap: 16, alignContent: 'start', alignItems: 'start' }}>
+          {settingsTab === 'identity' && (
+          <>
           <div className="card config-panel">
             <h2 className="section-title">App Identity</h2>
             {isMasterSuperAdmin && (
@@ -1115,6 +1219,10 @@ function ConfigSettingsPage() {
               </div>
             </div>
           )}
+          </>
+          )}
+          {settingsTab === 'documents' && (
+          <>
           <div className="card config-note-card" style={{ padding: 12, color: '#64748b' }}>
             Receipt uses the Client App Logo (falls back to /clientlogo512.png or /logo512.png).
           </div>
@@ -1311,6 +1419,27 @@ function ConfigSettingsPage() {
             />
           </label>
           </div>
+          </>
+          )}
+          {settingsTab === 'credit' && (
+          <>
+          <div className="card config-panel">
+            <h3 className="section-title" style={{ margin: '8px 0' }}>Customer Credit Limits</h3>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <input
+                type="checkbox"
+                checked={!!settings.enforceCustomerCreditLimits}
+                onChange={e => setSetting('enforceCustomerCreditLimits', e.target.checked)}
+                style={{ marginTop: 4 }}
+              />
+              <span>
+                <strong>Enforce customer credit limits</strong>
+                <div style={{ color: '#64748b', fontSize: 12, marginTop: 4, lineHeight: 1.45 }}>
+                  When checked, workers can only make credit sales for customers with a credit limit, and they cannot exceed that customer’s remaining limit. Leave it unchecked if this business does not want limits enforced.
+                </div>
+              </span>
+            </label>
+          </div>
           <div className="card config-panel">
             <h3 className="section-title" style={{ margin: '8px 0' }}>Credit Sale Rules</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -1331,13 +1460,16 @@ function ConfigSettingsPage() {
                 <input className="input" type="number" min="0" value={settings.maxOverdueAllowed || 0} onChange={e => setSetting('maxOverdueAllowed', Number(e.target.value) || 0)} style={{ display: 'block', width: '100%', marginTop: 6 }} />
               </label>
               <label>
-                Max credit limit per customer
+                Default credit limit (optional)
                 <input className="input" type="number" min="0" value={settings.maxCreditLimitPerCustomer || 0} onChange={e => setSetting('maxCreditLimitPerCustomer', Number(e.target.value) || 0)} style={{ display: 'block', width: '100%', marginTop: 6 }} />
               </label>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 28 }}>
                 <input type="checkbox" checked={settings.partialPaymentAllowed !== false} onChange={e => setSetting('partialPaymentAllowed', e.target.checked)} />
                 Partial repayments allowed
               </label>
+            </div>
+            <div style={{ marginTop: 8, color: '#64748b', fontSize: 12 }}>
+              Credit enforcement uses each customer’s own limit from their profile. The optional default above is only a reference value and is not applied automatically.
             </div>
           </div>
           <div className="card config-panel">
@@ -1372,6 +1504,10 @@ function ConfigSettingsPage() {
               Example: Earn Amount=100 and Points=5 means every 100 spent earns 5 points. Redeem value controls discount.
             </div>
           </div>
+          </>
+          )}
+          {settingsTab === 'catalog' && (
+          <>
           <div className="card">
             <h3 className="section-title" style={{ margin: '8px 0' }}>Currency</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
@@ -1423,6 +1559,10 @@ function ConfigSettingsPage() {
               </ul>
             </div>
           </div>
+          </>
+          )}
+          {settingsTab === 'system' && (
+          <>
           {isMasterSuperAdmin && (
             <div className="card config-panel">
               <h3 className="section-title" style={{ margin: '8px 0' }}>Background Refresh</h3>
@@ -1518,77 +1658,17 @@ function ConfigSettingsPage() {
               ) : null}
             </div>
           )}
-          <div className="card config-savebar" style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <button
-              className="btn btn-primary"
-              onClick={async () => {
-                if (savingSettings) return;
-                const before = initialTaxRef.current || 0;
-                const after = settings.taxRate || 0;
-                if (before !== after) {
-                  if (!canEditTax) {
-                    toast.show('Not permitted to change tax rate', { type: 'error' });
-                    return;
-                  }
-                  const { promptDialog } = await import('../utils/dialogs');
-                  const remark = await promptDialog('Enter remark for tax rate change');
-                  if (!remark.trim()) {
-                    toast.show('Remark is required for tax change', { type: 'error' });
-                    return;
-                  }
-                  dispatch(addAudit({
-                    actor: auth.user?.name || 'unknown',
-                    actionType: 'tax_rate_change',
-                    details: { from: Math.round(before * 100), to: Math.round(after * 100) },
-                    remark
-                  }));
-                  initialTaxRef.current = after;
-                }
-                try {
-                  setSavingSettings(true);
-                  if (!navigator.onLine) {
-                    if (!offlineBackupAllowed) {
-                      toast.show('Offline: connect internet and try again.', { type: 'error' });
-                      return;
-                    }
-                    const payload = buildSettingsPayload();
-                    if (Object.keys(payload).length === 0) {
-                      toast.show('No settings changes to save', { type: 'success' });
-                      return;
-                    }
-                    await enqueueHttp({ collection: 'settings', label: 'Settings', path: '/api/settings', method: 'PUT', body: payload });
-                    toast.show('Saved offline. Will backup when online.', { type: 'success' });
-                    return;
-                  }
-                  const payload = buildSettingsPayload();
-                  if (Object.keys(payload).length === 0) {
-                    toast.show('No settings changes to save', { type: 'success' });
-                    return;
-                  }
-                  await settingsApi.save(payload);
-                  initialSettingsRef.current = { ...(initialSettingsRef.current || {}), ...payload };
-                  initialSettingsCapturedRef.current = true;
-                  setSettingsSavedPulse(true);
-                  setTimeout(() => setSettingsSavedPulse(false), 1600);
-                  toast.show('Settings saved', { type: 'success' });
-                } catch (e) {
-                  toast.show(String(e?.message || 'Failed to save settings'), { type: 'error' });
-                } finally {
-                  setSavingSettings(false);
-                }
-              }}
-              disabled={savingSettings}
-            >
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                {savingSettings && <Spinner />}
-                {savingSettings ? 'Saving…' : settingsSavedPulse ? 'Saved' : 'Save'}
-              </span>
-            </button>
-          </div>
+          </>
+          )}
+          {renderSaveBar()}
         </div>
+        )}
+        {(settingsTab === 'credit' || settingsTab === 'catalog' || settingsTab === 'locations') && (
         <div className="config-column" style={{ display: 'grid', gap: 16, alignContent: 'start', alignItems: 'start' }}>
-          {renderCategoriesCard()}
-          {renderCreditPackagesCard()}
+          {settingsTab === 'catalog' && renderCategoriesCard()}
+          {settingsTab === 'credit' && renderCreditPackagesCard()}
+          {settingsTab === 'locations' && (
+          <>
           {renderFinanceAccountsCard()}
           <div className="card config-panel" style={{ alignSelf: 'start', width: '100%' }}>
             <h2 className="section-title" style={{ marginBottom: 6, fontSize: 24, fontWeight: 800 }}>Branches</h2>
@@ -1653,8 +1733,12 @@ function ConfigSettingsPage() {
             {renderBranchGroup('warehouse', 'Warehouses', 'Storage and supply locations without POS.')}
           </div>
           </div>
+          </>
+          )}
         </div>
+        )}
       </div>
+      {settingsTab === 'locations' && renderSaveBar()}
       <TenantLimitUpgradeModal
         open={!!limitUpgradeContext}
         onClose={() => setLimitUpgradeContext(null)}

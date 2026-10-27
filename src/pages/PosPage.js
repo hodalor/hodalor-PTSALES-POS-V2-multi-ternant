@@ -33,6 +33,7 @@ import { useAppLanguage } from '../utils/localization';
 import { getBranchStock } from '../utils/branchStock';
 import { filterBranchesByType, normalizeBranchType } from '../utils/branchTypes';
 import { getProductBrand, getProductSearchText } from '../utils/productSearch';
+import { evaluateCustomerCreditSale, getLiveCustomerOutstanding, parseCreditLimit } from '../utils/customerCredit';
 
 function reportQueuedSalesImeiDebug() {}
 function reportEbkTmpReceiptDebug() {}
@@ -109,6 +110,7 @@ function PosPage({ mode = 'retail' }) {
   const heldSales = useMemo(() => cart.heldSales || [], [cart.heldSales]);
   const products = useSelector(s => s.products.products);
   const customers = useSelector(s => s.customers.customers);
+  const sales = useSelector(s => s.sales.sales);
   const branches = useSelector(s => s.branches.branches);
   const branchId = useSelector(s => s.settings.currentBranchId);
   const settings = useSelector(s => s.settings);
@@ -205,7 +207,7 @@ function PosPage({ mode = 'retail' }) {
   const [saving, setSaving] = useState(false);
   const [customerQuery, setCustomerQuery] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
-  const [quickCustomerForm, setQuickCustomerForm] = useState({ name: '', phone: '', address: '', customerType: defaultCustomerType });
+  const [quickCustomerForm, setQuickCustomerForm] = useState({ name: '', phone: '', address: '', customerType: defaultCustomerType, maxCreditLimit: '' });
   const [redeemPoints, setRedeemPoints] = useState('');
   const [heldOpen, setHeldOpen] = useState(false);
   const [discountOpen, setDiscountOpen] = useState(false);
@@ -581,6 +583,11 @@ function PosPage({ mode = 'retail' }) {
     const grants = Array.isArray(auth.grants) ? auth.grants : [];
     return roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('add_customers');
   }, [auth.grants, auth.role]);
+  const canSetCustomerCreditLimit = useMemo(() => {
+    const roleLower = String(auth.role || '').toLowerCase();
+    const grants = Array.isArray(auth.grants) ? auth.grants : [];
+    return roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('set_customer_credit_limit');
+  }, [auth.grants, auth.role]);
   const quickCustomerHasAny = useMemo(() => (
     !!String(quickCustomerForm.name || '').trim()
     || !!String(quickCustomerForm.phone || '').trim()
@@ -615,7 +622,8 @@ function PosPage({ mode = 'retail' }) {
       address: String(quickCustomerForm.address || '').trim(),
       customerType: defaultCustomerType,
       registrationBranchId: String(stockBranchId || '').trim(),
-      registrationBranchName: String(branchLabel || '').trim()
+      registrationBranchName: String(branchLabel || '').trim(),
+      ...(canSetCustomerCreditLimit ? { maxCreditLimit: parseCreditLimit(quickCustomerForm.maxCreditLimit) } : {})
     };
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) throw new Error('Offline: connect internet and try again.');
@@ -638,7 +646,7 @@ function PosPage({ mode = 'retail' }) {
     rotateReservationToken();
     setSelectedCustomerId('');
     setCustomerQuery('');
-    setQuickCustomerForm({ name: '', phone: '', address: '', customerType: defaultCustomerType });
+    setQuickCustomerForm({ name: '', phone: '', address: '', customerType: defaultCustomerType, maxCreditLimit: '' });
     setRedeemPoints('');
     setEasyBuyEnabled(false);
     setEasyBuyAmountPaidNow('');
@@ -694,9 +702,14 @@ function PosPage({ mode = 'retail' }) {
       if (Math.abs(creditPaymentsTotal - Number(easyBuyAmountPaidNow || 0)) > 0.005) {
         throw new Error(`${creditModeLabel} payment breakdown must equal amount paid now`);
       }
-      if (customerMaxCreditLimit > 0 && (customerOutstanding + due) > customerMaxCreditLimit) {
-        throw new Error('Customer exceeds the configured credit limit');
-      }
+      const creditCustomer = selectedCustomer || { maxCreditLimit: parseCreditLimit(quickCustomerForm.maxCreditLimit) };
+      const creditLimitCheck = evaluateCustomerCreditSale({
+        settings,
+        customer: creditCustomer,
+        outstanding: getLiveCustomerOutstanding(selectedCustomer, sales),
+        requestedBalance: due
+      });
+      if (!creditLimitCheck.ok) throw new Error(creditLimitCheck.reason);
     }
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) throw new Error('Offline: connect internet and try again.');
@@ -707,6 +720,15 @@ function PosPage({ mode = 'retail' }) {
     let checkoutCustomer = selectedCustomer;
     if (!checkoutCustomer && (easyBuyEnabled || quickCustomerHasAny)) {
       checkoutCustomer = await ensureCheckoutCustomer();
+    }
+    if (easyBuyEnabled) {
+      const checkoutCreditCheck = evaluateCustomerCreditSale({
+        settings,
+        customer: checkoutCustomer,
+        outstanding: getLiveCustomerOutstanding(checkoutCustomer, sales),
+        requestedBalance: due
+      });
+      if (!checkoutCreditCheck.ok) throw new Error(checkoutCreditCheck.reason);
     }
     const branchName = activeBranch?.name || activeBranchId;
     const saleCapturedAt = new Date().toISOString();
@@ -1152,8 +1174,9 @@ function PosPage({ mode = 'retail' }) {
     const pct = Math.max(0, Number(item.minimumCreditPercentage || 0));
     return sum + ((Number(item.price || 0) * Number(item.quantity || 0)) * (pct / 100));
   }, 0);
-  const customerOutstanding = Number(selectedCustomer?.outstandingBalance || 0);
-  const customerMaxCreditLimit = Number(selectedCustomer?.maxCreditLimit || settings.maxCreditLimitPerCustomer || 0);
+  const customerOutstanding = getLiveCustomerOutstanding(selectedCustomer, sales);
+  const customerMaxCreditLimit = parseCreditLimit(selectedCustomer?.maxCreditLimit);
+  const customerCreditRemaining = Math.max(0, customerMaxCreditLimit - customerOutstanding);
   const customerCreditScore = Number(selectedCustomer?.creditScore || 0);
   const creditPackageOptions = useMemo(() => {
     const configured = Array.isArray(settings.creditPackages) ? settings.creditPackages : [];
@@ -1427,7 +1450,7 @@ function PosPage({ mode = 'retail' }) {
     rotateReservationToken();
     setSelectedCustomerId('');
     setCustomerQuery('');
-    setQuickCustomerForm({ name: '', phone: '', address: '', customerType: defaultCustomerType });
+    setQuickCustomerForm({ name: '', phone: '', address: '', customerType: defaultCustomerType, maxCreditLimit: '' });
     setRedeemPoints('');
     setTaxOverridePct('');
     setTaxOverrideRemark('');
@@ -1454,7 +1477,7 @@ function PosPage({ mode = 'retail' }) {
     replaceActiveCart({ items: Array.isArray(h.items) ? h.items : [], discount: h.discount || 0, notes: h.notes || '' });
     setSelectedCustomerId(h.selectedCustomerId || '');
     setCustomerQuery(h.selectedCustomerId ? '' : String(h.quickCustomerForm?.name || ''));
-    setQuickCustomerForm(h.quickCustomerForm || { name: '', phone: '', address: '', customerType: defaultCustomerType });
+    setQuickCustomerForm(h.quickCustomerForm || { name: '', phone: '', address: '', customerType: defaultCustomerType, maxCreditLimit: '' });
     setRedeemPoints(h.redeemPoints || '');
     setTaxOverridePct(h.taxOverridePct ?? '');
     setTaxOverrideRemark(h.taxOverrideRemark ?? '');
@@ -1545,8 +1568,15 @@ function PosPage({ mode = 'retail' }) {
           toast.show(`${creditModeLabel} payment breakdown must equal amount paid now`, { type: 'error' });
           return;
         }
-        if (customerMaxCreditLimit > 0 && (customerOutstanding + due) > customerMaxCreditLimit) {
-          toast.show('Customer exceeds the configured credit limit', { type: 'error' });
+        const creditCustomer = selectedCustomer || { maxCreditLimit: parseCreditLimit(quickCustomerForm.maxCreditLimit) };
+        const creditLimitCheck = evaluateCustomerCreditSale({
+          settings,
+          customer: creditCustomer,
+          outstanding: getLiveCustomerOutstanding(selectedCustomer, sales),
+          requestedBalance: due
+        });
+        if (!creditLimitCheck.ok) {
+          toast.show(creditLimitCheck.reason, { type: 'error' });
           return;
         }
       }
@@ -1590,6 +1620,18 @@ function PosPage({ mode = 'retail' }) {
       } catch (e) {
         toast.show(String(e?.message || 'Failed to save customer'), { type: 'error' });
         return;
+      }
+      if (easyBuyEnabled) {
+        const checkoutCreditCheck = evaluateCustomerCreditSale({
+          settings,
+          customer: checkoutCustomer,
+          outstanding: getLiveCustomerOutstanding(checkoutCustomer, sales),
+          requestedBalance: due
+        });
+        if (!checkoutCreditCheck.ok) {
+          toast.show(checkoutCreditCheck.reason, { type: 'error' });
+          return;
+        }
       }
       const branchName = activeBranch?.name || activeBranchId;
       const saleCapturedAt = new Date().toISOString();
@@ -1992,8 +2034,12 @@ function PosPage({ mode = 'retail' }) {
         }
       }
 
-      if (savedOnlineSale && checkoutCustomer && saleForUi.customerPointsAfter != null) {
-        dispatch(updateCustomer({ id: checkoutCustomer.id, loyaltyPoints: Number(saleForUi.customerPointsAfter || 0) }));
+      if (checkoutCustomer && (easyBuyEnabled || (savedOnlineSale && saleForUi.customerPointsAfter != null))) {
+        dispatch(updateCustomer({
+          id: checkoutCustomer.id,
+          ...(savedOnlineSale && saleForUi.customerPointsAfter != null ? { loyaltyPoints: Number(saleForUi.customerPointsAfter || 0) } : {}),
+          ...(easyBuyEnabled ? { outstandingBalance: getLiveCustomerOutstanding(checkoutCustomer, sales) + due } : {})
+        }));
       }
       if (shouldFinalizeLocally) {
         dispatch(addAudit({
@@ -2025,7 +2071,7 @@ function PosPage({ mode = 'retail' }) {
       rotateReservationToken();
       setSelectedCustomerId('');
       setCustomerQuery('');
-      setQuickCustomerForm({ name: '', phone: '', address: '', customerType: defaultCustomerType });
+      setQuickCustomerForm({ name: '', phone: '', address: '', customerType: defaultCustomerType, maxCreditLimit: '' });
       setRedeemPoints('');
       setEasyBuyEnabled(false);
       setEasyBuyAmountPaidNow('');
@@ -2513,6 +2559,11 @@ function PosPage({ mode = 'retail' }) {
               <div style={{ display: 'grid', gap: 4, color: '#475569', fontSize: 13 }}>
                 <div>{t('Credit Rank')}: <strong>{selectedCustomer.creditRank || 'Bronze'}</strong> • {t('Score')}: <strong>{customerCreditScore}</strong></div>
                 <div>{t('Outstanding')}: <strong>{formatCurrency(customerOutstanding, settings)}</strong></div>
+                <div>
+                  {t('Credit limit')}: <strong>{customerMaxCreditLimit > 0 ? formatCurrency(customerMaxCreditLimit, settings) : t('Not set')}</strong>
+                  {customerMaxCreditLimit > 0 ? ` • ${t('Remaining')}: ` : ''}
+                  {customerMaxCreditLimit > 0 ? <strong style={{ color: customerCreditRemaining <= 0 ? '#b91c1c' : '#15803d' }}>{formatCurrency(customerCreditRemaining, settings)}</strong> : null}
+                </div>
                 <div>{t('On-time')}: <strong>{Number(selectedCustomer.onTimePayments || 0)}</strong> • {t('Late')}: <strong>{Number(selectedCustomer.latePayments || 0)}</strong></div>
               </div>
             </div>
@@ -2556,6 +2607,11 @@ function PosPage({ mode = 'retail' }) {
                   <div style={{ gridColumn: '1 / -1' }}>
                     <input className="input" value={quickCustomerForm.address} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, address: e.target.value }))} placeholder={t('Address')} />
                   </div>
+                  {canSetCustomerCreditLimit ? (
+                    <div style={{ gridColumn: '1 / -1' }}>
+                      <input className="input" type="number" min="0" step="0.01" value={quickCustomerForm.maxCreditLimit} onChange={(e) => setQuickCustomerForm((prev) => ({ ...prev, maxCreditLimit: e.target.value }))} placeholder={t('Credit limit (optional)')} />
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -2647,7 +2703,14 @@ function PosPage({ mode = 'retail' }) {
                   type="checkbox"
                   checked={easyBuyEnabled}
                   disabled={!easyBuyAllowed}
-                  onChange={e => setEasyBuyEnabled(e.target.checked)}
+                  onChange={e => {
+                    const next = e.target.checked;
+                    if (next && settings.enforceCustomerCreditLimits && !(customerMaxCreditLimit > 0) && !(parseCreditLimit(quickCustomerForm.maxCreditLimit) > 0)) {
+                      toast.show('Select a customer with a credit limit, or set a limit for the new customer, before starting a credit sale.', { type: 'error' });
+                      return;
+                    }
+                    setEasyBuyEnabled(next);
+                  }}
                 />
                 {creditModeLabel}
               </label>
@@ -2657,7 +2720,7 @@ function PosPage({ mode = 'retail' }) {
                 <div className="pos-payments-note" style={{ color: easyBuyBlockedItem ? '#b91c1c' : '#64748b' }}>
                   {easyBuyBlockedItem
                     ? `${easyBuyBlockedItem.name} ${t('does not allow')} ${creditModeLabel.toLowerCase()}`
-                    : `${t('Minimum upfront')}: ${formatCurrency(easyBuyMinimum, settings)}${customerMaxCreditLimit > 0 ? ` • ${t('Limit')}: ${formatCurrency(customerMaxCreditLimit, settings)}` : ''}`}
+                    : `${t('Minimum upfront')}: ${formatCurrency(easyBuyMinimum, settings)}${customerMaxCreditLimit > 0 ? ` • ${t('Limit')}: ${formatCurrency(customerMaxCreditLimit, settings)} • ${t('Remaining')}: ${formatCurrency(Math.max(0, customerCreditRemaining - due), settings)}` : settings.enforceCustomerCreditLimits ? ` • ${t('No credit limit set')}` : ''}`}
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                   <label>

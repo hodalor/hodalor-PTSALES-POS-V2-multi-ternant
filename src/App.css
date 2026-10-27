@@ -1627,6 +1627,18 @@ html, body, #root {
   line-height: 1.45;
 }
 
+.config-page .config-tabs {
+  margin: 0 0 16px;
+  padding: 6px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 14px;
+}
+
+.config-page .config-tabs .btn {
+  border-radius: 999px;
+}
+
 .config-page .config-panel {
   border: 1px solid #e2e8f0;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);

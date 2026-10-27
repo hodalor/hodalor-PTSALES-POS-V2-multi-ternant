@@ -69,6 +69,13 @@ const initialState = {
   hydrated: false,
   categories: [],
   creditPackages: [],
+  enforceCustomerCreditLimits: false,
+  maxCreditLimitPerCustomer: 0,
+  minimumUpfrontPaymentPercent: 0,
+  minimumUpfrontPaymentFixed: 0,
+  penaltyPerDay: 0,
+  maxOverdueAllowed: 0,
+  partialPaymentAllowed: true,
   loyaltyEnabled: false,
   loyaltyEarnAmount: 0,
   loyaltyEarnPoints: 0,
@@ -120,6 +127,8 @@ const settingsSlice = createSlice({
       state.receiptShowBranchName = state.receiptShowBranchName !== false;
       state.receiptShowTaxInfo = !!state.receiptShowTaxInfo;
       state.receiptShowQrSection = !!state.receiptShowQrSection;
+      state.enforceCustomerCreditLimits = !!state.enforceCustomerCreditLimits;
+      state.partialPaymentAllowed = state.partialPaymentAllowed !== false;
       state.distributionPosDefaultPrintMode = ['receipt', 'invoice'].includes(String(state.distributionPosDefaultPrintMode || '').trim().toLowerCase())
         ? String(state.distributionPosDefaultPrintMode || '').trim().toLowerCase()
         : initialState.distributionPosDefaultPrintMode;

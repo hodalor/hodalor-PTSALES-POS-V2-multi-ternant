@@ -49,6 +49,7 @@ export const TENANT_GRANT_CATALOG = [
   { key: 'view_customers', label: 'Open Customers' },
   { key: 'add_customers', label: 'Create Customers' },
   { key: 'edit_customers', label: 'Edit Customers' },
+  { key: 'set_customer_credit_limit', label: 'Set Customer Credit Limits' },
   { key: 'export_customers', label: 'Export Customers' },
   { key: 'export_products', label: 'Export Products' },
   { key: 'view_credit_control', label: 'Open Credit Control' },
@@ -312,7 +313,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
     description: 'Matches the Partners group on the sidebar.',
     items: [
       { label: 'Suppliers', keys: ['modules.suppliers', 'grants.view_suppliers', 'grants.add_suppliers', 'grants.edit_suppliers'] },
-      { label: 'Customers', keys: ['modules.customers', 'grants.view_customers', 'grants.add_customers', 'grants.edit_customers'] }
+      { label: 'Customers', keys: ['modules.customers', 'grants.view_customers', 'grants.add_customers', 'grants.edit_customers', 'grants.set_customer_credit_limit'] }
     ]
   },
   {

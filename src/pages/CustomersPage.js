@@ -15,6 +15,7 @@ import { Bar } from 'react-chartjs-2';
 import { Chart, BarElement, CategoryScale, LinearScale, Tooltip, Legend } from 'chart.js';
 import LoadingDots from '../components/LoadingDots';
 import { getCreditModeLabel, getSaleSettlementStatus } from '../utils/saleAccounting';
+import { getLiveCustomerOutstanding, parseCreditLimit } from '../utils/customerCredit';
 import { formatDateTime } from '../utils/dateFormat';
 import { exportCsv, exportTablePdf } from '../utils/exporters';
 
@@ -47,6 +48,7 @@ function CustomersPage() {
   }
   const canAddCustomers = roleLower === 'superadmin' || has('add_customers');
   const canEditCustomers = (['admin','manager','cashier'].includes(roleLower)) || has('edit_customers');
+  const canSetCustomerCreditLimit = roleLower === 'superadmin' || roleLower === 'admin' || has('set_customer_credit_limit');
   const canRemoveCustomers = (roleLower === 'admin' || roleLower === 'superadmin');
   const canExportCustomers = (['admin','manager','superadmin'].includes(roleLower)) || has('export_customers');
   const [query, setQuery] = useState('');
@@ -107,7 +109,8 @@ function CustomersPage() {
     businessEmail: '',
     anniversaryDate: '',
     vip: false,
-    photo: ''
+    photo: '',
+    maxCreditLimit: ''
   });
   const [editForm, setEditForm] = useState({
     name: '',
@@ -133,7 +136,8 @@ function CustomersPage() {
     businessEmail: '',
     anniversaryDate: '',
     vip: false,
-    photo: ''
+    photo: '',
+    maxCreditLimit: ''
   });
   const dispatch = useDispatch();
   const toast = useToast();
@@ -336,6 +340,12 @@ function CustomersPage() {
       return acc;
     }, { paidCount: 0, creditCount: 0, paidTotal: 0, creditTotal: 0 });
   }, [customerSaleHistory, selected]);
+  const liveOutstanding = useMemo(() => {
+    if (!selected) return 0;
+    return getLiveCustomerOutstanding(selected, sales);
+  }, [sales, selected]);
+  const creditLimitValue = parseCreditLimit(modalMode === 'create' ? createForm.maxCreditLimit : editForm.maxCreditLimit);
+  const remainingCredit = Math.max(0, creditLimitValue - liveOutstanding);
 
   const activeProfile = useMemo(() => {
     return modalMode === 'create' ? createForm : editForm;
@@ -414,7 +424,7 @@ function CustomersPage() {
     setModalMode('create');
     setSelectedId(null);
     setSelectedTab('profile');
-    setCreateForm({ name: '', phone: '', email: '', customerType: 'retail', dob: '', idType: '', idCardNumber: '', idFront: '', idBack: '', businessCertificate: '', contract: '', signedContract: '', address: '', registrationBranchId: String(currentBranchId || auth.user?.branchId || '').trim(), registrationBranchName: currentBranchName, businessName: '', businessAddress: '', registrationNumber: '', taxId: '', businessPhone: '', businessEmail: '', anniversaryDate: '', vip: false, photo: '' });
+    setCreateForm({ name: '', phone: '', email: '', customerType: 'retail', dob: '', idType: '', idCardNumber: '', idFront: '', idBack: '', businessCertificate: '', contract: '', signedContract: '', address: '', registrationBranchId: String(currentBranchId || auth.user?.branchId || '').trim(), registrationBranchName: currentBranchName, businessName: '', businessAddress: '', registrationNumber: '', taxId: '', businessPhone: '', businessEmail: '', anniversaryDate: '', vip: false, photo: '', maxCreditLimit: '' });
     setModalOpen(true);
   }
 
@@ -456,7 +466,8 @@ function CustomersPage() {
         businessEmail: createForm.businessEmail.trim(),
         anniversaryDate: createForm.anniversaryDate || null,
         vip: Boolean(createForm.vip),
-        photo: createForm.photo || ''
+        photo: createForm.photo || '',
+        ...(canSetCustomerCreditLimit ? { maxCreditLimit: parseCreditLimit(createForm.maxCreditLimit) } : {})
       };
       if (!navigator.onLine) {
         if (!offlineBackupAllowed) {
@@ -520,7 +531,8 @@ function CustomersPage() {
       businessEmail: target.businessEmail || '',
       anniversaryDate: target.anniversaryDate ? String(target.anniversaryDate).slice(0, 10) : '',
       vip: Boolean(target.vip),
-      photo: target.photo || ''
+      photo: target.photo || '',
+      maxCreditLimit: parseCreditLimit(target.maxCreditLimit) > 0 ? parseCreditLimit(target.maxCreditLimit) : ''
     });
   }
 
@@ -553,7 +565,8 @@ function CustomersPage() {
         businessEmail: editForm.businessEmail.trim(),
         anniversaryDate: editForm.anniversaryDate || null,
         vip: Boolean(editForm.vip),
-        photo: editForm.photo || ''
+        photo: editForm.photo || '',
+        ...(canSetCustomerCreditLimit ? { maxCreditLimit: parseCreditLimit(editForm.maxCreditLimit) } : {})
       };
       if (!navigator.onLine) {
         if (!offlineBackupAllowed) {
@@ -1043,6 +1056,53 @@ function CustomersPage() {
               </div>
 
               <div className="card" style={{ padding: 12, color: '#0f172a' }}>
+                <div style={{ fontWeight: 800, marginBottom: 8, color: '#0f172a' }}>Credit Limit</div>
+                <div style={{ color: '#64748b', fontSize: 12, marginBottom: 10 }}>
+                  {!canSetCustomerCreditLimit
+                    ? 'You can view this customer’s credit limit, but only users with the Set Customer Credit Limits permission can change it.'
+                    : settings.enforceCustomerCreditLimits
+                    ? 'Limits are enforced. Only customers with a credit limit can take credit sales, and they cannot exceed the remaining amount.'
+                    : 'Set a limit for this customer. Enforcement is off in Settings, so workers can still give credit until you turn it on.'}
+                </div>
+                <label>
+                  <div style={{ marginBottom: 6, color: '#0f172a', fontSize: 12, fontWeight: 600 }}>Credit limit</div>
+                  <input
+                    className="input"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="0 = no credit when limits are enforced"
+                    value={activeProfile.maxCreditLimit ?? ''}
+                    onChange={e => {
+                      const next = e.target.value;
+                      const setter = modalMode === 'create' ? setCreateForm : setEditForm;
+                      setter(p => ({ ...p, maxCreditLimit: next }));
+                    }}
+                    disabled={(modalMode !== 'create' && !canEditCustomers) || !canSetCustomerCreditLimit}
+                    style={{ display: 'block', width: '100%' }}
+                  />
+                </label>
+                {modalMode !== 'create' && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 8, marginTop: 12 }}>
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: '#fff' }}>
+                      <div style={{ color: '#64748b', fontSize: 12 }}>Limit</div>
+                      <strong>{creditLimitValue > 0 ? formatCurrency(creditLimitValue, settings) : 'Not set'}</strong>
+                    </div>
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: '#fff' }}>
+                      <div style={{ color: '#64748b', fontSize: 12 }}>Used</div>
+                      <strong>{formatCurrency(liveOutstanding, settings)}</strong>
+                    </div>
+                    <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: creditLimitValue > 0 && remainingCredit <= 0 ? '#fef2f2' : '#f0fdf4' }}>
+                      <div style={{ color: '#64748b', fontSize: 12 }}>Remaining</div>
+                      <strong style={{ color: creditLimitValue > 0 && remainingCredit <= 0 ? '#b91c1c' : '#15803d' }}>
+                        {creditLimitValue > 0 ? formatCurrency(remainingCredit, settings) : '—'}
+                      </strong>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="card" style={{ padding: 12, color: '#0f172a' }}>
                 <div style={{ fontWeight: 800, marginBottom: 10, color: '#0f172a' }}>Documents & Images</div>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
                   <label>
@@ -1124,7 +1184,11 @@ function CustomersPage() {
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8, marginTop: 8 }}>
                   <div className="card" style={{ padding: 12 }}>
                     <div style={{ color: '#64748b', fontSize: 12 }}>Outstanding Credit</div>
-                    <strong>{formatCurrency(Number(selected.outstandingBalance || 0), settings)}</strong>
+                    <strong>{formatCurrency(liveOutstanding, settings)}</strong>
+                  </div>
+                  <div className="card" style={{ padding: 12 }}>
+                    <div style={{ color: '#64748b', fontSize: 12 }}>Credit Remaining</div>
+                    <strong>{creditLimitValue > 0 ? formatCurrency(remainingCredit, settings) : 'No limit set'}</strong>
                   </div>
                   <div className="card" style={{ padding: 12 }}>
                     <div style={{ color: '#64748b', fontSize: 12 }}>Credit Purchases</div>
