@@ -245,4 +245,48 @@ describe('cash reconciliations route characterization', () => {
       })
     ]));
   });
+
+  it('keeps October expected amount at pending deposit when other months sit in totals', async () => {
+    mocks.listRecognizedSalesTotalsByDay.mockResolvedValue(new Map([
+      ['main:2026-09-20', {
+        branchId: 'main',
+        date: '2026-09-20',
+        total: -2090,
+        paymentBreakdown: { refund: -2090 }
+      }],
+      ['main:2026-10-01', {
+        branchId: 'main',
+        date: '2026-10-01',
+        total: 103283,
+        paymentBreakdown: { cash: 103283 }
+      }],
+      ['main:2026-11-02', {
+        branchId: 'main',
+        date: '2026-11-02',
+        total: 1530,
+        paymentBreakdown: { cash: 1530 }
+      }]
+    ]));
+
+    await request(createApp())
+      .post('/')
+      .set(authHeader())
+      .send({
+        branchId: 'main',
+        selectedDates: ['2026-10-01'],
+        allocations: [{
+          accountId: 'acct-1',
+          amount: 103283,
+          paymentMethod: 'cash',
+          proofImage: 'data:image/png;base64,abc'
+        }]
+      })
+      .expect(201);
+
+    expect(mocks.cashReconciliationInsertOne).toHaveBeenCalledWith(expect.objectContaining({
+      selectedDates: ['2026-10-01'],
+      expectedAmount: 103283,
+      depositedAmount: 103283
+    }));
+  });
 });

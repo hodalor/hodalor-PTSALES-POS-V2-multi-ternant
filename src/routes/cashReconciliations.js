@@ -89,14 +89,22 @@ function reconciliationTotalsOptions(extra = {}) {
 }
 
 function mergeRequiredRefundAdjustmentDates(branchId, selectedDates = [], totals, coverage) {
-  const merged = new Set(uniqueDateKeys(selectedDates));
+  const selected = uniqueDateKeys(selectedDates);
+  const merged = new Set(selected);
+  const minDay = selected[0] || '';
+  const maxDay = selected[selected.length - 1] || '';
   Array.from(totals.values()).forEach((row) => {
     if (normalizeString(row?.branchId) !== normalizeString(branchId)) return;
     if (Number(row?.total || 0) >= -0.004999) return;
-    const key = `${normalizeString(row.branchId)}:${normalizeDateKey(row.date)}`;
-    if (coverage?.coveredAny?.has(key)) return;
     const day = normalizeDateKey(row.date);
-    if (day) merged.add(day);
+    if (!day) return;
+    // Only net refunds that sit inside the selected deposit window. A September
+    // refund or a later-month sales day must not change an October expected amount.
+    if (minDay && day < minDay) return;
+    if (maxDay && day > maxDay) return;
+    const key = `${normalizeString(row.branchId)}:${day}`;
+    if (coverage?.coveredAny?.has(key)) return;
+    merged.add(day);
   });
   return Array.from(merged).sort();
 }
