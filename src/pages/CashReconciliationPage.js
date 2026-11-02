@@ -23,6 +23,24 @@ function monthStartIso() {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString().slice(0, 10);
 }
 
+function dateKeyInRange(date, from, to) {
+  const key = String(date || '').trim();
+  if (!key) return false;
+  const fromKey = String(from || '').trim();
+  const toKey = String(to || '').trim();
+  if (fromKey && key < fromKey) return false;
+  if (toKey && key > toKey) return false;
+  return true;
+}
+
+function defaultSelectedDates(rows = [], branchId = '', from = '', to = '') {
+  return (Array.isArray(rows) ? rows : [])
+    .filter((row) => !branchId || String(row.branchId || '') === String(branchId || ''))
+    .filter((row) => dateKeyInRange(row.date, from, to))
+    .map((row) => String(row.date))
+    .sort();
+}
+
 function dataUrlFromFile(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -137,12 +155,17 @@ function CashReconciliationPage() {
   const refundAdjustmentDates = useMemo(() => (
     backlogRows
       .filter((row) => Number(row.expectedAmount || 0) < 0 || row.isRefundAdjustment)
+      .filter((row) => dateKeyInRange(row.date, filters.from, filters.to))
       .map((row) => String(row.date))
-  ), [backlogRows]);
+  ), [backlogRows, filters.from, filters.to]);
+  const inRangeBacklogDates = useMemo(
+    () => defaultSelectedDates(backlogRows, submitBranchId, filters.from, filters.to),
+    [backlogRows, filters.from, filters.to, submitBranchId]
+  );
   const visibleAccounts = useMemo(() => accounts.filter((account) => account.sharedAcrossBranches || !submitBranchId || (Array.isArray(account.branchIds) && account.branchIds.some((branchId) => String(branchId) === String(submitBranchId)))), [accounts, submitBranchId]);
   const selectedBacklogRows = useMemo(() => {
     const selected = new Set(selectedDates.map((date) => String(date)));
-    // Always net approved refund adjustment days into the deposit amount.
+    // Net in-range approved refunds into the deposit. Older/newer refund days stay optional.
     refundAdjustmentDates.forEach((date) => selected.add(String(date)));
     return backlogRows.filter((row) => selected.has(String(row.date)));
   }, [backlogRows, refundAdjustmentDates, selectedDates]);
@@ -177,7 +200,7 @@ function CashReconciliationPage() {
         : (canViewAllBranches ? '' : (branchIds[0] || ''));
       if (nextBranchId) {
         setSubmitBranchId(nextBranchId);
-        setSelectedDates(rows.filter((row) => String(row.branchId || '') === nextBranchId).map((row) => String(row.date)).sort());
+        setSelectedDates(defaultSelectedDates(rows, nextBranchId, filters.from, filters.to));
       } else {
         setSubmitBranchId('');
         setSelectedDates([]);
@@ -187,7 +210,7 @@ function CashReconciliationPage() {
     } finally {
       setLoadingBacklog(false);
     }
-  }, [canViewAllBranches, toast]);
+  }, [canViewAllBranches, filters.from, filters.to, toast]);
 
   const loadPage = useCallback(async () => {
     setLoading(true);
@@ -228,12 +251,11 @@ function CashReconciliationPage() {
       return;
     }
     setSelectedDates((prev) => {
-      const base = (prev.length > 0 && prev.every((date) => backlogRows.some((row) => String(row.date) === String(date))))
-        ? prev
-        : backlogRows.map((row) => String(row.date));
+      const kept = prev.filter((date) => backlogRows.some((row) => String(row.date) === String(date)));
+      const base = kept.length > 0 ? kept : inRangeBacklogDates;
       return Array.from(new Set([...base, ...refundAdjustmentDates])).sort();
     });
-  }, [backlogRows, refundAdjustmentDates, submitModalOpen]);
+  }, [backlogRows, inRangeBacklogDates, refundAdjustmentDates, submitModalOpen]);
 
   useEffect(() => {
     if (!submitModalOpen) return;
@@ -434,6 +456,7 @@ function CashReconciliationPage() {
   ]), [loading, settings, summary.awaitingAmount, summary.backlogDays, summary.depositedAmount, summary.pendingApprovalAmount]);
 
   function openSubmitModal() {
+    if (filters.branchId) setSubmitBranchId(String(filters.branchId));
     setSelectedDates([]);
     setAllocations([{ accountId: '', paymentMethod: 'cash', amount: '', proofImage: '', proofName: '', note: '' }]);
     setNote('');
@@ -447,12 +470,7 @@ function CashReconciliationPage() {
       setSelectedDates([]);
       return;
     }
-    const nextRows = allBacklogRows.filter((row) => String(row.branchId || '') === nextBranchId);
-    if (nextRows.length > 0) {
-      setSelectedDates(nextRows.map((row) => String(row.date)).sort());
-      return;
-    }
-    setSelectedDates([]);
+    setSelectedDates(defaultSelectedDates(allBacklogRows, nextBranchId, filters.from, filters.to));
   }
 
   return (
@@ -533,7 +551,7 @@ function CashReconciliationPage() {
             <div>
               <h2 className="sales-section-title">Branch Reconciliation</h2>
               <p className="sales-section-note">
-                Open the submission modal only when needed. It will load sales dates that still have revenue awaiting deposit.
+                Open the submission modal only when needed. It will tick unreconciled sales dates inside the From/To range so the expected amount matches pending deposit.
               </p>
             </div>
             <button className="btn btn-primary" onClick={openSubmitModal} disabled={!canSubmit}>Add Reconciliation</button>
@@ -723,7 +741,7 @@ function CashReconciliationPage() {
               </div>
               <div style={{ color: '#64748b', fontSize: 13 }}>
                 {submitBranchId
-                  ? 'Unreconciled sales days and approved refund adjustments are loaded for this branch. Refund days stay selected so the deposit amount is reduced automatically.'
+                  ? `Unreconciled days are loaded for this branch. Dates from ${filters.from || 'the start'} to ${filters.to || 'today'} are selected so expected amount matches pending deposit. Refunds inside that range stay selected; tick older or newer days only if they belong in this deposit.`
                   : 'The system is showing unreconciled sales dates across all branches you are allowed to see. Select one branch to tick dates and submit a deposit.'}
               </div>
               {loadingBacklog ? (
@@ -759,7 +777,9 @@ function CashReconciliationPage() {
                   {backlogRows.map((row) => {
                     const dateKey = String(row.date);
                     const isRefundAdjustment = Number(row.expectedAmount || 0) < 0 || !!row.isRefundAdjustment;
-                    const checked = selectedDates.includes(dateKey) || isRefundAdjustment;
+                    const inSelectedRange = dateKeyInRange(dateKey, filters.from, filters.to);
+                    const refundLocked = isRefundAdjustment && inSelectedRange;
+                    const checked = selectedDates.includes(dateKey) || refundLocked;
                     return (
                       <tr key={`${row.branchId}:${row.date}`} style={isRefundAdjustment ? { background: '#fff7ed' } : undefined}>
                         <td>
@@ -767,13 +787,14 @@ function CashReconciliationPage() {
                             type="checkbox"
                             checked={checked}
                             onChange={() => toggleDate(dateKey)}
-                            disabled={!canSelectBacklogRows || String(row.status || '') === 'pending_approval' || isRefundAdjustment}
-                            title={isRefundAdjustment ? 'Approved refunds are always included so deposit totals stay correct' : undefined}
+                            disabled={!canSelectBacklogRows || String(row.status || '') === 'pending_approval' || refundLocked}
+                            title={refundLocked ? 'Approved refunds in this range stay included so deposit totals stay correct' : undefined}
                           />
                         </td>
                         <td>
                           {row.date}
                           {isRefundAdjustment ? <div style={{ color: '#c2410c', fontSize: 12, fontWeight: 600 }}>Refund adjustment</div> : null}
+                          {!inSelectedRange ? <div style={{ color: '#64748b', fontSize: 12, fontWeight: 600 }}>Outside selected range</div> : null}
                         </td>
                         <td>{row.branchName}</td>
                         <td align="right" style={isRefundAdjustment ? { color: '#c2410c', fontWeight: 700 } : undefined}>
