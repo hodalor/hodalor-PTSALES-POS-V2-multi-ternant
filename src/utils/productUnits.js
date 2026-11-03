@@ -11,7 +11,7 @@ export function normalizeTrackType(value) {
 export function normalizeInventoryType(value) {
   const kind = String(value || '').toLowerCase();
   if (kind === 'warehouse') return 'warehouse';
-  if (kind === 'wholesale') return 'wholesale';
+  if (kind === 'wholesale' || kind === 'distribution') return 'wholesale';
   return 'retail';
 }
 
