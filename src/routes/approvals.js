@@ -5,7 +5,7 @@ import CreditRepayment from '../models/CreditRepayment.js';
 import CreditSale from '../models/CreditSale.js';
 import WholesaleOperation from '../models/WholesaleOperation.js';
 import { requireAuth } from '../middleware/auth.js';
-import { canApproveAreaDirector, canApproveAreaManager, canApproveDirector, canApproveManager, canApproveWholesaleOperationDirector, canApproveWholesaleOperationManager, executeApprovedReference, syncReferenceStatus } from '../utils/approvalWorkflow.js';
+import { canApproveAreaDirector, canApproveAreaManager, canApproveDirector, canApproveManager, canApproveWholesaleOperationDirector, canApproveWholesaleOperationManager, canCompleteManagerStageAsActor, executeApprovedReference, syncReferenceStatus } from '../utils/approvalWorkflow.js';
 import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
 
 const r = Router();
@@ -259,6 +259,9 @@ r.post('/:id/approve', async (req, res) => {
       ? canApproveWholesaleOperationManager(req.user, operation)
       : (approvalArea ? canApproveAreaManager(req.user, approvalArea) : canApproveManager(req.user));
     if (!canApprove) return res.status(403).json({ error: 'Manager approval required' });
+    if (!canCompleteManagerStageAsActor(req.user, approval.directorApprovedByName)) {
+      return res.status(403).json({ error: 'Manager approval must be a different user from the director approver' });
+    }
     if (req.body?.resubmitToDirector) {
       if (approval.referenceModel !== 'WholesaleOperation') {
         return res.status(400).json({ error: 'Resubmission is only supported for wholesale operations' });

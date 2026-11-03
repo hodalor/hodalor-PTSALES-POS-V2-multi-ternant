@@ -117,12 +117,40 @@ describe('approvalWorkflow characterization', () => {
     expect(approvalWorkflow.canApproveDirector({ role: 'Cashier', grants: [] })).toBe(false);
   });
 
-  it('allows transfer approvals through approve_transfers for both director and manager paths', () => {
-    const user = { role: 'Cashier', grants: ['approve_transfers'] };
-    const operation = { operationType: 'transfer', operationArea: 'retail', fromInventoryType: 'retail', toInventoryType: 'warehouse' };
+  it('does not let manager-only transfer grants approve the director step', () => {
+    const managerOnly = { role: 'Cashier', grants: ['approve_transfers', 'approve_retail_manager', 'approve_distribution_manager'] };
+    const operation = {
+      operationType: 'transfer',
+      operationArea: 'wholesale',
+      fromInventoryType: 'wholesale',
+      toInventoryType: 'retail'
+    };
 
-    expect(approvalWorkflow.canApproveWholesaleOperationDirector(user, operation)).toBe(true);
-    expect(approvalWorkflow.canApproveWholesaleOperationManager(user, operation)).toBe(true);
+    expect(approvalWorkflow.canApproveWholesaleOperationDirector(managerOnly, operation)).toBe(false);
+    expect(approvalWorkflow.canApproveWholesaleOperationManager(managerOnly, operation)).toBe(true);
+    expect(approvalWorkflow.canApproveAreaDirector(managerOnly, 'retail')).toBe(false);
+    expect(approvalWorkflow.canApproveAreaDirector(managerOnly, 'wholesale')).toBe(false);
+  });
+
+  it('allows director-step approval only with an explicit director grant or director-class role', () => {
+    const directorGrant = { role: 'Cashier', grants: ['approve_distribution_director'] };
+    const directorRole = { role: 'Director', grants: [] };
+    const operation = {
+      operationType: 'transfer',
+      operationArea: 'wholesale',
+      fromInventoryType: 'wholesale',
+      toInventoryType: 'retail'
+    };
+
+    expect(approvalWorkflow.canApproveWholesaleOperationDirector(directorGrant, operation)).toBe(true);
+    expect(approvalWorkflow.canApproveWholesaleOperationDirector(directorRole, operation)).toBe(true);
+  });
+
+  it('blocks the same non-admin user from completing both director and manager stages', () => {
+    const ruby = { name: 'RUBY ATUTORNU', role: 'Cashier', grants: ['approve_distribution_manager'] };
+    expect(approvalWorkflow.canCompleteManagerStageAsActor(ruby, 'RUBY ATUTORNU')).toBe(false);
+    expect(approvalWorkflow.canCompleteManagerStageAsActor(ruby, 'Director User')).toBe(true);
+    expect(approvalWorkflow.canCompleteManagerStageAsActor({ name: 'Admin User', role: 'Admin' }, 'Admin User')).toBe(true);
   });
 
   it('syncs reference status updates to credit repayments', async () => {

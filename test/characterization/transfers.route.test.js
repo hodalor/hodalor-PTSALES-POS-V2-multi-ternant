@@ -70,6 +70,29 @@ vi.mock('../../src/utils/inTransitLocks.js', () => ({
   assertOutgoingAvailability: mocks.assertOutgoingAvailability
 }));
 
+vi.mock('../../src/utils/approvalWorkflow.js', () => ({
+  canApproveAreaDirector: (user, area = 'retail') => {
+    const role = String(user?.role || '').toLowerCase();
+    const grants = Array.isArray(user?.grants) ? user.grants : [];
+    if (['admin', 'superadmin', 'director'].includes(role)) return true;
+    if (area === 'warehouse') return grants.includes('approve_warehouse_director');
+    if (area === 'wholesale') return grants.includes('approve_distribution_director');
+    return grants.includes('approve_retail_director');
+  },
+  canCompleteManagerStageAsActor: (user, directorApproverName = '') => {
+    const role = String(user?.role || '').toLowerCase();
+    if (['admin', 'superadmin'].includes(role)) return true;
+    const director = String(directorApproverName || '').trim().toLowerCase();
+    const actor = String(user?.name || '').trim().toLowerCase();
+    if (!director || !actor) return true;
+    return director !== actor;
+  }
+}));
+
+vi.mock('../../src/models/Settings.js', () => ({
+  default: { findOne: vi.fn().mockResolvedValue(null) }
+}));
+
 const { default: router } = await import('../../src/routes/transfers.js');
 
 function createApp() {
@@ -134,5 +157,28 @@ describe('transfers route characterization', () => {
       items: [{ productId: 'p1', qty: 2 }],
       initiatorName: 'Manager User'
     });
+  });
+
+  it('rejects director-stage approval when the user only has manager transfer grants', async () => {
+    mocks.transferFindOne.mockResolvedValue({
+      _id: 'tr-ruby',
+      status: 'pending_director',
+      from: 'van-1',
+      to: 'hohoe-main',
+      items: [{ productId: 'p1', qty: 8 }],
+      save: vi.fn()
+    });
+
+    const response = await request(createApp())
+      .post('/approve')
+      .set(authHeader({
+        name: 'RUBY ATUTORNU',
+        role: 'Cashier',
+        grants: ['approve_transfers', 'approve_distribution_manager', 'approve_retail_manager']
+      }))
+      .send({ id: 'tr-ruby', remark: 'STOCKS VERIFIED' })
+      .expect(403);
+
+    expect(response.body).toEqual({ error: 'Director approval required' });
   });
 });

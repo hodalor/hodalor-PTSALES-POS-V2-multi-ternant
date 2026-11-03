@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   canApproveManager: vi.fn(() => true),
   canApproveWholesaleOperationDirector: vi.fn(() => true),
   canApproveWholesaleOperationManager: vi.fn(() => true),
+  canCompleteManagerStageAsActor: vi.fn(() => true),
   safeErrorMessage: vi.fn((error, fallback) => error?.message || fallback),
   safeErrorStatus: vi.fn((error, fallback = 500) => error?.status || fallback),
   fetch: vi.fn(() => Promise.reject(new Error('debug sink unavailable')))
@@ -64,6 +65,7 @@ vi.mock('../../src/utils/approvalWorkflow.js', () => ({
   canApproveManager: mocks.canApproveManager,
   canApproveWholesaleOperationDirector: mocks.canApproveWholesaleOperationDirector,
   canApproveWholesaleOperationManager: mocks.canApproveWholesaleOperationManager,
+  canCompleteManagerStageAsActor: mocks.canCompleteManagerStageAsActor,
   executeApprovedReference: mocks.executeApprovedReference,
   syncReferenceStatus: mocks.syncReferenceStatus
 }));

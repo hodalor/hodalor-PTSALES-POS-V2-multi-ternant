@@ -26,33 +26,52 @@ function resolveWorkflowModels(db = null) {
   };
 }
 
+function userRole(user) {
+  return String(user?.role || '').toLowerCase();
+}
+
+function userGrants(user) {
+  return Array.isArray(user?.grants) ? user.grants : [];
+}
+
+function hasDirectorRole(user) {
+  return ['admin', 'superadmin', 'director'].includes(userRole(user));
+}
+
+function hasManagerRole(user) {
+  return ['manager', 'admin', 'superadmin'].includes(userRole(user));
+}
+
 export function canApproveDirector(user) {
-  const role = String(user?.role || '').toLowerCase();
-  const grants = Array.isArray(user?.grants) ? user.grants : [];
-  return ['admin', 'superadmin', 'director'].includes(role) || grants.includes('approve_credit_director') || grants.includes('approve_finance_reconciliation_director');
+  const grants = userGrants(user);
+  return hasDirectorRole(user) || grants.includes('approve_credit_director') || grants.includes('approve_finance_reconciliation_director');
 }
 
 export function canApproveManager(user) {
-  const role = String(user?.role || '').toLowerCase();
-  const grants = Array.isArray(user?.grants) ? user.grants : [];
-  return ['manager', 'admin', 'superadmin'].includes(role) || grants.includes('approve_credit_manager') || grants.includes('approve_finance_reconciliation_manager');
+  const grants = userGrants(user);
+  return hasManagerRole(user) || grants.includes('approve_credit_manager') || grants.includes('approve_finance_reconciliation_manager');
 }
 
 export function canApproveAreaDirector(user, area = 'wholesale') {
-  const role = String(user?.role || '').toLowerCase();
-  const grants = Array.isArray(user?.grants) ? user.grants : [];
-  if (['admin', 'superadmin', 'director'].includes(role)) return true;
-  if (String(area || '').toLowerCase() === 'retail') return grants.includes('approve_retail_director') || grants.includes('approve_transfers');
-  if (String(area || '').toLowerCase() === 'warehouse') return grants.includes('approve_warehouse_director');
+  if (hasDirectorRole(user)) return true;
+  const grants = userGrants(user);
+  const normalized = String(area || '').toLowerCase();
+  if (normalized === 'retail') return grants.includes('approve_retail_director');
+  if (normalized === 'warehouse') return grants.includes('approve_warehouse_director');
   return grants.includes('approve_distribution_director');
 }
 
 export function canApproveAreaManager(user, area = 'wholesale') {
-  const role = String(user?.role || '').toLowerCase();
-  const grants = Array.isArray(user?.grants) ? user.grants : [];
-  if (['manager', 'admin', 'superadmin'].includes(role)) return true;
-  if (String(area || '').toLowerCase() === 'retail') return grants.includes('approve_retail_manager') || grants.includes('approve_transfers');
-  if (String(area || '').toLowerCase() === 'warehouse') return grants.includes('approve_warehouse_manager');
+  if (hasManagerRole(user)) return true;
+  const grants = userGrants(user);
+  const normalized = String(area || '').toLowerCase();
+  if (normalized === 'retail') {
+    return grants.includes('approve_retail_manager')
+      || grants.includes('approve_transfers')
+      || grants.includes('approve_purchases')
+      || grants.includes('approve_adjustments');
+  }
+  if (normalized === 'warehouse') return grants.includes('approve_warehouse_manager');
   return grants.includes('approve_distribution_manager');
 }
 
@@ -64,13 +83,10 @@ function normalizeApprovalInventoryArea(value = '') {
 }
 
 export function canApproveWholesaleOperationDirector(user, operation = null) {
-  const role = String(user?.role || '').toLowerCase();
-  const grants = Array.isArray(user?.grants) ? user.grants : [];
-  if (['admin', 'superadmin', 'director'].includes(role)) return true;
+  if (hasDirectorRole(user)) return true;
   if (!operation || String(operation?.operationType || '').toLowerCase() !== 'transfer') {
     return canApproveAreaDirector(user, normalizeApprovalInventoryArea(operation?.operationArea || 'wholesale'));
   }
-  if (grants.includes('approve_transfers')) return true;
   const candidateAreas = new Set([
     normalizeApprovalInventoryArea(operation?.operationArea || 'wholesale'),
     normalizeApprovalInventoryArea(operation?.fromInventoryType || operation?.operationArea || 'wholesale'),
@@ -80,9 +96,8 @@ export function canApproveWholesaleOperationDirector(user, operation = null) {
 }
 
 export function canApproveWholesaleOperationManager(user, operation = null) {
-  const role = String(user?.role || '').toLowerCase();
-  const grants = Array.isArray(user?.grants) ? user.grants : [];
-  if (['manager', 'admin', 'superadmin'].includes(role)) return true;
+  if (hasManagerRole(user)) return true;
+  const grants = userGrants(user);
   if (!operation || String(operation?.operationType || '').toLowerCase() !== 'transfer') {
     return canApproveAreaManager(user, normalizeApprovalInventoryArea(operation?.operationArea || 'wholesale'));
   }
@@ -93,6 +108,14 @@ export function canApproveWholesaleOperationManager(user, operation = null) {
     normalizeApprovalInventoryArea(operation?.toInventoryType || operation?.operationArea || 'wholesale')
   ]);
   return Array.from(candidateAreas).some((area) => canApproveAreaManager(user, area));
+}
+
+export function canCompleteManagerStageAsActor(user, directorApproverName = '') {
+  if (['admin', 'superadmin'].includes(userRole(user))) return true;
+  const director = String(directorApproverName || '').trim().toLowerCase();
+  const actor = String(user?.name || '').trim().toLowerCase();
+  if (!director || !actor) return true;
+  return director !== actor;
 }
 
 async function applyWholesaleOperation(operation, actor) {

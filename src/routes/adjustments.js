@@ -8,6 +8,7 @@ import mongoose from 'mongoose';
 import { adjustSerializedUnits, normalizeTrackType, resolveInventoryTypeFromBranch } from '../utils/productUnits.js';
 import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from '../utils/inventory.js';
 import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
+import { canCompleteManagerStageAsActor } from '../utils/approvalWorkflow.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -16,8 +17,7 @@ function canDirectorApproveRetail(user) {
   const role = String(user?.role || '').toLowerCase();
   const grants = Array.isArray(user?.grants) ? user.grants : [];
   return ['superadmin', 'admin', 'director'].includes(role)
-    || grants.includes('approve_retail_director')
-    || grants.includes('approve_adjustments');
+    || grants.includes('approve_retail_director');
 }
 
 function canManagerApproveRetail(user) {
@@ -189,6 +189,9 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_a
     return res.json({ ok: true, request: row });
   }
   if (!canManagerApproveRetail(req.user)) return res.status(403).json({ error: 'Manager approval required' });
+  if (!canCompleteManagerStageAsActor(req.user, row.directorApproverName || row.directorApprovedByName)) {
+    return res.status(403).json({ error: 'Manager approval must be a different user from the director approver' });
+  }
   let p = null;
   try {
     const inventoryType = await resolveInventoryTypeFromBranch(row.branchId, 'retail');

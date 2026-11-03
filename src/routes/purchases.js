@@ -8,6 +8,7 @@ import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import { createSerializedUnits, normalizeTrackType, resolveInventoryTypeFromBranch } from '../utils/productUnits.js';
 import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from '../utils/inventory.js';
 import { safeErrorMessage } from '../utils/safeError.js';
+import { canCompleteManagerStageAsActor } from '../utils/approvalWorkflow.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -16,8 +17,7 @@ function canDirectorApproveRetail(user) {
   const role = String(user?.role || '').toLowerCase();
   const grants = Array.isArray(user?.grants) ? user.grants : [];
   return ['superadmin', 'admin', 'director'].includes(role)
-    || grants.includes('approve_retail_director')
-    || grants.includes('approve_purchases');
+    || grants.includes('approve_retail_director');
 }
 
 function canManagerApproveRetail(user) {
@@ -141,6 +141,9 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_p
     return res.json(pr);
   }
   if (!canManagerApproveRetail(req.user)) return res.status(403).json({ error: 'Manager approval required' });
+  if (!canCompleteManagerStageAsActor(req.user, pr.directorApproverName || pr.directorApprovedByName)) {
+    return res.status(403).json({ error: 'Manager approval must be a different user from the director approver' });
+  }
   let lastProduct = null;
   try {
     const inventoryType = await resolveInventoryTypeFromBranch(pr.branchId, 'retail');

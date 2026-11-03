@@ -9,17 +9,13 @@ import { normalizeTrackType, resolveInventoryTypeFromBranch, transferSerializedU
 import { getStockTarget, getMapQty, markInventoryModified, setMapQty } from '../utils/inventory.js';
 import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
 import { assertOutgoingAvailability } from '../utils/inTransitLocks.js';
+import { canApproveAreaDirector, canCompleteManagerStageAsActor } from '../utils/approvalWorkflow.js';
 
 const r = Router();
 r.use(requireAuth);
 
 function canDirectorApproveRetail(user, approvalArea = 'retail') {
-  const role = String(user?.role || '').toLowerCase();
-  const grants = Array.isArray(user?.grants) ? user.grants : [];
-  if (['superadmin', 'admin', 'director'].includes(role)) return true;
-  if (approvalArea === 'warehouse') return grants.includes('approve_warehouse_director') || grants.includes('approve_transfers');
-  if (approvalArea === 'wholesale') return grants.includes('approve_distribution_director') || grants.includes('approve_transfers');
-  return grants.includes('approve_retail_director') || grants.includes('approve_transfers');
+  return canApproveAreaDirector(user, approvalArea);
 }
 
 function canManagerApproveRetail(user, approvalArea = 'retail') {
@@ -188,6 +184,9 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_t
   }
   const canManagerApprove = canManagerApproveRetail(req.user, approvalArea);
   if (!canManagerApprove) return res.status(403).json({ error: 'Manager approval required' });
+  if (!canCompleteManagerStageAsActor(req.user, tr.directorApproverName || tr.directorApprovedByName)) {
+    return res.status(403).json({ error: 'Manager approval must be a different user from the director approver' });
+  }
   let lastProduct = null;
   const fromInventoryType = await resolveInventoryTypeFromBranch(tr.from, 'retail');
   const toInventoryType = await resolveInventoryTypeFromBranch(tr.to, 'retail');
