@@ -126,4 +126,81 @@ describe('subscriptionPayments characterization', () => {
 
     expect(result).toBeNull();
   });
+
+  it('detects an already applied renewal payment by transactionRef', () => {
+    expect(subscriptionPayments.hasSuccessfulPaymentRef({
+      paymentHistory: [{ transactionRef: 'renewal_ebk_1_card_1' }]
+    }, 'renewal_ebk_1_card_1')).toBe(true);
+    expect(subscriptionPayments.hasSuccessfulPaymentRef({
+      paymentHistory: [{ transactionRef: 'renewal_ebk_1_card_1' }]
+    }, 'renewal_ebk_1_card_2')).toBe(false);
+  });
+
+  it('applies a renewal payment once and ignores later calls with the same transactionRef', async () => {
+    const existing = {
+      tenantId: 'ebk',
+      subscriptionExpiresAt: '2026-01-01T00:00:00.000Z',
+      subscriptionPermanent: false,
+      subscriptionPlan: 'basic',
+      subscriptionAmount: 120,
+      paymentHistory: []
+    };
+    const applied = {
+      ...existing,
+      paymentHistory: [{ transactionRef: 'renewal_ebk_1_card_99' }],
+      renewalHistory: [{ daysAdded: 3 }],
+      subscriptionExpiresAt: '2026-01-04T00:00:00.000Z',
+      activationCode: 'ABC123'
+    };
+    const findOne = vi.fn()
+      .mockReturnValueOnce({ lean: vi.fn().mockResolvedValue(existing) })
+      .mockReturnValue({ lean: vi.fn().mockResolvedValue(applied) });
+    const findOneAndUpdate = vi.fn().mockResolvedValue(applied);
+    mocks.tenantModelFor.mockReturnValue({ findOne, findOneAndUpdate });
+    mocks.computeExtendedSubscriptionDate.mockReturnValue('2026-01-04T00:00:00.000Z');
+    mocks.buildRenewalHistoryEntry.mockReturnValue({ daysAdded: 3 });
+    mocks.refreshTenantActivationCode.mockResolvedValue({ activationCode: 'ABC123', activationCodeExpiresAt: '2026-02-01T00:00:00.000Z' });
+    mocks.sendActivationCodeEmail.mockResolvedValue(undefined);
+    mocks.syncTenantSubscriptionSnapshot.mockResolvedValue(undefined);
+
+    const first = await subscriptionPayments.applyVerifiedRenewalPayment({
+      masterConn: { name: 'master-conn' },
+      tenantConn: { name: 'tenant-conn' },
+      tenantDoc: existing,
+      months: 1,
+      amount: 120,
+      note: 'Online renewal payment for 1 month(s)',
+      payment: {
+        provider: 'paystack',
+        method: 'hosted_checkout',
+        channel: 'card',
+        transactionRef: 'renewal_ebk_1_card_99',
+        providerTransactionId: 'tx-1',
+        currencyCode: 'GHS'
+      }
+    });
+    const second = await subscriptionPayments.applyVerifiedRenewalPayment({
+      masterConn: { name: 'master-conn' },
+      tenantConn: { name: 'tenant-conn' },
+      tenantDoc: existing,
+      months: 1,
+      amount: 120,
+      payment: {
+        provider: 'paystack',
+        method: 'hosted_checkout',
+        channel: 'card',
+        transactionRef: 'renewal_ebk_1_card_99'
+      }
+    });
+
+    expect(first.alreadyApplied).toBe(false);
+    expect(second.alreadyApplied).toBe(true);
+    expect(findOneAndUpdate).toHaveBeenCalledTimes(1);
+    expect(findOneAndUpdate.mock.calls[0][0]).toEqual({
+      tenantId: 'ebk',
+      'paymentHistory.transactionRef': { $ne: 'renewal_ebk_1_card_99' }
+    });
+    expect(mocks.refreshTenantActivationCode).toHaveBeenCalledTimes(1);
+    expect(mocks.syncTenantSubscriptionSnapshot).toHaveBeenCalledTimes(1);
+  });
 });

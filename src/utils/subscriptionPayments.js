@@ -109,6 +109,131 @@ function resolveRenewalRedirectUrl(payload = {}) {
   return String(process.env.RENEWAL_PAYMENT_REDIRECT_URL || '').trim();
 }
 
+export function parseRenewalTxRef(value) {
+  const parts = String(value || '').split('_');
+  if (parts[0] !== 'renewal') {
+    return { months: 0, channel: 'card', raw: String(value || '') };
+  }
+  return {
+    months: Number(parts[2] || 0),
+    channel: String(parts[3] || 'card'),
+    raw: String(value || '')
+  };
+}
+
+export function hasSuccessfulPaymentRef(tenantDoc, txRef) {
+  const ref = String(txRef || '').trim();
+  if (!ref) return false;
+  return (Array.isArray(tenantDoc?.paymentHistory) ? tenantDoc.paymentHistory : []).some(
+    (row) => String(row?.transactionRef || '').trim() === ref
+  );
+}
+
+function buildAppliedRenewalResult(tenantDoc, months, amount, extra = {}) {
+  return {
+    updated: tenantDoc,
+    alreadyApplied: true,
+    refreshedCode: tenantDoc?.activationCode || '',
+    refreshedCodeExpiresAt: tenantDoc?.activationCodeExpiresAt || null,
+    months,
+    amount,
+    ...extra
+  };
+}
+
+export async function applyVerifiedRenewalPayment({
+  masterConn,
+  tenantConn,
+  tenantDoc,
+  months,
+  amount,
+  payment = {},
+  note = '',
+  approval = ''
+} = {}) {
+  const TenantModel = TenantModelFor(masterConn);
+  const tenantId = String(tenantDoc?.tenantId || '');
+  const txRef = String(payment.transactionRef || '').trim();
+  if (!tenantId || !txRef) throw new Error('Missing payment reference');
+  const latest = await TenantModel.findOne({ tenantId }).lean();
+  if (hasSuccessfulPaymentRef(latest, txRef)) {
+    return buildAppliedRenewalResult(latest, months, amount, { approval });
+  }
+  const days = Number(months || 0) * ACTIVATION_EXTENSION_DAYS;
+  const nextExpiry = computeExtendedSubscriptionDate(latest?.subscriptionExpiresAt, Date.now(), days);
+  const historyEntry = buildRenewalHistoryEntry({
+    source: 'self_service_payment',
+    amount,
+    daysAdded: days,
+    previousExpiry: latest?.subscriptionExpiresAt || null,
+    newExpiry: nextExpiry,
+    permanentBefore: !!latest?.subscriptionPermanent,
+    permanentAfter: false,
+    note,
+    actorName: String(tenantId)
+  });
+  const updated = await TenantModel.findOneAndUpdate(
+    {
+      tenantId,
+      'paymentHistory.transactionRef': { $ne: txRef }
+    },
+    {
+      $set: {
+        subscriptionExpiresAt: nextExpiry,
+        subscriptionPermanent: false,
+        activationLastUsedAt: new Date()
+      },
+      $push: {
+        paymentHistory: {
+          provider: String(payment.provider || ''),
+          method: String(payment.method || ''),
+          channel: String(payment.channel || ''),
+          status: 'successful',
+          transactionRef: txRef,
+          providerTransactionId: String(payment.providerTransactionId || ''),
+          network: String(payment.network || ''),
+          currencyCode: String(payment.currencyCode || ''),
+          amount,
+          months,
+          createdAt: new Date()
+        },
+        renewalHistory: historyEntry
+      }
+    },
+    { new: true }
+  );
+  if (!updated) {
+    const current = await TenantModel.findOne({ tenantId }).lean();
+    return buildAppliedRenewalResult(current, months, amount, { approval });
+  }
+  const refreshed = await refreshTenantActivationCode(masterConn, tenantId);
+  await syncTenantSubscriptionSnapshot(tenantConn, {
+    subscriptionPlan: updated?.subscriptionPlan || tenantDoc?.subscriptionPlan || latest?.subscriptionPlan || 'basic',
+    subscriptionExpiresAt: updated?.subscriptionExpiresAt || nextExpiry,
+    subscriptionPermanent: false,
+    subscriptionAmount: updated?.subscriptionAmount ?? tenantDoc?.subscriptionAmount ?? latest?.subscriptionAmount ?? null
+  });
+  await sendActivationCodeEmail({
+    to: updated?.billingEmail || '',
+    tenantName: updated?.name,
+    tenantId: updated?.tenantId,
+    activationCode: refreshed?.activationCode || '',
+    activationCodeExpiresAt: refreshed?.activationCodeExpiresAt || null,
+    currencyCode: String(payment.currencyCode || ''),
+    amount,
+    months
+  }).catch(() => {});
+  return {
+    updated,
+    alreadyApplied: false,
+    refreshedCode: refreshed?.activationCode || '',
+    refreshedCodeExpiresAt: refreshed?.activationCodeExpiresAt || null,
+    months,
+    amount,
+    approval
+  };
+}
+
 function parseAddonTxRef(value) {
   const parts = String(value || '').split('_');
   if (parts.length < 7 || parts[0] !== 'limit' || parts[1] !== 'addon') return null;
@@ -392,6 +517,12 @@ export async function createPaystackRenewalPayment(info, payload = {}) {
 }
 
 export async function verifyDpoRenewalPayment(masterConn, tenantConn, tenantDoc, transactionToken, txRef) {
+  const existing = await TenantModelFor(masterConn).findOne({ tenantId: String(tenantDoc?.tenantId || '') }).lean();
+  if (hasSuccessfulPaymentRef(existing, txRef)) {
+    const meta = parseRenewalTxRef(txRef);
+    const amount = await calculateRenewalAmount(masterConn, tenantDoc, meta.months);
+    return buildAppliedRenewalResult(existing, meta.months, amount);
+  }
   const companyToken = String(process.env.DPO_COMPANY_TOKEN || '').trim();
   const apiUrl = String(process.env.DPO_API_URL || 'https://secure.3gdirectpay.com/API/v6/').trim();
   if (!companyToken) throw new Error('Payment provider is not configured yet');
@@ -415,78 +546,38 @@ export async function verifyDpoRenewalPayment(masterConn, tenantConn, tenantDoc,
   const approval = readXmlTag(xml, 'TransactionApproval');
   if (!response.ok || result !== '000') throw new Error(resultExplanation || 'Failed to verify payment');
   if (String(companyRef || '') !== String(txRef || '')) throw new Error('Payment reference mismatch');
-  const metaParts = String(companyRef || '').split('_');
-  const months = Number(metaParts[2] || 0);
-  const channel = String(metaParts[3] || 'card');
+  const meta = parseRenewalTxRef(companyRef || txRef);
+  const months = Number(meta.months || 0);
+  const channel = String(meta.channel || 'card');
   const amount = await calculateRenewalAmount(masterConn, tenantDoc, months);
   if (!amount || paymentAmount < amount) throw new Error('Payment amount does not match expected renewal amount');
-  const days = months * ACTIVATION_EXTENSION_DAYS;
-  const nextExpiry = computeExtendedSubscriptionDate(tenantDoc?.subscriptionExpiresAt, Date.now(), days);
-  const updated = await TenantModelFor(masterConn).findOneAndUpdate(
-    { tenantId: String(tenantDoc?.tenantId || '') },
-    {
-      $set: {
-        subscriptionExpiresAt: nextExpiry,
-        subscriptionPermanent: false,
-        activationLastUsedAt: new Date()
-      },
-      $push: {
-        paymentHistory: {
-          provider: 'dpo_pay',
-          method: 'hosted_checkout',
-          channel,
-          status: 'successful',
-          transactionRef: String(txRef || ''),
-          providerTransactionId: String(transactionToken || ''),
-          network: '',
-          currencyCode: String(paymentCurrency || ''),
-          amount,
-          months,
-          createdAt: new Date()
-        },
-        renewalHistory: buildRenewalHistoryEntry({
-          source: 'self_service_payment',
-          amount,
-          daysAdded: days,
-          previousExpiry: tenantDoc?.subscriptionExpiresAt || null,
-          newExpiry: nextExpiry,
-          permanentBefore: !!tenantDoc?.subscriptionPermanent,
-          permanentAfter: false,
-          note: `Online renewal payment for ${months} month(s)`,
-          actorName: String(tenantDoc?.tenantId || '')
-        })
-      }
-    },
-    { new: true }
-  );
-  const refreshed = await refreshTenantActivationCode(masterConn, tenantDoc?.tenantId);
-  await syncTenantSubscriptionSnapshot(tenantConn, {
-    subscriptionPlan: updated?.subscriptionPlan || tenantDoc?.subscriptionPlan || 'basic',
-    subscriptionExpiresAt: updated?.subscriptionExpiresAt || nextExpiry,
-    subscriptionPermanent: false,
-    subscriptionAmount: updated?.subscriptionAmount ?? tenantDoc?.subscriptionAmount ?? null
-  });
-  await sendActivationCodeEmail({
-    to: updated?.billingEmail || '',
-    tenantName: updated?.name,
-    tenantId: updated?.tenantId,
-    activationCode: refreshed?.activationCode || '',
-    activationCodeExpiresAt: refreshed?.activationCodeExpiresAt || null,
-    currencyCode: String(paymentCurrency || ''),
-    amount,
-    months
-  }).catch(() => {});
-  return {
-    updated,
-    refreshedCode: refreshed?.activationCode || '',
-    refreshedCodeExpiresAt: refreshed?.activationCodeExpiresAt || null,
+  return applyVerifiedRenewalPayment({
+    masterConn,
+    tenantConn,
+    tenantDoc,
     months,
     amount,
-    approval
-  };
+    approval,
+    note: `Online renewal payment for ${months} month(s)`,
+    payment: {
+      provider: 'dpo_pay',
+      method: 'hosted_checkout',
+      channel,
+      transactionRef: String(txRef || ''),
+      providerTransactionId: String(transactionToken || ''),
+      network: '',
+      currencyCode: String(paymentCurrency || '')
+    }
+  });
 }
 
 export async function verifyPayPalRenewalPayment(masterConn, tenantConn, tenantDoc, orderId, txRef) {
+  const existing = await TenantModelFor(masterConn).findOne({ tenantId: String(tenantDoc?.tenantId || '') }).lean();
+  if (hasSuccessfulPaymentRef(existing, txRef)) {
+    const meta = parseRenewalTxRef(txRef);
+    const amount = await calculateRenewalAmount(masterConn, tenantDoc, meta.months);
+    return buildAppliedRenewalResult(existing, meta.months, amount);
+  }
   const accessToken = await getPayPalAccessToken();
   const captureResponse = await fetch(`${getPayPalBaseUrl()}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {
     method: 'POST',
@@ -504,78 +595,38 @@ export async function verifyPayPalRenewalPayment(masterConn, tenantConn, tenantD
   const currencyCode = String(purchaseUnit?.payments?.captures?.[0]?.amount?.currency_code || purchaseUnit?.amount?.currency_code || '');
   const customId = String(purchaseUnit?.custom_id || purchaseUnit?.reference_id || '');
   if (customId !== String(txRef || '')) throw new Error('Payment reference mismatch');
-  const metaParts = customId.split('_');
-  const months = Number(metaParts[2] || 0);
-  const channel = String(metaParts[3] || 'card');
+  const meta = parseRenewalTxRef(customId);
+  const months = Number(meta.months || 0);
+  const channel = String(meta.channel || 'card');
   const amount = await calculateRenewalAmount(masterConn, tenantDoc, months);
   if (!amount || amountValue < amount) throw new Error('Payment amount does not match expected renewal amount');
-  const days = months * ACTIVATION_EXTENSION_DAYS;
-  const nextExpiry = computeExtendedSubscriptionDate(tenantDoc?.subscriptionExpiresAt, Date.now(), days);
-  const updated = await TenantModelFor(masterConn).findOneAndUpdate(
-    { tenantId: String(tenantDoc?.tenantId || '') },
-    {
-      $set: {
-        subscriptionExpiresAt: nextExpiry,
-        subscriptionPermanent: false,
-        activationLastUsedAt: new Date()
-      },
-      $push: {
-        paymentHistory: {
-          provider: 'paypal',
-          method: 'paypal_checkout',
-          channel,
-          status: 'successful',
-          transactionRef: String(txRef || ''),
-          providerTransactionId: String(orderId || ''),
-          network: '',
-          currencyCode,
-          amount,
-          months,
-          createdAt: new Date()
-        },
-        renewalHistory: buildRenewalHistoryEntry({
-          source: 'self_service_payment',
-          amount,
-          daysAdded: days,
-          previousExpiry: tenantDoc?.subscriptionExpiresAt || null,
-          newExpiry: nextExpiry,
-          permanentBefore: !!tenantDoc?.subscriptionPermanent,
-          permanentAfter: false,
-          note: `PayPal renewal payment for ${months} month(s)`,
-          actorName: String(tenantDoc?.tenantId || '')
-        })
-      }
-    },
-    { new: true }
-  );
-  const refreshed = await refreshTenantActivationCode(masterConn, tenantDoc?.tenantId);
-  await syncTenantSubscriptionSnapshot(tenantConn, {
-    subscriptionPlan: updated?.subscriptionPlan || tenantDoc?.subscriptionPlan || 'basic',
-    subscriptionExpiresAt: updated?.subscriptionExpiresAt || nextExpiry,
-    subscriptionPermanent: false,
-    subscriptionAmount: updated?.subscriptionAmount ?? tenantDoc?.subscriptionAmount ?? null
-  });
-  await sendActivationCodeEmail({
-    to: updated?.billingEmail || '',
-    tenantName: updated?.name,
-    tenantId: updated?.tenantId,
-    activationCode: refreshed?.activationCode || '',
-    activationCodeExpiresAt: refreshed?.activationCodeExpiresAt || null,
-    currencyCode,
-    amount,
-    months
-  }).catch(() => {});
-  return {
-    updated,
-    refreshedCode: refreshed?.activationCode || '',
-    refreshedCodeExpiresAt: refreshed?.activationCodeExpiresAt || null,
+  return applyVerifiedRenewalPayment({
+    masterConn,
+    tenantConn,
+    tenantDoc,
     months,
     amount,
-    approval: String(purchaseUnit?.payments?.captures?.[0]?.id || '')
-  };
+    approval: String(purchaseUnit?.payments?.captures?.[0]?.id || ''),
+    note: `PayPal renewal payment for ${months} month(s)`,
+    payment: {
+      provider: 'paypal',
+      method: 'paypal_checkout',
+      channel,
+      transactionRef: String(txRef || ''),
+      providerTransactionId: String(orderId || ''),
+      network: '',
+      currencyCode
+    }
+  });
 }
 
 export async function verifyPaystackRenewalPayment(masterConn, tenantConn, tenantDoc, reference) {
+  const existing = await TenantModelFor(masterConn).findOne({ tenantId: String(tenantDoc?.tenantId || '') }).lean();
+  if (hasSuccessfulPaymentRef(existing, reference)) {
+    const meta = parseRenewalTxRef(reference);
+    const amount = await calculateRenewalAmount(masterConn, tenantDoc, meta.months);
+    return buildAppliedRenewalResult(existing, meta.months, amount);
+  }
   const secretKey = String(process.env.PAYSTACK_SECRET_KEY || '').trim();
   if (!secretKey) throw new Error('Paystack is not configured yet');
   const response = await fetch(`${getPaystackBaseUrl()}/transaction/verify/${encodeURIComponent(reference)}`, {
@@ -589,77 +640,31 @@ export async function verifyPaystackRenewalPayment(masterConn, tenantConn, tenan
     throw new Error(json?.message || 'Failed to verify Paystack payment');
   }
   const txRef = String(data.reference || '');
-  const metaParts = txRef.split('_');
-  const months = Number(metaParts[2] || 0);
-  const channel = String(metaParts[3] || data.channel || data.metadata?.method || 'card');
+  const meta = parseRenewalTxRef(txRef);
+  const months = Number(meta.months || 0);
+  const channel = String(meta.channel || data.channel || data.metadata?.method || 'card');
   const amount = await calculateRenewalAmount(masterConn, tenantDoc, months);
   const paidAmount = Number(data.amount || 0) / 100;
   const currencyCode = String(data.currency || '');
   if (!amount || paidAmount < amount) throw new Error('Payment amount does not match expected renewal amount');
-  const days = months * ACTIVATION_EXTENSION_DAYS;
-  const nextExpiry = computeExtendedSubscriptionDate(tenantDoc?.subscriptionExpiresAt, Date.now(), days);
-  const updated = await TenantModelFor(masterConn).findOneAndUpdate(
-    { tenantId: String(tenantDoc?.tenantId || '') },
-    {
-      $set: {
-        subscriptionExpiresAt: nextExpiry,
-        subscriptionPermanent: false,
-        activationLastUsedAt: new Date()
-      },
-      $push: {
-        paymentHistory: {
-          provider: 'paystack',
-          method: String(data.channel || data.metadata?.method || 'hosted_checkout'),
-          channel,
-          status: 'successful',
-          transactionRef: txRef,
-          providerTransactionId: String(data.id || ''),
-          network: String(data.metadata?.network || ''),
-          currencyCode,
-          amount,
-          months,
-          createdAt: new Date()
-        },
-        renewalHistory: buildRenewalHistoryEntry({
-          source: 'self_service_payment',
-          amount,
-          daysAdded: days,
-          previousExpiry: tenantDoc?.subscriptionExpiresAt || null,
-          newExpiry: nextExpiry,
-          permanentBefore: !!tenantDoc?.subscriptionPermanent,
-          permanentAfter: false,
-          note: `Paystack renewal payment for ${months} month(s)`,
-          actorName: String(tenantDoc?.tenantId || '')
-        })
-      }
-    },
-    { new: true }
-  );
-  const refreshed = await refreshTenantActivationCode(masterConn, tenantDoc?.tenantId);
-  await syncTenantSubscriptionSnapshot(tenantConn, {
-    subscriptionPlan: updated?.subscriptionPlan || tenantDoc?.subscriptionPlan || 'basic',
-    subscriptionExpiresAt: updated?.subscriptionExpiresAt || nextExpiry,
-    subscriptionPermanent: false,
-    subscriptionAmount: updated?.subscriptionAmount ?? tenantDoc?.subscriptionAmount ?? null
-  });
-  await sendActivationCodeEmail({
-    to: updated?.billingEmail || '',
-    tenantName: updated?.name,
-    tenantId: updated?.tenantId,
-    activationCode: refreshed?.activationCode || '',
-    activationCodeExpiresAt: refreshed?.activationCodeExpiresAt || null,
-    currencyCode,
-    amount,
-    months
-  }).catch(() => {});
-  return {
-    updated,
-    refreshedCode: refreshed?.activationCode || '',
-    refreshedCodeExpiresAt: refreshed?.activationCodeExpiresAt || null,
+  return applyVerifiedRenewalPayment({
+    masterConn,
+    tenantConn,
+    tenantDoc,
     months,
     amount,
-    approval: String(data.gateway_response || '')
-  };
+    approval: String(data.gateway_response || ''),
+    note: `Paystack renewal payment for ${months} month(s)`,
+    payment: {
+      provider: 'paystack',
+      method: String(data.channel || data.metadata?.method || 'hosted_checkout'),
+      channel,
+      transactionRef: txRef,
+      providerTransactionId: String(data.id || ''),
+      network: String(data.metadata?.network || ''),
+      currencyCode
+    }
+  });
 }
 
 export async function createDpoLimitUpgradePayment(info, payload = {}) {
@@ -870,9 +875,25 @@ async function applyTenantLimitUpgrade(masterConn, tenantDoc, payment = {}) {
   const expectedAmount = calculateAddonAmount(effectiveConfig, meta.resourceType, meta.quantity);
   if (!expectedAmount || !unitRate) throw new Error(`Additional ${meta.resourceType} payment is not configured yet`);
   if (Number(payment.amount || 0) < expectedAmount) throw new Error('Payment amount does not match expected tenant limit amount');
+  const TenantModel = TenantModelFor(masterConn);
+  const tenantId = String(tenantDoc?.tenantId || '');
+  const txRef = String(payment.txRef || '').trim();
+  const latest = await TenantModel.findOne({ tenantId }).lean();
+  if (hasSuccessfulPaymentRef(latest, txRef)) {
+    return {
+      updated: latest,
+      alreadyApplied: true,
+      resourceType: meta.resourceType,
+      quantity: meta.quantity,
+      amount: expectedAmount
+    };
+  }
   const incField = meta.resourceType === 'branch' ? 'additionalBranchSlots' : 'additionalUserSlots';
-  const updated = await TenantModelFor(masterConn).findOneAndUpdate(
-    { tenantId: String(tenantDoc?.tenantId || '') },
+  const updated = await TenantModel.findOneAndUpdate(
+    {
+      tenantId,
+      'paymentHistory.transactionRef': { $ne: txRef }
+    },
     {
       $inc: { [incField]: meta.quantity },
       $push: {
@@ -885,7 +906,7 @@ async function applyTenantLimitUpgrade(masterConn, tenantDoc, payment = {}) {
           quantity: meta.quantity,
           unitRate,
           status: 'successful',
-          transactionRef: String(payment.txRef || ''),
+          transactionRef: txRef,
           providerTransactionId: String(payment.providerTransactionId || ''),
           network: String(payment.network || ''),
           currencyCode: String(payment.currencyCode || ''),
@@ -897,8 +918,19 @@ async function applyTenantLimitUpgrade(masterConn, tenantDoc, payment = {}) {
     },
     { new: true }
   );
+  if (!updated) {
+    const current = await TenantModel.findOne({ tenantId }).lean();
+    return {
+      updated: current,
+      alreadyApplied: true,
+      resourceType: meta.resourceType,
+      quantity: meta.quantity,
+      amount: expectedAmount
+    };
+  }
   return {
     updated,
+    alreadyApplied: false,
     resourceType: meta.resourceType,
     quantity: meta.quantity,
     amount: expectedAmount
