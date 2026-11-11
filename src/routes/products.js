@@ -4,7 +4,7 @@ import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireAdmin, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
-import { normalizeTrackType } from '../utils/productUnits.js';
+import { applyQuantityStockOverlay, loadOccupyingSerializedCounts, normalizeTrackType } from '../utils/productUnits.js';
 import { uploadMediaString } from '../utils/mediaStorage.js';
 import { archiveLiveDocument } from '../utils/superBin.js';
 import { normalizeTaxConfig } from '../utils/productTax.js';
@@ -339,7 +339,18 @@ r.get('/', async (req, res) => {
     }
     return obj;
   });
-  res.json(mapped);
+  let payload = mapped;
+  try {
+    const quantityIds = mapped
+      .filter((row) => normalizeTrackType(row?.trackType) !== 'serialized')
+      .map((row) => String(row?.id || row?._id || ''))
+      .filter(Boolean);
+    if (quantityIds.length > 0) {
+      const counts = await loadOccupyingSerializedCounts(quantityIds);
+      payload = applyQuantityStockOverlay(mapped, counts);
+    }
+  } catch {}
+  res.json(payload);
 });
 
 r.post('/', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (req, res) => {
@@ -464,6 +475,19 @@ r.put('/:id', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (re
     payload.variants = preserveVariantInventoryMaps(before.variants, payload.variants);
   }
   const p = await Product.findOneAndUpdate(query, payload, { new: true });
+  let presented = p;
+  try {
+    const raw = p?.toObject ? p.toObject({ flattenMaps: true }) : p;
+    if (raw && !raw.id && raw._id) raw.id = String(raw._id);
+    if (raw && normalizeTrackType(raw.trackType) !== 'serialized') {
+      const counts = await loadOccupyingSerializedCounts([String(raw.id || '')]);
+      presented = applyQuantityStockOverlay([raw], counts)[0] || raw;
+    } else {
+      presented = raw || p;
+    }
+  } catch {
+    presented = p;
+  }
   const changed = [];
   Object.keys(payload).forEach(k => {
     try {
@@ -474,7 +498,7 @@ r.put('/:id', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (re
       changed.push(k);
     }
   });
-  res.json(p);
+  res.json(presented);
   void Audit.create({
     actor: (req.user && req.user.name) || 'unknown',
     actionType: 'product_update',

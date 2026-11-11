@@ -92,7 +92,8 @@ vi.mock('../../src/utils/credit.js', () => ({
 vi.mock('../../src/utils/productUnits.js', () => ({
   adjustSerializedUnits: vi.fn(),
   normalizeTrackType: vi.fn((value) => String(value || '').toLowerCase() === 'serialized' ? 'serialized' : 'quantity'),
-  transferSerializedUnits: vi.fn()
+  transferSerializedUnits: vi.fn(),
+  getQuantityOwnedStock: vi.fn(async () => ({ mapQty: 0, occupyingUnits: 0, ownedQty: 0, target: null }))
 }));
 
 vi.mock('../../src/utils/inTransitLocks.js', () => ({

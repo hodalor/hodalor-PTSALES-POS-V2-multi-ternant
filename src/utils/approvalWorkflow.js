@@ -10,7 +10,7 @@ import mongoose from 'mongoose';
 import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from './inventory.js';
 import { makeInventoryLine, withInventoryAudit } from './inventoryAudit.js';
 import { refreshCreditSaleStatus, updateCustomerCreditMetrics } from './credit.js';
-import { adjustSerializedUnits, normalizeTrackType, transferSerializedUnits } from './productUnits.js';
+import { adjustSerializedUnits, getQuantityOwnedStock, normalizeTrackType, transferSerializedUnits } from './productUnits.js';
 import { assertOutgoingAvailability } from './inTransitLocks.js';
 
 function resolveWorkflowModels(db = null) {
@@ -273,6 +273,20 @@ async function applyWholesaleOperation(operation, actor) {
         err.status = 400;
         throw err;
       }
+      if (delta < 0) {
+        const owned = await getQuantityOwnedStock({
+          product,
+          productId: String(item.productId || product.id || product._id || ''),
+          variantId: String(item.variantId || ''),
+          branchId,
+          inventoryType: String(operation.fromInventoryType || 'wholesale')
+        });
+        if (owned.ownedQty < qty) {
+          const err = new Error('Insufficient stock for adjustment');
+          err.status = 400;
+          throw err;
+        }
+      }
       setMapQty(target.container, branchId, current + delta);
       markInventoryModified(target);
       dirtyProducts.set(String(product._id), product);
@@ -323,7 +337,13 @@ async function applyWholesaleOperation(operation, actor) {
         err.status = 400;
         throw err;
       }
-      const fromCurrent = getMapQty(fromTarget.container, operation.fromBranchId);
+      const owned = await getQuantityOwnedStock({
+        product,
+        productId: String(item.productId || product.id || product._id || ''),
+        variantId: String(item.variantId || ''),
+        branchId: String(operation.fromBranchId || ''),
+        inventoryType: String(operation.fromInventoryType || 'wholesale')
+      });
       await assertOutgoingAvailability({
         product,
         productId: String(item.productId || ''),
@@ -334,13 +354,13 @@ async function applyWholesaleOperation(operation, actor) {
         excludeWholesaleOperationId: String(operation?._id || ''),
         purpose: 'transfer'
       });
-      if (fromCurrent < qty) {
+      if (owned.ownedQty < qty) {
         const err = new Error('Insufficient stock for transfer');
         err.status = 400;
         throw err;
       }
       const toCurrent = getMapQty(toTarget.container, operation.toBranchId);
-      setMapQty(fromTarget.container, operation.fromBranchId, fromCurrent - qty);
+      setMapQty(fromTarget.container, operation.fromBranchId, owned.mapQty - qty);
       setMapQty(toTarget.container, operation.toBranchId, toCurrent + qty);
       markInventoryModified(fromTarget);
       markInventoryModified(toTarget);

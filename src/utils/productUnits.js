@@ -466,3 +466,142 @@ export async function adjustSerializedUnits({ productId, variantId = '', branchI
   await incrementSerializedStock(product, String(branchId), normalizeInventoryType(inventoryType), String(variantId || ''), -rows.length);
   return { product, removed: rows };
 }
+
+const OCCUPYING_SERIALIZED_STATUSES = ['in_stock', 'reserved'];
+
+function occupancyKey(productId, variantId, branchId, inventoryType) {
+  return `${String(productId || '')}|${String(variantId || '')}|${String(branchId || '')}|${normalizeInventoryType(inventoryType)}`;
+}
+
+function asStockObject(mapLike) {
+  if (!mapLike) return {};
+  if (mapLike instanceof Map) return Object.fromEntries(mapLike.entries());
+  if (typeof mapLike === 'object') return { ...mapLike };
+  return {};
+}
+
+function subtractOccupancyFromMap(mapLike, productId, variantId, inventoryType, countIndex) {
+  const next = asStockObject(mapLike);
+  Object.keys(next).forEach((branchId) => {
+    const occupying = Number(countIndex.get(occupancyKey(productId, variantId, branchId, inventoryType)) || 0);
+    next[branchId] = Math.max(0, Number(next[branchId] || 0) - occupying);
+  });
+  return next;
+}
+
+export async function countOccupyingSerializedUnits({
+  productId = '',
+  variantId = '',
+  branchId = '',
+  inventoryType = 'retail'
+} = {}) {
+  if (!productId || !branchId) return 0;
+  return ProductUnit.countDocuments({
+    productId: String(productId),
+    variantId: String(variantId || ''),
+    branchId: String(branchId),
+    inventoryType: normalizeInventoryType(inventoryType),
+    status: { $in: OCCUPYING_SERIALIZED_STATUSES }
+  });
+}
+
+export async function loadOccupyingSerializedCounts(productIds = []) {
+  const ids = Array.from(new Set((Array.isArray(productIds) ? productIds : []).map((value) => String(value || '').trim()).filter(Boolean)));
+  if (ids.length === 0) return new Map();
+  const rows = await ProductUnit.aggregate([
+    {
+      $match: {
+        productId: { $in: ids },
+        status: { $in: OCCUPYING_SERIALIZED_STATUSES }
+      }
+    },
+    {
+      $group: {
+        _id: {
+          productId: '$productId',
+          variantId: '$variantId',
+          branchId: '$branchId',
+          inventoryType: '$inventoryType'
+        },
+        count: { $sum: 1 }
+      }
+    }
+  ]);
+  const index = new Map();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    index.set(
+      occupancyKey(row?._id?.productId, row?._id?.variantId, row?._id?.branchId, row?._id?.inventoryType),
+      Number(row?.count || 0)
+    );
+  });
+  return index;
+}
+
+export function applyQuantityStockOverlay(products = [], countIndex = new Map()) {
+  return (Array.isArray(products) ? products : []).map((product) => {
+    if (!product || normalizeTrackType(product.trackType) === 'serialized') return product;
+    const productId = String(product.id || product._id || '');
+    const next = { ...product };
+    next.stockByBranch = subtractOccupancyFromMap(product.stockByBranch, productId, '', 'retail', countIndex);
+    next.wholesaleStockByBranch = subtractOccupancyFromMap(product.wholesaleStockByBranch, productId, '', 'wholesale', countIndex);
+    next.warehouseStockByBranch = subtractOccupancyFromMap(product.warehouseStockByBranch, productId, '', 'warehouse', countIndex);
+    if (Array.isArray(product.variants)) {
+      next.variants = product.variants.map((variant) => {
+        const variantId = String(variant?.id || '');
+        return {
+          ...variant,
+          stockByBranch: subtractOccupancyFromMap(variant?.stockByBranch, productId, variantId, 'retail', countIndex),
+          wholesaleStockByBranch: subtractOccupancyFromMap(variant?.wholesaleStockByBranch, productId, variantId, 'wholesale', countIndex),
+          warehouseStockByBranch: subtractOccupancyFromMap(variant?.warehouseStockByBranch, productId, variantId, 'warehouse', countIndex)
+        };
+      });
+    }
+    return next;
+  });
+}
+
+export async function getQuantityOwnedStock({
+  product,
+  productId = '',
+  variantId = '',
+  branchId = '',
+  inventoryType = 'retail'
+} = {}) {
+  const target = getStockTarget(product, variantId, inventoryType);
+  const mapQty = target ? getMapQty(target.container, branchId) : 0;
+  const occupyingUnits = await countOccupyingSerializedUnits({
+    productId: String(productId || product?.id || product?._id || ''),
+    variantId,
+    branchId,
+    inventoryType
+  });
+  return {
+    target,
+    mapQty: Number(mapQty || 0),
+    occupyingUnits: Number(occupyingUnits || 0),
+    ownedQty: Math.max(0, Number(mapQty || 0) - Number(occupyingUnits || 0))
+  };
+}
+
+export async function assertQuantityDecreaseKeepsSerializedOccupancy({
+  product,
+  productId = '',
+  variantId = '',
+  branchId = '',
+  inventoryType = 'retail',
+  nextQty = 0
+} = {}) {
+  if (normalizeTrackType(product?.trackType) === 'serialized') return 0;
+  const occupying = await countOccupyingSerializedUnits({
+    productId: String(productId || product?.id || product?._id || ''),
+    variantId,
+    branchId,
+    inventoryType
+  });
+  if (Number(nextQty || 0) < occupying) {
+    const err = new Error('Quantity stock cannot go below serialized units still held for this product. Switch the product back to serialized to use those units.');
+    err.status = 400;
+    throw err;
+  }
+  return occupying;
+}

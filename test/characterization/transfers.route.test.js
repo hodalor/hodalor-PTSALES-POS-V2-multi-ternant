@@ -51,7 +51,8 @@ vi.mock('../../src/models/ServerLog.js', () => ({
 vi.mock('../../src/utils/productUnits.js', () => ({
   normalizeTrackType: vi.fn(() => 'quantity'),
   resolveInventoryTypeFromBranch: mocks.resolveInventoryTypeFromBranch,
-  transferSerializedUnits: mocks.transferSerializedUnits
+  transferSerializedUnits: mocks.transferSerializedUnits,
+  getQuantityOwnedStock: vi.fn(async () => ({ mapQty: 0, occupyingUnits: 0, ownedQty: 0, target: null }))
 }));
 
 vi.mock('../../src/utils/inventory.js', () => ({

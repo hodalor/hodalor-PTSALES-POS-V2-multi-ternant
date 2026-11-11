@@ -5,7 +5,7 @@ import Product from '../models/Product.js';
 import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
-import { normalizeTrackType, resolveInventoryTypeFromBranch, transferSerializedUnits } from '../utils/productUnits.js';
+import { getQuantityOwnedStock, normalizeTrackType, resolveInventoryTypeFromBranch, transferSerializedUnits } from '../utils/productUnits.js';
 import { getStockTarget, getMapQty, markInventoryModified, setMapQty } from '../utils/inventory.js';
 import { safeErrorMessage, safeErrorStatus } from '../utils/safeError.js';
 import { assertOutgoingAvailability } from '../utils/inTransitLocks.js';
@@ -227,7 +227,13 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_t
       const fromTarget = getStockTarget(p, item.variantId || '', fromInventoryType);
       const toTarget = getStockTarget(p, item.variantId || '', toInventoryType);
       if (!fromTarget || !toTarget) return res.status(400).json({ error: 'Variant not found' });
-      const curFrom = getMapQty(fromTarget.container, tr.from);
+      const owned = await getQuantityOwnedStock({
+        product: p,
+        productId: String(item.productId || p.id || p._id || ''),
+        variantId: String(item.variantId || ''),
+        branchId: String(tr.from || ''),
+        inventoryType: String(fromInventoryType || 'retail')
+      });
       await assertOutgoingAvailability({
         product: p,
         productId: String(item.productId || ''),
@@ -238,9 +244,9 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_t
         excludeTransferRequestId: String(tr?._id || ''),
         purpose: 'transfer'
       });
-      if (curFrom < q) return res.status(400).json({ error: 'Insufficient stock for transfer' });
+      if (owned.ownedQty < q) return res.status(400).json({ error: 'Insufficient stock for transfer' });
       const curTo = getMapQty(toTarget.container, tr.to);
-      setMapQty(fromTarget.container, tr.from, curFrom - q);
+      setMapQty(fromTarget.container, tr.from, owned.mapQty - q);
       setMapQty(toTarget.container, tr.to, curTo + q);
       markInventoryModified(fromTarget);
       markInventoryModified(toTarget);

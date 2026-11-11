@@ -129,7 +129,10 @@ vi.mock('../../src/utils/credit.js', () => ({
 vi.mock('../../src/utils/productUnits.js', () => ({
   normalizeTrackType: vi.fn(() => 'quantity'),
   releaseSerializedUnits: vi.fn(),
-  sellSerializedUnits: vi.fn()
+  sellSerializedUnits: vi.fn(),
+  loadOccupyingSerializedCounts: vi.fn(async () => new Map()),
+  applyQuantityStockOverlay: vi.fn((products) => products),
+  getQuantityOwnedStock: vi.fn(async () => ({ mapQty: 0, occupyingUnits: 0, ownedQty: 0, target: null }))
 }));
 
 vi.mock('../../src/utils/safeError.js', () => ({

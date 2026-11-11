@@ -11,7 +11,7 @@ import Sale from '../models/Sale.js';
 import RefundRequest from '../models/RefundRequest.js';
 import { requireAuth, requireFeature, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
-import { normalizeTrackType, resolveInventoryTypeFromBranch } from '../utils/productUnits.js';
+import { assertQuantityDecreaseKeepsSerializedOccupancy, normalizeTrackType, resolveInventoryTypeFromBranch } from '../utils/productUnits.js';
 import { getMapQty, getStockTarget, markInventoryModified, setMapQty } from '../utils/inventory.js';
 import { buildInventoryConsistencyReport } from '../utils/inventoryConsistency.js';
 import { makeInventoryLine, withInventoryAudit } from '../utils/inventoryAudit.js';
@@ -48,6 +48,14 @@ async function adjustBaseStock(productId, branchId, delta, inventoryType = 'reta
     err.status = 400;
     throw err;
   }
+  await assertQuantityDecreaseKeepsSerializedOccupancy({
+    product: p,
+    productId,
+    variantId: '',
+    branchId,
+    inventoryType,
+    nextQty: next
+  });
   setMapQty(target.container, branchId, next);
   markInventoryModified(target);
   await p.save();
@@ -94,6 +102,14 @@ async function assertNonSerializedStockMutation(productId) {
     err.status = 400;
     throw err;
   }
+  await assertQuantityDecreaseKeepsSerializedOccupancy({
+    product: p,
+    productId,
+    variantId,
+    branchId,
+    inventoryType,
+    nextQty: next
+  });
   setMapQty(target.container, branchId, next);
   markInventoryModified(target);
   await p.save();

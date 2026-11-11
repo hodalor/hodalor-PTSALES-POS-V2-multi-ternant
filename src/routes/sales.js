@@ -577,11 +577,13 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
         reservationToken: String(payload.reservationToken || ''),
         purpose: 'sale'
       });
-      if (prev < it.qty) {
-        const label = variant?.label ? `${p.name} (${variant.label})` : p.name;
-        const err = new Error(`Insufficient ${inventoryType} stock for ${label} at ${branchCode}`);
-        err.status = 400;
-        throw err;
+      if (normalizeTrackType(p.trackType) === 'serialized') {
+        if (prev < it.qty) {
+          const label = variant?.label ? `${p.name} (${variant.label})` : p.name;
+          const err = new Error(`Insufficient ${inventoryType} stock for ${label} at ${branchCode}`);
+          err.status = 400;
+          throw err;
+        }
       }
       touched.push({ target, branchId, prev });
       setMapQty(target.container, branchId, Math.max(0, prev - it.qty));

@@ -1,8 +1,8 @@
 import WholesaleOperation from '../models/WholesaleOperation.js';
 import TransferRequest from '../models/TransferRequest.js';
 import ProductUnit from '../models/ProductUnit.js';
-import { getMapQty, getStockTarget } from './inventory.js';
-import { normalizeTrackType } from './productUnits.js';
+import { getStockTarget } from './inventory.js';
+import { getQuantityOwnedStock, normalizeTrackType } from './productUnits.js';
 
 function normalizedLockStatuses() {
   return ['pending_manager'];
@@ -173,7 +173,14 @@ export async function assertOutgoingQuantityAvailability({
     error.status = 400;
     throw error;
   }
-  const currentStock = getMapQty(target.container, branchId);
+  const owned = await getQuantityOwnedStock({
+    product,
+    productId,
+    variantId,
+    branchId,
+    inventoryType
+  });
+  const currentStock = Number(owned.ownedQty || 0);
   const locks = await getOutgoingInTransitLocks({
     productId,
     variantId,

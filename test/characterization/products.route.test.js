@@ -46,6 +46,13 @@ vi.mock('../../src/utils/superBin.js', () => ({
   archiveLiveDocument: mocks.archiveLiveDocument
 }));
 
+vi.mock('../../src/models/ProductUnit.js', () => ({
+  default: {
+    aggregate: vi.fn().mockResolvedValue([]),
+    countDocuments: vi.fn().mockResolvedValue(0)
+  }
+}));
+
 const { default: router } = await import('../../src/routes/products.js');
 
 function createApp() {
