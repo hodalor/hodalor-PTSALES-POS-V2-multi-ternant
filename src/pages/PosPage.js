@@ -97,6 +97,56 @@ function getEffectiveTrackType(product) {
     : 'quantity';
 }
 
+function cartLineSerialParts(item) {
+  const imei = String(item?.imei || '').trim();
+  const serial = String(item?.serialNumber || '').trim();
+  if (imei && serial && imei === serial) return { imei, serial: '' };
+  return { imei, serial };
+}
+
+function cartItemGroupKey(item) {
+  if (!item?.unitId) return `line:${item?.id || ''}`;
+  const productId = String(item?.productId || '');
+  const variantId = String(item?.variantId || '');
+  const priceTier = String(item?.priceTier || '');
+  const price = Number(item?.price || 0);
+  return `serial:${productId}|${variantId}|${priceTier}|${price}`;
+}
+
+function groupCartItemsForDisplay(items = []) {
+  const groups = [];
+  const indexByKey = new Map();
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    if (!item?.unitId) {
+      groups.push({
+        key: cartItemGroupKey(item),
+        items: [item],
+        quantity: Number(item?.quantity) || 0,
+        serialized: false,
+        representative: item
+      });
+      return;
+    }
+    const key = cartItemGroupKey(item);
+    const existingIndex = indexByKey.get(key);
+    if (existingIndex == null) {
+      indexByKey.set(key, groups.length);
+      groups.push({
+        key,
+        items: [item],
+        quantity: Number(item?.quantity) || 1,
+        serialized: true,
+        representative: item
+      });
+      return;
+    }
+    const group = groups[existingIndex];
+    group.items.push(item);
+    group.quantity += Number(item?.quantity) || 1;
+  });
+  return groups;
+}
+
 function PosPage({ mode = 'retail' }) {
   const dispatch = useDispatch();
   const location = useLocation();
@@ -926,6 +976,18 @@ function PosPage({ mode = 'retail' }) {
       return;
     }
     setDiscountWorkingId(id);
+    let reservedPrintWindow = null;
+    let printWindowUsed = false;
+    reservedPrintWindow = window.open('', 'PTSALES_PRINT', activePrintMode === 'invoice' ? 'width=1000,height=800' : 'width=400,height=600');
+    if (reservedPrintWindow) {
+      try {
+        reservedPrintWindow.document.open();
+        reservedPrintWindow.document.write('<html><head><title>Preparing print...</title></head><body style="font-family:Arial,sans-serif;padding:16px;color:#0f172a"><div style="font-size:16px;font-weight:700;margin-bottom:8px">Preparing receipt...</div><div style="color:#64748b">Saving sale and building document. This should only take a moment.</div></body></html>');
+        reservedPrintWindow.document.close();
+      } catch {}
+    } else {
+      toast.show('Browser blocked the print window. Please allow pop-ups for this site.', { type: 'warning' });
+    }
     try {
       const saved = await createSale({
         ...buildDiscountCompletionPayload(row),
@@ -938,9 +1000,12 @@ function PosPage({ mode = 'retail' }) {
       };
       dispatch(recordSale(saleForPrint));
       setDiscountRequests((current) => current.filter((item) => String(item?._id || '') !== id));
-      const shouldPrint = await confirmDialog('Print receipt now?');
-      if (shouldPrint) {
-        printReceiptHtml(buildBrandedReceiptHtml({ settings, sale: saleForPrint }));
+      const receiptHtml = buildBrandedReceiptHtml({ settings, sale: saleForPrint });
+      if (reservedPrintWindow && !reservedPrintWindow.closed) {
+        printWindowUsed = true;
+        printReceiptHtml(receiptHtml, reservedPrintWindow);
+      } else {
+        printReceiptHtml(receiptHtml);
       }
       await refreshDiscountRequests();
       void refreshAffectedProducts(dispatch, Array.from(new Set((row?.salePayload?.items || []).map((item) => item.productId).filter(Boolean))));
@@ -948,6 +1013,9 @@ function PosPage({ mode = 'retail' }) {
     } catch (e) {
       toast.show(String(e?.message || 'Failed to complete approved discounted sale'), { type: 'error' });
     } finally {
+      if (!printWindowUsed && reservedPrintWindow && !reservedPrintWindow.closed) {
+        try { reservedPrintWindow.close(); } catch {}
+      }
       setDiscountWorkingId('');
     }
   }
@@ -1128,6 +1196,7 @@ function PosPage({ mode = 'retail' }) {
   }, [activeBranchId, inventoryType]);
 
   const subtotal = cart.items.reduce((sum, i) => sum + (i.price || 0) * (i.quantity || 1), 0);
+  const groupedCartItems = useMemo(() => groupCartItemsForDisplay(cart.items), [cart.items]);
   const serializedPickerCartItems = useMemo(() => {
     if (!serializedPickerProduct) return [];
     const productId = String(serializedPickerProduct.productId || serializedPickerProduct.id || '').trim();
@@ -2511,7 +2580,7 @@ function PosPage({ mode = 'retail' }) {
                         </div>
                         <div className="pos-floating-item-actions">
                           <button className="btn btn-primary btn-compact" onClick={() => completeApprovedDiscountRequest(row)} disabled={(!isApproved && !isRejected) || isWorking}>
-                            {isWorking ? t('Processing...') : t('Complete')}
+                            {isWorking ? t('Processing...') : t('Complete & Print')}
                           </button>
                           {(isApproved || isRejected) ? (
                             <button className="btn btn-compact" onClick={() => cancelDiscountRequest(row)} disabled={isWorking}>
@@ -2620,21 +2689,52 @@ function PosPage({ mode = 'retail' }) {
         </div>
         <div className="pos-cart-scroll">
         <ul className="cart-list">
-          {cart.items.map(item => (
-            <li key={item.id} className="cart-item">
+          {groupedCartItems.map((group) => {
+            const item = group.representative;
+            return (
+            <li key={group.key} className="cart-item">
               <div className="cart-title">
                 <div style={{ paddingRight: 28 }}>{item.name}</div>
                 {!isWarehouse && item.brand ? <small style={{ color: '#64748b' }}>{item.brand}</small> : null}
                 {!isWarehouse && item.spec ? <small style={{ color: '#64748b' }}>{item.spec}</small> : null}
                 {!isWarehouse && item.sku ? <small>{item.sku}</small> : null}
-                {item.imei ? <small style={{ color: '#1d4ed8', fontWeight: 700 }}>IMEI: {item.imei}</small> : null}
-                {item.serialNumber ? <small style={{ color: '#64748b' }}>Serial: {item.serialNumber}</small> : null}
+                {group.serialized ? (
+                  <div className="cart-item-serials">
+                    {group.items.map((unit) => {
+                      const serialParts = cartLineSerialParts(unit);
+                      return (
+                        <div key={unit.id} className="cart-item-serial-row">
+                          {serialParts.imei ? <small style={{ color: '#1d4ed8', fontWeight: 700 }}>IMEI: {serialParts.imei}</small> : null}
+                          {serialParts.serial ? <small>Serial: {serialParts.serial}</small> : null}
+                          {group.items.length > 1 ? (
+                            <button
+                              type="button"
+                              className="cart-item-serial-remove"
+                              onClick={() => {
+                                void removeSerializedUnitFromCart(unit);
+                              }}
+                              aria-label={t('Remove')}
+                              title={t('Remove')}
+                            >
+                              x
+                            </button>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <>
+                    {item.imei ? <small style={{ color: '#1d4ed8', fontWeight: 700 }}>IMEI: {item.imei}</small> : null}
+                    {item.serialNumber && item.serialNumber !== item.imei ? <small>Serial: {item.serialNumber}</small> : null}
+                  </>
+                )}
               </div>
               <button
                 className="pos-cart-remove-btn"
                 onClick={() => {
-                  removeItemFromCart(item.id);
-                  void releaseSerializedCartItems([item]);
+                  group.items.forEach((unit) => removeItemFromCart(unit.id));
+                  void releaseSerializedCartItems(group.items);
                 }}
                 aria-label={t('Remove')}
                 title={t('Remove')}
@@ -2644,13 +2744,13 @@ function PosPage({ mode = 'retail' }) {
               <input
                 type="number"
                 min="1"
-                value={item.quantity}
+                value={group.quantity}
                 onChange={e => {
-                  if (item.unitId) return;
+                  if (group.serialized) return;
                   setCartItemQuantity(item.id, Number(e.target.value));
                 }}
                 className="input pos-cart-qty"
-                disabled={!!item.unitId}
+                disabled={group.serialized}
               />
               <div className="pos-cart-price-box">
                 <select
@@ -2659,7 +2759,9 @@ function PosPage({ mode = 'retail' }) {
                   onChange={e => {
                     const tier = e.target.value;
                     const nextPrice = Number(item.prices?.[tier] ?? item.price ?? 0);
-                    setCartItemPricing({ id: item.id, priceTier: tier, price: nextPrice });
+                    group.items.forEach((unit) => {
+                      setCartItemPricing({ id: unit.id, priceTier: tier, price: nextPrice });
+                    });
                   }}
                   disabled={priceTierOptions.length <= 1}
                 >
@@ -2669,10 +2771,11 @@ function PosPage({ mode = 'retail' }) {
                 </select>
               </div>
               <div className="pos-cart-total">
-                <strong>{formatCurrency((Number(item.price) || 0) * (Number(item.quantity) || 0), settings)}</strong>
+                <strong>{formatCurrency((Number(item.price) || 0) * (Number(group.quantity) || 0), settings)}</strong>
               </div>
             </li>
-          ))}
+            );
+          })}
         </ul>
         <div className="totals-box">
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

@@ -22,6 +22,7 @@ import { useAppLanguage } from '../utils/localization';
 import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
 import { canCompleteManagerStageAsActor, directorApproverNameFromRow } from '../utils/approvalAuth';
 import { normalizeBranchType } from '../utils/branchTypes';
+import { clampAvailableQuantity, getProductStockAtBranch, getReservedLineQuantity } from '../utils/branchStock';
 
 function normalizeTransferReviewStatus(value) {
   return String(value || '').toLowerCase() === 'cancelled' ? 'cancelled' : 'accepted';
@@ -247,7 +248,22 @@ function TransfersPage() {
     });
   }, [productQuery, products]);
   const selectedTrackType = String(selectedProduct?.trackType || 'quantity');
+  const availableStock = getProductStockAtBranch(selectedProduct, {
+    variantId,
+    branchId: fromId,
+    inventoryType: inventoryTypeForBranch(fromId)
+  });
+  const remainingAvailable = Math.max(0, availableStock - getReservedLineQuantity(items, productId, variantId));
+  const quantityIsCapped = selectedTrackType !== 'serialized';
+  const quantityDisabled = selectedTrackType === 'serialized' || remainingAvailable <= 0;
   const selectedSerializedUnits = useMemo(() => serializedUnits.filter(unit => unit.selected).map(unit => ({ unitId: unit._id, imei: unit.imei || '', serialNumber: unit.serialNumber || '' })), [serializedUnits]);
+  useEffect(() => {
+    if (!quantityIsCapped) return;
+    setQty((prev) => {
+      if (remainingAvailable > 0 && Number(prev || 0) < 1) return 1;
+      return clampAvailableQuantity(prev, remainingAvailable);
+    });
+  }, [quantityIsCapped, remainingAvailable]);
   useEffect(() => {
     if (!openModal) return;
     setProductId('');
@@ -307,6 +323,10 @@ function TransfersPage() {
     const nextItems = items.length > 0 ? items : null;
     if (!nextItems && (!productId || !fromId || !toId || fromId === toId || qty <= 0)) {
       toast.show(t('Check product, branches and quantity'), { type: 'error' });
+      return;
+    }
+    if (!nextItems && quantityIsCapped && Number(qty) > remainingAvailable) {
+      toast.show(t('Quantity cannot exceed available stock ({count})', { count: remainingAvailable }), { type: 'error' });
       return;
     }
     if (!nextItems && selectedTrackType === 'serialized' && serializedUnits.filter(unit => unit.selected).length !== Number(qty)) {
@@ -427,6 +447,10 @@ function TransfersPage() {
   function addCurrentItem() {
     if (!productId || !fromId || !toId || fromId === toId || qty <= 0) {
       toast.show(t('Check product, branches and quantity'), { type: 'error' });
+      return;
+    }
+    if (quantityIsCapped && Number(qty) > remainingAvailable) {
+      toast.show(t('Quantity cannot exceed available stock ({count})', { count: remainingAvailable }), { type: 'error' });
       return;
     }
     if (selectedTrackType === 'serialized' && serializedUnits.filter(unit => unit.selected).length !== Number(qty)) {
@@ -875,7 +899,29 @@ function TransfersPage() {
             </label>
             <label>
               <div className="field-label">{t('Quantity')}</div>
-              <input className="input" type="number" min="1" value={qty} onChange={e => setQty(Number(e.target.value))} disabled={selectedTrackType === 'serialized'} />
+              <input
+                className="input"
+                type="number"
+                min={quantityDisabled ? '0' : '1'}
+                max={quantityIsCapped ? String(remainingAvailable) : undefined}
+                value={qty}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  if (quantityIsCapped) {
+                    setQty(clampAvailableQuantity(next, remainingAvailable));
+                    return;
+                  }
+                  setQty(Number.isFinite(next) ? Math.max(0, next) : 0);
+                }}
+                disabled={quantityDisabled}
+              />
+              {quantityIsCapped ? (
+                <div style={{ marginTop: 4, color: remainingAvailable > 0 ? '#64748b' : '#b91c1c', fontSize: 12 }}>
+                  {remainingAvailable > 0
+                    ? t('Available: {count}', { count: remainingAvailable })
+                    : (selectedProduct ? t('No stock available at this branch') : t('Select a product to enter quantity'))}
+                </div>
+              ) : null}
             </label>
             <label style={{ gridColumn: '1 / -1' }}>
               <div className="field-label">{t('Transaction Title')}</div>

@@ -3339,6 +3339,31 @@ html, body, #root {
 .cart-item small {
   color: #64748b;
 }
+.cart-item-serials {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+.cart-item-serial-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.cart-item-serial-remove {
+  border: 0;
+  background: transparent;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0 4px;
+}
+.cart-item-serial-remove:hover {
+  color: #ef4444;
+}
 .pos-cart-remove-btn {
   position: absolute;
   top: 6px;

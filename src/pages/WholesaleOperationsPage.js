@@ -15,6 +15,7 @@ import { ensureSupplierByName } from '../utils/suppliers';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
 import { filterBranchesByType, formatBranchInventoryLabel, groupBranchesByInventoryType, normalizeBranchType } from '../utils/branchTypes';
+import { clampAvailableQuantity, getProductStockAtBranch, getReservedLineQuantity } from '../utils/branchStock';
 import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
 import { canCompleteManagerStageAsActor, directorApproverNameFromRow } from '../utils/approvalAuth';
 
@@ -314,6 +315,19 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     return { imei: parts[0] || '', serialNumber: parts[1] || parts[0] || '' };
   }), [serializedEntriesText]);
   const usesSerializedSelection = selectedTrackType === 'serialized' && (operationType === 'transfer' || (operationType === 'adjustment' && adjustmentType === 'decrease'));
+  const sourceBranchId = operationType === 'transfer' ? fromBranchId : branchId;
+  const sourceInventoryType = operationType === 'transfer'
+    ? inventoryTypeForBranch(fromBranchId)
+    : inventoryTypeForBranch(branchId) || normalizedArea;
+  const quantityIsCapped = selectedTrackType !== 'serialized'
+    && (operationType === 'transfer' || (operationType === 'adjustment' && adjustmentType === 'decrease'));
+  const availableStock = getProductStockAtBranch(selectedProduct, {
+    variantId,
+    branchId: sourceBranchId,
+    inventoryType: sourceInventoryType
+  });
+  const remainingAvailable = Math.max(0, availableStock - getReservedLineQuantity(items, productId, variantId));
+  const quantityDisabled = selectedTrackType === 'serialized' || (quantityIsCapped && remainingAvailable <= 0);
 
   useEffect(() => {
     if (!isCreateOpen) return;
@@ -328,6 +342,14 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
       setQty(Math.max(0, serializedEntries.length));
     }
   }, [selectedTrackType, serializedEntries.length, usesSerializedSelection]);
+
+  useEffect(() => {
+    if (!quantityIsCapped || selectedTrackType === 'serialized') return;
+    setQty((prev) => {
+      if (remainingAvailable > 0 && Number(prev || 0) < 1) return 1;
+      return clampAvailableQuantity(prev, remainingAvailable);
+    });
+  }, [quantityIsCapped, remainingAvailable, selectedTrackType]);
 
   useEffect(() => {
     defaultBranchIdRef.current = scopedBranchOptions[0]?.id || '';
@@ -778,6 +800,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
       toast.show(t('Quantity must be greater than zero'), { type: 'error' });
       return;
     }
+    if (quantityIsCapped && Number(qty) > remainingAvailable) {
+      toast.show(t('Quantity cannot exceed available stock ({count})', { count: remainingAvailable }), { type: 'error' });
+      return;
+    }
     if (usesSerializedSelection && serializedUnits.filter(unit => unit.selected).length !== Number(qty)) {
       toast.show(operationType === 'transfer' ? t('Select the exact serialized units to transfer') : t('Select the exact serialized units to remove'), { type: 'error' });
       return;
@@ -831,6 +857,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     }
     if (!nextItems && (!Number.isFinite(Number(qty)) || Number(qty) <= 0)) {
       toast.show(t('Quantity must be greater than zero'), { type: 'error' });
+      return;
+    }
+    if (!nextItems && quantityIsCapped && Number(qty) > remainingAvailable) {
+      toast.show(t('Quantity cannot exceed available stock ({count})', { count: remainingAvailable }), { type: 'error' });
       return;
     }
     if (!nextItems && !reason.trim()) {
@@ -1202,7 +1232,29 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
 
             <label>
               <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('Quantity')}</div>
-              <input className="input" type="number" min="1" value={qty} onChange={e => setQty(Number(e.target.value))} disabled={selectedTrackType === 'serialized'} />
+              <input
+                className="input"
+                type="number"
+                min={quantityDisabled ? '0' : '1'}
+                max={quantityIsCapped ? String(remainingAvailable) : undefined}
+                value={qty}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  if (quantityIsCapped) {
+                    setQty(clampAvailableQuantity(next, remainingAvailable));
+                    return;
+                  }
+                  setQty(Number.isFinite(next) ? Math.max(0, next) : 0);
+                }}
+                disabled={quantityDisabled}
+              />
+              {quantityIsCapped ? (
+                <div style={{ marginTop: 4, color: remainingAvailable > 0 ? '#64748b' : '#b91c1c', fontSize: 12 }}>
+                  {remainingAvailable > 0
+                    ? t('Available: {count}', { count: remainingAvailable })
+                    : (selectedProduct ? t('No stock available at this branch') : t('Select a product to enter quantity'))}
+                </div>
+              ) : null}
             </label>
 
             {usesSerializedSelection && (

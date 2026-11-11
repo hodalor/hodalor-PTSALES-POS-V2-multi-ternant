@@ -21,6 +21,7 @@ import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
 import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
 import { canCompleteManagerStageAsActor, directorApproverNameFromRow } from '../utils/approvalAuth';
+import { clampAvailableQuantity, getProductStockAtBranch, getReservedLineQuantity } from '../utils/branchStock';
 
 function inventoryTypeForBranch(branches, targetBranchId) {
   const branch = Array.isArray(branches)
@@ -158,6 +159,21 @@ function AdjustmentsPage() {
     const hasSelectedRetailBranch = retailBranches.some((branch) => String(branch.id) === String(branchId));
     return hasSelectedRetailBranch ? String(branchId || '') : String(retailBranches[0]?.id || '');
   }, [branchId, retailBranches]);
+  const availableStock = getProductStockAtBranch(selectedProduct, {
+    variantId,
+    branchId: createBranchId,
+    inventoryType: inventoryTypeForBranch(branches, createBranchId)
+  });
+  const remainingAvailable = Math.max(0, availableStock - getReservedLineQuantity(items, productId, variantId));
+  const quantityIsCapped = selectedTrackType !== 'serialized' && adjustmentType === 'decrease';
+  const quantityDisabled = selectedTrackType === 'serialized' || (quantityIsCapped && remainingAvailable <= 0);
+  useEffect(() => {
+    if (!quantityIsCapped) return;
+    setQuantity((prev) => {
+      if (remainingAvailable > 0 && Number(prev || 0) < 1) return 1;
+      return clampAvailableQuantity(prev, remainingAvailable);
+    });
+  }, [quantityIsCapped, remainingAvailable]);
   useEffect(() => { setFBranch(currentBranchId); }, [currentBranchId]);
   useEffect(() => { if (roleLower !== 'superadmin' && roleLower !== 'admin') setFBranch(branchId); }, [roleLower, branchId]);
   useEffect(() => {
@@ -390,20 +406,6 @@ function AdjustmentsPage() {
       toast.show(t('Not authorized to adjust stock'), { type: 'error' });
       return false;
     }
-    const current = (() => {
-      if (!selectedProduct) return 0;
-      const inventoryType = inventoryTypeForBranch(branches, createBranchId);
-      const stockField = inventoryType === 'warehouse'
-        ? 'warehouseStockByBranch'
-        : inventoryType === 'wholesale'
-          ? 'wholesaleStockByBranch'
-          : 'stockByBranch';
-      if (variantId) {
-        const v = (selectedProduct.variants || []).find(vv => vv.id === variantId);
-        return Number((v?.[stockField] || {})[createBranchId] || 0);
-      }
-      return Number((selectedProduct?.[stockField] || {})[createBranchId] || 0);
-    })();
     const nextItems = items.length > 0 ? items : null;
     const clientId = `adjust-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const payload = {
@@ -459,8 +461,8 @@ function AdjustmentsPage() {
     }
     if (!nextItems && Number(effectiveDelta) < 0) {
       const toRemove = Math.abs(Number(effectiveDelta));
-      if (toRemove > current) {
-        toast.show(t('Cannot remove more than available stock ({count})', { count: current }), { type: 'error' });
+      if (toRemove > remainingAvailable) {
+        toast.show(t('Cannot remove more than available stock ({count})', { count: remainingAvailable }), { type: 'error' });
         return false;
       }
     }
@@ -515,6 +517,10 @@ function AdjustmentsPage() {
     }
     if ((!Number.isFinite(Number(quantity)) || Number(quantity) <= 0) && selectedTrackType !== 'serialized') {
       toast.show(t('Quantity must be greater than zero'), { type: 'error' });
+      return;
+    }
+    if (quantityIsCapped && Number(quantity) > remainingAvailable) {
+      toast.show(t('Quantity cannot exceed available stock ({count})', { count: remainingAvailable }), { type: 'error' });
       return;
     }
     if (!createBranchId) {
@@ -648,12 +654,28 @@ function AdjustmentsPage() {
                   <input
                     className="input"
                     type="number"
-                    min="0"
+                    min={quantityDisabled ? '0' : '1'}
+                    max={quantityIsCapped ? String(remainingAvailable) : undefined}
                     step="1"
                     value={quantity}
-                    onChange={e => setQuantity(Number(e.target.value))}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      if (quantityIsCapped) {
+                        setQuantity(clampAvailableQuantity(next, remainingAvailable));
+                        return;
+                      }
+                      setQuantity(Number.isFinite(next) ? Math.max(0, next) : 0);
+                    }}
                     placeholder={t('Quantity')}
+                    disabled={quantityDisabled}
                   />
+                  {quantityIsCapped ? (
+                    <div style={{ marginTop: 4, color: remainingAvailable > 0 ? '#64748b' : '#b91c1c', fontSize: 12 }}>
+                      {remainingAvailable > 0
+                        ? t('Available: {count}', { count: remainingAvailable })
+                        : (selectedProduct ? t('No stock available at this branch') : t('Select a product to enter quantity'))}
+                    </div>
+                  ) : null}
                 </label>
                 <label>
                   <div className="field-label">{t('Adjustment Type')}</div>
