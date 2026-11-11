@@ -39,6 +39,77 @@ function actorLabel(name, role) {
   return person || personRole || '';
 }
 
+function addUniqueSerial(serials, seen, value) {
+  const text = String(value || '').trim();
+  if (!text || seen.has(text)) return;
+  seen.add(text);
+  serials.push(text);
+}
+
+export function collectItemSerials(item = {}) {
+  const seen = new Set();
+  const serials = [];
+  (Array.isArray(item?.soldUnits) ? item.soldUnits : []).forEach((unit) => {
+    addUniqueSerial(serials, seen, unit?.imei || unit?.serialNumber || unit?.unitId);
+  });
+  (Array.isArray(item?.soldUnitIds) ? item.soldUnitIds : []).forEach((unitId) => addUniqueSerial(serials, seen, unitId));
+  addUniqueSerial(serials, seen, item?.imei);
+  addUniqueSerial(serials, seen, item?.serialNumber);
+  return serials;
+}
+
+export function receiptItemGroupKey(item = {}) {
+  const productId = String(item?.productId || '').trim();
+  const variantId = String(item?.variantId || '').trim();
+  const sku = String(item?.sku || '').trim();
+  const name = String(item?.name || '').trim().toLowerCase();
+  const spec = String(item?.spec || '').trim().toLowerCase();
+  const brand = String(item?.brand || '').trim().toLowerCase();
+  const price = Number(item?.price ?? item?.rate ?? 0);
+  if (productId) return `id:${productId}|v:${variantId}|p:${price}`;
+  if (sku) return `sku:${sku}|p:${price}`;
+  return `n:${name}|s:${spec}|b:${brand}|p:${price}`;
+}
+
+export function groupReceiptItems(items = []) {
+  const groups = [];
+  const indexByKey = new Map();
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const key = receiptItemGroupKey(item);
+    const qty = Number(item?.qty || 0);
+    const unitPrice = Number(item?.price ?? item?.rate ?? 0);
+    const lineTotal = unitPrice * (qty || 1);
+    const serials = collectItemSerials(item);
+    const existingIndex = indexByKey.get(key);
+    if (existingIndex == null) {
+      indexByKey.set(key, groups.length);
+      groups.push({
+        ...item,
+        qty,
+        price: unitPrice,
+        rate: Number(item?.rate ?? unitPrice),
+        lineTotal,
+        serials: [...serials],
+        soldUnits: Array.isArray(item?.soldUnits) ? [...item.soldUnits] : []
+      });
+      return;
+    }
+    const grouped = groups[existingIndex];
+    grouped.qty += qty;
+    grouped.lineTotal += lineTotal;
+    serials.forEach((serial) => {
+      if (!grouped.serials.includes(serial)) grouped.serials.push(serial);
+    });
+    if (Array.isArray(item?.soldUnits) && item.soldUnits.length) {
+      grouped.soldUnits = [...(grouped.soldUnits || []), ...item.soldUnits];
+    }
+  });
+  return groups.map((item) => ({
+    ...item,
+    qty: item.serials.length > item.qty ? item.serials.length : item.qty
+  }));
+}
+
 function getReceiptCreditLabel(sale, t) {
   const packageName = String(sale?.creditPackageName || sale?.creditSale?.creditPackageName || '').trim();
   if (packageName) return packageName;
@@ -170,10 +241,13 @@ export function printReceiptHtml(html, targetWindow = null) {
 export function buildBrandedReceiptHtml({ settings, sale }) {
   const t = translateDocumentLanguage;
   const formatSerializedLine = (item) => {
-    const units = Array.isArray(item?.soldUnits) ? item.soldUnits : [];
-    if (units.length === 0) return '';
-    return `<div class="small muted">${units.map(unit => unit.imei || unit.serialNumber || unit.unitId).filter(Boolean).join(', ')}</div>`;
+    const serials = Array.isArray(item?.serials) && item.serials.length
+      ? item.serials
+      : collectItemSerials(item);
+    if (serials.length === 0) return '';
+    return serials.map((serial) => `<div class="small muted">${escapeHtml(serial)}</div>`).join('');
   };
+  const receiptItems = groupReceiptItems(sale.items || []);
   const logoSrc = settings?.clientLogoUrl || settings?.receiptLogoUrl || '/clientlogo512.png';
   const branch = sale.branchName || sale.branchId || '-';
   const phone = settings?.businessPhone || '';
@@ -333,10 +407,10 @@ export function buildBrandedReceiptHtml({ settings, sale }) {
     <div class="title">${t('Items').toUpperCase()}</div>
     <table>
       <tbody>
-        ${sale.items.map(it => `
+        ${receiptItems.map(it => `
           <tr class="item-row">
             <td>${it.name}${it.spec ? ` [${it.spec}]` : ''} ${it.qty ? `x${it.qty}` : ''}${formatSerializedLine(it)}</td>
-            <td class="right">${formatCurrency((Number(it.price)||0) * (Number(it.qty)||1), settings)}</td>
+            <td class="right">${formatCurrency(Number(it.lineTotal != null ? it.lineTotal : ((Number(it.price)||0) * (Number(it.qty)||1))), settings)}</td>
           </tr>`).join('')}
         <tr><td class="muted">${t('Subtotal')}</td><td class="right">${formatCurrency(sale.subtotal || 0, settings)}</td></tr>
         <tr><td class="muted">${t('Discount')}</td><td class="right">-${formatCurrency(sale.discount || 0, settings)}</td></tr>

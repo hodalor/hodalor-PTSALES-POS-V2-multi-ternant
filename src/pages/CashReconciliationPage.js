@@ -9,6 +9,7 @@ import { approveApproval, rejectApproval } from '../api/approvals';
 import { createCashReconciliation, getAccountDepositTotals, getCashReconciliationSummary, listCashReconciliationBacklog, listCashReconciliations } from '../api/cashReconciliations';
 import { listReconciliationAccounts } from '../api/reconciliationAccounts';
 import LoadingDots from '../components/LoadingDots';
+import { canCompleteManagerStageAsActor, directorApproverNameFromRow } from '../utils/approvalAuth';
 
 const PAYMENT_METHOD_OPTIONS = ['cash', 'card', 'mobile', 'wallet', 'bank', 'other'];
 const PROOF_MAX_DIMENSION = 1600;
@@ -111,6 +112,17 @@ function CashReconciliationPage() {
   const canApproveDirector = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('approve_finance_reconciliation_director');
   const canApproveManager = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('approve_finance_reconciliation_manager');
   const canApproveAnything = canApproveDirector || canApproveManager;
+  const canActOnReconRow = (row = {}) => {
+    const status = String(row?.status || '');
+    if (status === 'pending_director') return canApproveDirector;
+    if (status === 'pending_manager') {
+      return canApproveManager && canCompleteManagerStageAsActor(
+        { name: auth.user?.name, role: auth.role },
+        directorApproverNameFromRow(row)
+      );
+    }
+    return false;
+  };
   const [tab, setTab] = useState('submit');
   const [filters, setFilters] = useState(() => ({
     from: monthStartIso(),
@@ -422,12 +434,7 @@ function CashReconciliationPage() {
     }
   }
 
-  const approvalRows = useMemo(() => records.filter((row) => {
-    const status = String(row.status || '');
-    if (status === 'pending_director') return canApproveDirector;
-    if (status === 'pending_manager') return canApproveManager;
-    return false;
-  }), [canApproveDirector, canApproveManager, records]);
+  const approvalRows = useMemo(() => records.filter((row) => canActOnReconRow(row)), [auth.role, auth.user?.name, canApproveDirector, canApproveManager, records]);
   const summaryCards = useMemo(() => ([
     {
       key: 'deposited',
@@ -686,7 +693,7 @@ function CashReconciliationPage() {
                       })()}
                     </td>
                     <td>
-                      {(row.status === 'pending_director' && canApproveDirector) || (row.status === 'pending_manager' && canApproveManager) ? (
+                      {canActOnReconRow(row) ? (
                         <div className="approval-row-actions">
                           <button className="btn btn-primary" onClick={(e) => { e.stopPropagation(); onApproveRecord(row); }} disabled={workingApprovalId === row.approvalId}>
                             {workingApprovalId === row.approvalId ? 'Working…' : 'Approve'}
@@ -903,7 +910,7 @@ function CashReconciliationPage() {
           footer={
             <>
               <button className="btn" onClick={() => setApprovalDetail(null)}>Close</button>
-              {(((approvalDetail.status === 'pending_director') && canApproveDirector) || ((approvalDetail.status === 'pending_manager') && canApproveManager)) && (
+              {canActOnReconRow(approvalDetail) && (
                 <>
                   <button className="btn btn-primary" onClick={() => onApproveRecord(approvalDetail)} disabled={workingApprovalId === approvalDetail.approvalId}>
                     {workingApprovalId === approvalDetail.approvalId ? 'Working…' : 'Approve'}

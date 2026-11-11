@@ -13,6 +13,7 @@ import * as authApi from '../api/auth';
 import { resetTenantAppState } from '../store';
 import { useLanguage } from './LanguageProvider';
 import Modal from './Modal';
+import { claimRenewalVerify, finishRenewalVerify, releaseRenewalVerify } from '../utils/renewalVerifyLock';
 
 function formatPaymentCurrency(amount, info = {}) {
   if (amount == null) return '';
@@ -167,11 +168,13 @@ function Header({ onToggleSidebar }) {
         ? (params.get('reference') || params.get('trxref') || '')
         : (params.get('TransactionToken') || params.get('TransID') || '');
     if (!txRef || !transactionToken) return;
+    const storedTenantId = localStorage.getItem('ptSales:renewalPaymentTenantId') || '';
+    if (!storedTenantId) return;
+    const lockKey = `${storedTenantId}:${txRef}`;
+    if (!claimRenewalVerify(lockKey)) return;
     let ignore = false;
     (async () => {
       try {
-        const storedTenantId = localStorage.getItem('ptSales:renewalPaymentTenantId') || '';
-        if (!storedTenantId) return;
         const result = await authApi.verifyRenewalPayment({
           tenantId: storedTenantId,
           provider: storedProvider,
@@ -180,6 +183,10 @@ function Header({ onToggleSidebar }) {
           reference: storedProvider === 'paystack' ? transactionToken : '',
           txRef: storedProvider === 'paypal' ? storedTxRef : txRef
         });
+        try { localStorage.removeItem('ptSales:renewalPaymentTenantId'); } catch {}
+        try { localStorage.removeItem('ptSales:renewalPaymentProvider'); } catch {}
+        try { localStorage.removeItem('ptSales:renewalPaymentTxRef'); } catch {}
+        finishRenewalVerify(lockKey);
         if (ignore) return;
         dispatch(setAllSettings({
           ...settings,
@@ -194,12 +201,10 @@ function Header({ onToggleSidebar }) {
           expired: false,
           subscriptionAmount: result?.tenant?.subscriptionAmount ?? prev.subscriptionAmount
         }) : prev);
-        try { localStorage.removeItem('ptSales:renewalPaymentTenantId'); } catch {}
-        try { localStorage.removeItem('ptSales:renewalPaymentProvider'); } catch {}
-        try { localStorage.removeItem('ptSales:renewalPaymentTxRef'); } catch {}
         navigate(location.pathname, { replace: true });
         toast.show(t('Payment verified. Subscription days were extended successfully.'), { type: 'success' });
       } catch (e) {
+        releaseRenewalVerify(lockKey);
         if (!ignore) toast.show(String(e?.message || t('Failed to verify payment')), { type: 'error' });
       }
     })();

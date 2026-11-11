@@ -9,6 +9,7 @@ import Modal from '../components/Modal';
 import { confirmDialog, promptDialog } from '../utils/dialogs';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import LoadingDots from '../components/LoadingDots';
+import { canCompleteManagerStageAsActor, directorApproverNameFromRow } from '../utils/approvalAuth';
 
 function formatAdjustmentTypeLabel(value) {
   return String(value || '').toLowerCase() === 'decrease' ? 'Decrease' : 'Increase';
@@ -280,7 +281,10 @@ function WarehouseApprovalsPage() {
 
   function canAct(row) {
     return (String(row.status || '') === 'pending_director' && canDirectorApprove)
-      || (String(row.status || '') === 'pending_manager' && canManagerApprove);
+      || (String(row.status || '') === 'pending_manager' && canManagerApprove && canCompleteManagerStageAsActor(
+        { name: auth.user?.name, role: auth.role },
+        directorApproverNameFromRow(row)
+      ));
   }
 
   async function removeRequest(row) {

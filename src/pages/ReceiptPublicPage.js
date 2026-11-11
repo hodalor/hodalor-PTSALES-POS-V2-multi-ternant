@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useSelector } from 'react-redux';
 import { useParams, useLocation } from 'react-router-dom';
-import { buildBrandedReceiptHtml, printReceiptHtml } from '../utils/print';
+import { buildBrandedReceiptHtml, groupReceiptItems, printReceiptHtml } from '../utils/print';
 import { formatCurrency } from '../utils/currency';
 
 function decodeQueryData(search) {
@@ -55,7 +55,8 @@ export default function ReceiptPublicPage() {
     );
   }
 
-  const qtySum = sale.items.reduce((s, it) => s + (Number(it.qty)||0), 0);
+  const receiptItems = groupReceiptItems(sale.items || []);
+  const qtySum = receiptItems.reduce((s, it) => s + (Number(it.qty)||0), 0);
   const showBranchName = settings?.receiptShowBranchName !== false;
   const showTaxInfo = !!settings?.receiptShowTaxInfo;
 
@@ -81,10 +82,15 @@ export default function ReceiptPublicPage() {
         <hr />
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <tbody>
-            {sale.items.map((it, i) => (
+            {receiptItems.map((it, i) => (
               <tr key={i}>
-                <td>{it.name}{it.spec ? ` [${it.spec}]` : ''} x{it.qty}</td>
-                <td style={{ textAlign: 'right' }}>{formatCurrency((Number(it.price)||0)*(Number(it.qty)||1), settings)}</td>
+                <td>
+                  {it.name}{it.spec ? ` [${it.spec}]` : ''} x{it.qty}
+                  {Array.isArray(it.serials) ? it.serials.map((serial) => (
+                    <div key={serial} style={{ color: '#64748b', fontSize: 12 }}>{serial}</div>
+                  )) : null}
+                </td>
+                <td style={{ textAlign: 'right' }}>{formatCurrency(Number(it.lineTotal != null ? it.lineTotal : ((Number(it.price)||0)*(Number(it.qty)||1))), settings)}</td>
               </tr>
             ))}
             <tr><td style={{ color: '#64748b' }}>Subtotal</td><td style={{ textAlign: 'right' }}>{formatCurrency(sale.subtotal || 0, settings)}</td></tr>

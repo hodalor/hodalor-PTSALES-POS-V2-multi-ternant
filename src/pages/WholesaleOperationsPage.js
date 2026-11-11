@@ -14,8 +14,9 @@ import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { ensureSupplierByName } from '../utils/suppliers';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
-import { filterBranchesByType } from '../utils/branchTypes';
+import { filterBranchesByType, formatBranchInventoryLabel, groupBranchesByInventoryType, normalizeBranchType } from '../utils/branchTypes';
 import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
+import { canCompleteManagerStageAsActor, directorApproverNameFromRow } from '../utils/approvalAuth';
 
 function labelForArea(area, op, t) {
   const prefix = String(area || 'wholesale').toLowerCase() === 'warehouse' ? t('Warehouse') : t('Distribution');
@@ -133,12 +134,6 @@ function computeOperationValue(row = {}) {
   return Number(row?.cost || 0) * Math.max(1, Number(row?.qty || 0));
 }
 
-function formatBranchInventoryLabel(branch = {}) {
-  const branchType = String(branch?.branchType || 'retail').toLowerCase();
-  const inventoryLabel = branchType === 'warehouse' ? 'Warehouse' : branchType === 'wholesale' ? 'Distribution' : 'Retail';
-  return `${branch?.name || branch?.code || branch?.id || 'Branch'} (${inventoryLabel})`;
-}
-
 function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' }) {
   const { t } = useAppLanguage();
   const toast = useToast();
@@ -196,8 +191,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     return map;
   }, [branches]);
   const inventoryTypeForBranch = useCallback((targetBranchId) => {
-    const kind = String(branchTypeById.get(String(targetBranchId || '')) || 'retail').toLowerCase();
-    return kind === 'warehouse' ? 'warehouse' : kind === 'wholesale' ? 'wholesale' : 'retail';
+    return normalizeBranchType(branchTypeById.get(String(targetBranchId || '')) || 'retail');
   }, [branchTypeById]);
 
   const [statusFilter, setStatusFilter] = useState('pending_director');
@@ -269,11 +263,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   }, [operationType, productId, variantId, selectedProduct]);
   const grants = useMemo(() => (Array.isArray(auth.grants) ? auth.grants : []), [auth.grants]);
   const canDirectorApprove = roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'director'
-    || (normalizedArea === 'warehouse' ? grants.includes('approve_warehouse_director') : grants.includes('approve_distribution_director'))
-    || grants.includes('approve_credit_director');
+    || (normalizedArea === 'warehouse' ? grants.includes('approve_warehouse_director') : grants.includes('approve_distribution_director'));
   const canManagerApprove = roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'manager'
     || (normalizedArea === 'warehouse' ? grants.includes('approve_warehouse_manager') : grants.includes('approve_distribution_manager'))
-    || grants.includes('approve_credit_manager');
+    || grants.includes('approve_transfers');
   const canViewCost = roleLower === 'superadmin' || roleLower === 'admin' || grants.includes('view_profit') || grants.includes('view_financials');
   const canCreateRequest = useMemo(() => {
     if (roleLower === 'superadmin' || roleLower === 'admin') return true;
@@ -301,6 +294,14 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const transferToBranchOptions = useMemo(
     () => branchOptions.filter(branch => String(branch.id) !== String(fromBranchId || '')),
     [branchOptions, fromBranchId]
+  );
+  const groupedTransferFromOptions = useMemo(
+    () => groupBranchesByInventoryType(transferFromBranchOptions),
+    [transferFromBranchOptions]
+  );
+  const groupedTransferToOptions = useMemo(
+    () => groupBranchesByInventoryType(transferToBranchOptions),
+    [transferToBranchOptions]
   );
   useEffect(() => {
     if (!isCreateOpen || operationType !== 'transfer') return;
@@ -655,8 +656,12 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
 
   const canActOnSelectedRow = useMemo(() => {
     if (!selectedRow) return false;
+    const canManagerThisRow = canManagerApprove && canCompleteManagerStageAsActor(
+      { name: auth.user?.name, role: auth.role },
+      directorApproverNameFromRow(selectedRow)
+    );
     if (String(selectedRow.approvalMode || '').toLowerCase() === 'workflow') {
-      return (selectedRow.status === 'pending_director' && canDirectorApprove) || (selectedRow.status === 'pending_manager' && canManagerApprove);
+      return (selectedRow.status === 'pending_director' && canDirectorApprove) || (selectedRow.status === 'pending_manager' && canManagerThisRow);
     }
     const sourceBranch = String(selectedRow.from || selectedRow.fromBranchId || '');
     const destinationBranch = String(selectedRow.to || selectedRow.toBranchId || '');
@@ -666,10 +671,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
       return canDirectorApprove && canSeeDirectorStage;
     }
     if (selectedRow.status === 'pending_manager') {
-      return canManagerApprove && canSeeManagerStage;
+      return canManagerThisRow && canSeeManagerStage;
     }
     return false;
-  }, [allowedBranchIds, canDirectorApprove, canManagerApprove, selectedRow]);
+  }, [allowedBranchIds, auth.role, auth.user?.name, canDirectorApprove, canManagerApprove, selectedRow]);
 
   async function reviewAction(type) {
     if (!selectedRow || reviewing) return;
@@ -1056,10 +1061,14 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                   : `${branchNameById.get(row.branchId) || row.branchId || '—'} • ${t(String(row.toInventoryType || row.fromInventoryType || 'wholesale'))}`;
                 const value = computeOperationValue(row);
                 const title = String(row.transactionTitle || '').trim() || (Array.isArray(row.items) && row.items.length > 1 ? `${meta.productName || row.productId} +${row.items.length - 1} ${t('more')}` : (meta.productName || row.productId));
+                const canManagerThisRow = canManagerApprove && canCompleteManagerStageAsActor(
+                  { name: auth.user?.name, role: auth.role },
+                  directorApproverNameFromRow(row)
+                );
                 const rowCanAct = String(row.approvalMode || '').toLowerCase() === 'workflow'
-                  ? ((String(row.status || '') === 'pending_director' && canDirectorApprove) || (String(row.status || '') === 'pending_manager' && canManagerApprove))
+                  ? ((String(row.status || '') === 'pending_director' && canDirectorApprove) || (String(row.status || '') === 'pending_manager' && canManagerThisRow))
                   : (((String(row.status || '') === 'pending_director' || String(row.status || '') === 'pending_approval') && canDirectorApprove && (!allowedBranchIds || allowedBranchIds.has(String(row.from || row.fromBranchId || '')) || allowedBranchIds.has(String(row.to || row.toBranchId || ''))))
-                    || (String(row.status || '') === 'pending_manager' && canManagerApprove && (!allowedBranchIds || allowedBranchIds.has(String(row.to || row.toBranchId || '')))));
+                    || (String(row.status || '') === 'pending_manager' && canManagerThisRow && (!allowedBranchIds || allowedBranchIds.has(String(row.to || row.toBranchId || '')))));
                 return (
                   <tr key={row._id || row.clientId} onClick={() => openReview(row)} style={{ cursor: 'pointer' }}>
                     <td>
@@ -1160,13 +1169,25 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                 <label>
                   <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('From Branch')}</div>
                   <select className="select" value={fromBranchId} onChange={e => setFromBranchId(e.target.value)} style={{ width: '100%' }}>
-                    {transferFromBranchOptions.map(branch => <option key={branch.id} value={branch.id}>{formatBranchInventoryLabel(branch)}</option>)}
+                    {groupedTransferFromOptions.map((group) => (
+                      <optgroup key={group.key} label={t(group.label)}>
+                        {group.items.map((branch) => (
+                          <option key={branch.id} value={branch.id}>{formatBranchInventoryLabel(branch)}</option>
+                        ))}
+                      </optgroup>
+                    ))}
                   </select>
                 </label>
                 <label>
                   <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('To Branch')}</div>
                   <select className="select" value={toBranchId} onChange={e => setToBranchId(e.target.value)} style={{ width: '100%' }}>
-                    {transferToBranchOptions.map(branch => <option key={branch.id} value={branch.id}>{formatBranchInventoryLabel(branch)}</option>)}
+                    {groupedTransferToOptions.map((group) => (
+                      <optgroup key={`to-${group.key}`} label={t(group.label)}>
+                        {group.items.map((branch) => (
+                          <option key={branch.id} value={branch.id}>{formatBranchInventoryLabel(branch)}</option>
+                        ))}
+                      </optgroup>
+                    ))}
                   </select>
                 </label>
               </>

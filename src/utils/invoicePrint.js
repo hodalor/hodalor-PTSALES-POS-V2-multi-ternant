@@ -1,5 +1,6 @@
 import { formatCurrency } from './currency';
 import { translateDocumentLanguage } from './localization';
+import { groupReceiptItems } from './print';
 
 function numToWords(n) {
   const small = ['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
@@ -50,7 +51,7 @@ export function buildInvoiceA4Html({ settings, invoice }) {
   const decl = settings?.invoiceDeclaration || t('We declare that this invoice shows the actual price of the goods described and that all particulars are true and correct.');
   const signLbl = settings?.invoiceSignatoryLabel || t('Authorised Signatory');
   const buyer = invoice.customer || {};
-  const items = invoice.items || [];
+  const items = groupReceiptItems(invoice.items || []);
   const buyerBusinessFields = [
     { label: t('Business Name'), value: buyer.businessName || '' },
     { label: t('TIN/TPIN'), value: buyer.taxId || '' },
@@ -65,11 +66,11 @@ export function buildInvoiceA4Html({ settings, invoice }) {
   const rows = items.map((it, idx) => `
     <tr>
       <td>${idx + 1}</td>
-      <td>${it.name}${it.spec ? ` (${it.spec})` : ''}${Array.isArray(it.soldUnits) && it.soldUnits.length > 0 ? `<div style="font-size:11px;color:#555;margin-top:4px">${it.soldUnits.map(unit => unit.imei || unit.serialNumber || unit.unitId).filter(Boolean).join(', ')}</div>` : ''}</td>
+      <td>${it.name}${it.spec ? ` (${it.spec})` : ''}${Array.isArray(it.serials) && it.serials.length > 0 ? it.serials.map((serial) => `<div style="font-size:11px;color:#555;margin-top:4px">${serial}</div>`).join('') : ''}</td>
       <td class="right">${Number(it.qty || 0)}</td>
       <td class="right">${formatCurrency(it.rate || 0, settings)}</td>
       <td>${it.per || 'pcs'}</td>
-      <td class="right">${formatCurrency((Number(it.qty || 0) * Number(it.rate || 0)), settings)}</td>
+      <td class="right">${formatCurrency(Number(it.lineTotal != null ? it.lineTotal : (Number(it.qty || 0) * Number(it.rate || 0))), settings)}</td>
     </tr>
   `).join('');
   const subtotal = Number(invoice.subtotal || 0);

@@ -11,6 +11,7 @@ import { clearTenantState } from '../store/persist';
 import { resetTenantAppState } from '../store';
 import { useAppLanguage } from '../utils/localization';
 import { resolveDefaultRoute } from '../utils/defaultRoute';
+import { claimRenewalVerify, finishRenewalVerify, releaseRenewalVerify } from '../utils/renewalVerifyLock';
 
 const COUNTRY_LABELS = {
   GH: 'Ghana',
@@ -283,11 +284,13 @@ function LoginPage() {
         ? (params.get('reference') || params.get('trxref') || '')
         : (params.get('TransactionToken') || params.get('TransID') || '');
     if (!txRef || !transactionToken) return;
+    const storedTenantId = localStorage.getItem('ptSales:renewalPaymentTenantId') || '';
+    if (!storedTenantId) return;
+    const lockKey = `${storedTenantId}:${txRef}`;
+    if (!claimRenewalVerify(lockKey)) return;
     let ignore = false;
     (async () => {
       try {
-        const storedTenantId = localStorage.getItem('ptSales:renewalPaymentTenantId') || '';
-        if (!storedTenantId) return;
         const result = await authApi.verifyRenewalPayment({
           tenantId: storedTenantId,
           provider: storedProvider,
@@ -296,18 +299,20 @@ function LoginPage() {
           reference: storedProvider === 'paystack' ? transactionToken : '',
           txRef: storedProvider === 'paypal' ? storedTxRef : txRef
         });
+        try { localStorage.removeItem('ptSales:renewalPaymentTenantId'); } catch {}
+        try { localStorage.removeItem('ptSales:renewalPaymentProvider'); } catch {}
+        try { localStorage.removeItem('ptSales:renewalPaymentTxRef'); } catch {}
+        finishRenewalVerify(lockKey);
         if (ignore) return;
         setPaymentSuccess(result);
         setPaymentOpen(true);
         setPaymentInfo((prev) => prev ? { ...prev, subscriptionAmount: prev.subscriptionAmount } : prev);
         setExpiredTenantNotice('');
         setTenantId(storedTenantId);
-        try { localStorage.removeItem('ptSales:renewalPaymentTenantId'); } catch {}
-        try { localStorage.removeItem('ptSales:renewalPaymentProvider'); } catch {}
-        try { localStorage.removeItem('ptSales:renewalPaymentTxRef'); } catch {}
         navigate('/login', { replace: true });
         toast.show('Payment verified. Activation code is ready and email has been sent.', { type: 'success' });
       } catch (e) {
+        releaseRenewalVerify(lockKey);
         if (!ignore) toast.show(String(e?.message || 'Failed to verify payment'), { type: 'error' });
       }
     })();

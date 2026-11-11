@@ -20,6 +20,8 @@ import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
 import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
+import { canCompleteManagerStageAsActor, directorApproverNameFromRow } from '../utils/approvalAuth';
+import { normalizeBranchType } from '../utils/branchTypes';
 
 function normalizeTransferReviewStatus(value) {
   return String(value || '').toLowerCase() === 'cancelled' ? 'cancelled' : 'accepted';
@@ -148,12 +150,11 @@ function TransfersPage() {
     return map;
   }, [branches]);
   const inventoryTypeForBranch = useCallback((branchId) => {
-    const kind = String(branchTypeById.get(String(branchId)) || 'retail').toLowerCase();
-    return kind === 'warehouse' ? 'warehouse' : kind === 'wholesale' ? 'wholesale' : 'retail';
+    return normalizeBranchType(branchTypeById.get(String(branchId)) || 'retail');
   }, [branchTypeById]);
   const hasWorkflowBranches = useMemo(
     () => branches.some((branch) => {
-      const kind = String(branch?.branchType || 'retail').toLowerCase();
+      const kind = normalizeBranchType(branch?.branchType);
       return kind === 'warehouse' || kind === 'wholesale';
     }),
     [branches]
@@ -168,17 +169,22 @@ function TransfersPage() {
   const canWorkflowDirector = useCallback((row = {}) => {
     if (roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'director') return true;
     const toInventory = String(row?.toInventoryType || inventoryTypeForBranch(row?.to) || 'retail').toLowerCase();
-    if (toInventory === 'warehouse') return has('approve_warehouse_director') || has('approve_transfers');
-    if (toInventory === 'wholesale') return has('approve_distribution_director') || has('approve_transfers');
-    return has('approve_retail_director') || has('approve_transfers');
+    if (toInventory === 'warehouse') return has('approve_warehouse_director');
+    if (toInventory === 'wholesale') return has('approve_distribution_director');
+    return has('approve_retail_director');
   }, [has, inventoryTypeForBranch, roleLower]);
   const canWorkflowManager = useCallback((row = {}) => {
-    if (roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'manager') return true;
+    if (roleLower === 'superadmin' || roleLower === 'admin' || roleLower === 'manager') {
+      return canCompleteManagerStageAsActor({ name: auth.user?.name, role: auth.role }, directorApproverNameFromRow(row));
+    }
     const toInventory = String(row?.toInventoryType || inventoryTypeForBranch(row?.to) || 'retail').toLowerCase();
-    if (toInventory === 'warehouse') return has('approve_warehouse_manager') || has('approve_transfers');
-    if (toInventory === 'wholesale') return has('approve_distribution_manager') || has('approve_transfers');
-    return has('approve_retail_manager') || has('approve_transfers');
-  }, [has, inventoryTypeForBranch, roleLower]);
+    const hasManagerGrant = toInventory === 'warehouse'
+      ? (has('approve_warehouse_manager') || has('approve_transfers'))
+      : toInventory === 'wholesale'
+        ? (has('approve_distribution_manager') || has('approve_transfers'))
+        : (has('approve_retail_manager') || has('approve_transfers'));
+    return hasManagerGrant && canCompleteManagerStageAsActor({ name: auth.user?.name, role: auth.role }, directorApproverNameFromRow(row));
+  }, [auth.role, auth.user?.name, has, inventoryTypeForBranch, roleLower]);
   const canDeleteRecords = roleLower === 'superadmin';
   const [selectedRecordIds, setSelectedRecordIds] = useState([]);
   const [bulkAction, setBulkAction] = useState('');
@@ -190,11 +196,18 @@ function TransfersPage() {
     return branches.filter(b => ids.has(b.id));
   }, [roleLower, assigned, branches]);
   const retailFromBranchOptions = useMemo(
-    () => accessibleBranchOptions.filter((branch) => String(branch.branchType || 'retail').toLowerCase() === 'retail'),
+    () => accessibleBranchOptions.filter((branch) => {
+      const kind = normalizeBranchType(branch?.branchType);
+      return kind === 'retail' || kind === 'warehouse';
+    }),
     [accessibleBranchOptions]
   );
-  const retailToBranchOptions = useMemo(
-    () => branches.filter((branch) => String(branch.branchType || 'retail').toLowerCase() === 'retail'),
+  const destinationBranchOptions = useMemo(
+    () => branches.filter((branch) => String(branch.id) !== String(fromId || '')),
+    [branches, fromId]
+  );
+  const allBranchFilterOptions = useMemo(
+    () => branches.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))),
     [branches]
   );
 
@@ -217,11 +230,11 @@ function TransfersPage() {
     }
   }, [fromId, retailFromBranchOptions]);
   useEffect(() => {
-    if (!retailToBranchOptions.some((branch) => String(branch.id) === String(toId || '')) || String(toId || '') === String(fromId || '')) {
-      const nextTo = retailToBranchOptions.find((branch) => String(branch.id) !== String(fromId || ''))?.id || retailToBranchOptions[0]?.id || '';
+    if (!destinationBranchOptions.some((branch) => String(branch.id) === String(toId || '')) || String(toId || '') === String(fromId || '')) {
+      const nextTo = destinationBranchOptions[0]?.id || '';
       setToId(nextTo);
     }
-  }, [fromId, retailToBranchOptions, toId]);
+  }, [destinationBranchOptions, fromId, toId]);
   const filteredProducts = useMemo(() => {
     const term = String(productQuery || '').trim().toLowerCase();
     if (!term) return [];
@@ -854,11 +867,11 @@ function TransfersPage() {
             )}
             <label>
               <div className="field-label">{t('From Branch')}</div>
-              <BranchSelect value={fromId} onChange={setFromId} overrideBranches={retailFromBranchOptions} enforceRole={false} />
+              <BranchSelect value={fromId} onChange={setFromId} overrideBranches={retailFromBranchOptions} enforceRole={false} groupByType showTypeLabel />
             </label>
             <label>
               <div className="field-label">{t('To Branch')}</div>
-              <BranchSelect value={toId} onChange={setToId} overrideBranches={retailToBranchOptions} enforceRole={false} />
+              <BranchSelect value={toId} onChange={setToId} overrideBranches={destinationBranchOptions} enforceRole={false} groupByType showTypeLabel />
             </label>
             <label>
               <div className="field-label">{t('Quantity')}</div>
@@ -1091,14 +1104,14 @@ function TransfersPage() {
             <div className="field-label">{t('From Branch')}</div>
             <select className="select" value={fFrom} onChange={e => setFFrom(e.target.value)}>
               <option value="">{t('All')}</option>
-              {retailToBranchOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {allBranchFilterOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </label>
           <label>
             <div className="field-label">{t('To Branch')}</div>
             <select className="select" value={fTo} onChange={e => setFTo(e.target.value)}>
               <option value="">{t('All')}</option>
-              {retailToBranchOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+              {allBranchFilterOptions.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </label>
           <label>

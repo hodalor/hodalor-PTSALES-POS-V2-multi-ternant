@@ -33,7 +33,7 @@ function normalizeInventoryType(value = 'retail') {
   const kind = String(value || 'retail').toLowerCase();
   if (kind === 'all') return 'all';
   if (kind === 'warehouse') return 'warehouse';
-  if (kind === 'wholesale') return 'wholesale';
+  if (kind === 'wholesale' || kind === 'distribution') return 'wholesale';
   return 'retail';
 }
 

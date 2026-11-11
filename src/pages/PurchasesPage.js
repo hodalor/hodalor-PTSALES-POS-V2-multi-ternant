@@ -23,6 +23,7 @@ import { ensureSupplierByName } from '../utils/suppliers';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
 import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
+import { canCompleteManagerStageAsActor, directorApproverNameFromRow } from '../utils/approvalAuth';
 
 function PurchasesPage() {
   const products = useSelector(s => s.products.products);
@@ -129,7 +130,7 @@ function PurchasesPage() {
   }
   const canReceive = (['admin','manager','inventory staff'].includes(roleLower)) || has('add_purchases');
   const canApprove = (['admin','manager','director','superadmin'].includes(roleLower)) || has('approve_purchases') || has('approve_retail_director') || has('approve_retail_manager');
-  const canDirectorApprove = (['admin','director','superadmin'].includes(roleLower)) || has('approve_retail_director') || has('approve_purchases');
+  const canDirectorApprove = (['admin','director','superadmin'].includes(roleLower)) || has('approve_retail_director');
   const canManagerApprove = (['admin','manager','superadmin'].includes(roleLower)) || has('approve_retail_manager') || has('approve_purchases');
   const canDeleteRecords = roleLower === 'superadmin';
   const [selectedRecordIds, setSelectedRecordIds] = useState([]);
@@ -493,6 +494,10 @@ function PurchasesPage() {
     if (!canApprove) { toast.show('Not authorized to approve purchases', { type: 'error' }); return; }
     if (String(r.status || '') === 'pending_director' && !canDirectorApprove) { toast.show('Director approval required', { type: 'error' }); return; }
     if (String(r.status || '') === 'pending_manager' && !canManagerApprove) { toast.show('Manager approval required', { type: 'error' }); return; }
+    if (String(r.status || '') === 'pending_manager' && !canCompleteManagerStageAsActor({ name: auth.user?.name, role: auth.role }, directorApproverNameFromRow(r))) {
+      toast.show('Manager approval must be a different user from the director approver', { type: 'error' });
+      return;
+    }
     const id = r._id || r.clientId;
     try {
       const { promptDialog } = await import('../utils/dialogs');
@@ -837,7 +842,7 @@ function PurchasesPage() {
                     <td>
                       {['pending_approval', 'pending_director', 'pending_manager'].includes(String(r.status || '')) ? (
                         <div className="approval-row-actions">
-                          <button className="btn btn-primary btn-compact" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={((String(r.status || '') === 'pending_director' && !canDirectorApprove) || (String(r.status || '') === 'pending_manager' && !canManagerApprove) || busyId === (r._id || r.clientId))}>{busyId === (r._id || r.clientId) ? t('Working…') : String(r.status || '') === 'pending_manager' ? t('Manager Approve') : t('Director Approve')}</button>
+                          <button className="btn btn-primary btn-compact" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={((String(r.status || '') === 'pending_director' && !canDirectorApprove) || (String(r.status || '') === 'pending_manager' && (!canManagerApprove || !canCompleteManagerStageAsActor({ name: auth.user?.name, role: auth.role }, directorApproverNameFromRow(r)))) || busyId === (r._id || r.clientId))}>{busyId === (r._id || r.clientId) ? t('Working…') : String(r.status || '') === 'pending_manager' ? t('Manager Approve') : t('Director Approve')}</button>
                           <button className="btn btn-compact" onClick={(e) => { e.stopPropagation(); reject(r); }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? t('Working…') : t('Rejected')}</button>
                         </div>
                       ) : (

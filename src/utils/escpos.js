@@ -1,5 +1,6 @@
 import { formatCurrency } from './currency';
 import { formatDateTime as formatSharedDateTime } from './dateFormat';
+import { groupReceiptItems } from './print';
 // Very simple ESC/POS generator helpers (text only)
 function formatDateTime(value) {
   return formatSharedDateTime(value, '');
@@ -68,10 +69,13 @@ export function escposReceipt({ header, items, totals, footer, settings, sale })
   if (header?.invoiceSerial) lines.push(text(`INV: ${header.invoiceSerial}`));
   lines.push('--------------------------------');
   const fmt = (v) => formatCurrency(v, settings || {});
-  items.forEach(it => {
+  groupReceiptItems(items).forEach(it => {
     const nm = it.spec ? `${it.name} [${it.spec}]` : it.name;
     lines.push(text(`${truncate(nm, 20)} x${it.qty}`));
-    lines.push(right(`${fmt(it.price * it.qty)}`));
+    lines.push(right(`${fmt(Number(it.lineTotal != null ? it.lineTotal : (it.price * it.qty)))}`));
+    (Array.isArray(it.serials) ? it.serials : []).forEach((serial) => {
+      lines.push(text(String(serial)));
+    });
   });
   lines.push('--------------------------------');
   lines.push(text(`Subtotal    ${fmt(totals.subtotal)}`));

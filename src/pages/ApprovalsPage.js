@@ -10,6 +10,7 @@ import { formatCurrency } from '../utils/currency';
 import { formatDateTime } from '../utils/dateFormat';
 import { getProductDisplayMeta } from '../utils/inventoryFilters';
 import Modal from '../components/Modal';
+import { canCompleteManagerStageAsActor, directorApproverNameFromRow } from '../utils/approvalAuth';
 
 function normalizeBranchIds(value) {
   if (value === 'all') return 'all';
@@ -214,11 +215,11 @@ function ApprovalsPage() {
       if (['superadmin', 'admin', 'director'].includes(roleLower)) return true;
       if (normalizedArea === 'warehouse') return grants.includes('approve_warehouse_director');
       if (normalizedArea === 'distribution') return grants.includes('approve_distribution_director');
-      return grants.includes('approve_retail_director') || grants.includes('approve_transfers');
+      return grants.includes('approve_retail_director');
     }
     if (['superadmin', 'admin', 'manager'].includes(roleLower)) return true;
-    if (normalizedArea === 'warehouse') return grants.includes('approve_warehouse_manager');
-    if (normalizedArea === 'distribution') return grants.includes('approve_distribution_manager');
+    if (normalizedArea === 'warehouse') return grants.includes('approve_warehouse_manager') || grants.includes('approve_transfers');
+    if (normalizedArea === 'distribution') return grants.includes('approve_distribution_manager') || grants.includes('approve_transfers');
     return grants.includes('approve_retail_manager') || grants.includes('approve_transfers');
   }, [grants, roleLower]);
 
@@ -385,7 +386,8 @@ function ApprovalsPage() {
         return ['superadmin', 'admin', 'director'].includes(roleLower) || grants.includes('approve_credit_director');
       }
       if (stage === 'pending_manager') {
-        return ['superadmin', 'admin', 'manager'].includes(roleLower) || grants.includes('approve_credit_manager');
+        const canManager = ['superadmin', 'admin', 'manager'].includes(roleLower) || grants.includes('approve_credit_manager');
+        return canManager && canCompleteManagerStageAsActor({ name: auth.user?.name, role: auth.role }, directorApproverNameFromRow(selectedRow));
       }
       return false;
     }
@@ -397,8 +399,13 @@ function ApprovalsPage() {
       String(selectedRow?.fromInventoryType || '').toLowerCase(),
       String(selectedRow?.toInventoryType || '').toLowerCase()
     ].filter(Boolean).map((area) => area === 'wholesale' ? 'distribution' : area)));
-    return candidateAreas.some((area) => canApproveAreaStage(area, stage === 'pending_director' ? 'director' : 'manager'));
-  }, [canApproveAreaStage, grants, roleLower, selectedRow]);
+    const canStage = candidateAreas.some((area) => canApproveAreaStage(area, stage === 'pending_director' ? 'director' : 'manager'));
+    if (!canStage) return false;
+    if (stage === 'pending_manager') {
+      return canCompleteManagerStageAsActor({ name: auth.user?.name, role: auth.role }, directorApproverNameFromRow(selectedRow));
+    }
+    return true;
+  }, [auth.role, auth.user?.name, canApproveAreaStage, grants, roleLower, selectedRow]);
   const hasManagerTransferReviewChanges = useMemo(() => {
     if (!selectedRow) return false;
     if (String(selectedRow?.referenceModel || '') !== 'WholesaleOperation') return false;

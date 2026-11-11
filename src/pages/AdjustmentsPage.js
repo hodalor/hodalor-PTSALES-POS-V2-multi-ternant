@@ -20,6 +20,7 @@ import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
 import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
+import { canCompleteManagerStageAsActor, directorApproverNameFromRow } from '../utils/approvalAuth';
 
 function inventoryTypeForBranch(branches, targetBranchId) {
   const branch = Array.isArray(branches)
@@ -109,7 +110,7 @@ function AdjustmentsPage() {
   }
   const canAdjust = (['admin','manager','inventory staff'].includes(roleLower)) || has('add_adjustments');
   const canApprove = (['admin','manager','director','superadmin'].includes(roleLower)) || has('approve_adjustments') || has('approve_retail_director') || has('approve_retail_manager');
-  const canDirectorApprove = (['admin','director','superadmin'].includes(roleLower)) || has('approve_retail_director') || has('approve_adjustments');
+  const canDirectorApprove = (['admin','director','superadmin'].includes(roleLower)) || has('approve_retail_director');
   const canManagerApprove = (['admin','manager','superadmin'].includes(roleLower)) || has('approve_retail_manager') || has('approve_adjustments');
   const canDeleteRecords = roleLower === 'superadmin';
   const [selectedRecordIds, setSelectedRecordIds] = useState([]);
@@ -1027,6 +1028,10 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
     if (!canApprove) { toast.show('Not authorized to approve adjustments', { type: 'error' }); return; }
     if (String(r.status || '') === 'pending_director' && !canDirectorApprove) { toast.show('Director approval required', { type: 'error' }); return; }
     if (String(r.status || '') === 'pending_manager' && !canManagerApprove) { toast.show('Manager approval required', { type: 'error' }); return; }
+    if (String(r.status || '') === 'pending_manager' && !canCompleteManagerStageAsActor({ name: auth.user?.name, role: auth.role }, directorApproverNameFromRow(r))) {
+      toast.show('Manager approval must be a different user from the director approver', { type: 'error' });
+      return;
+    }
     const id = r._id || r.clientId;
     try {
       const remark = await promptDialog('Enter remark for approval (required)');
@@ -1186,7 +1191,7 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
                 <td>
                   {['pending_approval', 'pending_director', 'pending_manager'].includes(String(r.status || '')) ? (
                     <div className="approval-row-actions">
-                      <button className="btn btn-primary btn-compact" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={((String(r.status || '') === 'pending_director' && !canDirectorApprove) || (String(r.status || '') === 'pending_manager' && !canManagerApprove) || busyId === (r._id || r.clientId))}>{busyId === (r._id || r.clientId) ? 'Working…' : String(r.status || '') === 'pending_manager' ? 'Manager Approve' : 'Director Approve'}</button>
+                      <button className="btn btn-primary btn-compact" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={((String(r.status || '') === 'pending_director' && !canDirectorApprove) || (String(r.status || '') === 'pending_manager' && (!canManagerApprove || !canCompleteManagerStageAsActor({ name: auth.user?.name, role: auth.role }, directorApproverNameFromRow(r)))) || busyId === (r._id || r.clientId))}>{busyId === (r._id || r.clientId) ? 'Working…' : String(r.status || '') === 'pending_manager' ? 'Manager Approve' : 'Director Approve'}</button>
                       <button className="btn btn-compact" onClick={(e) => { e.stopPropagation(); reject(r); }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? 'Working…' : 'Reject'}</button>
                     </div>
                   ) : (
