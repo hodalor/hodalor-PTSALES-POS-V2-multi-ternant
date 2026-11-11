@@ -39,8 +39,18 @@ function actorLabel(name, role) {
   return person || personRole || '';
 }
 
-function addUniqueSerial(serials, seen, value) {
+function isComputerGeneratedId(value) {
+  return /^[a-f0-9]{24}$/i.test(String(value || '').trim());
+}
+
+function displaySerialValue(value) {
   const text = String(value || '').trim();
+  if (!text || isComputerGeneratedId(text)) return '';
+  return text;
+}
+
+function addUniqueSerial(serials, seen, value) {
+  const text = displaySerialValue(value);
   if (!text || seen.has(text)) return;
   seen.add(text);
   serials.push(text);
@@ -50,9 +60,8 @@ export function collectItemSerials(item = {}) {
   const seen = new Set();
   const serials = [];
   (Array.isArray(item?.soldUnits) ? item.soldUnits : []).forEach((unit) => {
-    addUniqueSerial(serials, seen, unit?.imei || unit?.serialNumber || unit?.unitId);
+    addUniqueSerial(serials, seen, unit?.imei || unit?.serialNumber);
   });
-  (Array.isArray(item?.soldUnitIds) ? item.soldUnitIds : []).forEach((unitId) => addUniqueSerial(serials, seen, unitId));
   addUniqueSerial(serials, seen, item?.imei);
   addUniqueSerial(serials, seen, item?.serialNumber);
   return serials;
@@ -106,7 +115,7 @@ export function groupReceiptItems(items = []) {
   });
   return groups.map((item) => ({
     ...item,
-    qty: item.serials.length > item.qty ? item.serials.length : item.qty
+    qty: item.qty > 0 ? item.qty : item.serials.length
   }));
 }
 
