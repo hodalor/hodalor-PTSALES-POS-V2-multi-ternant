@@ -5,6 +5,9 @@ const TransferRequestItemSchema = new mongoose.Schema({
   lineId: { type: String, default: '' },
   productId: String,
   variantId: String,
+  name: { type: String, default: '' },
+  productName: { type: String, default: '' },
+  sku: { type: String, default: '' },
   qty: Number,
   unitIds: { type: [String], default: [] },
   selectedUnits: { type: [{ unitId: String, imei: String, serialNumber: String }], default: [] },
@@ -15,6 +18,7 @@ const TransferRequestItemSchema = new mongoose.Schema({
 const TransferRequestSchema = new mongoose.Schema({
   clientId: { type: String, unique: true, sparse: true, index: true },
   productId: String,
+  productName: { type: String, default: '' },
   variantId: String,
   from: String,
   to: String,

@@ -5,6 +5,9 @@ const PurchaseRequestItemSchema = new mongoose.Schema({
   lineId: { type: String, default: '' },
   productId: String,
   variantId: String,
+  name: { type: String, default: '' },
+  productName: { type: String, default: '' },
+  sku: { type: String, default: '' },
   baseUnits: Number,
   serializedEntries: { type: [{ imei: String, serialNumber: String }], default: [] },
   pack: String,
@@ -19,6 +22,7 @@ const PurchaseRequestItemSchema = new mongoose.Schema({
 const PurchaseRequestSchema = new mongoose.Schema({
   clientId: { type: String, unique: true, sparse: true, index: true },
   productId: String,
+  productName: { type: String, default: '' },
   variantId: String,
   branchId: String,
   baseUnits: Number,

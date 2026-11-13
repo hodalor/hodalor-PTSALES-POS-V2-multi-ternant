@@ -5,6 +5,9 @@ const WholesaleOperationItemSchema = new mongoose.Schema({
   lineId: { type: String, default: '' },
   productId: { type: String, required: true },
   variantId: { type: String, default: '' },
+  name: { type: String, default: '' },
+  productName: { type: String, default: '' },
+  sku: { type: String, default: '' },
   qty: { type: Number, default: 0 },
   unitIds: { type: [String], default: [] },
   selectedUnits: { type: [{ unitId: String, imei: String, serialNumber: String }], default: [] },
@@ -34,6 +37,7 @@ const WholesaleOperationSchema = new mongoose.Schema({
     index: true
   },
   productId: { type: String, required: true },
+  productName: { type: String, default: '' },
   variantId: { type: String, default: '' },
   branchId: { type: String, default: '' },
   fromBranchId: { type: String, default: '' },

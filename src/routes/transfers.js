@@ -54,6 +54,9 @@ function normalizeItems(payload = {}) {
       lineId: String(item.lineId || `${index + 1}`),
       productId: String(item.productId || ''),
       variantId: String(item.variantId || ''),
+      name: String(item.name || item.productName || ''),
+      productName: String(item.productName || item.name || ''),
+      sku: String(item.sku || ''),
       qty: Number(item.qty || 0),
       unitIds: Array.isArray(item.unitIds) ? item.unitIds.map(String).filter(Boolean) : [],
       selectedUnits: Array.isArray(item.selectedUnits) ? item.selectedUnits.map(unit => ({ unitId: String(unit?.unitId || ''), imei: String(unit?.imei || '').trim(), serialNumber: String(unit?.serialNumber || '').trim() })) : [],
@@ -121,6 +124,7 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
   const doc = await TransferRequest.create({
     clientId: clientId || undefined,
     productId: payload.productId,
+    productName: String(payload.productName || payload.name || ''),
     variantId: payload.variantId || undefined,
     from: fromBranch,
     to: toBranch,
