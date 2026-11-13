@@ -19,7 +19,7 @@ import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
-import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
+import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText, withItemNames } from '../utils/inventoryFilters';
 import { canCompleteManagerStageAsActor, directorApproverNameFromRow } from '../utils/approvalAuth';
 import { clampAvailableQuantity, getProductStockAtBranch, getReservedLineQuantity } from '../utils/branchStock';
 
@@ -420,20 +420,23 @@ function AdjustmentsPage() {
       initiatorName: auth.user?.name || 'unknown',
       initiatorRole: auth.role || '',
       clientId,
-      items: nextItems || (selectedTrackType === 'serialized' ? [{
+      productName: nextItems
+        ? (nextItems[0]?.productName || nextItems[0]?.name || '')
+        : getProductDisplayMeta(products, productId, variantId).productName,
+      items: (nextItems || [withItemNames(products, {
         lineId: '1',
         productId,
         variantId: variantId || '',
         delta: Number(effectiveDelta),
         quantity: Math.abs(Number(effectiveDelta) || 0),
-        adjustmentType: serializedAdjustmentMode,
+        adjustmentType: selectedTrackType === 'serialized' ? serializedAdjustmentMode : adjustmentType,
         reason: reason.trim(),
-        unitIds: serializedAdjustmentMode === 'decrease' ? serializedUnits.filter(unit => unit.selected).map(unit => unit._id) : [],
-        selectedUnits: serializedAdjustmentMode === 'decrease' ? serializedUnits.filter(unit => unit.selected).map(unit => ({ unitId: unit._id, imei: unit.imei || '', serialNumber: unit.serialNumber || '' })) : [],
-        serializedEntries: serializedAdjustmentMode === 'increase' ? serializedEntries : [],
+        unitIds: selectedTrackType === 'serialized' && serializedAdjustmentMode === 'decrease' ? serializedUnits.filter(unit => unit.selected).map(unit => unit._id) : [],
+        selectedUnits: selectedTrackType === 'serialized' && serializedAdjustmentMode === 'decrease' ? serializedUnits.filter(unit => unit.selected).map(unit => ({ unitId: unit._id, imei: unit.imei || '', serialNumber: unit.serialNumber || '' })) : [],
+        serializedEntries: selectedTrackType === 'serialized' && serializedAdjustmentMode === 'increase' ? serializedEntries : [],
         remark: remark.trim(),
         status: 'accepted'
-      }] : undefined)
+      })]).map((item) => withItemNames(products, item))
     };
     if (!nextItems && !productId) {
       toast.show(t('Select a product'), { type: 'error' });
@@ -539,7 +542,7 @@ function AdjustmentsPage() {
       toast.show(t('Select serialized units to remove'), { type: 'error' });
       return;
     }
-    setItems(prev => [...prev, {
+    setItems(prev => [...prev, withItemNames(products, {
       lineId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       productId,
       variantId: variantId || '',
@@ -552,7 +555,7 @@ function AdjustmentsPage() {
       serializedEntries: selectedTrackType === 'serialized' && serializedAdjustmentMode === 'increase' ? serializedEntries : [],
       remark: remark.trim(),
       status: 'accepted'
-    }]);
+    })]);
     setQuantity(0);
     setDelta(0);
     setAdjustmentType('increase');

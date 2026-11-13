@@ -94,6 +94,16 @@ export function getProductDisplayMeta(products = [], productId, variantId = '', 
   };
 }
 
+export function withItemNames(products = [], item = {}) {
+  const meta = getProductDisplayMeta(products, item?.productId, item?.variantId, item);
+  return {
+    ...item,
+    name: String(item?.name || item?.productName || meta.productName || '').trim(),
+    productName: String(item?.productName || item?.name || meta.productName || '').trim(),
+    sku: String(item?.sku || meta.sku || '').trim()
+  };
+}
+
 export function getOperationSearchValues(row = {}, products = [], branchNameById = new Map()) {
   const meta = getProductDisplayMeta(products, row?.productId, row?.variantId, row);
   const fromLabel = branchNameById.get(row?.fromBranchId || row?.from || row?.branchId) || row?.fromBranchId || row?.from || row?.branchId || '';

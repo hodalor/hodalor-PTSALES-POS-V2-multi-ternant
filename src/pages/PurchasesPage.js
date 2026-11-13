@@ -22,7 +22,7 @@ import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { ensureSupplierByName } from '../utils/suppliers';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
-import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
+import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText, withItemNames } from '../utils/inventoryFilters';
 import { canCompleteManagerStageAsActor, directorApproverNameFromRow } from '../utils/approvalAuth';
 
 function PurchasesPage() {
@@ -287,20 +287,23 @@ function PurchasesPage() {
       initiatorName: auth.user?.name || 'unknown',
       initiatorRole: auth.role || '',
       clientId,
-      items: nextItems || (selectedTrackType === 'serialized' ? [{
+      productName: nextItems
+        ? (nextItems[0]?.productName || nextItems[0]?.name || '')
+        : getProductDisplayMeta(products, selectedProduct?.id, variantId).productName,
+      items: (nextItems || [withItemNames(products, {
         lineId: '1',
         productId: selectedProduct?.id,
         variantId: variantId || '',
         baseUnits,
         serializedEntries,
-        pack: pack ? pack.name : '',
+        pack: selectedTrackType === 'serialized' ? '' : (pack ? pack.name : ''),
         supplier: supplierName,
         cost: price,
         costPerUnit: cpu,
         expiryDate: expiryDate || undefined,
         remark: note.trim() || '',
         status: 'accepted'
-      }] : undefined)
+      })]).map((item) => withItemNames(products, item))
     };
     if (!navigator.onLine) {
       try {
@@ -409,7 +412,7 @@ function PurchasesPage() {
       return;
     }
     const cpu = factor > 0 ? (price / factor) : price;
-    setItems(prev => [...prev, {
+    setItems(prev => [...prev, withItemNames(products, {
       lineId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       productId: selectedProduct?.id,
       variantId: variantId || '',
@@ -422,7 +425,7 @@ function PurchasesPage() {
       expiryDate: expiryDate || undefined,
       remark: note.trim() || '',
       status: 'accepted'
-    }]);
+    })]);
     setQty(1);
     setPackName('');
     setVariantId('');

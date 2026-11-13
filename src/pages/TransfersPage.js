@@ -1,5 +1,5 @@
 import { useDispatch, useSelector } from 'react-redux';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useToast } from '../components/ToastProvider';
 import BranchSelect from '../components/BranchSelect';
 import { exportCsv, exportTablePdf } from '../utils/exporters';
@@ -19,7 +19,8 @@ import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
-import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
+import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText, withItemNames } from '../utils/inventoryFilters';
+import { findLoadedSerializedUnit, findProductByScanCode, mergeSerializedUnitLine, productTrackType } from '../utils/transferScan';
 import { canCompleteManagerStageAsActor, directorApproverNameFromRow } from '../utils/approvalAuth';
 import { normalizeBranchType } from '../utils/branchTypes';
 import { clampAvailableQuantity, getProductStockAtBranch, getReservedLineQuantity } from '../utils/branchStock';
@@ -137,6 +138,9 @@ function TransfersPage() {
   const [resolvedBranchNames, setResolvedBranchNames] = useState({});
   const dispatch = useDispatch();
   const toast = useToast();
+  const productSearchInputRef = useRef(null);
+  const qtyInputRef = useRef(null);
+  const productScanBusyRef = useRef(false);
   const { t } = useAppLanguage();
   const offlineBackupAllowed = isOfflineBackupEnabled(settings);
   useEffect(() => {
@@ -340,29 +344,29 @@ function TransfersPage() {
     }
     setSaving(true);
     const clientId = `transfer-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const namedItems = (nextItems || [withItemNames(products, {
+      lineId: '1',
+      productId,
+      variantId: variantId || '',
+      qty: Number(qty),
+      unitIds: selectedTrackType === 'serialized' ? serializedUnits.filter(unit => unit.selected).map(unit => unit._id) : [],
+      selectedUnits: selectedTrackType === 'serialized' ? selectedSerializedUnits : [],
+      remark,
+      status: 'accepted'
+    })]).map((item) => withItemNames(products, item));
     const payload = {
-      productId: nextItems ? nextItems[0]?.productId : productId,
+      productId: namedItems[0]?.productId || productId,
+      productName: namedItems[0]?.productName || namedItems[0]?.name || '',
       from: fromId,
       to: toId,
-      qty: nextItems ? nextItems.reduce((sum, item) => sum + Number(item.qty || 0), 0) : Number(qty),
+      qty: namedItems.reduce((sum, item) => sum + Number(item.qty || 0), 0),
       transactionTitle: transactionTitle.trim() || '',
       remark,
-      variantId: nextItems ? (nextItems[0]?.variantId || undefined) : (variantId || undefined),
+      variantId: namedItems[0]?.variantId || undefined,
       initiatorName: auth.user?.name || 'unknown',
       initiatorRole: auth.role || '',
       clientId,
-      items: nextItems || (selectedTrackType === 'serialized'
-        ? [{
-            lineId: '1',
-            productId,
-            variantId: variantId || '',
-            qty: Number(qty),
-            unitIds: serializedUnits.filter(unit => unit.selected).map(unit => unit._id),
-            selectedUnits: selectedSerializedUnits,
-            remark,
-            status: 'accepted'
-          }]
-        : undefined)
+      items: namedItems
     };
     if (!navigator.onLine) {
       if (!offlineBackupAllowed) {
@@ -387,11 +391,12 @@ function TransfersPage() {
       }
     }
     dispatch(createTransferRequest({
-      productId: nextItems ? nextItems[0]?.productId : productId,
-      variantId: nextItems ? (nextItems[0]?.variantId || null) : (variantId || null),
+      productId: namedItems[0]?.productId || productId,
+      productName: namedItems[0]?.productName || namedItems[0]?.name || '',
+      variantId: namedItems[0]?.variantId || null,
       from: fromId,
       to: toId,
-      qty: nextItems ? nextItems.reduce((sum, item) => sum + Number(item.qty || 0), 0) : Number(qty),
+      qty: namedItems.reduce((sum, item) => sum + Number(item.qty || 0), 0),
       transactionTitle: transactionTitle.trim() || '',
       remark,
       initiatorName: auth.user?.name || 'unknown',
@@ -399,18 +404,7 @@ function TransfersPage() {
       status: 'pending_director',
       clientId,
       created_at: new Date().toISOString(),
-      items: nextItems || (selectedTrackType === 'serialized'
-        ? [{
-            lineId: '1',
-            productId,
-            variantId: variantId || '',
-            qty: Number(qty),
-            unitIds: serializedUnits.filter(unit => unit.selected).map(unit => unit._id),
-            selectedUnits: selectedSerializedUnits,
-            remark,
-            status: 'accepted'
-          }]
-        : undefined)
+      items: namedItems
     }));
     setQty(1);
     setVariantId('');
@@ -444,6 +438,114 @@ function TransfersPage() {
     }
   }
 
+  function itemNameFields(pid, vid, extra = {}) {
+    const meta = getProductDisplayMeta(products, pid, vid, extra);
+    return { name: meta.productName, productName: meta.productName, sku: meta.sku };
+  }
+
+  function focusProductSearch() {
+    requestAnimationFrame(() => {
+      try { productSearchInputRef.current?.focus(); } catch {}
+    });
+  }
+
+  function focusQtyInput() {
+    requestAnimationFrame(() => {
+      try {
+        qtyInputRef.current?.focus();
+        qtyInputRef.current?.select();
+      } catch {}
+    });
+  }
+
+  function addSerializedUnitToBasket(unit, productHint) {
+    const pid = String(unit?.productId || productHint?.id || productId || '');
+    const vid = String(unit?.variantId || '');
+    const names = itemNameFields(pid, vid, productHint || {});
+    let duplicate = false;
+    let added = false;
+    setItems((prev) => {
+      const result = mergeSerializedUnitLine(prev, {
+        productId: pid,
+        variantId: vid,
+        unit,
+        names,
+        extra: { remark: '', status: 'accepted' }
+      });
+      duplicate = result.duplicate;
+      added = result.added;
+      return result.items;
+    });
+    if (duplicate) {
+      toast.show(t('This serialized unit is already in the transfer list'), { type: 'warning' });
+      return false;
+    }
+    if (added) {
+      setSerializedUnits((prev) => prev.filter((row) => String(row._id) !== String(unit?._id || unit?.unitId || '')));
+      setSerializedUnitsQuery('');
+      toast.show(t('Added {name} to transfer', { name: names.productName || pid }), { type: 'success' });
+    }
+    return added;
+  }
+
+  async function handleProductScan(rawCode) {
+    const code = String(rawCode || '').trim();
+    if (!code || productScanBusyRef.current) return;
+    productScanBusyRef.current = true;
+    try {
+      const loadedUnit = findLoadedSerializedUnit(serializedUnits, code);
+      if (loadedUnit) {
+        addSerializedUnitToBasket(loadedUnit, selectedProduct);
+        setProductQuery('');
+        focusProductSearch();
+        return;
+      }
+      const scanned = findProductByScanCode(products, code);
+      const uniqueMatch = !scanned.product && filteredProducts.length === 1 ? filteredProducts[0] : null;
+      const product = scanned.product || uniqueMatch;
+      if (product) {
+        const track = productTrackType(product);
+        setProductId(product.id);
+        setVariantId(scanned.variantId || '');
+        setProductQuery('');
+        if (track === 'quantity') {
+          setQty(1);
+          focusQtyInput();
+        } else {
+          focusProductSearch();
+          toast.show(t('Scan an IMEI or serial to add this unit'), { type: 'info' });
+        }
+        return;
+      }
+      try {
+        const lookedUp = await productUnitsApi.lookupProductUnit(code);
+        if (!lookedUp) throw new Error('not found');
+        if (String(lookedUp.branchId || '') !== String(fromId || '')) {
+          toast.show(t('Serialized item is not at the selected source branch'), { type: 'error' });
+          return;
+        }
+        const expectedType = inventoryTypeForBranch(fromId);
+        if (String(lookedUp.inventoryType || 'retail') !== String(expectedType || 'retail')) {
+          toast.show(t('Serialized item is not in this inventory'), { type: 'error' });
+          return;
+        }
+        if (!['in_stock', 'reserved'].includes(String(lookedUp.status || ''))) {
+          toast.show(t('Serialized item is not available'), { type: 'error' });
+          return;
+        }
+        setProductId(String(lookedUp.productId || ''));
+        setVariantId(String(lookedUp.variantId || ''));
+        setProductQuery('');
+        addSerializedUnitToBasket(lookedUp);
+        focusProductSearch();
+      } catch {
+        toast.show(t('No product or serialized unit matched this scan'), { type: 'error' });
+      }
+    } finally {
+      productScanBusyRef.current = false;
+    }
+  }
+
   function addCurrentItem() {
     if (!productId || !fromId || !toId || fromId === toId || qty <= 0) {
       toast.show(t('Check product, branches and quantity'), { type: 'error' });
@@ -457,7 +559,7 @@ function TransfersPage() {
       toast.show(t('Select the exact serialized units to transfer'), { type: 'error' });
       return;
     }
-    setItems(prev => [...prev, {
+    setItems(prev => [...prev, withItemNames(products, {
       lineId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       productId,
       variantId: variantId || '',
@@ -466,7 +568,7 @@ function TransfersPage() {
       selectedUnits: selectedTrackType === 'serialized' ? selectedSerializedUnits : [],
       remark: '',
       status: 'accepted'
-    }]);
+    })]);
     setQty(1);
     setVariantId('');
     setSerializedUnits([]);
@@ -651,7 +753,10 @@ function TransfersPage() {
         });
         setSerializedUnits(prev => {
           const selectedIds = new Set(prev.filter(unit => unit.selected).map(unit => unit._id));
-          return (Array.isArray(result?.rows) ? result.rows : []).map(unit => ({ ...unit, selected: selectedIds.has(unit._id) }));
+          const basketIds = new Set(items.flatMap((line) => (Array.isArray(line.unitIds) ? line.unitIds : []).map(String)));
+          return (Array.isArray(result?.rows) ? result.rows : [])
+            .filter((unit) => !basketIds.has(String(unit._id)))
+            .map(unit => ({ ...unit, selected: selectedIds.has(unit._id) }));
         });
       } catch (e) {
         toast.show(String(e?.message || t('Failed to load serialized units')), { type: 'error' });
@@ -662,6 +767,15 @@ function TransfersPage() {
     }
     run();
   }, [fromId, productId, selectedTrackType, serializedUnitsQuery, toast, variantId, inventoryTypeForBranch, t]);
+
+  useEffect(() => {
+    const basketIds = new Set(items.flatMap((line) => (Array.isArray(line.unitIds) ? line.unitIds : []).map(String)));
+    if (basketIds.size === 0) return;
+    setSerializedUnits((prev) => {
+      const next = prev.filter((unit) => !basketIds.has(String(unit._id)));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [items]);
 
   const reloadApprovals = useCallback(async () => {
     try {
@@ -861,6 +975,7 @@ function TransfersPage() {
               <ProductLiveSearchField
                 label={t('Product')}
                 query={productQuery}
+                inputRef={productSearchInputRef}
                 onQueryChange={(value) => {
                   setProductQuery(value);
                   if (String(value || '').trim()) {
@@ -875,7 +990,10 @@ function TransfersPage() {
                   setProductId(product.id);
                   setVariantId('');
                   setProductQuery('');
+                  if (productTrackType(product) === 'quantity') focusQtyInput();
+                  else focusProductSearch();
                 }}
+                onSubmit={handleProductScan}
               />
             </div>
             {(products.find(p => p.id === productId)?.variants || []).length > 0 && (
@@ -900,6 +1018,7 @@ function TransfersPage() {
             <label>
               <div className="field-label">{t('Quantity')}</div>
               <input
+                ref={qtyInputRef}
                 className="input"
                 type="number"
                 min={quantityDisabled ? '0' : '1'}
@@ -912,6 +1031,11 @@ function TransfersPage() {
                     return;
                   }
                   setQty(Number.isFinite(next) ? Math.max(0, next) : 0);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return;
+                  e.preventDefault();
+                  addCurrentItem();
                 }}
                 disabled={quantityDisabled}
               />
@@ -935,7 +1059,17 @@ function TransfersPage() {
           {selectedTrackType === 'serialized' && (
             <div style={{ marginTop: 12, display: 'grid', gap: 8 }}>
               <div className="field-label" style={{ marginBottom: 0 }}>{t('Serialized Units')}</div>
-              <input className="input" placeholder={t('Search IMEI or serial number')} value={serializedUnitsQuery} onChange={e => setSerializedUnitsQuery(e.target.value)} />
+              <input
+                className="input"
+                placeholder={t('Scan IMEI or serial and press Enter')}
+                value={serializedUnitsQuery}
+                onChange={e => setSerializedUnitsQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return;
+                  e.preventDefault();
+                  handleProductScan(e.currentTarget.value || serializedUnitsQuery);
+                }}
+              />
               <div style={{ color: '#64748b', fontSize: 12 }}>{t('Selected: {count}', { count: serializedUnits.filter(unit => unit.selected).length })}</div>
               <div className="table-wrap" style={{ maxHeight: 220 }}>
                 <table className="table">

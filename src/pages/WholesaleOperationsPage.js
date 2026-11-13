@@ -16,7 +16,8 @@ import LoadingDots from '../components/LoadingDots';
 import { useAppLanguage } from '../utils/localization';
 import { filterBranchesByType, formatBranchInventoryLabel, groupBranchesByInventoryType, normalizeBranchType } from '../utils/branchTypes';
 import { clampAvailableQuantity, getProductStockAtBranch, getReservedLineQuantity } from '../utils/branchStock';
-import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText } from '../utils/inventoryFilters';
+import { formatDateTime, getOperationSearchValues, getProductDisplayMeta, matchesDateField, matchesFilterText, withItemNames } from '../utils/inventoryFilters';
+import { findLoadedSerializedUnit, findProductByScanCode, mergeSerializedUnitLine, productTrackType } from '../utils/transferScan';
 import { canCompleteManagerStageAsActor, directorApproverNameFromRow } from '../utils/approvalAuth';
 
 function labelForArea(area, op, t) {
@@ -288,6 +289,9 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const defaultBranchIdRef = useRef(scopedBranchOptions[0]?.id || '');
   const defaultTransferToBranchIdRef = useRef(branchOptions.find(branch => String(branch.id) !== String(scopedBranchOptions[0]?.id || ''))?.id || '');
   const serializedScanInputRef = useRef(null);
+  const productSearchInputRef = useRef(null);
+  const qtyInputRef = useRef(null);
+  const productScanBusyRef = useRef(false);
   const transferFromBranchOptions = useMemo(
     () => branchOptions,
     [branchOptions]
@@ -439,7 +443,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
         });
         setSerializedUnits(prev => {
           const selectedIds = new Set(prev.filter(unit => unit.selected).map(unit => unit._id));
-          return (Array.isArray(result?.rows) ? result.rows : []).map(unit => ({ ...unit, selected: selectedIds.has(unit._id) }));
+          const basketIds = new Set(items.flatMap((line) => (Array.isArray(line.unitIds) ? line.unitIds : []).map(String)));
+          return (Array.isArray(result?.rows) ? result.rows : [])
+            .filter((unit) => !basketIds.has(String(unit._id)))
+            .map(unit => ({ ...unit, selected: selectedIds.has(unit._id) }));
         });
       } catch (e) {
         toast.show(String(e?.message || t('Failed to load serialized units')), { type: 'error' });
@@ -450,6 +457,15 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     }
     run();
   }, [adjustmentType, branchId, fromBranchId, inventoryTypeForBranch, normalizedArea, operationType, productId, selectedTrackType, serializedUnitsQuery, toast, variantId, t]);
+
+  useEffect(() => {
+    const basketIds = new Set(items.flatMap((line) => (Array.isArray(line.unitIds) ? line.unitIds : []).map(String)));
+    if (basketIds.size === 0) return;
+    setSerializedUnits((prev) => {
+      const next = prev.filter((unit) => !basketIds.has(String(unit._id)));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [items]);
 
   const loadOperations = useCallback(async (options = {}) => {
     if (operations.length === 0) setLoading(true);
@@ -787,6 +803,129 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
     }
   }
 
+  function itemNameFields(pid, vid, extra = {}) {
+    const meta = getProductDisplayMeta(products, pid, vid, extra);
+    return { name: meta.productName, productName: meta.productName, sku: meta.sku };
+  }
+
+  function focusProductSearch() {
+    requestAnimationFrame(() => {
+      try { productSearchInputRef.current?.focus(); } catch {}
+    });
+  }
+
+  function focusQtyInput() {
+    requestAnimationFrame(() => {
+      try {
+        qtyInputRef.current?.focus();
+        qtyInputRef.current?.select();
+      } catch {}
+    });
+  }
+
+  function addSerializedUnitToBasket(unit, productHint) {
+    const pid = String(unit?.productId || productHint?.id || productId || '');
+    const vid = String(unit?.variantId || '');
+    const names = itemNameFields(pid, vid, productHint || {});
+    let duplicate = false;
+    let added = false;
+    setItems((prev) => {
+      const result = mergeSerializedUnitLine(prev, {
+        productId: pid,
+        variantId: vid,
+        unit,
+        names,
+        extra: {
+          cost: Number(cost || 0),
+          requestedAmount: Number(requestedAmount || 0),
+          adjustmentType,
+          supplier: supplier.trim(),
+          reason: reason.trim(),
+          remark: remark.trim(),
+          status: 'accepted'
+        }
+      });
+      duplicate = result.duplicate;
+      added = result.added;
+      return result.items;
+    });
+    if (duplicate) {
+      toast.show(t('This serialized unit is already in the transfer list'), { type: 'warning' });
+      return false;
+    }
+    if (added) {
+      setSerializedUnits((prev) => prev.filter((row) => String(row._id) !== String(unit?._id || unit?.unitId || '')));
+      setSerializedUnitsQuery('');
+      toast.show(t('Added {name} to transfer', { name: names.productName || pid }), { type: 'success' });
+    }
+    return added;
+  }
+
+  async function handleProductScan(rawCode) {
+    const code = String(rawCode || '').trim();
+    if (!code || productScanBusyRef.current) return;
+    productScanBusyRef.current = true;
+    try {
+      const loadedUnit = findLoadedSerializedUnit(serializedUnits, code);
+      if (loadedUnit && (operationType === 'transfer' || usesSerializedSelection)) {
+        addSerializedUnitToBasket(loadedUnit, selectedProduct);
+        setProductQuery('');
+        focusProductSearch();
+        return;
+      }
+      const scanned = findProductByScanCode(products, code);
+      const uniqueMatch = !scanned.product && filteredProducts.length === 1 ? filteredProducts[0] : null;
+      const product = scanned.product || uniqueMatch;
+      if (product) {
+        const track = productTrackType(product);
+        setProductId(product.id);
+        setVariantId(scanned.variantId || '');
+        setProductQuery('');
+        if (track === 'quantity') {
+          setQty(1);
+          focusQtyInput();
+        } else {
+          focusProductSearch();
+          if (operationType === 'transfer') {
+            toast.show(t('Scan an IMEI or serial to add this unit'), { type: 'info' });
+          }
+        }
+        return;
+      }
+      try {
+        const lookedUp = await productUnitsApi.lookupProductUnit(code);
+        if (!lookedUp) throw new Error('not found');
+        const sourceId = operationType === 'transfer' ? fromBranchId : branchId;
+        if (String(lookedUp.branchId || '') !== String(sourceId || '')) {
+          toast.show(t('Serialized item is not at the selected source branch'), { type: 'error' });
+          return;
+        }
+        const expectedType = operationType === 'transfer'
+          ? inventoryTypeForBranch(fromBranchId)
+          : (inventoryTypeForBranch(branchId) || normalizedArea);
+        if (String(lookedUp.inventoryType || 'retail') !== String(expectedType || 'retail')) {
+          toast.show(t('Serialized item is not in this inventory'), { type: 'error' });
+          return;
+        }
+        if (!['in_stock', 'reserved'].includes(String(lookedUp.status || ''))) {
+          toast.show(t('Serialized item is not available'), { type: 'error' });
+          return;
+        }
+        setProductId(String(lookedUp.productId || ''));
+        setVariantId(String(lookedUp.variantId || ''));
+        setProductQuery('');
+        if (operationType === 'transfer' || usesSerializedSelection) {
+          addSerializedUnitToBasket(lookedUp);
+        }
+        focusProductSearch();
+      } catch {
+        toast.show(t('No product or serialized unit matched this scan'), { type: 'error' });
+      }
+    } finally {
+      productScanBusyRef.current = false;
+    }
+  }
+
   function addCurrentItem() {
     if (createBlockedMessage) {
       toast.show(createBlockedMessage, { type: 'error' });
@@ -812,7 +951,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
       toast.show(t('Enter the exact serialized units to add'), { type: 'error' });
       return;
     }
-    setItems(prev => [...prev, {
+    setItems(prev => [...prev, withItemNames(products, {
       lineId: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
       productId,
       variantId: variantId || '',
@@ -827,7 +966,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
       reason: reason.trim(),
       remark: remark.trim(),
       status: 'accepted'
-    }]);
+    })]);
     setVariantId('');
     setQty(1);
     setCost('');
@@ -920,24 +1059,25 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
       toBranchId: operationType === 'transfer' ? toBranchId : undefined,
       fromInventoryType: operationType === 'transfer' ? inventoryTypeForBranch(fromBranchId) : normalizedArea,
       toInventoryType: operationType === 'transfer' ? inventoryTypeForBranch(toBranchId) : normalizedArea,
-      items: nextItems || ((selectedTrackType === 'serialized' && (usesSerializedSelection || !usesSerializedSelection))
-        ? [{
-            lineId: '1',
-            productId,
-            variantId: variantId || '',
-            qty: Number(qty),
-            unitIds: usesSerializedSelection ? serializedUnits.filter(unit => unit.selected).map(unit => unit._id) : [],
-            selectedUnits: usesSerializedSelection ? serializedUnits.filter(unit => unit.selected).map(unit => ({ unitId: unit._id, imei: unit.imei || '', serialNumber: unit.serialNumber || '' })) : [],
-            serializedEntries: !usesSerializedSelection ? serializedEntries : [],
-            cost: Number(cost || 0),
-            requestedAmount: Number(requestedAmount || 0),
-            remark: remark.trim(),
-            reason: reason.trim(),
-            adjustmentType,
-            supplier: supplier.trim(),
-            status: 'accepted'
-          }]
-        : undefined)
+      productName: nextItems
+        ? (nextItems[0]?.productName || nextItems[0]?.name || '')
+        : getProductDisplayMeta(products, productId, variantId).productName,
+      items: (nextItems || [withItemNames(products, {
+        lineId: '1',
+        productId,
+        variantId: variantId || '',
+        qty: Number(qty),
+        unitIds: usesSerializedSelection ? serializedUnits.filter(unit => unit.selected).map(unit => unit._id) : [],
+        selectedUnits: usesSerializedSelection ? serializedUnits.filter(unit => unit.selected).map(unit => ({ unitId: unit._id, imei: unit.imei || '', serialNumber: unit.serialNumber || '' })) : [],
+        serializedEntries: selectedTrackType === 'serialized' && !usesSerializedSelection ? serializedEntries : [],
+        cost: Number(cost || 0),
+        requestedAmount: Number(requestedAmount || 0),
+        remark: remark.trim(),
+        reason: reason.trim(),
+        adjustmentType,
+        supplier: supplier.trim(),
+        status: 'accepted'
+      })]).map((item) => withItemNames(products, item))
     };
 
     const optimistic = {
@@ -1166,6 +1306,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
               <ProductLiveSearchField
                 label={t('Product')}
                 query={productQuery}
+                inputRef={productSearchInputRef}
                 onQueryChange={(value) => {
                   setProductQuery(value);
                   if (String(value || '').trim()) {
@@ -1180,7 +1321,10 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                   setProductId(product.id);
                   setVariantId('');
                   setProductQuery('');
+                  if (productTrackType(product) === 'quantity') focusQtyInput();
+                  else focusProductSearch();
                 }}
+                onSubmit={handleProductScan}
               />
             </div>
 
@@ -1233,6 +1377,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
             <label>
               <div style={{ marginBottom: 6, color: '#94a3b8' }}>{t('Quantity')}</div>
               <input
+                ref={qtyInputRef}
                 className="input"
                 type="number"
                 min={quantityDisabled ? '0' : '1'}
@@ -1245,6 +1390,11 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                     return;
                   }
                   setQty(Number.isFinite(next) ? Math.max(0, next) : 0);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return;
+                  e.preventDefault();
+                  addCurrentItem();
                 }}
                 disabled={quantityDisabled}
               />
@@ -1260,7 +1410,17 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
             {usesSerializedSelection && (
               <div style={{ gridColumn: '1 / -1', display: 'grid', gap: 8 }}>
                 <div style={{ color: '#94a3b8' }}>{t('Serialized Units')}</div>
-                <input className="input" placeholder={t('Search IMEI or serial number')} value={serializedUnitsQuery} onChange={e => setSerializedUnitsQuery(e.target.value)} />
+                <input
+                  className="input"
+                  placeholder={t('Scan IMEI or serial and press Enter')}
+                  value={serializedUnitsQuery}
+                  onChange={e => setSerializedUnitsQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key !== 'Enter') return;
+                    e.preventDefault();
+                    handleProductScan(e.currentTarget.value || serializedUnitsQuery);
+                  }}
+                />
                 <div style={{ color: '#64748b', fontSize: 12 }}>
                   {t('Selected: {count}', { count: serializedUnits.filter(unit => unit.selected).length })}
                 </div>

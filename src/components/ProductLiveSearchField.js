@@ -15,6 +15,8 @@ function ProductLiveSearchField({
   allProducts,
   selectedProductId,
   onSelect,
+  onSubmit,
+  inputRef,
   emptyText = 'No matching products',
   limit = 10
 }) {
@@ -31,9 +33,15 @@ function ProductLiveSearchField({
       <label>
         <div style={{ marginBottom: 6, color: '#64748b' }}>{label}</div>
         <input
+          ref={inputRef}
           className="input"
           value={query}
           onChange={(event) => onQueryChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            if (typeof onSubmit === 'function') onSubmit(String(event.currentTarget.value || query || '').trim());
+          }}
           placeholder={t('Type name, SKU, barcode')}
         />
       </label>
