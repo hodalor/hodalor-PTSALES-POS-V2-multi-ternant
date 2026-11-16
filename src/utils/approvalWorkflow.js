@@ -151,6 +151,15 @@ async function applyWholesaleOperation(operation, actor) {
     productByKey.set(String(product._id), product);
     if (product.id) productByKey.set(String(product.id), product);
   });
+  const missingProducts = acceptedItems
+    .map((item) => String(item.productId || '').trim())
+    .filter((productId) => productId && !productByKey.get(productId));
+  if (missingProducts.length > 0) {
+    const err = new Error(`Product not found for wholesale operation (${Array.from(new Set(missingProducts)).join(', ')}). Cancel or remove the missing line(s) and resubmit.`);
+    err.status = 400;
+    err.missingProductIds = Array.from(new Set(missingProducts));
+    throw err;
+  }
   let acceptedCount = 0;
   const dirtyProducts = new Map();
   const inventoryLines = [];

@@ -63,7 +63,7 @@ function normalizeItems(payload = {}) {
       remark: String(item.remark || ''),
       status: String(item.status || 'pending').toLowerCase() === 'cancelled' ? 'cancelled' : 'accepted'
     }))
-    .filter(item => item.productId && Number(item.delta) !== 0);
+    .filter(item => item.productId && (item.status === 'cancelled' || Number(item.delta) !== 0));
 }
 
 async function adjustBaseStock(productId, branchId, delta, inventoryType = 'retail') {
@@ -194,15 +194,24 @@ r.post('/requests', requireRoleOrPerm(['Admin','Manager','Inventory Staff'], 'ad
 });
 
 r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_adjustments', 'approve_retail_director', 'approve_retail_manager']), async (req, res) => {
-  const { id, remark, items: reviewedItems } = req.body || {};
+  const { id, remark, items: reviewedItems, resubmitToDirector } = req.body || {};
   const row = await AdjustmentRequest.findById(id);
   if (!row) return res.status(404).json({ error: 'Request not found' });
   if (!['pending_approval', 'pending_director', 'pending_manager'].includes(String(row.status || ''))) return res.status(400).json({ error: 'Request not pending' });
   const nextItems = normalizeItems({ items: reviewedItems && reviewedItems.length ? reviewedItems : (row.items || []) });
+  const acceptedItems = nextItems.filter((item) => item.status !== 'cancelled');
+  const acceptedDelta = acceptedItems.reduce((sum, item) => sum + Number(item.delta || 0), 0);
+  if (nextItems.length === 0 || acceptedItems.length === 0) {
+    return res.status(400).json({ error: 'At least one accepted item with a non-zero quantity is required' });
+  }
   if (String(row.status || '') === 'pending_approval' || String(row.status || '') === 'pending_director') {
     if (!canDirectorApproveRetail(req.user)) return res.status(403).json({ error: 'Director approval required' });
     row.status = 'pending_manager';
     row.items = nextItems;
+    row.delta = acceptedDelta;
+    row.productId = acceptedItems[0]?.productId || row.productId;
+    row.productName = acceptedItems[0]?.productName || acceptedItems[0]?.name || row.productName || '';
+    row.variantId = acceptedItems[0]?.variantId || undefined;
     row.directorApproverName = req.user?.name || '';
     row.directorApproverRole = req.user?.role || '';
     row.directorApprovalRemark = String(remark || '');
@@ -214,12 +223,58 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_a
   if (!canCompleteManagerStageAsActor(req.user, row.directorApproverName || row.directorApprovedByName)) {
     return res.status(403).json({ error: 'Manager approval must be a different user from the director approver' });
   }
+  if (resubmitToDirector) {
+    row.items = nextItems;
+    row.delta = acceptedDelta;
+    row.productId = acceptedItems[0]?.productId || row.productId;
+    row.productName = acceptedItems[0]?.productName || acceptedItems[0]?.name || row.productName || '';
+    row.variantId = acceptedItems[0]?.variantId || undefined;
+    row.status = 'pending_director';
+    row.directorApproverName = '';
+    row.directorApproverRole = '';
+    row.directorApprovalRemark = '';
+    row.directorApproved_at = undefined;
+    row.managerApproverName = '';
+    row.managerApproverRole = '';
+    row.managerApprovalRemark = String(remark || '');
+    row.managerApproved_at = undefined;
+    row.approverName = '';
+    row.approverRole = '';
+    row.approvalRemark = '';
+    await row.save();
+    await Audit.create({
+      actor: req.user?.name || 'unknown',
+      actionType: 'adjustment_resubmitted',
+      details: {
+        id: String(row._id),
+        productId: row.productId,
+        branchId: row.branchId,
+        itemCount: nextItems.length,
+        acceptedCount: acceptedItems.length,
+        delta: acceptedDelta
+      },
+      remark: String(remark || ''),
+      branchId: row.branchId
+    }).catch(() => {});
+    return res.json({ ok: true, request: row });
+  }
   let p = null;
   try {
     const inventoryType = await resolveInventoryTypeFromBranch(row.branchId, 'retail');
+    const productCache = new Map();
+    for (const item of acceptedItems) {
+      const product = await Product.findOne(productLookupQuery(item.productId));
+      if (!product) {
+        return res.status(404).json({
+          error: `Product not found (${item.productId}). Cancel or remove the missing line(s) and resubmit.`,
+          missingProductIds: [String(item.productId || '')]
+        });
+      }
+      productCache.set(String(item.productId || ''), product);
+    }
     for (const item of nextItems) {
       if (item.status === 'cancelled') continue;
-      const product = await Product.findOne(productLookupQuery(item.productId));
+      const product = productCache.get(String(item.productId || ''));
       if (!product) return res.status(404).json({ error: 'Product not found' });
       if (normalizeTrackType(product.trackType) === 'serialized') {
         if (Number(item.delta || 0) > 0) {
@@ -262,6 +317,9 @@ r.post('/approve', requireRoleOrPerm(['Admin','Manager','Director'], ['approve_a
   row.approverRole = req.user?.role || '';
   row.approvalRemark = String(remark || '');
   row.items = nextItems;
+  row.delta = acceptedDelta;
+  row.productId = acceptedItems[0]?.productId || row.productId;
+  row.productName = acceptedItems[0]?.productName || acceptedItems[0]?.name || row.productName || '';
   row.approved_at = new Date();
   await row.save();
   const responsePayload = { ok: true, request: row };

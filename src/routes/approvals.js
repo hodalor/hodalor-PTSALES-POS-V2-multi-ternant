@@ -109,6 +109,9 @@ function normalizeWholesaleReviewItems(items = [], fallback = {}) {
         lineId: String(item?.lineId || `${index + 1}`),
         productId: String(item?.productId || fallbackItem?.productId || ''),
         variantId: String(item?.variantId || fallbackItem?.variantId || ''),
+        name: String(item?.name || item?.productName || fallbackItem?.name || fallbackItem?.productName || ''),
+        productName: String(item?.productName || item?.name || fallbackItem?.productName || fallbackItem?.name || ''),
+        sku: String(item?.sku || fallbackItem?.sku || ''),
         qty: Math.max(0, Number(item?.qty || 0)),
         unitIds: Array.isArray(item?.unitIds) ? item.unitIds.map(String).filter(Boolean) : [],
         selectedUnits: Array.isArray(item?.selectedUnits)
@@ -146,6 +149,9 @@ function buildApprovalExecutionError(err) {
   }
   if (Array.isArray(err?.unavailableUnitCodes) && err.unavailableUnitCodes.length > 0) {
     payload.unavailableUnitCodes = err.unavailableUnitCodes.map(String);
+  }
+  if (Array.isArray(err?.missingProductIds) && err.missingProductIds.length > 0) {
+    payload.missingProductIds = err.missingProductIds.map(String);
   }
   if (Number.isFinite(Number(err?.currentStock))) payload.currentStock = Number(err.currentStock);
   if (Number.isFinite(Number(err?.lockedQty))) payload.lockedQty = Number(err.lockedQty);
@@ -268,8 +274,9 @@ r.post('/:id/approve', async (req, res) => {
       }
       const operation = await WholesaleOperation.findById(approval.referenceId);
       if (!operation) return res.status(404).json({ error: 'Wholesale operation not found' });
-      if (String(operation.operationType || '').toLowerCase() !== 'transfer') {
-        return res.status(400).json({ error: 'Only transfer requests can be resubmitted to director approval' });
+      const operationType = String(operation.operationType || '').toLowerCase();
+      if (!['transfer', 'adjustment'].includes(operationType)) {
+        return res.status(400).json({ error: 'Only transfer and adjustment requests can be resubmitted to director approval' });
       }
       const reviewedItems = normalizeWholesaleReviewItems(req.body?.items, operation);
       const acceptedQty = reviewedItems
