@@ -409,7 +409,7 @@ function ApprovalsPage() {
   const hasManagerTransferReviewChanges = useMemo(() => {
     if (!selectedRow) return false;
     if (String(selectedRow?.referenceModel || '') !== 'WholesaleOperation') return false;
-    if (String(selectedRow?.operationType || '').toLowerCase() !== 'transfer') return false;
+    if (!['transfer', 'adjustment'].includes(String(selectedRow?.operationType || '').toLowerCase())) return false;
     if (String(selectedRow?.status || '').toLowerCase() !== 'pending_manager') return false;
     const originalSource = Array.isArray(selectedRow?.items) && selectedRow.items.length > 0
       ? selectedRow.items
@@ -562,7 +562,7 @@ function ApprovalsPage() {
           });
           const nextStatus = String(response?.status || '').toLowerCase();
           if (nextStatus === 'pending_director') {
-            toast.show('Transfer changes were sent back for director approval', { type: 'success' });
+            toast.show('Changes were sent back for director approval', { type: 'success' });
           } else if (nextStatus === 'pending_manager') {
             toast.show('Director approval recorded. Waiting for manager approval.', { type: 'success' });
           } else {
@@ -776,10 +776,19 @@ function ApprovalsPage() {
                 <tbody>
                   {reviewItems.map((item, index) => {
                     const meta = getProductDisplayMeta(products, item.productId, item.variantId, item);
+                    const productMissing = !meta.product && String(item.productId || '').trim().length > 0;
                     return (
-                      <tr key={item.lineId || index}>
+                      <tr key={item.lineId || index} style={productMissing ? { background: '#fef2f2' } : undefined}>
                         <td>
-                          <div style={{ color: '#111827' }}>{meta.productName || item.productId || '—'}</div>
+                          <div style={{ color: productMissing ? '#b91c1c' : '#111827' }}>
+                            {meta.productName || item.productId || '—'}
+                            {productMissing ? ' (missing product)' : ''}
+                          </div>
+                          {productMissing ? (
+                            <div style={{ marginTop: 4, color: '#b91c1c', fontSize: 12, fontWeight: 700 }}>
+                              Cancel this line, then Resubmit or Approve
+                            </div>
+                          ) : null}
                           {meta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
                         </td>
                         {String(selectedRow.operationType || '').toLowerCase() === 'adjustment' && <td>{formatAdjustmentTypeLabel(item.adjustmentType || selectedRow.adjustmentType || 'increase')}</td>}

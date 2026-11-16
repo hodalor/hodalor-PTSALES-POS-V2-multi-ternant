@@ -673,7 +673,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
   const hasManagerTransferReviewChanges = useMemo(() => {
     if (!selectedRow) return false;
     if (String(selectedRow.approvalMode || '').toLowerCase() !== 'workflow') return false;
-    if (String(selectedRow.operationType || '').toLowerCase() !== 'transfer') return false;
+    if (!['transfer', 'adjustment'].includes(String(selectedRow.operationType || '').toLowerCase())) return false;
     if (String(selectedRow.status || '').toLowerCase() !== 'pending_manager') return false;
     const originalSource = Array.isArray(selectedRow.items) && selectedRow.items.length > 0
       ? selectedRow.items
@@ -769,7 +769,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
             toast.show(t('Transfer approved and stock updated'), { type: 'success' });
           }
         } else if (nextStatus === 'pending_director') {
-          toast.show(t('Transfer changes resubmitted for director approval'), { type: 'success' });
+          toast.show(t('Changes resubmitted for director approval'), { type: 'success' });
         } else if (nextStatus === 'pending_manager') {
           toast.show(t('Director approval recorded. Waiting for manager approval.'), { type: 'success' });
         } else {
@@ -1683,11 +1683,20 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                 <tbody>
                   {reviewItems.map((item, index) => {
                     const meta = getProductDisplayMeta(products, item.productId, item.variantId, item);
+                    const productMissing = !meta.product && String(item.productId || '').trim().length > 0;
                     const itemConflict = getItemConflictState(item, reviewConflict);
                     return (
-                      <tr key={item.lineId || index} style={itemConflict.hasConflict ? { background: '#fef2f2' } : undefined}>
+                      <tr key={item.lineId || index} style={(itemConflict.hasConflict || productMissing) ? { background: '#fef2f2' } : undefined}>
                         <td>
-                          <div style={{ color: '#111827' }}>{meta.productName || item.productId}</div>
+                          <div style={{ color: productMissing ? '#b91c1c' : '#111827' }}>
+                            {meta.productName || item.productId}
+                            {productMissing ? ` (${t('missing product')})` : ''}
+                          </div>
+                          {productMissing ? (
+                            <div style={{ marginTop: 4, color: '#b91c1c', fontSize: 12, fontWeight: 700 }}>
+                              {t('Cancel this line, then Resubmit or Approve')}
+                            </div>
+                          ) : null}
                           {meta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
                           {itemConflict.selectedUnits.length > 0 && (
                             <div style={{ marginTop: 4, fontSize: 12, display: 'flex', flexWrap: 'wrap', gap: 6 }}>

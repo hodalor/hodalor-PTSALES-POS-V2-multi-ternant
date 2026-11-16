@@ -207,7 +207,14 @@ export function approveOperation(row, body = {}) {
   };
   if (row?.operationType === 'purchase') return purchasesApi.approve(payloadBase).finally(() => invalidateOperationsCache());
   if (row?.operationType === 'transfer') return transfersApi.approve(payloadBase).finally(() => invalidateOperationsCache());
-  if (row?.operationType === 'adjustment') return adjustmentsApi.approve({ id: payloadBase.id, remark: payloadBase.remark }).finally(() => invalidateOperationsCache());
+  if (row?.operationType === 'adjustment') {
+    return adjustmentsApi.approve({
+      id: payloadBase.id,
+      remark: payloadBase.remark,
+      items: body.items,
+      resubmitToDirector: body.resubmitToDirector
+    }).finally(() => invalidateOperationsCache());
+  }
   if (row?.operationType === 'refund') {
     return refundsApi.approve({
       id: payloadBase.id,

@@ -1012,9 +1012,82 @@ function AdjustmentsPage() {
   );
 }
 
+function normalizeAdjustmentReviewStatus(value) {
+  return String(value || '').toLowerCase() === 'cancelled' ? 'cancelled' : 'accepted';
+}
+
+function normalizeAdjustmentReviewItemsForCompare(items = []) {
+  return (Array.isArray(items) ? items : []).map((item, index) => {
+    const type = String(item?.adjustmentType || (Number(item?.delta || 0) < 0 ? 'decrease' : 'increase')).toLowerCase() === 'decrease'
+      ? 'decrease'
+      : 'increase';
+    const quantity = Math.abs(Number(item?.quantity || item?.delta || 0));
+    return {
+      lineId: String(item?.lineId || `${index + 1}`),
+      productId: String(item?.productId || ''),
+      variantId: String(item?.variantId || ''),
+      quantity,
+      adjustmentType: type,
+      delta: type === 'decrease' ? -quantity : quantity,
+      unitIds: Array.isArray(item?.unitIds) ? item.unitIds.map(String).filter(Boolean) : [],
+      status: normalizeAdjustmentReviewStatus(item?.status)
+    };
+  });
+}
+
+function seedAdjustmentReviewItems(row = {}) {
+  if (Array.isArray(row.items) && row.items.length > 0) {
+    return row.items.map((item, index) => {
+      const type = String(item?.adjustmentType || (Number(item?.delta || 0) < 0 ? 'decrease' : 'increase')).toLowerCase() === 'decrease'
+        ? 'decrease'
+        : 'increase';
+      const quantity = Math.abs(Number(item?.quantity || item?.delta || 0));
+      return {
+        lineId: item.lineId || `${index + 1}`,
+        productId: item.productId,
+        variantId: item.variantId || '',
+        name: item.name || item.productName || '',
+        productName: item.productName || item.name || '',
+        sku: item.sku || '',
+        quantity,
+        adjustmentType: type,
+        delta: type === 'decrease' ? -quantity : quantity,
+        unitIds: Array.isArray(item.unitIds) ? item.unitIds.map(String) : [],
+        selectedUnits: Array.isArray(item.selectedUnits) ? item.selectedUnits : [],
+        serializedEntries: Array.isArray(item.serializedEntries) ? item.serializedEntries : [],
+        remark: item.remark || '',
+        status: normalizeAdjustmentReviewStatus(item.status)
+      };
+    });
+  }
+  const type = String(row?.adjustmentType || (Number(row?.delta || 0) < 0 ? 'decrease' : 'increase')).toLowerCase() === 'decrease'
+    ? 'decrease'
+    : 'increase';
+  const quantity = Math.abs(Number(row?.quantity || row?.delta || 0));
+  return [{
+    lineId: '1',
+    productId: row.productId,
+    variantId: row.variantId || '',
+    name: row.productName || row.name || '',
+    productName: row.productName || row.name || '',
+    sku: row.sku || '',
+    quantity,
+    adjustmentType: type,
+    delta: type === 'decrease' ? -quantity : quantity,
+    unitIds: Array.isArray(row.unitIds) ? row.unitIds.map(String) : [],
+    selectedUnits: Array.isArray(row.selectedUnits) ? row.selectedUnits : [],
+    serializedEntries: Array.isArray(row.serializedEntries) ? row.serializedEntries : [],
+    remark: row.remark || '',
+    status: 'accepted'
+  }];
+}
+
 function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, statusFilter, setStatusFilter, loading, setLoading, products, branches, byId, setDetail, busyId, setBusyId, toast, auth, dispatch, approvalQuery, setApprovalQuery, approvalDateField, setApprovalDateField, approvalDateFrom, setApprovalDateFrom, approvalDateTo, setApprovalDateTo }) {
   const [requests, setRequests] = useState([]);
   const [reloadAt, setReloadAt] = useState(0);
+  const [reviewRow, setReviewRow] = useState(null);
+  const [reviewItems, setReviewItems] = useState([]);
+  const [decisionRemark, setDecisionRemark] = useState('');
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -1049,58 +1122,127 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
       return matchesDateField(row, approvalDateField, approvalDateFrom, approvalDateTo);
     });
   }, [approvalDateField, approvalDateFrom, approvalDateTo, approvalQuery, byId, products, requests]);
-  async function approve(r) {
+  const hasManagerReviewChanges = useMemo(() => {
+    if (!reviewRow) return false;
+    if (String(reviewRow.status || '').toLowerCase() !== 'pending_manager') return false;
+    const original = normalizeAdjustmentReviewItemsForCompare(seedAdjustmentReviewItems(reviewRow));
+    const reviewed = normalizeAdjustmentReviewItemsForCompare(reviewItems);
+    return JSON.stringify(original) !== JSON.stringify(reviewed);
+  }, [reviewItems, reviewRow]);
+  function openReview(row) {
+    setReviewRow(row);
+    setReviewItems(seedAdjustmentReviewItems(row));
+    setDecisionRemark('');
+    setDetail(null);
+  }
+  function closeReview() {
+    if (busyId) return;
+    setReviewRow(null);
+    setReviewItems([]);
+    setDecisionRemark('');
+  }
+  async function approve(r = reviewRow, options = {}) {
+    const target = r || reviewRow;
+    if (!target) return;
     if (!canApprove) { toast.show('Not authorized to approve adjustments', { type: 'error' }); return; }
-    if (String(r.status || '') === 'pending_director' && !canDirectorApprove) { toast.show('Director approval required', { type: 'error' }); return; }
-    if (String(r.status || '') === 'pending_manager' && !canManagerApprove) { toast.show('Manager approval required', { type: 'error' }); return; }
-    if (String(r.status || '') === 'pending_manager' && !canCompleteManagerStageAsActor({ name: auth.user?.name, role: auth.role }, directorApproverNameFromRow(r))) {
+    if (String(target.status || '') === 'pending_director' && !canDirectorApprove) { toast.show('Director approval required', { type: 'error' }); return; }
+    if (String(target.status || '') === 'pending_manager' && !canManagerApprove) { toast.show('Manager approval required', { type: 'error' }); return; }
+    if (String(target.status || '') === 'pending_manager' && !canCompleteManagerStageAsActor({ name: auth.user?.name, role: auth.role }, directorApproverNameFromRow(target))) {
       toast.show('Manager approval must be a different user from the director approver', { type: 'error' });
       return;
     }
-    const id = r._id || r.clientId;
+    const id = target._id || target.clientId;
+    const activeItems = (options.items || (reviewRow && String(reviewRow._id || reviewRow.clientId) === String(id) ? reviewItems : seedAdjustmentReviewItems(target)))
+      .map((item) => {
+        const type = String(item?.adjustmentType || (Number(item?.delta || 0) < 0 ? 'decrease' : 'increase')).toLowerCase() === 'decrease'
+          ? 'decrease'
+          : 'increase';
+        const quantity = Math.abs(Number(item?.quantity || item?.delta || 0));
+        return {
+          ...item,
+          adjustmentType: type,
+          quantity,
+          delta: type === 'decrease' ? -quantity : quantity,
+          status: normalizeAdjustmentReviewStatus(item.status)
+        };
+      });
+    const acceptedCount = activeItems.filter((item) => item.status !== 'cancelled' && Number(item.delta || 0) !== 0).length;
+    if (acceptedCount <= 0) {
+      toast.show('Keep at least one accepted item with quantity greater than zero', { type: 'error' });
+      return;
+    }
     try {
-      const remark = await promptDialog('Enter remark for approval (required)');
-      if (!remark || !String(remark).trim()) { toast.show('Remark is required', { type: 'error' }); return; }
+      const remark = String(options.remark || decisionRemark || '').trim() || String(await promptDialog('Enter remark for approval (required)') || '').trim();
+      if (!remark) { toast.show('Remark is required', { type: 'error' }); return; }
+      const shouldResubmit = String(target.status || '') === 'pending_manager' && (
+        options.resubmitToDirector === true
+        || (reviewRow && String(reviewRow._id || reviewRow.clientId) === String(id) && hasManagerReviewChanges)
+      );
       setBusyId(id);
       if (!navigator.onLine) {
-        await enqueueHttp({ collection: 'adjustmentrequests', label: 'Adjustment approve', path: '/api/adjustments/approve', method: 'POST', body: { id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark } });
-        toast.show('Adjustment approval queued offline', { type: 'success' });
-        setRequests(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, status: 'pending_manager', directorApproverName: auth.user?.name || 'unknown', directorApproverRole: auth.role || '', directorApprovalRemark: remark, directorApproved_at: new Date().toISOString() } : x));
-        return;
-      } else {
-        const response = await adjustmentsApi.approve({ id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark });
-        const next = response?.request || response;
-        const nextStatus = String(next?.status || '');
-        setBusyId(null);
-        if (nextStatus === 'approved') {
-          const approvedItems = Array.isArray(next?.items) && next.items.length > 0 ? next.items : (Array.isArray(r.items) ? r.items : []);
-          approvedItems.forEach((item) => {
-            if (String(item?.status || '').toLowerCase() === 'cancelled') return;
-            dispatch(adjustStock({
-              productId: item.productId,
-              variantId: item.variantId || undefined,
-              branchId: next.branchId || r.branchId,
-              delta: Number(item.delta || 0),
-              inventoryType: inventoryTypeForBranch(branches, next.branchId || r.branchId)
-            }));
-          });
-          void refreshAffectedProducts(dispatch, Array.from(new Set(approvedItems.map((item) => item?.productId).filter(Boolean))));
-          toast.show('Adjustment approved and stock updated', { type: 'success' });
-          setRequests(prev => {
-            return prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, ...next } : x);
-          });
-          setStatusFilter('approved');
-          setReloadAt(Date.now());
-        } else {
-          toast.show('Director approval recorded. Waiting for manager approval.', { type: 'success' });
-          setRequests(prev => {
-            return prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, ...next } : x);
-          });
-          setStatusFilter('pending_manager');
-          setReloadAt(Date.now());
-        }
+        await enqueueHttp({
+          collection: 'adjustmentrequests',
+          label: shouldResubmit ? 'Adjustment resubmit' : 'Adjustment approve',
+          path: '/api/adjustments/approve',
+          method: 'POST',
+          body: {
+            id,
+            approverName: auth.user?.name || 'unknown',
+            approverRole: auth.role || '',
+            remark,
+            items: activeItems,
+            resubmitToDirector: shouldResubmit
+          }
+        });
+        toast.show(shouldResubmit ? 'Adjustment resubmit queued offline' : 'Adjustment approval queued offline', { type: 'success' });
+        closeReview();
+        setReloadAt(Date.now());
         return;
       }
+      const response = await adjustmentsApi.approve({
+        id,
+        approverName: auth.user?.name || 'unknown',
+        approverRole: auth.role || '',
+        remark,
+        items: activeItems,
+        resubmitToDirector: shouldResubmit
+      });
+      const next = response?.request || response;
+      const nextStatus = String(next?.status || '');
+      setBusyId(null);
+      if (nextStatus === 'pending_director') {
+        toast.show('Changes resubmitted for director approval', { type: 'success' });
+        setRequests(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, ...next } : x));
+        setStatusFilter('pending_director');
+        setReloadAt(Date.now());
+        closeReview();
+        return;
+      }
+      if (nextStatus === 'approved') {
+        const approvedItems = Array.isArray(next?.items) && next.items.length > 0 ? next.items : activeItems;
+        approvedItems.forEach((item) => {
+          if (String(item?.status || '').toLowerCase() === 'cancelled') return;
+          dispatch(adjustStock({
+            productId: item.productId,
+            variantId: item.variantId || undefined,
+            branchId: next.branchId || target.branchId,
+            delta: Number(item.delta || 0),
+            inventoryType: inventoryTypeForBranch(branches, next.branchId || target.branchId)
+          }));
+        });
+        void refreshAffectedProducts(dispatch, Array.from(new Set(approvedItems.map((item) => item?.productId).filter(Boolean))));
+        toast.show('Adjustment approved and stock updated', { type: 'success' });
+        setRequests(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, ...next } : x));
+        setStatusFilter('approved');
+        setReloadAt(Date.now());
+        closeReview();
+        return;
+      }
+      toast.show('Director approval recorded. Waiting for manager approval.', { type: 'success' });
+      setRequests(prev => prev.map(x => String(x._id || x.clientId) === String(id) ? { ...x, ...next } : x));
+      setStatusFilter('pending_manager');
+      setReloadAt(Date.now());
+      closeReview();
     } catch (e) {
       const message = String(e?.message || 'Failed to approve');
       setBusyId(null);
@@ -1112,12 +1254,14 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
       }
     } finally { setBusyId(null); }
   }
-  async function reject(r) {
+  async function reject(r = reviewRow) {
+    const target = r || reviewRow;
+    if (!target) return;
     if (!canApprove) { toast.show('Not authorized to reject adjustments', { type: 'error' }); return; }
-    const id = r._id || r.clientId;
+    const id = target._id || target.clientId;
     try {
-      const remark = await promptDialog('Enter reason for rejection (required)');
-      if (!remark || !String(remark).trim()) { toast.show('Remark is required', { type: 'error' }); return; }
+      const remark = String(decisionRemark || '').trim() || String(await promptDialog('Enter reason for rejection (required)') || '').trim();
+      if (!remark) { toast.show('Remark is required', { type: 'error' }); return; }
       setBusyId(id);
       if (!navigator.onLine) {
         await enqueueHttp({ collection: 'adjustmentrequests', label: 'Adjustment reject', path: '/api/adjustments/reject', method: 'POST', body: { id, approverName: auth.user?.name || 'unknown', approverRole: auth.role || '', remark } });
@@ -1130,10 +1274,18 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
       });
       setStatusFilter('rejected');
       setReloadAt(Date.now());
+      closeReview();
     } catch (e) {
       toast.show(String(e?.message || 'Failed to reject'), { type: 'error' });
     } finally { setBusyId(null); }
   }
+  const canActOnReview = useMemo(() => {
+    if (!reviewRow) return false;
+    const status = String(reviewRow.status || '');
+    if (!['pending_approval', 'pending_director', 'pending_manager'].includes(status)) return false;
+    if (status === 'pending_director' || status === 'pending_approval') return canDirectorApprove;
+    return canManagerApprove && canCompleteManagerStageAsActor({ name: auth.user?.name, role: auth.role }, directorApproverNameFromRow(reviewRow));
+  }, [auth.role, auth.user?.name, canDirectorApprove, canManagerApprove, reviewRow]);
   return (
     <div className="sales-section-card">
       <div className="approval-toolbar">
@@ -1202,7 +1354,7 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
             const adjustment = getAdjustmentDisplay(r);
             const title = String(r.transactionTitle || '').trim() || (Array.isArray(r.items) && r.items.length > 1 ? `${meta.productName || r.productId} +${r.items.length - 1} more` : (meta.productName || r.productId));
             return (
-              <tr key={r._id || r.clientId} style={{ cursor: 'pointer' }} onClick={() => setDetail(r)}>
+              <tr key={r._id || r.clientId} style={{ cursor: 'pointer' }} onClick={() => (['pending_approval', 'pending_director', 'pending_manager'].includes(String(r.status || '')) ? openReview(r) : setDetail(r))}>
                 <td>
                   <div>{title}</div>
                   {meta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{meta.secondaryLabel}</div> : null}
@@ -1216,8 +1368,8 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
                 <td>
                   {['pending_approval', 'pending_director', 'pending_manager'].includes(String(r.status || '')) ? (
                     <div className="approval-row-actions">
-                      <button className="btn btn-primary btn-compact" onClick={(e) => { e.stopPropagation(); approve(r); }} disabled={((String(r.status || '') === 'pending_director' && !canDirectorApprove) || (String(r.status || '') === 'pending_manager' && (!canManagerApprove || !canCompleteManagerStageAsActor({ name: auth.user?.name, role: auth.role }, directorApproverNameFromRow(r)))) || busyId === (r._id || r.clientId))}>{busyId === (r._id || r.clientId) ? 'Working…' : String(r.status || '') === 'pending_manager' ? 'Manager Approve' : 'Director Approve'}</button>
-                      <button className="btn btn-compact" onClick={(e) => { e.stopPropagation(); reject(r); }} disabled={!canApprove || busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? 'Working…' : 'Reject'}</button>
+                      <button className="btn btn-primary btn-compact" onClick={(e) => { e.stopPropagation(); openReview(r); }} disabled={busyId === (r._id || r.clientId)}>{busyId === (r._id || r.clientId) ? 'Working…' : 'Review'}</button>
+                      <button className="btn btn-compact" onClick={(e) => { e.stopPropagation(); openReview(r); }} disabled={!canApprove || busyId === (r._id || r.clientId)}>Open</button>
                     </div>
                   ) : (
                     <span className={`status-badge ${r.status === 'approved' ? 'success' : 'danger'}`}>{r.status}</span>
@@ -1230,6 +1382,105 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
         </tbody>
       </table>
       </div>
+      {reviewRow && (
+        <Modal
+          title="Adjustment Review"
+          onClose={closeReview}
+          footer={(
+            <>
+              <button className="btn" onClick={closeReview} disabled={!!busyId}>Close</button>
+              {canActOnReview && (
+                <>
+                  <button className="btn" onClick={() => reject(reviewRow)} disabled={!!busyId}>{busyId ? 'Working…' : 'Reject'}</button>
+                  <button className="btn btn-primary" onClick={() => approve(reviewRow, { remark: decisionRemark })} disabled={!!busyId}>
+                    {busyId ? 'Working…' : (hasManagerReviewChanges ? 'Resubmit' : (String(reviewRow.status || '') === 'pending_manager' ? 'Manager Approve' : 'Director Approve'))}
+                  </button>
+                </>
+              )}
+            </>
+          )}
+        >
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div style={{ color: '#64748b', fontSize: 13 }}>
+              Cancel missing or wrong lines. If a manager changes the list, it returns to director approval (same as transfers).
+            </div>
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th align="left">Product</th>
+                    <th align="left">Adjustment Type</th>
+                    <th align="left">Quantity</th>
+                    <th align="left">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reviewItems.map((item, index) => {
+                    const itemMeta = getProductDisplayMeta(products, item.productId, item.variantId, item);
+                    const productMissing = !itemMeta.product && String(item.productId || '').trim().length > 0;
+                    const serializedLocked = (Array.isArray(item.unitIds) && item.unitIds.length > 0)
+                      || (Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0);
+                    return (
+                      <tr key={item.lineId || index} style={productMissing ? { background: '#fef2f2' } : undefined}>
+                        <td>
+                          <div style={{ color: productMissing ? '#b91c1c' : '#111827' }}>
+                            {itemMeta.productName || item.productId}
+                            {productMissing ? ' (missing product)' : ''}
+                          </div>
+                          {productMissing ? (
+                            <div style={{ marginTop: 4, color: '#b91c1c', fontSize: 12, fontWeight: 700 }}>
+                              Cancel this line, then Resubmit or Approve
+                            </div>
+                          ) : null}
+                          {itemMeta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{itemMeta.secondaryLabel}</div> : null}
+                        </td>
+                        <td>{String(item.adjustmentType || '').toLowerCase() === 'decrease' ? 'Decrease' : 'Increase'}</td>
+                        <td>
+                          <input
+                            className="input"
+                            type="number"
+                            min="0"
+                            value={item.quantity}
+                            disabled={!canActOnReview || !!busyId || serializedLocked}
+                            onChange={(e) => {
+                              const quantity = Math.max(0, Number(e.target.value) || 0);
+                              const type = String(item.adjustmentType || 'increase').toLowerCase() === 'decrease' ? 'decrease' : 'increase';
+                              setReviewItems((prev) => prev.map((row, rowIndex) => (
+                                rowIndex === index
+                                  ? { ...row, quantity, delta: type === 'decrease' ? -quantity : quantity }
+                                  : row
+                              )));
+                            }}
+                            style={{ width: 90, color: '#111827' }}
+                          />
+                        </td>
+                        <td>
+                          <select
+                            className="select"
+                            value={normalizeAdjustmentReviewStatus(item.status)}
+                            disabled={!canActOnReview || !!busyId}
+                            onChange={(e) => setReviewItems((prev) => prev.map((row, rowIndex) => (
+                              rowIndex === index ? { ...row, status: e.target.value } : row
+                            )))}
+                            style={{ color: '#111827' }}
+                          >
+                            <option value="accepted">Accepted</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <label>
+              <div style={{ marginBottom: 6, color: '#94a3b8' }}>Approval / Rejection Remark</div>
+              <textarea className="input" value={decisionRemark} onChange={(e) => setDecisionRemark(e.target.value)} rows={4} style={{ width: '100%', resize: 'vertical' }} />
+            </label>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

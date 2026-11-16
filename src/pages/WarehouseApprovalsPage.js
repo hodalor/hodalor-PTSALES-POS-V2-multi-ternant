@@ -121,6 +121,32 @@ function WarehouseApprovalsPage() {
     if (types.length === 1) return formatAdjustmentTypeLabel(types[0]);
     return formatAdjustmentTypeLabel(selectedRow?.adjustmentType || 'increase');
   }, [reviewItems, selectedRow]);
+  const hasManagerReviewChanges = useMemo(() => {
+    if (!selectedRow) return false;
+    if (!['transfer', 'adjustment'].includes(String(selectedRow.operationType || '').toLowerCase())) return false;
+    if (String(selectedRow.status || '').toLowerCase() !== 'pending_manager') return false;
+    const originalSource = Array.isArray(selectedRow.items) && selectedRow.items.length > 0
+      ? selectedRow.items
+      : [{
+          lineId: '1',
+          productId: selectedRow.productId,
+          variantId: selectedRow.variantId || '',
+          qty: Number(selectedRow.qty || 0),
+          unitIds: Array.isArray(selectedRow.unitIds) ? selectedRow.unitIds.map(String) : [],
+          selectedUnits: Array.isArray(selectedRow.selectedUnits) ? selectedRow.selectedUnits : [],
+          serializedEntries: Array.isArray(selectedRow.serializedEntries) ? selectedRow.serializedEntries : [],
+          status: 'accepted'
+        }];
+    const normalize = (items = []) => (Array.isArray(items) ? items : []).map((item, index) => ({
+      lineId: String(item?.lineId || `${index + 1}`),
+      productId: String(item?.productId || ''),
+      variantId: String(item?.variantId || ''),
+      qty: Math.max(0, Number(item?.qty || 0)),
+      unitIds: Array.isArray(item?.unitIds) ? item.unitIds.map(String).filter(Boolean) : [],
+      status: normalizeReviewStatus(item?.status)
+    }));
+    return JSON.stringify(normalize(originalSource)) !== JSON.stringify(normalize(reviewItems));
+  }, [reviewItems, selectedRow]);
   const warehouseRefundRows = useMemo(() => {
     const resolveRefundArea = (row = {}) => {
       const explicit = String(row?.refundArea || '').trim().toLowerCase();
@@ -234,22 +260,27 @@ function WarehouseApprovalsPage() {
         approverRole: auth.role || '',
         remark,
         reason: remark,
-        items: normalizedItems
+        items: normalizedItems,
+        resubmitToDirector: action === 'approve' && hasManagerReviewChanges
       };
-      if (action === 'approve') await approveOperation(row, payload);
+      let response = null;
+      if (action === 'approve') response = await approveOperation(row, payload);
       else await rejectOperation(row, payload);
+      const responseStatus = String(response?.status || nextStatus || '').toLowerCase();
       setRows(prev => prev.filter(item => String(item._id || item.clientId) !== String(row._id || row.clientId)));
       setSelectedRow(null);
       toast.show(
         action === 'approve'
-          ? (nextStatus === 'pending_manager' ? 'Warehouse request moved to manager approval' : 'Warehouse request approved')
+          ? (responseStatus === 'pending_director'
+            ? 'Changes resubmitted for director approval'
+            : (responseStatus === 'pending_manager' ? 'Warehouse request moved to manager approval' : 'Warehouse request approved'))
           : 'Warehouse request rejected',
         { type: 'success' }
       );
       setSyncing(true);
       void Promise.allSettled([
         load({ force: true }),
-        action === 'approve' && nextStatus === 'approved' ? refreshAffectedProducts(dispatch, affectedProductIds) : Promise.resolve()
+        action === 'approve' && responseStatus === 'approved' ? refreshAffectedProducts(dispatch, affectedProductIds) : Promise.resolve()
       ]).finally(() => setSyncing(false));
     } catch (e) {
       const msg = String(e?.message || '');
@@ -414,7 +445,7 @@ function WarehouseApprovalsPage() {
               {canAct(selectedRow) && (
                 <>
                   <button className="btn" onClick={() => act(selectedRow, 'reject')} disabled={workingId === (selectedRow._id || selectedRow.clientId)}>{workingId === (selectedRow._id || selectedRow.clientId) ? 'Working…' : 'Reject'}</button>
-                  <button className="btn btn-primary" onClick={() => act(selectedRow, 'approve')} disabled={workingId === (selectedRow._id || selectedRow.clientId)}>{workingId === (selectedRow._id || selectedRow.clientId) ? 'Working…' : 'Approve'}</button>
+                  <button className="btn btn-primary" onClick={() => act(selectedRow, 'approve')} disabled={workingId === (selectedRow._id || selectedRow.clientId)}>{workingId === (selectedRow._id || selectedRow.clientId) ? 'Working…' : (hasManagerReviewChanges ? 'Resubmit' : 'Approve')}</button>
                 </>
               )}
             </>
@@ -457,11 +488,20 @@ function WarehouseApprovalsPage() {
                 </thead>
                 <tbody>
                   {reviewItems.map((item, index) => {
-                    const product = products.find(row => String(row.id) === String(item.productId));
+                    const product = products.find(row => String(row.id) === String(item.productId) || String(row._id) === String(item.productId));
+                    const productMissing = !product && String(item.productId || '').trim().length > 0;
                     return (
-                      <tr key={item.lineId || index}>
+                      <tr key={item.lineId || index} style={productMissing ? { background: '#fef2f2' } : undefined}>
                         <td>
-                          <div style={{ color: '#111827' }}>{product?.name || item.productId}</div>
+                          <div style={{ color: productMissing ? '#b91c1c' : '#111827' }}>
+                            {product?.name || item.productName || item.name || item.productId}
+                            {productMissing ? ' (missing product)' : ''}
+                          </div>
+                          {productMissing ? (
+                            <div style={{ marginTop: 4, color: '#b91c1c', fontSize: 12, fontWeight: 700 }}>
+                              Cancel this line, then Resubmit or Approve
+                            </div>
+                          ) : null}
                           {Array.isArray(item.selectedUnits) && item.selectedUnits.length > 0 && (
                             <div style={{ marginTop: 4, color: '#111827', fontSize: 12 }}>
                               {item.selectedUnits.map(unit => unit.imei || unit.serialNumber || unit.unitId).filter(Boolean).join(', ')}
