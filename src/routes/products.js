@@ -273,17 +273,24 @@ function productRouteErrorMessage(err) {
 r.get('/', async (req, res) => {
   const ids = String(req.query.ids || '').split(',').map(v => String(v || '').trim()).filter(Boolean);
   const query = ids.length > 0 ? { $or: [{ id: { $in: ids } }, { _id: { $in: ids.filter(v => mongoose.isValidObjectId(v)).map(v => new mongoose.Types.ObjectId(v)) } }] } : {};
-  const items = await Product.find(query).sort({ createdAt: -1 }).limit(ids.length > 0 ? Math.max(ids.length, 1) : 1000);
-  // Backfill missing barcodes
+  const items = await Product.find(query)
+    .sort({ createdAt: -1 })
+    .limit(ids.length > 0 ? Math.max(ids.length, 1) : 500)
+    .lean();
+  // Backfill missing barcodes without hydrating full documents
   const toUpdate = items.filter(p => !p.barcode);
   if (toUpdate.length > 0) {
-    await Promise.allSettled(toUpdate.map(async p => {
-      p.barcode = generateEAN13();
-      try { await p.save(); } catch {}
+    await Promise.allSettled(toUpdate.map(async (p) => {
+      const barcode = generateEAN13();
+      p.barcode = barcode;
+      try {
+        await Product.updateOne({ _id: p._id }, { $set: { barcode } });
+      } catch {}
     }));
   }
+  res.set('Cache-Control', 'private, max-age=30');
   const mapped = items.map(p => {
-    const obj = p.toObject ? p.toObject({ flattenMaps: true }) : p;
+    const obj = { ...p };
     if (!obj.id && obj._id) obj.id = String(obj._id);
     obj.stockByBranch = normalizeStockByBranch(obj.stockByBranch);
     obj.wholesaleStockByBranch = normalizeStockByBranch(obj.wholesaleStockByBranch);

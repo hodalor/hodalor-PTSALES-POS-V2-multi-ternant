@@ -23,6 +23,7 @@ import { assertOutgoingAvailability } from '../utils/inTransitLocks.js';
 import { computeSaleTaxTotals, normalizeTierTaxForPrice } from '../utils/productTax.js';
 import { formatValidationError, validateEnforced } from '../validation/logOnlyValidation.js';
 import { saleCreateSchema } from '../validation/schemas.js';
+import { daysAgoDate, resolveListLimit, SALES_HARD_MAX } from '../utils/queryLimits.js';
 
 const r = Router();
 
@@ -192,12 +193,39 @@ r.get('/', requireRoleOrPerm(['Admin','Manager','Cashier'], [
     if (allowedBranchIds && !allowedBranchIds.includes(requestedBranchId)) return res.json([]);
     query.branchId = requestedBranchId;
   }
-  const wantsAll = ['1', 'true', 'yes'].includes(String(req.query.all || '').trim().toLowerCase());
-  const limit = Math.min(50000, Math.max(1, Number(req.query.limit || 500)));
-  let salesQuery = Sale.find(query).sort({ created_at: -1 });
-  if (!wantsAll) salesQuery = salesQuery.limit(limit);
-  const rows = await salesQuery.lean();
+  // Bound every sales list — `all=1` is no longer unlimited (caps at SALES_HARD_MAX).
+  const limit = resolveListLimit(req.query, {
+    defaultLimit: 200,
+    hardMax: SALES_HARD_MAX,
+    hardMaxAll: SALES_HARD_MAX
+  });
+  const days = Number(req.query.days);
+  if (req.query.from || req.query.to) {
+    query.created_at = { ...(query.created_at || {}) };
+    if (req.query.from) query.created_at.$gte = new Date(req.query.from);
+    if (req.query.to) {
+      const end = new Date(req.query.to);
+      if (!Number.isNaN(end.getTime())) {
+        end.setHours(23, 59, 59, 999);
+        query.created_at.$lte = end;
+      }
+    }
+  } else if (Number.isFinite(days) && days > 0) {
+    query.created_at = { ...(query.created_at || {}), $gte: daysAgoDate(days) };
+  } else if (!req.query.branchId && !query.branchId) {
+    // Default safety net for broad polls: last 30 days unless explicitly dated.
+    const explicitAll = ['1', 'true', 'yes'].includes(String(req.query.all || '').trim().toLowerCase());
+    if (!explicitAll) {
+      query.created_at = { ...(query.created_at || {}), $gte: daysAgoDate(30) };
+    }
+  }
+  const rows = await Sale.find(query)
+    .sort({ created_at: -1 })
+    .limit(limit)
+    .select('-__v')
+    .lean();
   const enriched = await enrichSalesWithAccounting(rows.map(normalizeSaleFinancials));
+  res.set('Cache-Control', 'private, max-age=15');
   res.json(enriched);
 });
 
@@ -566,9 +594,10 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
         throw err;
       }
       const prev = getMapQty(target.container, branchId);
+      const productKey = String(p.id || p._id || it.productId);
       await assertOutgoingAvailability({
         product: p,
-        productId: String(p.id || p._id || it.productId),
+        productId: productKey,
         variantId: String(it.variantId || ''),
         branchId,
         inventoryType,
@@ -577,16 +606,31 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
         reservationToken: String(payload.reservationToken || ''),
         purpose: 'sale'
       });
-      if (normalizeTrackType(p.trackType) === 'serialized') {
-        if (prev < it.qty) {
-          const label = variant?.label ? `${p.name} (${variant.label})` : p.name;
-          const err = new Error(`Insufficient ${inventoryType} stock for ${label} at ${branchCode}`);
-          err.status = 400;
-          throw err;
-        }
+      let availableQty = prev;
+      if (normalizeTrackType(p.trackType) === 'serialized' && availableQty < it.qty) {
+        // Unit rows are the stock cashiers see. The branch map can lag behind those rows.
+        const productIds = Array.from(new Set([
+          String(p.id || '').trim(),
+          String(p._id || '').trim(),
+          String(it.productId || '').trim()
+        ].filter(Boolean)));
+        const unitCount = await ProductUnit.countDocuments({
+          productId: { $in: productIds },
+          variantId: String(it.variantId || ''),
+          branchId: String(branchId),
+          inventoryType,
+          status: { $in: ['in_stock', 'reserved'] }
+        });
+        if (unitCount >= it.qty) availableQty = unitCount;
+      }
+      if (normalizeTrackType(p.trackType) === 'serialized' && availableQty < it.qty) {
+        const label = variant?.label ? `${p.name} (${variant.label})` : p.name;
+        const err = new Error(`Insufficient ${inventoryType} stock for ${label} at ${branchCode}`);
+        err.status = 400;
+        throw err;
       }
       touched.push({ target, branchId, prev });
-      setMapQty(target.container, branchId, Math.max(0, prev - it.qty));
+      setMapQty(target.container, branchId, Math.max(0, availableQty - it.qty));
       markInventoryModified(target);
       dirtyProducts.set(String(p._id || p.id || it.productId), p);
       const cp = variant?.costPrice != null ? Number(variant.costPrice || 0) : Number(p.costPrice || 0);
@@ -938,8 +982,20 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
     return res.status(safeErrorStatus(e)).json({ error: safeErrorMessage(e, 'Failed to create sale') });
   }
 
-  try {
-    await Audit.create({
+  const payTerms = Array.isArray(sale.payment_methods) ? sale.payment_methods.map(p => {
+    const t = String(p.type || '').toLowerCase();
+    if (t === 'cash') return 'Cash';
+    if (t === 'card') return 'Card';
+    if (t === 'mobile' || t === 'momo' || t === 'mobile money') return 'Mobile Money';
+    if (t === 'wallet') return 'Wallet';
+    if (t === 'easybuy') return 'EasyBuy';
+    return t ? (t[0].toUpperCase() + t.slice(1)) : 'Cash';
+  }).join(', ') : 'Cash';
+  const out = normalizeSaleFinancials(sale?.toObject ? sale.toObject() : sale);
+  if (customerPointsAfter != null) out.customerPointsAfter = customerPointsAfter;
+  if (creditSale) out.creditSale = creditSale;
+  await Promise.all([
+    Audit.create({
       actor: sale.sellerName || 'unknown',
       actionType: posType === 'wholesale' ? 'stock_wholesale_sale_deduct' : posType === 'warehouse' ? 'stock_warehouse_sale_deduct' : 'stock_sale_deduct',
       details: withInventoryAudit(
@@ -965,10 +1021,8 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       ),
       branchId: sale.branchId,
       ts: new Date()
-    });
-  } catch {}
-  try {
-    await ServerLog.create({
+    }).catch(() => {}),
+    ServerLog.create({
       level: 'info',
       actor: sale.sellerName || req.user?.name || 'unknown',
       route: '/api/sales',
@@ -976,22 +1030,8 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       status: 200,
       message: `Sale ${sale._id}: ${Array.isArray(sale.items) ? sale.items.map(i => `${i.sku || i.productId} x${i.qty}`).join(', ') : 'items'} @ ${sale.branchId}`,
       details: { invoiceSerial, receiptNumber }
-    });
-  } catch {}
-  const out = normalizeSaleFinancials(sale?.toObject ? sale.toObject() : sale);
-  if (customerPointsAfter != null) out.customerPointsAfter = customerPointsAfter;
-  if (creditSale) out.creditSale = creditSale;
-  try {
-    const payTerms = Array.isArray(sale.payment_methods) ? sale.payment_methods.map(p => {
-      const t = String(p.type || '').toLowerCase();
-      if (t === 'cash') return 'Cash';
-      if (t === 'card') return 'Card';
-      if (t === 'mobile' || t === 'momo' || t === 'mobile money') return 'Mobile Money';
-      if (t === 'wallet') return 'Wallet';
-      if (t === 'easybuy') return 'EasyBuy';
-      return t ? (t[0].toUpperCase() + t.slice(1)) : 'Cash';
-    }).join(', ') : 'Cash';
-    await Invoice.create({
+    }).catch(() => {}),
+    Invoice.create({
       number: sale.invoiceSerial || '',
       date: sale.created_at || new Date(),
       saleId: String(sale._id),
@@ -1010,38 +1050,40 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       deliveryNote: 'Physical',
       paymentTerms: payTerms,
       despatchedThrough: 'In person'
-    });
-  } catch {}
-  if (discountApproval) {
-    await DiscountApproval.updateOne(
-      { _id: discountApproval._id, status: { $in: ['approved', 'rejected'] } },
-      {
-        $set: {
-          status: 'completed',
-          completedByName: String(req.user?.name || 'unknown'),
-          completedByRole: String(req.user?.role || ''),
-          completedAt: sale.discountCompletedAt || new Date(),
-          completedSaleId: String(sale._id || ''),
-          completedInvoiceSerial: String(sale.invoiceSerial || ''),
-          completedReceiptNumber: String(sale.receiptNumber || '')
+    }).catch(() => {}),
+    discountApproval
+      ? DiscountApproval.updateOne(
+        { _id: discountApproval._id, status: { $in: ['approved', 'rejected'] } },
+        {
+          $set: {
+            status: 'completed',
+            completedByName: String(req.user?.name || 'unknown'),
+            completedByRole: String(req.user?.role || ''),
+            completedAt: sale.discountCompletedAt || new Date(),
+            completedSaleId: String(sale._id || ''),
+            completedInvoiceSerial: String(sale.invoiceSerial || ''),
+            completedReceiptNumber: String(sale.receiptNumber || '')
+          }
         }
-      }
-    ).catch(() => null);
-    await Audit.create({
-      actor: String(req.user?.name || sale.sellerName || 'unknown').trim() || 'unknown',
-      actionType: 'discount_sale_completed',
-      details: {
-        discountApprovalId: String(discountApproval._id || ''),
-        saleId: String(sale._id || ''),
-        invoiceSerial: String(sale.invoiceSerial || ''),
-        receiptNumber: String(sale.receiptNumber || ''),
-        total: Number(sale.total || 0),
-        discount: Number(sale.discount || 0)
-      },
-      branchId: sale.branchId,
-      ts: new Date()
-    }).catch(() => {});
-  }
+      ).catch(() => null)
+      : Promise.resolve(),
+    discountApproval
+      ? Audit.create({
+        actor: String(req.user?.name || sale.sellerName || 'unknown').trim() || 'unknown',
+        actionType: 'discount_sale_completed',
+        details: {
+          discountApprovalId: String(discountApproval._id || ''),
+          saleId: String(sale._id || ''),
+          invoiceSerial: String(sale.invoiceSerial || ''),
+          receiptNumber: String(sale.receiptNumber || ''),
+          total: Number(sale.total || 0),
+          discount: Number(sale.discount || 0)
+        },
+        branchId: sale.branchId,
+        ts: new Date()
+      }).catch(() => {})
+      : Promise.resolve()
+  ]);
   res.json(out);
 });
 

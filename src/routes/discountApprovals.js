@@ -121,7 +121,12 @@ r.get('/', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['add_sales', 'app
   }
   if (req.query.posType) query.posType = String(req.query.posType || '');
   if (req.query.branchId) query.branchId = String(req.query.branchId || '');
-  const rows = await DiscountApproval.find(query).sort({ createdAt: -1 }).limit(500).lean();
+  const rows = await DiscountApproval.find(query)
+    .sort({ createdAt: -1 })
+    .limit(200)
+    .select('-salePayload -__v')
+    .lean();
+  res.set('Cache-Control', 'private, max-age=10');
   const mineOnly = String(req.query.mine || '').trim() === '1';
   const filtered = rows.filter((row) => {
     if (mineOnly && String(row.submittedByName || '') !== String(req.user?.name || '')) return false;

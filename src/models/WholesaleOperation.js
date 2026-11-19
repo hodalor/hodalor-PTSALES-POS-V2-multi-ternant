@@ -27,8 +27,7 @@ const WholesaleOperationSchema = new mongoose.Schema({
   operationArea: {
     type: String,
     enum: ['wholesale', 'warehouse'],
-    default: 'wholesale',
-    index: true
+    default: 'wholesale'
   },
   operationType: {
     type: String,
@@ -62,7 +61,7 @@ const WholesaleOperationSchema = new mongoose.Schema({
   initiatedByName: { type: String, default: '' },
   initiatedByRole: { type: String, default: '' },
   executedAt: { type: Date }
-}, { timestamps: true });
+}, { timestamps: true, autoIndex: false });
 
 WholesaleOperationSchema.index({ operationArea: 1, operationType: 1, status: 1, createdAt: -1 });
 WholesaleOperationSchema.index({ operationArea: 1, status: 1, createdAt: -1 });

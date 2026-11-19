@@ -19,7 +19,7 @@ const DiscountApprovalSchema = new mongoose.Schema({
   branchName: { type: String, default: '' },
   posType: { type: String, enum: ['retail', 'wholesale', 'warehouse'], default: 'retail', index: true },
   inventoryType: { type: String, enum: ['retail', 'wholesale', 'warehouse'], default: 'retail', index: true },
-  submittedByName: { type: String, required: true, index: true },
+  submittedByName: { type: String, required: true },
   submittedByRole: { type: String, default: '' },
   approvedByName: { type: String, default: '' },
   approvedByRole: { type: String, default: '' },
@@ -50,10 +50,11 @@ const DiscountApprovalSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: ['under_review', 'approved', 'rejected', 'completed', 'cancelled'],
-    default: 'under_review',
-    index: true
+    default: 'under_review'
   }
-}, { timestamps: true });
+}, { timestamps: true, autoIndex: false });
+
+DiscountApprovalSchema.index({ branchId: 1, status: 1, createdAt: -1 });
 
 DiscountApprovalSchema.index({ status: 1, createdAt: -1 });
 DiscountApprovalSchema.index({ submittedByName: 1, status: 1, createdAt: -1 });

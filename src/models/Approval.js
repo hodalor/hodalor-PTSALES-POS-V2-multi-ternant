@@ -2,8 +2,8 @@ import mongoose from 'mongoose';
 import { createTenantAwareModel } from './_tenantModel.js';
 
 const ApprovalSchema = new mongoose.Schema({
-  actionType: { type: String, required: true, index: true },
-  referenceModel: { type: String, required: true, index: true },
+  actionType: { type: String, required: true },
+  referenceModel: { type: String, required: true },
   referenceId: { type: String, required: true, index: true },
   initiatedByName: { type: String, default: '' },
   initiatedByRole: { type: String, default: '' },
@@ -23,10 +23,9 @@ const ApprovalSchema = new mongoose.Schema({
   status: {
     type: String,
     enum: ['pending_director', 'pending_manager', 'approved', 'rejected'],
-    default: 'pending_director',
-    index: true
+    default: 'pending_director'
   }
-}, { timestamps: true });
+}, { timestamps: true, autoIndex: false });
 
 ApprovalSchema.index({ status: 1, actionType: 1, createdAt: -1 });
 ApprovalSchema.index({ actionType: 1, createdAt: -1 });

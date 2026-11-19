@@ -6,6 +6,7 @@ import mongoose from 'mongoose';
 import { getMasterConnection, getTenantConnection, resolveStoredTenantId } from '../config/tenancy.js';
 import { modelFor as TenantModelFor } from '../models/Tenant.js';
 import { archiveLiveDocument } from '../utils/superBin.js';
+import { AUDIT_HARD_MAX, resolveListLimit } from '../utils/queryLimits.js';
 
 const r = Router();
 r.use(requireAuth);
@@ -44,8 +45,11 @@ function enrichAuditBranchNames(row, branchLookup) {
 }
 
 r.get('/', requireRoleOrPerm(['SuperAdmin', 'Admin'], ['view_audit', 'see_audit', 'view_stock_records', 'see_stock_records']), async (req, res) => {
-  const wantsAll = ['1', 'true', 'yes'].includes(String(req.query.all || '').trim().toLowerCase());
-  const limit = Math.min(50000, Math.max(50, Number(req.query.limit) || 500));
+  const limit = resolveListLimit(req.query, {
+    defaultLimit: 200,
+    hardMax: AUDIT_HARD_MAX,
+    hardMaxAll: AUDIT_HARD_MAX
+  });
   const role = String(req.user?.role || '').toLowerCase();
   const currentTenantId = String(req.user?.tenantId || req.tenantId || 'master');
   const severity = String(req.query.severity || '').trim().toLowerCase();
@@ -66,9 +70,7 @@ r.get('/', requireRoleOrPerm(['SuperAdmin', 'Admin'], ['view_audit', 'see_audit'
   let rows = [];
   const isMasterSuper = role === 'superadmin' && currentTenantId.toLowerCase() === 'master';
   if (!isMasterSuper) {
-    let auditQuery = Audit.find(match).sort({ ts: -1 });
-    if (!wantsAll) auditQuery = auditQuery.limit(limit);
-    rows = await auditQuery.lean();
+    rows = await Audit.find(match).sort({ ts: -1 }).limit(limit).lean();
     const branches = await Branch.find({}, { id: 1, name: 1, code: 1 }).lean();
     const branchLookup = buildBranchLookupMap(branches);
     rows = rows.map((row) => enrichAuditBranchNames(row, branchLookup));
@@ -81,9 +83,7 @@ r.get('/', requireRoleOrPerm(['SuperAdmin', 'Admin'], ['view_audit', 'see_audit'
         const conn = await getTenantConnection(tenant.tenantId);
         const AuditModel = conn.models.Audit || conn.model('Audit', Audit.schema);
         const BranchModel = conn.models.Branch || conn.model('Branch', Branch.schema);
-        let auditQuery = AuditModel.find(match).sort({ ts: -1 });
-        if (!wantsAll) auditQuery = auditQuery.limit(limit);
-        const found = await auditQuery.lean();
+        const found = await AuditModel.find(match).sort({ ts: -1 }).limit(limit).lean();
         const branches = await BranchModel.find({}, { id: 1, name: 1, code: 1 }).lean();
         const branchLookup = buildBranchLookupMap(branches);
         return found.map((row) => ({
@@ -95,8 +95,7 @@ r.get('/', requireRoleOrPerm(['SuperAdmin', 'Admin'], ['view_audit', 'see_audit'
         return [];
       }
     }));
-    rows = grouped.flat().sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
-    if (!wantsAll) rows = rows.slice(0, limit);
+    rows = grouped.flat().sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime()).slice(0, limit);
   }
   res.set('Cache-Control', 'no-store');
   res.json(rows);

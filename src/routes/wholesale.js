@@ -50,7 +50,7 @@ r.get('/operations', async (req, res) => {
   const rows = await WholesaleOperation.find(query)
     .sort({ createdAt: -1 })
     .skip(paged ? (page - 1) * pageSize : 0)
-    .limit(paged ? pageSize : 500)
+    .limit(paged ? pageSize : Math.min(200, Math.max(1, Number(req.query.limit || 100))))
     .lean();
   const referenceIds = rows.map(row => String(row._id)).filter(Boolean);
   const approvals = referenceIds.length > 0

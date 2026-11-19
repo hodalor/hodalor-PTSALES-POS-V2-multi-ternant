@@ -296,8 +296,10 @@ export async function listSerializedUnits({ productId = '', variantId = '', bran
       filter.$or = queryFilter;
     }
   }
-  const skip = Math.max(0, (Number(page || 1) - 1) * Number(pageSize || 30));
-  const limit = all ? 0 : Math.max(1, Number(pageSize || 30));
+  const safePageSize = Math.min(500, Math.max(1, Number(pageSize || 30) || 30));
+  const skip = Math.max(0, (Number(page || 1) - 1) * safePageSize);
+  // Never use limit(0) — that means unlimited in MongoDB. Cap "all" dumps hard.
+  const limit = all ? Math.min(500, Math.max(safePageSize, 200)) : safePageSize;
   const [rows, total] = await Promise.all([
     ProductUnit.find(filter, {
       productId: 1,
@@ -387,14 +389,26 @@ export async function sellSerializedUnits({ unitIds = [], reservationToken = '',
       throw err;
     }
   }
-  for (const row of rows) {
+  const soldAt = new Date();
+  await ProductUnit.updateMany(
+    { _id: { $in: rows.map((row) => row._id) } },
+    {
+      $set: {
+        status: 'sold',
+        soldSaleId: String(saleId || ''),
+        soldAt,
+        reservationToken: '',
+        reservedAt: null
+      }
+    }
+  );
+  rows.forEach((row) => {
     row.status = 'sold';
     row.soldSaleId = String(saleId || '');
-    row.soldAt = new Date();
+    row.soldAt = soldAt;
     row.reservationToken = '';
     row.reservedAt = null;
-    await row.save();
-  }
+  });
   return rows;
 }
 
