@@ -553,7 +553,7 @@ function App() {
           canLoadSuppliers ? suppliersApi.list() : Promise.resolve([]),
           canLoadCustomers ? customersApi.list() : Promise.resolve([]),
           canLoadRefunds ? refundsApi.listRequests() : Promise.resolve([]),
-          canLoadSales ? salesApi.list({ all: true }) : Promise.resolve([]),
+          canLoadSales ? salesApi.list({ limit: 500, days: 30 }) : Promise.resolve([]),
           canLoadSales ? listQueuedSales() : Promise.resolve([])
         ]);
         if (alive && s.status === 'fulfilled' && Array.isArray(s.value)) dispatch(setSuppliers(s.value));
@@ -662,7 +662,7 @@ function App() {
       document.addEventListener('visibilitychange', onVis, { passive: true });
     }
     const interval = setInterval(async () => {
-      if (!navigator.onLine || !alive || !authInitialized || !isAuthed || !settingsReady) return;
+      if (document.hidden || !navigator.onLine || !alive || !authInitialized || !isAuthed || !settingsReady) return;
       if (Date.now() - lastActive >= idleMs) {
         const tenantId = String(authTenantId || localStorage.getItem('ptSales:tenantId') || 'default');
         try { await authApi.logout(); } catch {}
@@ -716,7 +716,7 @@ function App() {
             || allow('modules.dashboard', ['Admin','Manager'], ['view_dashboard','see_dashboard'])
             || allow('modules.reports', ['Admin','Manager','Auditor'], ['view_reports','see_reports'])
             || allow('pages.finance.reconciliation', ['Admin','Manager','Cashier'], ['view_finance_reconciliation','add_finance_reconciliation','approve_finance_reconciliation_director','approve_finance_reconciliation_manager'])
-          ) ? salesApi.list({ all: true }) : Promise.resolve([]),
+          ) ? salesApi.list({ limit: 500, days: 30 }) : Promise.resolve([]),
           (
             allow('modules.sales', ['Admin','Manager','Cashier'], ['view_sales','see_sales'])
             || allow('modules.dashboard', ['Admin','Manager'], ['view_dashboard','see_dashboard'])
@@ -724,7 +724,7 @@ function App() {
             || allow('pages.finance.reconciliation', ['Admin','Manager','Cashier'], ['view_finance_reconciliation','add_finance_reconciliation','approve_finance_reconciliation_director','approve_finance_reconciliation_manager'])
           ) ? listQueuedSales() : Promise.resolve([]),
           section('sections.admin') && allow('admin.users', ['Admin'], ['view_users','see_users']) ? usersApi.list() : Promise.resolve([]),
-          (((allow('admin.audit', ['Admin'], ['view_audit','see_audit']) || allow('sections.admin', ['Admin'], ['view_stock_records','see_stock_records'])) && !(roleLower === 'superadmin' && String(authTenantId || '').toLowerCase() === 'master'))) ? auditsApi.list({ all: true }) : Promise.resolve([]),
+          (((allow('admin.audit', ['Admin'], ['view_audit','see_audit']) || allow('sections.admin', ['Admin'], ['view_stock_records','see_stock_records'])) && !(roleLower === 'superadmin' && String(authTenantId || '').toLowerCase() === 'master'))) ? auditsApi.list({ limit: 200 }) : Promise.resolve([]),
           allow('modules.invoices', ['Admin','Manager','Cashier'], ['view_invoices','see_invoices','view_wholesale_invoices','view_warehouse_invoices']) ? invoicesApi.list() : Promise.resolve([]),
           section('sections.retail') && allow('pages.retail.purchases', ['Admin','Manager','Inventory Staff','Director'], ['approve_purchases','approve_retail_director','approve_retail_manager','view_purchases','see_purchases']) ? purchasesApi.listRequests({ status: 'pending_director', limit: 200 }) : Promise.resolve([]),
           section('sections.retail') && allow('pages.retail.transfers', ['Admin','Manager','Inventory Staff','Director'], ['approve_transfers','approve_retail_director','approve_retail_manager','view_transfers','see_transfers']) ? transfersApi.listRequests({ status: 'pending_director', limit: 200 }) : Promise.resolve([]),

@@ -309,6 +309,11 @@ function ChatNotificationsProvider({ children }) {
       return undefined;
     }
     let alive = true;
+    const liveStatusRef = { current: 'offline' };
+    const markLive = (value) => {
+      liveStatusRef.current = value;
+      setLiveStatus(value);
+    };
 
     const clearStream = () => {
       if (retryRef.current) clearTimeout(retryRef.current);
@@ -321,12 +326,12 @@ function ChatNotificationsProvider({ children }) {
 
     const connectStream = async () => {
       clearStream();
-      setLiveStatus('connecting');
+      markLive('connecting');
       try {
         const stream = await createChatStream((event) => {
           if (!alive || !event?.type) return;
           if (event.type === 'connected' || event.type === 'heartbeat') {
-            setLiveStatus('live');
+            markLive('live');
             return;
           }
           if (event.type === 'message.created') {
@@ -359,10 +364,10 @@ function ChatNotificationsProvider({ children }) {
           return;
         }
         streamRef.current = stream;
-        stream.onopen = () => setLiveStatus('live');
+        stream.onopen = () => markLive('live');
         stream.onerror = () => {
           if (!alive) return;
-          setLiveStatus('reconnecting');
+          markLive('reconnecting');
           clearStream();
           retryRef.current = setTimeout(() => {
             connectStream().catch(() => {});
@@ -370,7 +375,7 @@ function ChatNotificationsProvider({ children }) {
         };
       } catch {
         if (!alive) return;
-        setLiveStatus('reconnecting');
+        markLive('reconnecting');
         retryRef.current = setTimeout(() => {
           connectStream().catch(() => {});
         }, 5000);
@@ -381,11 +386,13 @@ function ChatNotificationsProvider({ children }) {
     refreshIncomingCalls().catch(() => {});
     connectStream().catch(() => {});
     const usersIntervalId = setInterval(() => {
+      if (liveStatusRef.current === 'live') return;
       refreshUsers().catch(() => {});
-    }, 5000);
+    }, 20000);
     const callsIntervalId = setInterval(() => {
+      if (liveStatusRef.current === 'live') return;
       refreshIncomingCalls().catch(() => {});
-    }, 2500);
+    }, 8000);
 
     return () => {
       alive = false;

@@ -979,13 +979,7 @@ function PosPage({ mode = 'retail' }) {
     let reservedPrintWindow = null;
     let printWindowUsed = false;
     reservedPrintWindow = window.open('', 'PTSALES_PRINT', activePrintMode === 'invoice' ? 'width=1000,height=800' : 'width=400,height=600');
-    if (reservedPrintWindow) {
-      try {
-        reservedPrintWindow.document.open();
-        reservedPrintWindow.document.write('<html><head><title>Preparing print...</title></head><body style="font-family:Arial,sans-serif;padding:16px;color:#0f172a"><div style="font-size:16px;font-weight:700;margin-bottom:8px">Preparing receipt...</div><div style="color:#64748b">Saving sale and building document. This should only take a moment.</div></body></html>');
-        reservedPrintWindow.document.close();
-      } catch {}
-    } else {
+    if (!reservedPrintWindow) {
       toast.show('Browser blocked the print window. Please allow pop-ups for this site.', { type: 'warning' });
     }
     try {
@@ -1663,24 +1657,10 @@ function PosPage({ mode = 'retail' }) {
       }
       if (!escpos) {
         reservedPrintWindow = window.open('', 'PTSALES_PRINT', activePrintMode === 'invoice' ? 'width=1000,height=800' : 'width=400,height=600');
-        if (reservedPrintWindow) {
-          try {
-            reservedPrintWindow.document.open();
-            reservedPrintWindow.document.write('<html><head><title>Preparing print...</title></head><body style="font-family:Arial,sans-serif;padding:16px;color:#0f172a"><div style="font-size:16px;font-weight:700;margin-bottom:8px">Preparing receipt...</div><div style="color:#64748b">Saving sale and building document. This should only take a moment.</div></body></html>');
-            reservedPrintWindow.document.close();
-          } catch {}
-        } else {
+        if (!reservedPrintWindow) {
           toast.show('Browser blocked the print window. Please allow pop-ups for this site.', { type: 'warning' });
         }
       }
-      const updatePrintWindowStatus = (title, detail) => {
-        if (!reservedPrintWindow || reservedPrintWindow.closed) return;
-        try {
-          reservedPrintWindow.document.open();
-          reservedPrintWindow.document.write(`<html><head><title>${title}</title></head><body style="font-family:Arial,sans-serif;padding:16px;color:#0f172a"><div style="font-size:16px;font-weight:700;margin-bottom:8px">${title}</div><div style="color:#64748b">${detail}</div></body></html>`);
-          reservedPrintWindow.document.close();
-        } catch {}
-      };
       let checkoutCustomer = selectedCustomer;
       try {
         if (!checkoutCustomer && (easyBuyEnabled || quickCustomerHasAny)) {
@@ -1813,7 +1793,6 @@ function PosPage({ mode = 'retail' }) {
         const tmpRef = `TMP-${String(Date.now()).padStart(6, '0').slice(-6)}`;
         saleForUi = { ...sale, id: sale.clientId, invoiceSerial: tmpRef, receiptNumber: tmpRef, branchName, syncPending: true };
         try {
-          updatePrintWindowStatus('Saving sale...', 'Recording the sale on the server, then print will open automatically.');
           savedOnlineSale = await createSale({ ...sale, clientId: sale.clientId });
           saleForUi = {
             ...saleForUi,
@@ -2056,7 +2035,6 @@ function PosPage({ mode = 'retail' }) {
         } catch {}
       }
       if (shouldFinalizeLocally) {
-        updatePrintWindowStatus('Opening print...', 'Sale saved. Preparing the receipt for printing.');
         // #region debug-point B:before-receipt-print
         reportEbkTmpReceiptDebug({
           hypothesisId: 'B',

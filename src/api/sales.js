@@ -1,35 +1,39 @@
 import { fetchJson } from './client';
 
-export async function createSale(sale) {
+export function createSale(sale) {
   return fetchJson('/api/sales', {
     method: 'POST',
     body: JSON.stringify(sale),
-    timeoutMs: 60000
+    timeoutMs: 0
   });
 }
 
-export async function updateSaleDate(id, payload) {
-  return fetchJson(`/api/sales/${encodeURIComponent(String(id || ''))}/date`, {
+export function updateSaleDate(id, body = {}) {
+  return fetchJson(`/api/sales/${encodeURIComponent(id)}/date`, {
     method: 'PATCH',
-    body: JSON.stringify(payload || {}),
-    timeoutMs: 60000
+    body: JSON.stringify(body || {}),
+    timeoutMs: 0
   });
 }
 
-export async function updateSaleCreditPackage(id, payload) {
-  return fetchJson(`/api/sales/${encodeURIComponent(String(id || ''))}/credit-package`, {
+export function updateSaleCreditPackage(id, body = {}) {
+  return fetchJson(`/api/sales/${encodeURIComponent(id)}/credit-package`, {
     method: 'PATCH',
-    body: JSON.stringify(payload || {}),
-    timeoutMs: 60000
+    body: JSON.stringify(body || {}),
+    timeoutMs: 0
   });
 }
 
 export function list(params = {}) {
   const qs = new URLSearchParams();
   if (params.branchId) qs.set('branchId', String(params.branchId));
-  if (params.limit) qs.set('limit', String(params.limit));
-  const wantsAll = !!params.all || !Object.prototype.hasOwnProperty.call(params, 'limit');
-  if (wantsAll) qs.set('all', '1');
+  if (params.from) qs.set('from', String(params.from));
+  if (params.to) qs.set('to', String(params.to));
+  if (params.days) qs.set('days', String(params.days));
+  if (params.limit != null) qs.set('limit', String(params.limit));
+  else if (params.all) qs.set('limit', '2000');
+  else qs.set('limit', '500');
+  if (params.all) qs.set('all', '1');
   const query = qs.toString();
   return fetchJson(`/api/sales${query ? `?${query}` : ''}`);
 }

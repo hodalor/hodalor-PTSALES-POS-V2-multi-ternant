@@ -41,7 +41,14 @@ function Layout({ bootstrapLoading = false }) {
   }, [sidebarOpen]);
   useEffect(() => {
     let alive = true;
-    async function refresh() {
+    let lastFullRefreshAt = 0;
+    // Queue sync can stay relatively frequent; full catalog/sales dumps must not run every 5s.
+    const queueIntervalMs = 10_000;
+    const fullRefreshIntervalMs = Math.max(
+      60_000,
+      Number(settings?.refreshIntervalSec || 60) * 1000
+    );
+    async function refreshQueue() {
       try {
         const summary = await getQueueSummary();
         if (alive) dispatch(setQueueSummary(summary));
@@ -53,15 +60,27 @@ function Layout({ bootstrapLoading = false }) {
           const after = await getQueueSummary();
           if (alive) dispatch(setQueueSummary(after));
         }
+      } catch {}
+    }
+    async function refreshData(force = false) {
+      try {
+        const now = Date.now();
+        if (!force && now - lastFullRefreshAt < fullRefreshIntervalMs) return;
         if (navigator.onLine && !bootstrapLoading) {
+          lastFullRefreshAt = now;
           await refreshAllData(dispatch, store.getState);
         }
       } catch {}
     }
-    refresh();
-    const id = setInterval(refresh, 5000);
-    window.addEventListener('online', refresh);
-    window.addEventListener('offline', refresh);
+    async function refresh(forceData = false) {
+      await refreshQueue();
+      await refreshData(forceData);
+    }
+    const onOnline = () => { void refresh(true); };
+    void refreshQueue();
+    const id = setInterval(() => { void refreshQueue(); }, queueIntervalMs);
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', refreshQueue);
     function onBip(e) {
       e.preventDefault();
       setBeforeInstallPromptEvent(e);
@@ -83,8 +102,8 @@ function Layout({ bootstrapLoading = false }) {
     return () => {
       alive = false;
       clearInterval(id);
-      window.removeEventListener('online', refresh);
-      window.removeEventListener('offline', refresh);
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', refreshQueue);
       window.removeEventListener('beforeinstallprompt', onBip);
       window.removeEventListener('appinstalled', onInstalled);
     };
