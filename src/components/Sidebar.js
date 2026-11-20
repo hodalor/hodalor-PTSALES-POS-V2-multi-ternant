@@ -10,7 +10,6 @@ import { useAppLanguage } from '../utils/localization';
 
 function Sidebar({ collapsed, onNavigate }) {
   const location = useLocation();
-  const appName = useSelector(s => s.settings.appName);
   const settings = useSelector(s => s.settings);
   const products = useSelector(s => s.products.products || []);
   const sales = useSelector(s => s.sales.sales || []);
@@ -174,8 +173,8 @@ function Sidebar({ collapsed, onNavigate }) {
   return (
     <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
       <div className="sidebar-brand">
-        <img src="/logo512.png" alt="logo" />
-        <div className="sidebar-title">{appName}</div>
+        <img className="sidebar-wordmark" src="/byznova-logo.png" alt="BYZNOVA" />
+        <img className="sidebar-mark" src="/byznova-mark.png" alt="BYZNOVA" />
       </div>
       <nav className="sidebar-nav" onClick={handleNavClick}>
         {isFeatureEnabled(settings, 'modules.dashboard') && can(['Admin','Manager','SuperAdmin'],['view_dashboard','see_dashboard']) && (

@@ -57,9 +57,18 @@ html, body, #root {
   gap: 8px;
   margin-bottom: 16px;
 }
-.sidebar-brand img {
-  width: 32px;
-  height: 32px;
+.sidebar-brand img.sidebar-wordmark {
+  width: 100%;
+  height: auto;
+  max-height: 52px;
+  object-fit: contain;
+  object-position: left center;
+}
+.sidebar-brand img.sidebar-mark {
+  display: none;
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
 }
 .sidebar-title {
   font-weight: 700;
@@ -2814,7 +2823,7 @@ html, body, #root {
   border: 1px solid rgba(226, 232, 240, 0.95);
   border-radius: 18px;
   box-shadow: 0 24px 44px rgba(2, 6, 23, 0.14);
-  z-index: 30;
+  z-index: 80;
   overflow: hidden;
 }
 .pos-floating-panel--wide {
@@ -3473,7 +3482,7 @@ html, body, #root {
   position: sticky;
   top: -16px;
   align-self: stretch;
-  z-index: 4;
+  z-index: 40;
   display: flex;
   flex-direction: column;
   background: #f8fafc;
@@ -3491,8 +3500,25 @@ html, body, #root {
   padding-top: 12px;
   margin-bottom: 2px;
 }
+.pos-print-choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.pos-print-choice span {
+  color: #64748b;
+  white-space: nowrap;
+}
+.pos-print-choice .select {
+  width: 100%;
+  min-width: 0;
+}
 .pos-products-scroll,
 .pos-cart-scroll {
+  position: relative;
+  z-index: 1;
   flex: 1 1 auto;
   height: 0;
   min-height: 0;
@@ -4044,8 +4070,9 @@ html, body, #root {
     box-shadow: none;
   }
   .pos-cart-sticky {
-    position: static;
+    position: relative;
     top: auto;
+    z-index: 40;
     padding-top: 0;
     padding-bottom: 0;
     border-bottom: none;
@@ -4209,6 +4236,12 @@ html, body, #root {
 }
 .layout.collapsed .sidebar-brand {
   justify-content: center;
+}
+.layout.collapsed .sidebar-wordmark {
+  display: none;
+}
+.layout.collapsed .sidebar-mark {
+  display: block;
 }
 .layout.collapsed .sidebar-title,
 .layout.collapsed .section-label,

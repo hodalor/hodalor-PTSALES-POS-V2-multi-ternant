@@ -2930,27 +2930,24 @@ function PosPage({ mode = 'retail' }) {
               </div>
             </div>
           )}
-          <div style={{ marginTop: 8, display: 'grid', gap: 6 }}>
-            <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'nowrap' }}>
-              {canOverrideTax ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'nowrap', flex: '1 1 auto', minWidth: 0 }}>
-                  <label style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{t('Tax override (%)')}</label>
-                  <input className="input" type="number" min="0" max="100" step="0.01" value={taxOverridePct} onChange={e => setTaxOverridePct(e.target.value)} style={{ width: 120, minWidth: 120 }} />
-                </div>
-              ) : <div style={{ flex: '1 1 0' }} />}
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto', flex: '0 0 auto' }}>
-                <label style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{t('Print')}</label>
-                <select
-                  className="select"
-                  value={activePrintMode}
-                  onChange={e => setQuickPrintMode(e.target.value)}
-                  style={{ width: 124, minWidth: 124 }}
-                >
-                  <option value="receipt">{t('Receipt')}</option>
-                  <option value="invoice">{t('Invoice')}</option>
-                </select>
+          <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
+            {canOverrideTax ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                <label style={{ color: '#64748b', whiteSpace: 'nowrap' }}>{t('Tax override (%)')}</label>
+                <input className="input" type="number" min="0" max="100" step="0.01" value={taxOverridePct} onChange={e => setTaxOverridePct(e.target.value)} style={{ width: 120, minWidth: 0, flex: '1 1 120px' }} />
               </div>
-            </div>
+            ) : null}
+            <label className="pos-print-choice">
+              <span>{t('Print')}</span>
+              <select
+                className="select"
+                value={activePrintMode}
+                onChange={e => setQuickPrintMode(e.target.value)}
+              >
+                <option value="receipt">{t('Receipt')}</option>
+                <option value="invoice">{t('Invoice')}</option>
+              </select>
+            </label>
             {canOverrideTax && taxOverridePct !== '' && (
               <input className="input" placeholder={t('Remark for override (required)')} value={taxOverrideRemark} onChange={e => setTaxOverrideRemark(e.target.value)} />
             )}
