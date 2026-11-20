@@ -135,6 +135,13 @@ r.get('/', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['add_sales', 'app
   res.json(filtered);
 });
 
+r.get('/:id', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], ['add_sales', 'approve_discount_sales']), async (req, res) => {
+  const row = await DiscountApproval.findById(req.params.id).lean();
+  if (!row) return res.status(404).json({ error: 'Discount request not found' });
+  if (!canSeeRow(req.user, row)) return res.status(403).json({ error: 'Forbidden' });
+  res.json(row);
+});
+
 r.post('/request', requireRoleOrPerm(['Admin', 'Manager', 'Cashier'], 'add_sales'), async (req, res) => {
   const payload = req.body?.salePayload || {};
   const discount = Math.max(0, Number(payload?.discount || 0));
