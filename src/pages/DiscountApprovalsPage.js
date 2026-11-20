@@ -3,7 +3,7 @@ import { useSelector } from 'react-redux';
 import Modal from '../components/Modal';
 import { formatCurrency } from '../utils/currency';
 import { useToast } from '../components/ToastProvider';
-import { approveDiscountApproval, cancelDiscountApproval, listDiscountApprovals, rejectDiscountApproval } from '../api/discountApprovals';
+import { approveDiscountApproval, cancelDiscountApproval, getDiscountApproval, listDiscountApprovals, rejectDiscountApproval } from '../api/discountApprovals';
 import { createSale } from '../api/sales';
 import { releaseProductUnits } from '../api/productUnits';
 import { confirmDialog } from '../utils/dialogs';
@@ -245,13 +245,23 @@ function DiscountApprovalsPage() {
     const mode = String(row?.status || '') === 'rejected' ? 'rejected_complete' : 'approved';
     setWorkingId(id);
     try {
+      const full = await getDiscountApproval(id);
+      const source = full && typeof full === 'object' ? { ...row, ...full } : row;
       const payload = {
-        ...normalizeResolvedPayload(row, mode),
+        ...normalizeResolvedPayload(source, mode),
+        branchId: String(source?.salePayload?.branchId || source?.branchId || ''),
+        branchName: String(source?.salePayload?.branchName || source?.branchName || ''),
+        posType: String(source?.salePayload?.posType || source?.posType || 'retail'),
+        inventoryType: String(source?.salePayload?.inventoryType || source?.inventoryType || source?.posType || 'retail'),
         clientId: (typeof crypto !== 'undefined' && crypto.randomUUID)
           ? crypto.randomUUID()
           : `discount-sale-${Date.now()}`,
         discountApprovalId: id
       };
+      if (!payload.branchId) {
+        toast.show('This discount is missing its branch. Open it again and retry.', { type: 'error' });
+        return;
+      }
       const saved = await createSale(payload);
       const saleForPrint = {
         ...saved,
@@ -277,9 +287,11 @@ function DiscountApprovalsPage() {
     if (!confirm) return;
     setWorkingId(id);
     try {
-      const unitIds = requestUnitIds(row);
-      if (unitIds.length > 0 && row?.salePayload?.reservationToken) {
-        await releaseProductUnits({ unitIds, reservationToken: String(row.salePayload.reservationToken || '') });
+      const full = await getDiscountApproval(id).catch(() => row);
+      const source = full && typeof full === 'object' ? { ...row, ...full } : row;
+      const unitIds = requestUnitIds(source);
+      if (unitIds.length > 0 && source?.salePayload?.reservationToken) {
+        await releaseProductUnits({ unitIds, reservationToken: String(source.salePayload.reservationToken || '') });
       }
       await cancelDiscountApproval(id, { remark: String(draftRemark || '') });
       toast.show(status === 'approved' ? 'Approved discount sale cancelled' : 'Rejected discount sale cancelled', { type: 'success' });

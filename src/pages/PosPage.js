@@ -15,7 +15,7 @@ import { addAudit } from '../store/auditSlice';
 import { setCurrentBranch } from '../store/settingsSlice';
 import { productSpec } from '../utils/productSpec';
 import { createSale } from '../api/sales';
-import { cancelDiscountApproval, listDiscountApprovals, requestDiscountApproval } from '../api/discountApprovals';
+import { cancelDiscountApproval, getDiscountApproval, listDiscountApprovals, requestDiscountApproval } from '../api/discountApprovals';
 import * as customersApi from '../api/customers';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
@@ -261,6 +261,10 @@ function PosPage({ mode = 'retail' }) {
   const [redeemPoints, setRedeemPoints] = useState('');
   const [heldOpen, setHeldOpen] = useState(false);
   const [discountOpen, setDiscountOpen] = useState(false);
+  const [cartDetailsOpen, setCartDetailsOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.innerWidth > 1440;
+  });
   const [discountRequests, setDiscountRequests] = useState([]);
   const [discountLoading, setDiscountLoading] = useState(false);
   const [discountWorkingId, setDiscountWorkingId] = useState('');
@@ -983,8 +987,15 @@ function PosPage({ mode = 'retail' }) {
       toast.show('Browser blocked the print window. Please allow pop-ups for this site.', { type: 'warning' });
     }
     try {
+      const full = await getDiscountApproval(id);
+      const source = full && typeof full === 'object' ? { ...row, ...full } : row;
+      const completion = buildDiscountCompletionPayload(source);
       const saved = await createSale({
-        ...buildDiscountCompletionPayload(row),
+        ...completion,
+        branchId: String(completion.branchId || source.branchId || activeBranchId || ''),
+        branchName: String(completion.branchName || source.branchName || activeBranch?.name || ''),
+        posType: String(completion.posType || source.posType || modeLower),
+        inventoryType: String(completion.inventoryType || source.inventoryType || inventoryType),
         clientId: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `discount-sale-${Date.now()}`,
         discountApprovalId: id
       });
@@ -1023,11 +1034,13 @@ function PosPage({ mode = 'retail' }) {
     if (!okay) return;
     setDiscountWorkingId(id);
     try {
-      const unitIds = getDiscountRequestUnitIds(row);
-      if (unitIds.length > 0 && row?.salePayload?.reservationToken) {
+      const full = await getDiscountApproval(id).catch(() => row);
+      const source = full && typeof full === 'object' ? { ...row, ...full } : row;
+      const unitIds = getDiscountRequestUnitIds(source);
+      if (unitIds.length > 0 && source?.salePayload?.reservationToken) {
         await productUnitsApi.releaseProductUnits({
           unitIds,
-          reservationToken: String(row.salePayload.reservationToken || '')
+          reservationToken: String(source.salePayload.reservationToken || '')
         });
       }
       await cancelDiscountApproval(id, {});
@@ -2283,7 +2296,19 @@ function PosPage({ mode = 'retail' }) {
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
             <div className="pos-page-copy">
               <div className="ui-eyebrow">{isWarehouse ? t('Warehouse Selling') : isWholesale ? t('Distribution Selling') : t('Retail Selling')}</div>
-              <h2 className="pos-page-title">{modeLabel}</h2>
+              <div className="pos-page-title-row">
+                <h2 className="pos-page-title">{modeLabel}</h2>
+                <button
+                  type="button"
+                  className={`pos-cart-fold${cartDetailsOpen ? ' open' : ''}`}
+                  onClick={() => setCartDetailsOpen((open) => !open)}
+                  aria-expanded={cartDetailsOpen}
+                  aria-label={cartDetailsOpen ? t('Hide search and customer') : t('Show search and customer')}
+                  title={cartDetailsOpen ? t('Hide search and customer') : t('Show search and customer')}
+                >
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </button>
+              </div>
               <div className="pos-page-subtitle">
                 {isWholesale
                   ? `${t('Distribution inventory')}${branchLabel ? ` • ${branchLabel}` : missingInventoryBranch ? ` • ${t(missingInventoryBranchText)}` : ''}`
@@ -2306,6 +2331,7 @@ function PosPage({ mode = 'retail' }) {
               ) : null}
             </div>
           </div>
+          {cartDetailsOpen ? (
           <div className="toolbar pos-toolbar">
             <input className="input pos-toolbar-search" placeholder={t('Search name, brand, SKU, barcode, IMEI, or serial number')} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onSearchKeyDown} />
             <FilterSearchSelect
@@ -2353,6 +2379,7 @@ function PosPage({ mode = 'retail' }) {
               </div>
             ) : null}
           </div>
+          ) : null}
         </div>
         <div className="pos-products-scroll">
         {missingInventoryBranch && (
@@ -2475,8 +2502,20 @@ function PosPage({ mode = 'retail' }) {
       </div>
       <div className="pos-cart-pane">
         <div className="pos-cart-sticky">
-        <div className="pos-cart-head" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0 }}>{t('Cart')}</h2>
+        <div className="pos-cart-head">
+          <div className="pos-cart-title-row">
+            <h2>{t('Cart')}</h2>
+            <button
+              type="button"
+              className={`pos-cart-fold${cartDetailsOpen ? ' open' : ''}`}
+              onClick={() => setCartDetailsOpen((open) => !open)}
+              aria-expanded={cartDetailsOpen}
+              aria-label={cartDetailsOpen ? t('Hide customer') : t('Show customer')}
+              title={cartDetailsOpen ? t('Hide customer') : t('Show customer')}
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+          </div>
           <div style={{ position: 'relative' }}>
             <div className="pos-cart-actions">
               {heldUiEnabled && (
@@ -2575,6 +2614,9 @@ function PosPage({ mode = 'retail' }) {
             )}
           </div>
         </div>
+        </div>
+        <div className="pos-cart-scroll">
+        {cartDetailsOpen ? (
         <div className="card pos-customer-card" style={{ marginBottom: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 6 }}>
             <div style={{ fontWeight: 700 }}>{t('Customer (optional)')}</div>
@@ -2664,8 +2706,7 @@ function PosPage({ mode = 'retail' }) {
             </div>
           )}
         </div>
-        </div>
-        <div className="pos-cart-scroll">
+        ) : null}
         <ul className="cart-list">
           {groupedCartItems.map((group) => {
             const item = group.representative;

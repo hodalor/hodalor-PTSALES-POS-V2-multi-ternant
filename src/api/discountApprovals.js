@@ -13,6 +13,10 @@ export function listDiscountApprovals(params = {}) {
   return fetchJson(`/api/discount-approvals${buildQuery(params)}`, { timeoutMs: 60000 });
 }
 
+export function getDiscountApproval(id) {
+  return fetchJson(`/api/discount-approvals/${encodeURIComponent(String(id || ''))}`, { timeoutMs: 60000 });
+}
+
 export function requestDiscountApproval(body = {}) {
   return fetchJson('/api/discount-approvals/request', {
     method: 'POST',

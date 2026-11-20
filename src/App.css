@@ -2721,6 +2721,12 @@ html, body, #root {
   display: grid;
   gap: 8px;
 }
+.pos-page-title-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
 .pos-page-title {
   margin: 0;
   font-size: clamp(1.6rem, 2.1vw, 2rem);
@@ -2739,14 +2745,62 @@ html, body, #root {
   border-radius: 18px;
 }
 .pos-cart-head {
-  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  margin-bottom: 0;
+}
+.pos-cart-title-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+.pos-cart-title-row h2 {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+.pos-cart-fold {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  background: transparent;
+  color: #475569;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+}
+.pos-cart-fold svg {
+  transition: transform 0.15s ease;
+}
+.pos-cart-fold.open svg {
+  transform: rotate(180deg);
 }
 .pos-cart-actions {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 4px;
+  flex-wrap: nowrap;
+  margin-left: auto;
+  min-width: 0;
+}
+.pos-cart-actions .btn {
+  min-height: 26px;
+  height: 26px;
+  padding: 0 7px;
+  font-size: 11px;
+  border-radius: 8px;
+  white-space: nowrap;
+}
+.pos-cart-actions .btn svg {
+  display: none;
 }
 .pos-floating-panel {
   position: absolute;
@@ -3428,10 +3482,10 @@ html, body, #root {
   border-bottom: 1px solid rgba(226, 232, 240, 0.95);
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.04);
   flex: 0 0 auto;
-  overflow: hidden;
+  overflow: visible;
 }
 .pos-cart-head {
-  margin-bottom: 10px;
+  margin-bottom: 0;
 }
 .pos-customer-card {
   padding-top: 12px;
