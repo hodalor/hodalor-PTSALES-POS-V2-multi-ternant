@@ -53,11 +53,22 @@ r.get('/', requireRoleOrPerm(['SuperAdmin', 'Admin'], ['view_audit', 'see_audit'
   const role = String(req.user?.role || '').toLowerCase();
   const currentTenantId = String(req.user?.tenantId || req.tenantId || 'master');
   const severity = String(req.query.severity || '').trim().toLowerCase();
+  const actionType = String(req.query.actionType || '').trim();
   const from = String(req.query.from || '').trim();
   const to = String(req.query.to || '').trim();
   const tenantFilter = String(req.query.tenantId || '').trim();
+  const criticalActions = ['user_delete', 'product_delete'];
   const match = {};
-  if (severity) match.severity = severity;
+  if (actionType) match.actionType = actionType;
+  if (severity === 'critical') {
+    const criticalClause = [{ severity: 'critical' }, { actionType: { $in: criticalActions } }];
+    match.$and = [...(match.$and || []), { $or: criticalClause }];
+  } else if (severity === 'info') {
+    match.severity = { $in: ['info', '', null] };
+    match.actionType = match.actionType || { $nin: criticalActions };
+  } else if (severity) {
+    match.severity = severity;
+  }
   if (from || to) {
     match.ts = {};
     if (from) match.ts.$gte = new Date(from);
@@ -77,7 +88,14 @@ r.get('/', requireRoleOrPerm(['SuperAdmin', 'Admin'], ['view_audit', 'see_audit'
   } else {
     const master = await getMasterConnection();
     const TenantModel = TenantModelFor(master);
-    const tenants = await TenantModel.find(tenantFilter ? { tenantId: await resolveStoredTenantId(tenantFilter) } : {}, { tenantId: 1, name: 1 }).lean();
+    let tenantQuery = {};
+    if (tenantFilter) {
+      let resolved = tenantFilter;
+      try { resolved = await resolveStoredTenantId(tenantFilter); } catch { resolved = tenantFilter; }
+      const escaped = tenantFilter.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      tenantQuery = { $or: [{ tenantId: resolved }, { tenantId: tenantFilter }, { name: { $regex: `^${escaped}$`, $options: 'i' } }] };
+    }
+    const tenants = await TenantModel.find(tenantQuery, { tenantId: 1, name: 1 }).lean();
     const grouped = await Promise.all(tenants.map(async (tenant) => {
       try {
         const conn = await getTenantConnection(tenant.tenantId);
@@ -97,6 +115,11 @@ r.get('/', requireRoleOrPerm(['SuperAdmin', 'Admin'], ['view_audit', 'see_audit'
     }));
     rows = grouped.flat().sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime()).slice(0, limit);
   }
+  rows = rows.map((row) => (
+    ['user_delete', 'product_delete'].includes(String(row?.actionType || ''))
+      ? { ...row, severity: 'critical' }
+      : row
+  ));
   res.set('Cache-Control', 'no-store');
   res.json(rows);
 });

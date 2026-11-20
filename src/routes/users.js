@@ -237,6 +237,7 @@ r.delete('/:name', requireAdmin, async (req, res) => {
   void Audit.create({
     actor: (req.user && req.user.name) || 'unknown',
     actionType: 'user_delete',
+    severity: 'critical',
     details: { id: String(u._id), name: u.name },
     branchId: req.user?.branchId || ''
   }).catch(() => {});

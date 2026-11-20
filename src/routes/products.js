@@ -275,7 +275,7 @@ r.get('/', async (req, res) => {
   const query = ids.length > 0 ? { $or: [{ id: { $in: ids } }, { _id: { $in: ids.filter(v => mongoose.isValidObjectId(v)).map(v => new mongoose.Types.ObjectId(v)) } }] } : {};
   const items = await Product.find(query)
     .sort({ createdAt: -1 })
-    .limit(ids.length > 0 ? Math.max(ids.length, 1) : 500)
+    .limit(ids.length > 0 ? Math.max(ids.length, 1) : 8000)
     .lean();
   // Backfill missing barcodes without hydrating full documents
   const toUpdate = items.filter(p => !p.barcode);
@@ -544,6 +544,7 @@ r.delete('/:id', requireAdmin, async (req, res) => {
   void Audit.create({
     actor: (req.user && req.user.name) || 'unknown',
     actionType: 'product_delete',
+    severity: 'critical',
     details: { id, name: doc?.name || '', sku: doc?.sku || '', remark },
     branchId: req.user?.branchId || ''
   }).catch(() => {});
