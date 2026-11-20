@@ -60,10 +60,13 @@ const TenantSchema = new mongoose.Schema({
   maxUserAccountsOverride: { type: Number, default: null },
   maxActiveUsersOverride: { type: Number, default: null },
   maxBranchesOverride: { type: Number, default: null },
+  maxProductsOverride: { type: Number, default: null },
   additionalUserRateOverride: { type: Number, default: null },
   additionalBranchRateOverride: { type: Number, default: null },
+  additionalProductRateOverride: { type: Number, default: null },
   additionalUserSlots: { type: Number, default: 0 },
-  additionalBranchSlots: { type: Number, default: 0 }
+  additionalBranchSlots: { type: Number, default: 0 },
+  additionalProductSlots: { type: Number, default: 0 }
 }, { timestamps: true });
 
 export function modelFor(conn) {

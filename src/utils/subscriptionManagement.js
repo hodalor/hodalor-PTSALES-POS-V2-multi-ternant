@@ -50,7 +50,8 @@ function defaultPeriods() {
 function defaultAddOns() {
   return {
     additionalUserRate: 0,
-    additionalBranchRate: 0
+    additionalBranchRate: 0,
+    additionalProductRate: 0
   };
 }
 
@@ -81,9 +82,11 @@ function normalizePeriod(period = {}) {
 function normalizeAddOns(input = {}) {
   const additionalUserRate = roundMoney(input.additionalUserRate);
   const additionalBranchRate = roundMoney(input.additionalBranchRate);
+  const additionalProductRate = roundMoney(input.additionalProductRate);
   return {
     additionalUserRate: additionalUserRate >= 0 ? additionalUserRate : 0,
-    additionalBranchRate: additionalBranchRate >= 0 ? additionalBranchRate : 0
+    additionalBranchRate: additionalBranchRate >= 0 ? additionalBranchRate : 0,
+    additionalProductRate: additionalProductRate >= 0 ? additionalProductRate : 0
   };
 }
 

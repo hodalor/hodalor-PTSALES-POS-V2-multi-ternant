@@ -329,7 +329,7 @@ r.patch('/limits', requireSuperAdmin, async (req, res) => {
 });
 
 r.post('/', requireSuperAdmin, async (req, res) => {
-  const { tenantId, name, subscriptionPlan, features, adminName, adminPin, clientAppName, billingEmail, billingPhone, billingAddress, billingCountry, logo, themeColor, subscriptionExpiresAt, subscriptionPermanent, subscriptionAmount, maxUserAccountsOverride, maxActiveUsersOverride, maxBranchesOverride, additionalUserRateOverride, additionalBranchRateOverride, additionalUserSlots, additionalBranchSlots } = req.body || {};
+  const { tenantId, name, subscriptionPlan, features, adminName, adminPin, clientAppName, billingEmail, billingPhone, billingAddress, billingCountry, logo, themeColor, subscriptionExpiresAt, subscriptionPermanent, subscriptionAmount, maxUserAccountsOverride, maxActiveUsersOverride, maxBranchesOverride, maxProductsOverride, additionalUserRateOverride, additionalBranchRateOverride, additionalProductRateOverride, additionalUserSlots, additionalBranchSlots, additionalProductSlots } = req.body || {};
   const tid = normalizeTenantId(tenantId);
   if (!tenantId || tid.toLowerCase() === 'master') return res.status(400).json({ error: 'Invalid tenantId' });
   if (!name || !String(name).trim()) return res.status(400).json({ error: 'Tenant name is required' });
@@ -374,10 +374,13 @@ r.post('/', requireSuperAdmin, async (req, res) => {
     maxUserAccountsOverride: normalizeLimitValue(maxUserAccountsOverride),
     maxActiveUsersOverride: normalizeLimitValue(maxActiveUsersOverride),
     maxBranchesOverride: normalizeLimitValue(maxBranchesOverride),
+    maxProductsOverride: normalizeLimitValue(maxProductsOverride),
     additionalUserRateOverride: normalizeSubscriptionAmount(additionalUserRateOverride),
     additionalBranchRateOverride: normalizeSubscriptionAmount(additionalBranchRateOverride),
+    additionalProductRateOverride: normalizeSubscriptionAmount(additionalProductRateOverride),
     additionalUserSlots: Math.max(0, normalizeLimitValue(additionalUserSlots) || 0),
-    additionalBranchSlots: Math.max(0, normalizeLimitValue(additionalBranchSlots) || 0)
+    additionalBranchSlots: Math.max(0, normalizeLimitValue(additionalBranchSlots) || 0),
+    additionalProductSlots: Math.max(0, normalizeLimitValue(additionalProductSlots) || 0)
   });
   const withCode = await ensureTenantActivationCode(master, doc);
   await ensureTenantBootstrap(tid, {
@@ -472,18 +475,27 @@ r.patch('/:tenantId', requireSuperAdmin, async (req, res) => {
         maxBranchesOverride: Object.prototype.hasOwnProperty.call(patch, 'maxBranchesOverride')
           ? normalizeLimitValue(patch.maxBranchesOverride)
           : before.maxBranchesOverride,
+        maxProductsOverride: Object.prototype.hasOwnProperty.call(patch, 'maxProductsOverride')
+          ? normalizeLimitValue(patch.maxProductsOverride)
+          : before.maxProductsOverride,
         additionalUserRateOverride: Object.prototype.hasOwnProperty.call(patch, 'additionalUserRateOverride')
           ? normalizeSubscriptionAmount(patch.additionalUserRateOverride)
           : before.additionalUserRateOverride,
         additionalBranchRateOverride: Object.prototype.hasOwnProperty.call(patch, 'additionalBranchRateOverride')
           ? normalizeSubscriptionAmount(patch.additionalBranchRateOverride)
           : before.additionalBranchRateOverride,
+        additionalProductRateOverride: Object.prototype.hasOwnProperty.call(patch, 'additionalProductRateOverride')
+          ? normalizeSubscriptionAmount(patch.additionalProductRateOverride)
+          : before.additionalProductRateOverride,
         additionalUserSlots: Object.prototype.hasOwnProperty.call(patch, 'additionalUserSlots')
           ? Math.max(0, normalizeLimitValue(patch.additionalUserSlots) || 0)
           : (before.additionalUserSlots || 0),
         additionalBranchSlots: Object.prototype.hasOwnProperty.call(patch, 'additionalBranchSlots')
           ? Math.max(0, normalizeLimitValue(patch.additionalBranchSlots) || 0)
           : (before.additionalBranchSlots || 0),
+        additionalProductSlots: Object.prototype.hasOwnProperty.call(patch, 'additionalProductSlots')
+          ? Math.max(0, normalizeLimitValue(patch.additionalProductSlots) || 0)
+          : (before.additionalProductSlots || 0),
         subscriptionExpiresAt: nextExpiry
       },
       ...(renewalHistoryEntry ? { $push: { renewalHistory: renewalHistoryEntry } } : {})

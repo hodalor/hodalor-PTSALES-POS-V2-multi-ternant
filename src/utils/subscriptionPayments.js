@@ -64,7 +64,9 @@ function calculateRenewalAmountFromInfo(info, months) {
 }
 
 function normalizeAddonResourceType(value) {
-  return String(value || '').trim().toLowerCase() === 'branch' ? 'branch' : 'user';
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'branch' || raw === 'product') return raw;
+  return 'user';
 }
 
 function normalizeAddonQuantity(value) {
@@ -74,19 +76,22 @@ function normalizeAddonQuantity(value) {
 
 function getAddonRate(config, resourceType) {
   const addOns = config?.addOns || {};
-  return resourceType === 'branch'
-    ? Number(addOns.additionalBranchRate || 0)
-    : Number(addOns.additionalUserRate || 0);
+  if (resourceType === 'branch') return Number(addOns.additionalBranchRate || 0);
+  if (resourceType === 'product') return Number(addOns.additionalProductRate || 0);
+  return Number(addOns.additionalUserRate || 0);
 }
 
 function getTenantAddonPricing(config, tenantDoc = {}) {
   const globalUserRate = Number(config?.addOns?.additionalUserRate || 0);
   const globalBranchRate = Number(config?.addOns?.additionalBranchRate || 0);
+  const globalProductRate = Number(config?.addOns?.additionalProductRate || 0);
   const tenantUserRate = Number(tenantDoc?.additionalUserRateOverride);
   const tenantBranchRate = Number(tenantDoc?.additionalBranchRateOverride);
+  const tenantProductRate = Number(tenantDoc?.additionalProductRateOverride);
   return {
     additionalUserRate: Number.isFinite(tenantUserRate) && tenantUserRate >= 0 ? tenantUserRate : globalUserRate,
-    additionalBranchRate: Number.isFinite(tenantBranchRate) && tenantBranchRate >= 0 ? tenantBranchRate : globalBranchRate
+    additionalBranchRate: Number.isFinite(tenantBranchRate) && tenantBranchRate >= 0 ? tenantBranchRate : globalBranchRate,
+    additionalProductRate: Number.isFinite(tenantProductRate) && tenantProductRate >= 0 ? tenantProductRate : globalProductRate
   };
 }
 
@@ -888,7 +893,11 @@ async function applyTenantLimitUpgrade(masterConn, tenantDoc, payment = {}) {
       amount: expectedAmount
     };
   }
-  const incField = meta.resourceType === 'branch' ? 'additionalBranchSlots' : 'additionalUserSlots';
+  const incField = meta.resourceType === 'branch'
+    ? 'additionalBranchSlots'
+    : meta.resourceType === 'product'
+      ? 'additionalProductSlots'
+      : 'additionalUserSlots';
   const updated = await TenantModel.findOneAndUpdate(
     {
       tenantId,

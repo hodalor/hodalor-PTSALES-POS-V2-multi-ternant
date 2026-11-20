@@ -2,11 +2,12 @@ import { modelFor as SettingsModelFor } from '../models/Settings.js';
 import { modelFor as TenantSessionModelFor } from '../models/TenantSession.js';
 import { modelFor as UserModelFor } from '../models/User.js';
 import { modelFor as BranchModelFor } from '../models/Branch.js';
+import { modelFor as ProductModelFor } from '../models/Product.js';
 
 export const EMPTY_LIMITS = {
-  basic: { maxUserAccounts: null, maxActiveUsers: null, maxBranches: null },
-  pro: { maxUserAccounts: null, maxActiveUsers: null, maxBranches: null },
-  enterprise: { maxUserAccounts: null, maxActiveUsers: null, maxBranches: null }
+  basic: { maxUserAccounts: null, maxActiveUsers: null, maxBranches: null, maxProducts: null },
+  pro: { maxUserAccounts: null, maxActiveUsers: null, maxBranches: null, maxProducts: null },
+  enterprise: { maxUserAccounts: null, maxActiveUsers: null, maxBranches: null, maxProducts: null }
 };
 
 const LIMITS_KEY = 'tenantLimitsDefaults';
@@ -24,7 +25,8 @@ function normalizePlanLimits(input = {}) {
   return {
     maxUserAccounts: normalizeLimitValue(input.maxUserAccounts),
     maxActiveUsers: normalizeLimitValue(input.maxActiveUsers),
-    maxBranches: normalizeLimitValue(input.maxBranches)
+    maxBranches: normalizeLimitValue(input.maxBranches),
+    maxProducts: normalizeLimitValue(input.maxProducts)
   };
 }
 
@@ -63,36 +65,44 @@ export function getEffectiveTenantLimits(tenant, defaults = EMPTY_LIMITS) {
   const planDefaults = defaults[plan] || defaults.basic || EMPTY_LIMITS.basic;
   const userBase = normalizeLimitValue(tenant?.maxUserAccountsOverride ?? planDefaults.maxUserAccounts);
   const branchBase = normalizeLimitValue(tenant?.maxBranchesOverride ?? planDefaults.maxBranches);
+  const productBase = normalizeLimitValue(tenant?.maxProductsOverride ?? planDefaults.maxProducts);
   const additionalUserSlots = Math.max(0, normalizeLimitValue(tenant?.additionalUserSlots) || 0);
   const additionalBranchSlots = Math.max(0, normalizeLimitValue(tenant?.additionalBranchSlots) || 0);
+  const additionalProductSlots = Math.max(0, normalizeLimitValue(tenant?.additionalProductSlots) || 0);
   return {
     maxUserAccounts: userBase == null ? null : userBase + additionalUserSlots,
     maxActiveUsers: normalizeLimitValue(tenant?.maxActiveUsersOverride ?? planDefaults.maxActiveUsers),
-    maxBranches: branchBase == null ? null : branchBase + additionalBranchSlots
+    maxBranches: branchBase == null ? null : branchBase + additionalBranchSlots,
+    maxProducts: productBase == null ? null : productBase + additionalProductSlots
   };
 }
 
 export async function getTenantUsageSummary(masterConn, tenantConn, tenant, defaults = EMPTY_LIMITS) {
   const User = UserModelFor(tenantConn);
   const Branch = BranchModelFor(tenantConn);
-  const [totalUsers, totalBranches, activeUsers] = await Promise.all([
+  const Product = ProductModelFor(tenantConn);
+  const [totalUsers, totalBranches, totalProducts, activeUsers] = await Promise.all([
     User.countDocuments(),
     Branch.countDocuments(),
+    Product.countDocuments(),
     countActiveTenantSessions(masterConn, tenant?.tenantId || '', { skipCleanup: false })
   ]);
   const limits = getEffectiveTenantLimits(tenant, defaults);
   const remainingUsers = limits.maxUserAccounts == null ? null : Math.max(0, limits.maxUserAccounts - totalUsers);
   const remainingActiveUsers = limits.maxActiveUsers == null ? null : Math.max(0, limits.maxActiveUsers - activeUsers);
   const remainingBranches = limits.maxBranches == null ? null : Math.max(0, limits.maxBranches - totalBranches);
+  const remainingProducts = limits.maxProducts == null ? null : Math.max(0, limits.maxProducts - totalProducts);
   return {
     limits,
     usage: {
       totalUsers,
       activeUsers,
       totalBranches,
+      totalProducts,
       remainingUsers,
       remainingActiveUsers,
-      remainingBranches
+      remainingBranches,
+      remainingProducts
     }
   };
 }

@@ -10,6 +10,11 @@ import { archiveLiveDocument } from '../utils/superBin.js';
 import { normalizeTaxConfig } from '../utils/productTax.js';
 import { formatValidationError, validateEnforced } from '../validation/logOnlyValidation.js';
 import { productWriteSchema } from '../validation/schemas.js';
+import { getMasterConnection } from '../config/tenancy.js';
+import { modelFor as TenantModelFor } from '../models/Tenant.js';
+import { getTenantLimitDefaults, getTenantUsageSummary } from '../utils/tenantLimits.js';
+import { getPaymentManagementConfig } from '../utils/paymentManagement.js';
+import { getMobileMoneyNetworks, getTenantLimitUpgradeInfo } from '../utils/subscriptionPayments.js';
 
 const r = Router();
 
@@ -372,6 +377,37 @@ r.post('/', requireRoleOrPerm(['Admin','Manager'], 'edit_products'), async (req,
     let body = normalizePricingPayload(req.body || {});
     const pricingValidationMessage = getPricingValidationMessage(body);
     if (pricingValidationMessage) return res.status(400).json({ error: pricingValidationMessage });
+    const tenantId = String(req.user?.tenantId || req.tenantId || 'master');
+    if (tenantId.toLowerCase() !== 'master') {
+      const master = await getMasterConnection();
+      const TenantModel = TenantModelFor(master);
+      const tenant = await TenantModel.findOne({ tenantId }).lean();
+      const defaults = await getTenantLimitDefaults(master);
+      const usageSummary = await getTenantUsageSummary(master, req.db, tenant, defaults);
+      const productLimit = usageSummary?.limits?.maxProducts;
+      if (productLimit && (usageSummary?.usage?.totalProducts || 0) >= productLimit) {
+        const paymentConfig = await getPaymentManagementConfig(master);
+        const tenantDoc = tenant || { tenantId };
+        tenantDoc._masterConn = master;
+        const upgradeInfo = await getTenantLimitUpgradeInfo(req.db, tenantDoc, usageSummary);
+        return res.status(403).json({
+          error: `Product limit reached (${usageSummary.usage.totalProducts} of ${productLimit}). Pay for extra products to add more.`,
+          code: 'TENANT_PRODUCT_LIMIT_REACHED',
+          resourceType: 'product',
+          limits: usageSummary.limits,
+          usage: usageSummary.usage,
+          addOnPricing: upgradeInfo.addOnPricing,
+          currencyCode: upgradeInfo.currencyCode,
+          currencySymbol: upgradeInfo.currencySymbol,
+          currencyPosition: upgradeInfo.currencyPosition,
+          billingEmail: upgradeInfo.billingEmail,
+          billingPhone: upgradeInfo.billingPhone,
+          billingAddress: upgradeInfo.billingAddress,
+          mobileMoneyNetworks: getMobileMoneyNetworks(upgradeInfo.billingCountry),
+          enabledGateways: paymentConfig.enabledGateways
+        });
+      }
+    }
     body = await uploadProductMediaPayload(body, req);
     const initialStock = Number(body.initialStock || 0);
     const initialBranchId = String(body.initialBranchId || '').trim();
