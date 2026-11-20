@@ -11,6 +11,7 @@ import * as stockApi from '../api/stock';
 import * as productUnitsApi from '../api/productUnits';
 import * as settingsApi from '../api/settings';
 import Modal from '../components/Modal';
+import TenantLimitUpgradeModal from '../components/TenantLimitUpgradeModal';
 import BarcodeScannerModal from '../components/BarcodeScannerModal';
 import { enqueueHttp, isOfflineBackupEnabled } from '../offline/offlineBackup';
 import OfflineQueueIndicator from '../components/OfflineQueueIndicator';
@@ -343,6 +344,9 @@ function ProductsPage() {
   const [leadDays, setLeadDays] = useState(7);
   const [catalogQuery, setCatalogQuery] = useState('');
   const [catalogCategory, setCatalogCategory] = useState('all');
+  const [catalogPage, setCatalogPage] = useState(1);
+  const [catalogPageSize, setCatalogPageSize] = useState(25);
+  const [limitUpgradeContext, setLimitUpgradeContext] = useState(null);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState('csv');
   const [exportIncludeVariants, setExportIncludeVariants] = useState(true);
@@ -447,6 +451,36 @@ function ProductsPage() {
       return hay.includes(query);
     });
   }, [products, catalogCategory, catalogQuery]);
+
+  const catalogSummary = useMemo(() => {
+    let withStock = 0;
+    let serialized = 0;
+    products.forEach((product) => {
+      if (String(product?.trackType || 'quantity') === 'serialized') serialized += 1;
+      const variants = Array.isArray(product?.variants) ? product.variants.filter((variant) => String(variant?.label || variant?.id || '').trim()) : [];
+      const stocked = variants.length > 0
+        ? variants.some((variant) => Number(getDisplayStockValue(product, variant)) > 0)
+        : Number(getDisplayStockValue(product)) > 0;
+      if (stocked) withStock += 1;
+    });
+    return {
+      total: products.length,
+      withStock,
+      serialized,
+      withoutStock: Math.max(0, products.length - withStock)
+    };
+  }, [products, currentBranchId, currentInventoryType]);
+
+  const catalogPageCount = Math.max(1, Math.ceil(filteredCatalogProducts.length / catalogPageSize));
+  const pagedCatalogProducts = filteredCatalogProducts.slice((catalogPage - 1) * catalogPageSize, catalogPage * catalogPageSize);
+
+  useEffect(() => {
+    setCatalogPage(1);
+  }, [catalogQuery, catalogCategory, catalogPageSize]);
+
+  useEffect(() => {
+    if (catalogPage > catalogPageCount) setCatalogPage(catalogPageCount);
+  }, [catalogPage, catalogPageCount]);
 
   const productExportHeaders = useMemo(() => ([
     { key: 'name', label: 'Product' },
@@ -999,6 +1033,9 @@ function ProductsPage() {
                     }
                 } catch (e) {
                     if (newId) dispatch(removeProduct(newId));
+                    if (e?.data?.code === 'TENANT_PRODUCT_LIMIT_REACHED') {
+                      setLimitUpgradeContext(e.data);
+                    }
                     toast.show(String(e?.message || 'Failed to add product'), { type: 'error' });
                     return;
                 }
@@ -1529,6 +1566,12 @@ function ProductsPage() {
 
       {tab === 'catalog' && (
       <div className="card">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 12 }}>
+          <div className="card stat-card"><div className="stat-label">{t('Total Products')}</div><div className="stat-value">{catalogSummary.total}</div></div>
+          <div className="card stat-card"><div className="stat-label">{t('With Stock')}</div><div className="stat-value">{catalogSummary.withStock}</div></div>
+          <div className="card stat-card"><div className="stat-label">{t('Serialized')}</div><div className="stat-value">{catalogSummary.serialized}</div></div>
+          <div className="card stat-card"><div className="stat-label">{t('Without Stock')}</div><div className="stat-value">{catalogSummary.withoutStock}</div></div>
+        </div>
         <h2 className="section-title">{t('Catalog')}</h2>
         <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 12, marginBottom: 12 }}>
           <label>
@@ -1561,7 +1604,7 @@ function ProductsPage() {
             </tr>
           </thead>
           <tbody>
-            {filteredCatalogProducts.map(p => (
+            {pagedCatalogProducts.map(p => (
               <tr key={p.id || p._id || p.sku}>
                 <td>
                   {p.image ? <img src={p.image} alt={p.name} className="thumb" /> : <span style={{ color: '#94a3b8' }}>—</span>}
@@ -1711,6 +1754,21 @@ function ProductsPage() {
             ) : null}
           </tbody>
         </table>
+        </div>
+        <div className="sales-pagination">
+          <div className="sales-row-actions">
+            <button className="btn" type="button" onClick={() => setCatalogPage((page) => Math.max(1, page - 1))} disabled={catalogPage <= 1}>{t('Prev')}</button>
+            <span className="sales-results-note">{t('Page')} {catalogPage} {t('of')} {catalogPageCount}</span>
+            <button className="btn" type="button" onClick={() => setCatalogPage((page) => Math.min(catalogPageCount, page + 1))} disabled={catalogPage >= catalogPageCount}>{t('Next')}</button>
+          </div>
+          <label>
+            <span className="field-label" style={{ marginBottom: 0, marginRight: 6 }}>{t('Rows')}</span>
+            <select className="select" value={catalogPageSize} onChange={(e) => setCatalogPageSize(Number(e.target.value))}>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </label>
         </div>
       </div>
       )}
@@ -2511,6 +2569,13 @@ function ProductsPage() {
           </div>
         </Modal>
       )}
+      <TenantLimitUpgradeModal
+        open={!!limitUpgradeContext}
+        onClose={() => setLimitUpgradeContext(null)}
+        context={limitUpgradeContext}
+        resourceType="product"
+        toast={toast}
+      />
       <BarcodeScannerModal
         title={t('Scan IMEI Barcode')}
         open={serializedCameraOpen}

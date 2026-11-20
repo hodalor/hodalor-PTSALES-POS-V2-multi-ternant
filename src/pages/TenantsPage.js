@@ -21,7 +21,8 @@ const DEFAULT_SUBSCRIPTION_MANAGEMENT = {
   ],
   addOns: {
     additionalUserRate: 0,
-    additionalBranchRate: 0
+    additionalBranchRate: 0,
+    additionalProductRate: 0
   }
 };
 
@@ -66,10 +67,13 @@ const EMPTY_FORM = {
   maxUserAccountsOverride: '',
   maxActiveUsersOverride: '',
   maxBranchesOverride: '',
+  maxProductsOverride: '',
   additionalUserRateOverride: '',
   additionalBranchRateOverride: '',
+  additionalProductRateOverride: '',
   additionalUserSlots: '',
   additionalBranchSlots: '',
+  additionalProductSlots: '',
   usage: null,
   limits: null,
   features: []
@@ -91,9 +95,9 @@ function TenantsPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [userAudit, setUserAudit] = useState({ scannedTenants: 0, duplicateCount: 0, duplicateUserNames: [] });
   const [limitDefaults, setLimitDefaults] = useState({
-    basic: { maxUserAccounts: '', maxActiveUsers: '', maxBranches: '' },
-    pro: { maxUserAccounts: '', maxActiveUsers: '', maxBranches: '' },
-    enterprise: { maxUserAccounts: '', maxActiveUsers: '', maxBranches: '' }
+    basic: { maxUserAccounts: '', maxActiveUsers: '', maxBranches: '', maxProducts: '' },
+    pro: { maxUserAccounts: '', maxActiveUsers: '', maxBranches: '', maxProducts: '' },
+    enterprise: { maxUserAccounts: '', maxActiveUsers: '', maxBranches: '', maxProducts: '' }
   });
   const [paymentManagement, setPaymentManagement] = useState({ gateways: [], enabledGateways: [], paymentHistory: [], summary: { totalCollected: 0, transactionCount: 0, cardCollected: 0, mobileMoneyCollected: 0, gatewayCount: 0 } });
   const [savingPaymentManagement, setSavingPaymentManagement] = useState(false);
@@ -160,8 +164,12 @@ function TenantsPage() {
   const effectiveAdditionalBranchRate = form.additionalBranchRateOverride === '' || form.additionalBranchRateOverride == null
     ? Number(subscriptionManagement?.addOns?.additionalBranchRate || 0)
     : Number(form.additionalBranchRateOverride || 0);
+  const effectiveAdditionalProductRate = form.additionalProductRateOverride === '' || form.additionalProductRateOverride == null
+    ? Number(subscriptionManagement?.addOns?.additionalProductRate || 0)
+    : Number(form.additionalProductRateOverride || 0);
   const additionalUserChargePreview = Number((effectiveAdditionalUserRate * Number(form.additionalUserSlots || 0)).toFixed(2));
   const additionalBranchChargePreview = Number((effectiveAdditionalBranchRate * Number(form.additionalBranchSlots || 0)).toFixed(2));
+  const additionalProductChargePreview = Number((effectiveAdditionalProductRate * Number(form.additionalProductSlots || 0)).toFixed(2));
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -169,9 +177,9 @@ function TenantsPage() {
       const [tenantRows, defaults, paymentData, subscriptionData] = await Promise.all([tenantsApi.list(), tenantsApi.getLimitDefaults(), tenantsApi.getPaymentManagement(), tenantsApi.getSubscriptionManagement()]);
       setRows(tenantRows);
       setLimitDefaults({
-        basic: { maxUserAccounts: defaults?.basic?.maxUserAccounts ?? '', maxActiveUsers: defaults?.basic?.maxActiveUsers ?? '', maxBranches: defaults?.basic?.maxBranches ?? '' },
-        pro: { maxUserAccounts: defaults?.pro?.maxUserAccounts ?? '', maxActiveUsers: defaults?.pro?.maxActiveUsers ?? '', maxBranches: defaults?.pro?.maxBranches ?? '' },
-        enterprise: { maxUserAccounts: defaults?.enterprise?.maxUserAccounts ?? '', maxActiveUsers: defaults?.enterprise?.maxActiveUsers ?? '', maxBranches: defaults?.enterprise?.maxBranches ?? '' }
+        basic: { maxUserAccounts: defaults?.basic?.maxUserAccounts ?? '', maxActiveUsers: defaults?.basic?.maxActiveUsers ?? '', maxBranches: defaults?.basic?.maxBranches ?? '', maxProducts: defaults?.basic?.maxProducts ?? '' },
+        pro: { maxUserAccounts: defaults?.pro?.maxUserAccounts ?? '', maxActiveUsers: defaults?.pro?.maxActiveUsers ?? '', maxBranches: defaults?.pro?.maxBranches ?? '', maxProducts: defaults?.pro?.maxProducts ?? '' },
+        enterprise: { maxUserAccounts: defaults?.enterprise?.maxUserAccounts ?? '', maxActiveUsers: defaults?.enterprise?.maxActiveUsers ?? '', maxBranches: defaults?.enterprise?.maxBranches ?? '', maxProducts: defaults?.enterprise?.maxProducts ?? '' }
       });
       setPaymentManagement(paymentData || { gateways: [], enabledGateways: [], paymentHistory: [], summary: { totalCollected: 0, transactionCount: 0, cardCollected: 0, mobileMoneyCollected: 0, gatewayCount: 0 } });
       const nextSubscription = subscriptionData || DEFAULT_SUBSCRIPTION_MANAGEMENT;
@@ -353,10 +361,13 @@ function TenantsPage() {
         maxUserAccountsOverride: form.maxUserAccountsOverride === '' ? null : Number(form.maxUserAccountsOverride),
         maxActiveUsersOverride: form.maxActiveUsersOverride === '' ? null : Number(form.maxActiveUsersOverride),
         maxBranchesOverride: form.maxBranchesOverride === '' ? null : Number(form.maxBranchesOverride),
+        maxProductsOverride: form.maxProductsOverride === '' ? null : Number(form.maxProductsOverride),
         additionalUserRateOverride: form.additionalUserRateOverride === '' ? null : Number(form.additionalUserRateOverride),
         additionalBranchRateOverride: form.additionalBranchRateOverride === '' ? null : Number(form.additionalBranchRateOverride),
+        additionalProductRateOverride: form.additionalProductRateOverride === '' ? null : Number(form.additionalProductRateOverride),
         additionalUserSlots: form.additionalUserSlots === '' ? 0 : Number(form.additionalUserSlots),
         additionalBranchSlots: form.additionalBranchSlots === '' ? 0 : Number(form.additionalBranchSlots),
+        additionalProductSlots: form.additionalProductSlots === '' ? 0 : Number(form.additionalProductSlots),
         features: form.features
       };
       if (editing) {
@@ -402,10 +413,13 @@ function TenantsPage() {
       maxUserAccountsOverride: row.maxUserAccountsOverride ?? '',
       maxActiveUsersOverride: row.maxActiveUsersOverride ?? '',
       maxBranchesOverride: row.maxBranchesOverride ?? '',
+      maxProductsOverride: row.maxProductsOverride ?? '',
       additionalUserRateOverride: row.additionalUserRateOverride ?? '',
       additionalBranchRateOverride: row.additionalBranchRateOverride ?? '',
+      additionalProductRateOverride: row.additionalProductRateOverride ?? '',
       additionalUserSlots: row.additionalUserSlots ?? '',
       additionalBranchSlots: row.additionalBranchSlots ?? '',
+      additionalProductSlots: row.additionalProductSlots ?? '',
       usage: row.usage || null,
       limits: row.limits || null,
       features: Array.isArray(row.features) ? row.features : []
@@ -428,24 +442,27 @@ function TenantsPage() {
         basic: {
           maxUserAccounts: limitDefaults.basic.maxUserAccounts === '' ? null : Number(limitDefaults.basic.maxUserAccounts),
           maxActiveUsers: limitDefaults.basic.maxActiveUsers === '' ? null : Number(limitDefaults.basic.maxActiveUsers),
-          maxBranches: limitDefaults.basic.maxBranches === '' ? null : Number(limitDefaults.basic.maxBranches)
+          maxBranches: limitDefaults.basic.maxBranches === '' ? null : Number(limitDefaults.basic.maxBranches),
+          maxProducts: limitDefaults.basic.maxProducts === '' ? null : Number(limitDefaults.basic.maxProducts)
         },
         pro: {
           maxUserAccounts: limitDefaults.pro.maxUserAccounts === '' ? null : Number(limitDefaults.pro.maxUserAccounts),
           maxActiveUsers: limitDefaults.pro.maxActiveUsers === '' ? null : Number(limitDefaults.pro.maxActiveUsers),
-          maxBranches: limitDefaults.pro.maxBranches === '' ? null : Number(limitDefaults.pro.maxBranches)
+          maxBranches: limitDefaults.pro.maxBranches === '' ? null : Number(limitDefaults.pro.maxBranches),
+          maxProducts: limitDefaults.pro.maxProducts === '' ? null : Number(limitDefaults.pro.maxProducts)
         },
         enterprise: {
           maxUserAccounts: limitDefaults.enterprise.maxUserAccounts === '' ? null : Number(limitDefaults.enterprise.maxUserAccounts),
           maxActiveUsers: limitDefaults.enterprise.maxActiveUsers === '' ? null : Number(limitDefaults.enterprise.maxActiveUsers),
-          maxBranches: limitDefaults.enterprise.maxBranches === '' ? null : Number(limitDefaults.enterprise.maxBranches)
+          maxBranches: limitDefaults.enterprise.maxBranches === '' ? null : Number(limitDefaults.enterprise.maxBranches),
+          maxProducts: limitDefaults.enterprise.maxProducts === '' ? null : Number(limitDefaults.enterprise.maxProducts)
         }
       };
       const saved = await tenantsApi.updateLimitDefaults(payload);
       setLimitDefaults({
-        basic: { maxUserAccounts: saved?.basic?.maxUserAccounts ?? '', maxActiveUsers: saved?.basic?.maxActiveUsers ?? '', maxBranches: saved?.basic?.maxBranches ?? '' },
-        pro: { maxUserAccounts: saved?.pro?.maxUserAccounts ?? '', maxActiveUsers: saved?.pro?.maxActiveUsers ?? '', maxBranches: saved?.pro?.maxBranches ?? '' },
-        enterprise: { maxUserAccounts: saved?.enterprise?.maxUserAccounts ?? '', maxActiveUsers: saved?.enterprise?.maxActiveUsers ?? '', maxBranches: saved?.enterprise?.maxBranches ?? '' }
+        basic: { maxUserAccounts: saved?.basic?.maxUserAccounts ?? '', maxActiveUsers: saved?.basic?.maxActiveUsers ?? '', maxBranches: saved?.basic?.maxBranches ?? '', maxProducts: saved?.basic?.maxProducts ?? '' },
+        pro: { maxUserAccounts: saved?.pro?.maxUserAccounts ?? '', maxActiveUsers: saved?.pro?.maxActiveUsers ?? '', maxBranches: saved?.pro?.maxBranches ?? '', maxProducts: saved?.pro?.maxProducts ?? '' },
+        enterprise: { maxUserAccounts: saved?.enterprise?.maxUserAccounts ?? '', maxActiveUsers: saved?.enterprise?.maxActiveUsers ?? '', maxBranches: saved?.enterprise?.maxBranches ?? '', maxProducts: saved?.enterprise?.maxProducts ?? '' }
       });
       toast.show('Tenant limits updated', { type: 'success' });
     } catch (e) {
@@ -646,7 +663,8 @@ function TenantsPage() {
         })),
         addOns: {
           additionalUserRate: Number(subscriptionManagement?.addOns?.additionalUserRate || 0),
-          additionalBranchRate: Number(subscriptionManagement?.addOns?.additionalBranchRate || 0)
+          additionalBranchRate: Number(subscriptionManagement?.addOns?.additionalBranchRate || 0),
+          additionalProductRate: Number(subscriptionManagement?.addOns?.additionalProductRate || 0)
         }
       };
       const saved = await tenantsApi.updateSubscriptionManagement(payload);
@@ -834,6 +852,10 @@ function TenantsPage() {
                       Max Branches
                       <input className="input" type="number" min="1" value={limitDefaults[plan]?.maxBranches ?? ''} onChange={(e) => setLimitDefault(plan, 'maxBranches', e.target.value)} placeholder="Unlimited" />
                     </label>
+                    <label>
+                      Max Products
+                      <input className="input" type="number" min="1" value={limitDefaults[plan]?.maxProducts ?? ''} onChange={(e) => setLimitDefault(plan, 'maxProducts', e.target.value)} placeholder="Unlimited" />
+                    </label>
                   </div>
                 </div>
               ))}
@@ -845,9 +867,9 @@ function TenantsPage() {
           <div className="card">
             <h2 className="section-title">Self-Service Add-On Rates</h2>
             <div style={{ color: '#64748b', marginBottom: 12 }}>
-              Set the real-time amount tenants pay for each extra user or branch slot. Paid quantities are added automatically after successful payment.
+              Set the real-time amount tenants pay for each extra user, branch, or product slot. Paid quantities are added automatically after successful payment.
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
               <label>
                 Rate Per Additional User
                 <input className="input" type="number" min="0" step="0.01" value={subscriptionManagement?.addOns?.additionalUserRate ?? 0} onChange={(e) => setSubscriptionManagement((prev) => ({ ...prev, addOns: { ...(prev.addOns || {}), additionalUserRate: e.target.value } }))} />
@@ -855,6 +877,10 @@ function TenantsPage() {
               <label>
                 Rate Per Additional Branch
                 <input className="input" type="number" min="0" step="0.01" value={subscriptionManagement?.addOns?.additionalBranchRate ?? 0} onChange={(e) => setSubscriptionManagement((prev) => ({ ...prev, addOns: { ...(prev.addOns || {}), additionalBranchRate: e.target.value } }))} />
+              </label>
+              <label>
+                Rate Per Additional Product
+                <input className="input" type="number" min="0" step="0.01" value={subscriptionManagement?.addOns?.additionalProductRate ?? 0} onChange={(e) => setSubscriptionManagement((prev) => ({ ...prev, addOns: { ...(prev.addOns || {}), additionalProductRate: e.target.value } }))} />
               </label>
             </div>
           </div>
@@ -1182,7 +1208,7 @@ function TenantsPage() {
                 Leave override fields blank to use the plan default. Additional purchased slots stack on top of the chosen base limit.
               </div>
               {editing ? (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginBottom: 12 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 12, marginBottom: 12 }}>
                   <div className="card stat-card">
                     <div className="stat-label">Current Users Created</div>
                     <div className="stat-value">{Number(form?.usage?.totalUsers || 0)}</div>
@@ -1194,6 +1220,10 @@ function TenantsPage() {
                   <div className="card stat-card">
                     <div className="stat-label">Current Branches Created</div>
                     <div className="stat-value">{Number(form?.usage?.totalBranches || 0)}</div>
+                  </div>
+                  <div className="card stat-card">
+                    <div className="stat-label">Current Products</div>
+                    <div className="stat-value">{Number(form?.usage?.totalProducts || 0)}</div>
                   </div>
                 </div>
               ) : null}
@@ -1211,6 +1241,10 @@ function TenantsPage() {
                   <input className="input" type="number" min="1" value={form.maxBranchesOverride} onChange={(e) => setValue('maxBranchesOverride', e.target.value)} placeholder="Use plan default" />
                 </label>
                 <label>
+                  Max Products Override
+                  <input className="input" type="number" min="1" value={form.maxProductsOverride} onChange={(e) => setValue('maxProductsOverride', e.target.value)} placeholder="Use plan default" />
+                </label>
+                <label>
                   Purchased Additional User Slots
                   <input className="input" type="number" min="0" value={form.additionalUserSlots} onChange={(e) => setValue('additionalUserSlots', e.target.value)} placeholder="0" />
                 </label>
@@ -1218,14 +1252,18 @@ function TenantsPage() {
                   Purchased Additional Branch Slots
                   <input className="input" type="number" min="0" value={form.additionalBranchSlots} onChange={(e) => setValue('additionalBranchSlots', e.target.value)} placeholder="0" />
                 </label>
+                <label>
+                  Extra Product Slots
+                  <input className="input" type="number" min="0" value={form.additionalProductSlots} onChange={(e) => setValue('additionalProductSlots', e.target.value)} placeholder="0" />
+                </label>
               </div>
             </div>
             <div className="surface-panel">
               <div style={{ fontWeight: 800, marginBottom: 6 }}>Additional Slot Pricing</div>
               <div className="section-note" style={{ marginBottom: 10 }}>
-                Set tenant-specific rate per unit for extra users and branches. Leave blank to use the global self-service rate.
+                Set the extra-product amount and the extra-product number for this tenant. Leave the rate blank to use the global product rate. The number is added on top of the product cap.
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
                 <label>
                   Rate Per Additional User
                   <input className="input" type="number" min="0" step="0.01" value={form.additionalUserRateOverride} onChange={(e) => setValue('additionalUserRateOverride', e.target.value)} placeholder={String(subscriptionManagement?.addOns?.additionalUserRate ?? 0)} />
@@ -1240,8 +1278,15 @@ function TenantsPage() {
                     Effective rate: {formatSubscriptionMoney(effectiveAdditionalBranchRate)}
                   </div>
                 </label>
+                <label>
+                  Extra Product Amount
+                  <input className="input" type="number" min="0" step="0.01" value={form.additionalProductRateOverride} onChange={(e) => setValue('additionalProductRateOverride', e.target.value)} placeholder={String(subscriptionManagement?.addOns?.additionalProductRate ?? 0)} />
+                  <div className="section-note" style={{ marginTop: 4 }}>
+                    Effective rate: {formatSubscriptionMoney(effectiveAdditionalProductRate)}
+                  </div>
+                </label>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12, marginTop: 12 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12, marginTop: 12 }}>
                 <div className="card stat-card">
                   <div className="stat-label">Additional User Charge Preview</div>
                   <div className="stat-value" style={{ fontSize: 22 }}>{formatSubscriptionMoney(additionalUserChargePreview)}</div>
@@ -1249,6 +1294,10 @@ function TenantsPage() {
                 <div className="card stat-card">
                   <div className="stat-label">Additional Branch Charge Preview</div>
                   <div className="stat-value" style={{ fontSize: 22 }}>{formatSubscriptionMoney(additionalBranchChargePreview)}</div>
+                </div>
+                <div className="card stat-card">
+                  <div className="stat-label">Extra Product Charge Preview</div>
+                  <div className="stat-value" style={{ fontSize: 22 }}>{formatSubscriptionMoney(additionalProductChargePreview)}</div>
                 </div>
               </div>
             </div>

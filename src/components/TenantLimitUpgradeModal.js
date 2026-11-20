@@ -27,17 +27,30 @@ export default function TenantLimitUpgradeModal({ open, onClose, context, resour
   const mobileMoneyNetworks = Array.isArray(context?.mobileMoneyNetworks) ? context.mobileMoneyNetworks : [];
   const roleLower = String(auth?.role || auth?.user?.role || '').toLowerCase();
   const isMasterSuperAdmin = roleLower === 'superadmin' && String(auth?.user?.tenantId || '').toLowerCase() === 'master';
-  const resolvedResourceType = String(resourceType || context?.resourceType || 'user').toLowerCase() === 'branch' ? 'branch' : 'user';
+  const requestedType = String(resourceType || context?.resourceType || 'user').toLowerCase();
+  const resolvedResourceType = requestedType === 'branch' || requestedType === 'product' ? requestedType : 'user';
   const unitRate = resolvedResourceType === 'branch'
     ? Number(context?.addOnPricing?.additionalBranchRate || 0)
-    : Number(context?.addOnPricing?.additionalUserRate || 0);
+    : resolvedResourceType === 'product'
+      ? Number(context?.addOnPricing?.additionalProductRate || 0)
+      : Number(context?.addOnPricing?.additionalUserRate || 0);
   const qty = Math.max(1, Number(quantity || 1));
   const total = Number((unitRate * qty).toFixed(2));
-  const title = resolvedResourceType === 'branch' ? 'Branch Limit Reached' : 'User Limit Reached';
+  const resourceLabel = resolvedResourceType === 'branch' ? 'branch' : resolvedResourceType === 'product' ? 'product' : 'user';
+  const resourceLabelPlural = resolvedResourceType === 'branch' ? 'branches' : resolvedResourceType === 'product' ? 'products' : 'users';
+  const title = resolvedResourceType === 'branch' ? 'Branch Limit Reached' : resolvedResourceType === 'product' ? 'Product Limit Reached' : 'User Limit Reached';
   const usageText = useMemo(() => {
     if (!context?.usage || !context?.limits) return '';
-    const used = resolvedResourceType === 'branch' ? context.usage.totalBranches : context.usage.totalUsers;
-    const limit = resolvedResourceType === 'branch' ? context.limits.maxBranches : context.limits.maxUserAccounts;
+    const used = resolvedResourceType === 'branch'
+      ? context.usage.totalBranches
+      : resolvedResourceType === 'product'
+        ? context.usage.totalProducts
+        : context.usage.totalUsers;
+    const limit = resolvedResourceType === 'branch'
+      ? context.limits.maxBranches
+      : resolvedResourceType === 'product'
+        ? context.limits.maxProducts
+        : context.limits.maxUserAccounts;
     if (limit == null) return '';
     return `${used} of ${limit} used`;
   }, [context, resolvedResourceType]);
@@ -67,7 +80,7 @@ export default function TenantLimitUpgradeModal({ open, onClose, context, resour
 
   async function startPayment() {
     if (!unitRate) {
-      toast?.show(`Additional ${resolvedResourceType} payment is not configured yet. Contact admin.`, { type: 'error' });
+      toast?.show(`Additional ${resourceLabel} payment is not configured yet. Contact admin.`, { type: 'error' });
       return;
     }
     if (provider === 'paystack' && method === 'mobile_money') {
@@ -140,16 +153,16 @@ export default function TenantLimitUpgradeModal({ open, onClose, context, resour
     >
       <div style={{ display: 'grid', gap: 12 }}>
         <div style={{ color: '#475569' }}>
-          You have reached your {resolvedResourceType} limit. Contact admin or pay now to unlock more {resolvedResourceType === 'branch' ? 'branches' : 'users'} instantly.
+          You have reached your {resourceLabel} limit. Pay now to unlock more {resourceLabelPlural}.
         </div>
         {usageText ? <div style={{ padding: 10, borderRadius: 8, background: '#f8fafc', color: '#334155' }}>Current usage: {usageText}</div> : null}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <label>
-            Additional {resolvedResourceType === 'branch' ? 'Branches' : 'Users'}
+            Additional {resourceLabelPlural}
             <input className="input" type="number" min="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
           </label>
           <label>
-            Rate Per {resolvedResourceType === 'branch' ? 'Branch' : 'User'}
+            Rate Per {resourceLabel}
             <input className="input" value={formatMoney(unitRate, context?.currencySymbol, context?.currencyCode, context?.currencyPosition)} readOnly />
           </label>
           <label>
