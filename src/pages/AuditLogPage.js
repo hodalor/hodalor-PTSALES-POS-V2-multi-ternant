@@ -44,9 +44,13 @@ function AuditLogPage() {
   const [bulkAction, setBulkAction] = useState('');
   const [bulkDeleting, setBulkDeleting] = useState(false);
 
+  const [tenantChoices, setTenantChoices] = useState([]);
   const actors = useMemo(() => Array.from(new Set(entries.map(e => e.actor).filter(Boolean))).sort(), [entries]);
-  const actions = useMemo(() => Array.from(new Set(entries.map(e => e.actionType).filter(Boolean))).sort(), [entries]);
-  const tenants = useMemo(() => Array.from(new Set(entries.map(e => e.tenantName || e.tenantId).filter(Boolean))).sort(), [entries]);
+  const actions = useMemo(() => Array.from(new Set([
+    ...entries.map(e => e.actionType).filter(Boolean),
+    'product_delete',
+    'user_delete'
+  ])).sort(), [entries]);
   const byId = useMemo(() => {
     const map = new Map();
     branches.forEach(b => map.set(b.id, b.name));
@@ -76,20 +80,34 @@ function AuditLogPage() {
   }), [filtered]);
 
   useEffect(() => {
+    setTenantChoices((prev) => {
+      const map = new Map(prev.map((row) => [row.id, row]));
+      entries.forEach((entry) => {
+        const id = String(entry.tenantId || '').trim();
+        const label = String(entry.tenantName || entry.tenantId || '').trim();
+        const key = id || label;
+        if (!key) return;
+        map.set(key, { id: key, label: label || key });
+      });
+      return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
+    });
+  }, [entries]);
+
+  useEffect(() => {
     let alive = true;
     (async () => {
       try {
         const rows = await auditsApi.list(500, {
-          tenantId: isSuper ? qTenant : '',
           from,
           to,
-          severity: qSeverity
+          severity: qSeverity,
+          actionType: qAction
         });
-        if (alive) dispatch(setEntries(rows));
+        if (alive) dispatch(setEntries(Array.isArray(rows) ? rows : []));
       } catch {}
     })();
     return () => { alive = false; };
-  }, [dispatch, isSuper, qTenant, from, to, qSeverity]);
+  }, [dispatch, from, to, qSeverity, qAction]);
 
   function exportCsv() {
     const blob = new Blob([toCsv(filtered)], { type: 'text/csv;charset=utf-8;' });
@@ -153,7 +171,7 @@ function AuditLogPage() {
               Tenant
               <select className="select" value={qTenant} onChange={e => setQTenant(e.target.value)}>
                 <option value="">All</option>
-                {tenants.map(t => <option key={t} value={t}>{t}</option>)}
+                {tenantChoices.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
             </label>
           )}

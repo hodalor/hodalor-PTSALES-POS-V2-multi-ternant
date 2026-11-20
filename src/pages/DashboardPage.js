@@ -401,8 +401,10 @@ function DashboardPage() {
     const productById = new Map();
     const categoryBySku = new Map();
     products.forEach((product) => {
-      const productId = String(product?.id || product?._id || '');
+      const productId = String(product?.id || '').trim();
+      const objectId = String(product?._id || '').trim();
       if (productId) productById.set(productId, product);
+      if (objectId) productById.set(objectId, product);
       const productCategory = String(product?.category || '').trim();
       const productSku = String(product?.sku || '').trim();
       if (productSku && productCategory) categoryBySku.set(productSku, productCategory);

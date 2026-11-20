@@ -15,6 +15,7 @@ export function list(limitOrFilters = 500, maybeFilters = {}) {
   if (filters.from) params.set('from', String(filters.from));
   if (filters.to) params.set('to', String(filters.to));
   if (filters.severity) params.set('severity', String(filters.severity));
+  if (filters.actionType) params.set('actionType', String(filters.actionType));
   return fetchJson(`/api/audits?${params.toString()}`);
 }
 
