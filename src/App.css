@@ -1728,14 +1728,16 @@ html, body, #root {
   white-space: nowrap;
 }
 .pos-toolbar {
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
   width: 100%;
+  min-width: 0;
 }
 .pos-toolbar-search {
-  flex: 0 1 320px !important;
-  width: 320px;
-  min-width: 220px;
+  flex: 1 1 240px !important;
+  width: auto;
+  min-width: min(100%, 200px);
+  max-width: 100%;
   font-size: 13px;
   padding-left: 10px;
   padding-right: 10px;
@@ -1745,12 +1747,16 @@ html, body, #root {
   letter-spacing: -0.01em;
 }
 .pos-toolbar-tier {
-  flex: 0 0 142px !important;
-  width: 142px;
+  flex: 1 1 150px !important;
+  width: auto;
+  min-width: min(100%, 130px);
+  max-width: 100%;
 }
 .pos-toolbar-filter {
-  flex: 0 0 132px !important;
-  width: 132px;
+  flex: 1 1 150px !important;
+  width: auto;
+  min-width: min(100%, 130px);
+  max-width: 100%;
 }
 .pos-toolbar-actions {
   margin-left: auto;

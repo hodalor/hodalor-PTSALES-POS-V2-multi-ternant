@@ -261,7 +261,11 @@ function PosPage({ mode = 'retail' }) {
   const [redeemPoints, setRedeemPoints] = useState('');
   const [heldOpen, setHeldOpen] = useState(false);
   const [discountOpen, setDiscountOpen] = useState(false);
-  const [cartDetailsOpen, setCartDetailsOpen] = useState(() => {
+  const [searchOpen, setSearchOpen] = useState(() => {
+    if (typeof window === 'undefined') return true;
+    return window.innerWidth > 1440;
+  });
+  const [customerOpen, setCustomerOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
     return window.innerWidth > 1440;
   });
@@ -2300,11 +2304,11 @@ function PosPage({ mode = 'retail' }) {
                 <h2 className="pos-page-title">{modeLabel}</h2>
                 <button
                   type="button"
-                  className={`pos-cart-fold${cartDetailsOpen ? ' open' : ''}`}
-                  onClick={() => setCartDetailsOpen((open) => !open)}
-                  aria-expanded={cartDetailsOpen}
-                  aria-label={cartDetailsOpen ? t('Hide search and customer') : t('Show search and customer')}
-                  title={cartDetailsOpen ? t('Hide search and customer') : t('Show search and customer')}
+                  className={`pos-cart-fold${searchOpen ? ' open' : ''}`}
+                  onClick={() => setSearchOpen((open) => !open)}
+                  aria-expanded={searchOpen}
+                  aria-label={searchOpen ? t('Hide search and filters') : t('Show search and filters')}
+                  title={searchOpen ? t('Hide search and filters') : t('Show search and filters')}
                 >
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </button>
@@ -2331,7 +2335,7 @@ function PosPage({ mode = 'retail' }) {
               ) : null}
             </div>
           </div>
-          {cartDetailsOpen ? (
+          {searchOpen ? (
           <div className="toolbar pos-toolbar">
             <input className="input pos-toolbar-search" placeholder={t('Search name, brand, SKU, barcode, IMEI, or serial number')} value={query} onChange={e => setQuery(e.target.value)} onKeyDown={onSearchKeyDown} />
             <FilterSearchSelect
@@ -2507,11 +2511,11 @@ function PosPage({ mode = 'retail' }) {
             <h2>{t('Cart')}</h2>
             <button
               type="button"
-              className={`pos-cart-fold${cartDetailsOpen ? ' open' : ''}`}
-              onClick={() => setCartDetailsOpen((open) => !open)}
-              aria-expanded={cartDetailsOpen}
-              aria-label={cartDetailsOpen ? t('Hide customer') : t('Show customer')}
-              title={cartDetailsOpen ? t('Hide customer') : t('Show customer')}
+              className={`pos-cart-fold${customerOpen ? ' open' : ''}`}
+              onClick={() => setCustomerOpen((open) => !open)}
+              aria-expanded={customerOpen}
+              aria-label={customerOpen ? t('Hide customer') : t('Show customer')}
+              title={customerOpen ? t('Hide customer') : t('Show customer')}
             >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
             </button>
@@ -2616,7 +2620,7 @@ function PosPage({ mode = 'retail' }) {
         </div>
         </div>
         <div className="pos-cart-scroll">
-        {cartDetailsOpen ? (
+        {customerOpen ? (
         <div className="card pos-customer-card" style={{ marginBottom: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginBottom: 6 }}>
             <div style={{ fontWeight: 700 }}>{t('Customer (optional)')}</div>
