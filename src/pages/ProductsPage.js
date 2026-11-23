@@ -1296,7 +1296,7 @@ function ProductsPage() {
 
   const unitSymbolOptions = useMemo(() => {
     if (unitKind === 'volume') return ['mL', 'L'];
-    if (unitKind === 'mass') return ['g', 'kg'];
+    if (unitKind === 'mass') return ['mg', 'g', 'kg'];
     if (unitKind === 'length') return ['mm', 'cm', 'm', 'in'];
     return [];
   }, [unitKind]);

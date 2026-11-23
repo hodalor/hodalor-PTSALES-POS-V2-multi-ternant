@@ -2791,6 +2791,11 @@ html, body, #root {
 .pos-cart-fold.open svg {
   transform: rotate(180deg);
 }
+.pos-cart-menu {
+  position: static;
+  flex: 1 1 auto;
+  min-width: 0;
+}
 .pos-cart-actions {
   position: relative;
   display: flex;
@@ -2813,10 +2818,12 @@ html, body, #root {
 }
 .pos-floating-panel {
   position: absolute;
+  top: 100%;
+  left: 0;
   right: 0;
   margin-top: 8px;
-  width: 420px;
-  max-width: min(92vw, 420px);
+  width: auto;
+  max-width: none;
   background:
     radial-gradient(circle at top right, rgba(37,99,235,0.06), transparent 22%),
     linear-gradient(180deg, rgba(255,255,255,0.99) 0%, rgba(248,250,252,0.98) 100%);
@@ -2827,8 +2834,8 @@ html, body, #root {
   overflow: hidden;
 }
 .pos-floating-panel--wide {
-  width: 460px;
-  max-width: min(94vw, 460px);
+  width: auto;
+  max-width: none;
 }
 .pos-floating-panel-head {
   padding: 14px 16px;
@@ -3465,6 +3472,15 @@ html, body, #root {
   max-height: 100%;
   overflow: hidden;
 }
+.pos-products-pane {
+  position: relative;
+  z-index: 1;
+}
+.pos-cart-pane {
+  position: relative;
+  z-index: 30;
+  overflow: visible;
+}
 .pos-sticky-search {
   position: sticky;
   top: -16px;
@@ -4086,6 +4102,12 @@ html, body, #root {
     overflow: visible;
     padding-right: 0;
     height: auto;
+  }
+  .pos-products-pane {
+    z-index: 1;
+  }
+  .pos-cart-pane {
+    z-index: 30;
   }
   .toolbar {
     align-items: stretch;
