@@ -640,11 +640,7 @@ function LoginPage() {
         <section className="login-hero">
           <div className="login-hero-badge">{t('Business Management Syetem')}</div>
           <div className="login-brand login-brand--hero">
-            <img src="/logo512.png" alt="logo" />
-            <div>
-              <div className="brand-name brand-name--hero">{heroAppName}</div>
-              <div className="login-brand-subtitle">{t('Connected tools for modern teams')}</div>
-            </div>
+            <img className="login-byznova-logo" src="/byznova-logo.png" alt="BYZNOVA" />
           </div>
           <div className="login-hero-copy">
             <h1>{t('')}</h1>
@@ -673,7 +669,7 @@ function LoginPage() {
               <div style={{ display: 'grid', gap: 14, justifyItems: 'center', maxWidth: 420 }}>
                 <div className="brand-loader">
                   <div className="brand-loader-ring" />
-                  <img className="brand-loader-logo" src="/logo512.png" alt="logo" />
+                  <img className="brand-loader-logo" src="/byznova-mark.png" alt="BYZNOVA" />
                 </div>
                 <div className="brand-loader-copy brand-loader-copy-delay-1" style={{ fontSize: 22, fontWeight: 800 }}>{heroAppName}</div>
                 <div className="brand-loader-copy brand-loader-copy-delay-2" style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>{t('Signing you in...')}</div>

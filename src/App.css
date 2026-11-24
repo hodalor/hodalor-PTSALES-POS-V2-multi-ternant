@@ -1273,9 +1273,21 @@ html, body, #root {
   border-radius: 12px;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.28);
 }
-.login-brand--hero img {
-  width: 46px;
-  height: 46px;
+.login-brand--hero {
+  width: fit-content;
+  max-width: 100%;
+  padding: 10px 14px;
+  border-radius: 16px;
+  background: #ffffff;
+}
+.login-brand--hero img,
+.login-byznova-logo {
+  width: min(100%, 280px);
+  height: auto;
+  max-height: 64px;
+  border-radius: 0;
+  box-shadow: none;
+  object-fit: contain;
 }
 .login-brand-subtitle {
   color: #94a3b8;
@@ -2434,6 +2446,9 @@ html, body, #root {
 }
 .dashboard-chart-tall {
   height: 250px;
+}
+.dashboard-chart-donut {
+  height: 420px;
 }
 .dashboard-chart-medium {
   height: 210px;

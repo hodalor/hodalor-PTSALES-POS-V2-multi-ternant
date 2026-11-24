@@ -252,7 +252,7 @@ function AdjustmentsPage() {
           delta,
           type: String(row.status || '').toLowerCase() === 'rejected' ? 'Rejected' : 'Adjust',
           remark: row.approvalRemark || row.managerApprovalRemark || row.rejectionRemark || row.remark || '',
-          items: Array.isArray(row.items) ? row.items : []
+          source: row
         };
       })
       .filter((row) => {
@@ -266,18 +266,53 @@ function AdjustmentsPage() {
   }, [recordRequestRows, byId, dateFrom, dateTo, fActor, fBranch, periodMode, products, recordQuery]);
   const rows = useMemo(() => {
     if (auditRows.length === 0) return requestRows;
-    const merged = [...auditRows];
-    requestRows.forEach((row) => {
-      const duplicate = auditRows.some((auditRow) =>
+    const merged = auditRows.map((auditRow) => {
+      const match = requestRows.find((row) =>
         String(auditRow.branchId || '') === String(row.branchId || '')
         && String(auditRow.product || '').trim().toLowerCase() === String(row.product || '').trim().toLowerCase()
         && Number(auditRow.delta || 0) === Number(row.delta || 0)
         && Math.abs(new Date(auditRow.ts).getTime() - new Date(row.ts).getTime()) < 5 * 60 * 1000
       );
+      return match ? { ...auditRow, source: match.source, product: match.product || auditRow.product } : auditRow;
+    });
+    requestRows.forEach((row) => {
+      const duplicate = merged.some((auditRow) => auditRow.source && auditRow.source === row.source);
       if (!duplicate) merged.push(row);
     });
     return merged.slice().sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
   }, [auditRows, requestRows]);
+
+  function openRecordDetail(row) {
+    if (row?.source) {
+      setDetail(row.source);
+      return;
+    }
+    const named = String(row?.product || '').trim().toLowerCase();
+    const product = products.find((entry) => String(entry?.name || '').trim().toLowerCase() === named) || null;
+    const delta = Number(row?.delta || 0);
+    setDetail({
+      status: String(row?.type || '').toLowerCase() === 'rejected' ? 'rejected' : 'approved',
+      transactionTitle: row?.product || 'Adjustment',
+      productId: product?.id || product?._id || '',
+      productName: row?.product || '',
+      branchId: row?.branchId || '',
+      delta,
+      remark: row?.remark || '',
+      initiatorName: row?.actor || '',
+      createdAt: row?.ts,
+      items: [{
+        productId: product?.id || product?._id || '',
+        productName: row?.product || '',
+        name: row?.product || '',
+        variantLabel: row?.variant || '',
+        delta,
+        quantity: Math.abs(delta),
+        adjustmentType: delta < 0 ? 'decrease' : 'increase',
+        category: product?.category || '',
+        status: 'accepted'
+      }]
+    });
+  }
   const actors = useMemo(() => Array.from(new Set(rows.map(e => e.actor).filter(Boolean))).sort(), [rows]);
   const summary = useMemo(() => ({
     records: rows.length,
@@ -923,7 +958,7 @@ function AdjustmentsPage() {
         <div className="sales-section-head">
           <div>
             <h2 className="sales-section-title">{t('Recent Adjustments')}</h2>
-            <p className="sales-section-note">{t('Review branch corrections, export the filtered result, and clean up records when needed.')}</p>
+            <p className="sales-section-note">{t('Click a row to see the products in that adjustment and each product category.')}</p>
           </div>
         </div>
         <div className="sales-table-meta">
@@ -958,7 +993,7 @@ function AdjustmentsPage() {
             {rows.slice((page-1)*pageSize, (page-1)*pageSize + pageSize).map(r => {
             const adjustment = getAdjustmentDisplay(r);
               return (
-              <tr key={r.id} style={bulkDeleting && selectedRecordIds.includes(String(r._id || r.id || '')) ? { opacity: 0.55 } : undefined}>
+              <tr key={r.id} style={{ cursor: 'pointer', ...(bulkDeleting && selectedRecordIds.includes(String(r._id || r.id || '')) ? { opacity: 0.55 } : {}) }} onClick={() => openRecordDetail(r)}>
                 <td>{new Date(r.ts).toLocaleString()}</td>
                 <td>{r.actor}</td>
                 <td>{r.product || '—'}</td>
@@ -974,6 +1009,7 @@ function AdjustmentsPage() {
                       type="checkbox"
                       disabled={bulkDeleting}
                       checked={selectedRecordIds.includes(String(r._id || r.id || ''))}
+                      onClick={(evt) => evt.stopPropagation()}
                       onChange={evt => setSelectedRecordIds(prev => evt.target.checked ? [...new Set([...prev, String(r._id || r.id || '')])] : prev.filter(id => id !== String(r._id || r.id || '')))}
                     />
                   </td>
@@ -1291,7 +1327,7 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
       <div className="approval-toolbar">
         <div>
           <h2 className="sales-section-title">Approvals</h2>
-          <p className="sales-section-note">Review adjustment increases and decreases before stock changes are committed.</p>
+          <p className="sales-section-note">Click a row to open the adjustment and see each product with its category.</p>
         </div>
         <div className="card-scroll-x">
         <div className="sales-tabbar">
@@ -1409,6 +1445,7 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
                 <thead>
                   <tr>
                     <th align="left">Product</th>
+                    <th align="left">Category</th>
                     <th align="left">Adjustment Type</th>
                     <th align="left">Quantity</th>
                     <th align="left">Status</th>
@@ -1434,6 +1471,7 @@ function ApprovalsSection({ canApprove, canDirectorApprove, canManagerApprove, s
                           ) : null}
                           {itemMeta.secondaryLabel ? <div style={{ marginTop: 4, color: '#64748b', fontSize: 12 }}>{itemMeta.secondaryLabel}</div> : null}
                         </td>
+                        <td>{String(item.category || itemMeta.product?.category || 'Uncategorized').trim() || 'Uncategorized'}</td>
                         <td>{String(item.adjustmentType || '').toLowerCase() === 'decrease' ? 'Decrease' : 'Increase'}</td>
                         <td>
                           <input
@@ -1516,6 +1554,7 @@ function RequestDetail({ detail, products, byId }) {
         <div className="operation-detail-box"><div className="detail-label">Status</div><div className="detail-value"><span className={`status-badge ${detail.status === 'approved' ? 'success' : detail.status === 'rejected' ? 'danger' : 'warning'}`}>{detail.status}</span></div></div>
         <div className="operation-detail-box"><div className="detail-label">Title</div><div className="detail-value">{detail.transactionTitle || '—'}</div></div>
         <div className="operation-detail-box"><div className="detail-label">Product</div><div className="detail-value">{meta.productName || detail.productId}</div></div>
+        <div className="operation-detail-box"><div className="detail-label">Category</div><div className="detail-value">{String(meta.product?.category || 'Uncategorized').trim() || 'Uncategorized'}</div></div>
         {meta.secondaryLabel ? <div className="operation-detail-box"><div className="detail-label">Variant / Attribute</div><div className="detail-value">{meta.secondaryLabel}</div></div> : null}
         <div className="operation-detail-box"><div className="detail-label">Branch</div><div className="detail-value">{byId.get(detail.branchId) || detail.branchId}</div></div>
         <div className="operation-detail-box"><div className="detail-label">Adjustment Type</div><div className="detail-value">{adjustment.typeLabel}</div></div>
@@ -1538,6 +1577,7 @@ function RequestDetail({ detail, products, byId }) {
             <thead>
               <tr>
                 <th align="left">Product</th>
+                <th align="left">Category</th>
                 <th align="left">Adjustment Type</th>
                 <th align="left">Quantity</th>
                 <th align="left">Status</th>
@@ -1563,6 +1603,7 @@ function RequestDetail({ detail, products, byId }) {
                         </div>
                       )}
                     </td>
+                    <td>{String(item.category || itemMeta.product?.category || 'Uncategorized').trim() || 'Uncategorized'}</td>
                     <td>{itemAdjustment.typeLabel}</td>
                     <td>{itemAdjustment.quantity}</td>
                     <td>{item.status || 'accepted'}</td>

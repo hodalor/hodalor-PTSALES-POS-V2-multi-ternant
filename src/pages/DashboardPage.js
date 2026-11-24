@@ -1122,7 +1122,23 @@ function DashboardPage() {
               <p className="dashboard-section-note">{t('Sales mix for the current dashboard selection.')}</p>
             </div>
           </div>
-          <Doughnut data={metrics.doughData} />
+          <div className="dashboard-chart-donut">
+            <Doughnut
+              data={metrics.doughData}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: { display: false },
+                  tooltip: {
+                    callbacks: {
+                      label: (ctx) => `${ctx.label || 'Uncategorized'}: ${ctx.parsed || 0}`
+                    }
+                  }
+                }
+              }}
+            />
+          </div>
         </div>
       </div>
       <div className="dashboard-mini-grid">
