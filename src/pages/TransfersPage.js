@@ -29,6 +29,15 @@ function normalizeTransferReviewStatus(value) {
   return String(value || '').toLowerCase() === 'cancelled' ? 'cancelled' : 'accepted';
 }
 
+function categoryForProduct(products, productId, variantId, fallbackName) {
+  const meta = getProductDisplayMeta(products, productId, variantId, { productName: fallbackName, name: fallbackName });
+  const named = String(fallbackName || meta.productName || '').trim().toLowerCase();
+  const match = meta.product || (named
+    ? (Array.isArray(products) ? products : []).find((entry) => String(entry?.name || '').trim().toLowerCase() === named)
+    : null);
+  return String(match?.category || 'Uncategorized').trim() || 'Uncategorized';
+}
+
 function normalizeTransferReviewItemsForCompare(items = []) {
   return (Array.isArray(items) ? items : []).map((item, index) => ({
     lineId: String(item?.lineId || `${index + 1}`),
@@ -1421,6 +1430,7 @@ function TransfersPage() {
               <div className="operation-detail-box"><div className="detail-label">{t('Status')}</div><div className="detail-value"><span className={`status-badge ${detail.status === 'approved' ? 'success' : detail.status === 'rejected' ? 'danger' : 'warning'}`}>{detail.status}</span></div></div>
               <div className="operation-detail-box"><div className="detail-label">{t('Title')}</div><div className="detail-value">{detail.transactionTitle || '—'}</div></div>
               <div className="operation-detail-box"><div className="detail-label">{t('Product')}</div><div className="detail-value">{getProductDisplayMeta(products, detail.productId, detail.variantId, detail).productName || detail.productId}</div></div>
+              <div className="operation-detail-box"><div className="detail-label">{t('Category')}</div><div className="detail-value">{categoryForProduct(products, detail.productId, detail.variantId, detail.productName || detail.name)}</div></div>
               {getProductDisplayMeta(products, detail.productId, detail.variantId, detail).secondaryLabel ? <div className="operation-detail-box"><div className="detail-label">{t('Variant / Attribute')}</div><div className="detail-value">{getProductDisplayMeta(products, detail.productId, detail.variantId, detail).secondaryLabel}</div></div> : null}
               <div className="operation-detail-box"><div className="detail-label">{t('From')}</div><div className="detail-value">{byId.get(detail.fromBranchId || detail.from) || detail.fromBranchId || detail.from}</div></div>
               <div className="operation-detail-box"><div className="detail-label">{t('To')}</div><div className="detail-value">{byId.get(detail.toBranchId || detail.to) || detail.toBranchId || detail.to}</div></div>
@@ -1463,6 +1473,7 @@ function TransfersPage() {
                 <thead>
                   <tr>
                     <th align="left">{t('Product')}</th>
+                    <th align="left">{t('Category')}</th>
                     <th align="left">{t('Qty')}</th>
                     <th align="left">{t('Units')}</th>
                     <th align="left">{t('Status')}</th>
@@ -1496,6 +1507,7 @@ function TransfersPage() {
                             </div>
                           )}
                         </td>
+                        <td>{categoryForProduct(products, item.productId, item.variantId, meta.productName)}</td>
                         <td>
                           {canActOnDetail ? (
                             <input
@@ -1548,6 +1560,7 @@ function TransfersPage() {
             <div className="detail-field"><div className="detail-label">{t('Timestamp')}</div><div className="detail-value">{auditDetail.ts ? new Date(auditDetail.ts).toLocaleString() : '—'}</div></div>
             <div className="detail-field"><div className="detail-label">{t('Actor')}</div><div className="detail-value">{auditDetail.actor || '—'}</div></div>
             <div className="detail-field"><div className="detail-label">{t('Product')}</div><div className="detail-value">{(auditDetail.details || {}).product || '—'}</div></div>
+            <div className="detail-field"><div className="detail-label">{t('Category')}</div><div className="detail-value">{categoryForProduct(products, (auditDetail.details || {}).productId, (auditDetail.details || {}).variantId, (auditDetail.details || {}).product)}</div></div>
             {(auditDetail.details || {}).variant ? <div className="detail-field"><div className="detail-label">{t('Variant')}</div><div className="detail-value">{(auditDetail.details || {}).variant}</div></div> : null}
             <div className="detail-field"><div className="detail-label">{t('From')}</div><div className="detail-value">{byId.get((auditDetail.details || {}).from) || (auditDetail.details || {}).from || '—'}</div></div>
             <div className="detail-field"><div className="detail-label">{t('To')}</div><div className="detail-value">{byId.get((auditDetail.details || {}).to) || (auditDetail.details || {}).to || '—'}</div></div>

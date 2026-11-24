@@ -30,6 +30,15 @@ function normalizeReviewStatus(value) {
   return String(value || '').toLowerCase() === 'cancelled' ? 'cancelled' : 'accepted';
 }
 
+function categoryForProduct(products, productId, variantId, fallbackName) {
+  const meta = getProductDisplayMeta(products, productId, variantId, { productName: fallbackName, name: fallbackName });
+  const named = String(fallbackName || meta.productName || '').trim().toLowerCase();
+  const match = meta.product || (named
+    ? (Array.isArray(products) ? products : []).find((entry) => String(entry?.name || '').trim().toLowerCase() === named)
+    : null);
+  return String(match?.category || 'Uncategorized').trim() || 'Uncategorized';
+}
+
 function normalizeReviewItemsForCompare(items = []) {
   return (Array.isArray(items) ? items : []).map((item, index) => ({
     lineId: String(item?.lineId || `${index + 1}`),
@@ -1672,6 +1681,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                 <thead>
                   <tr>
                     <th align="left">{t('Product')}</th>
+                    <th align="left">{t('Category')}</th>
                     {String(selectedRow.operationType || '').toLowerCase() === 'adjustment' && <th align="left">{t('Adjustment Type')}</th>}
                     <th align="left">{t('Qty')}</th>
                     <th align="left">{t('Units')}</th>
@@ -1716,6 +1726,7 @@ function WholesaleOperationsPage({ operationType, operationArea = 'wholesale' })
                             </div>
                           )}
                         </td>
+                        <td>{categoryForProduct(products, item.productId, item.variantId, meta.productName)}</td>
                         {String(selectedRow.operationType || '').toLowerCase() === 'adjustment' && <td>{formatAdjustmentTypeLabel(item.adjustmentType || selectedRow.adjustmentType || 'increase', t)}</td>}
                         <td>
                           <input className="input" type="number" min="0" value={item.qty} onChange={e => setReviewItems(prev => prev.map((row, rowIndex) => rowIndex === index ? { ...row, qty: Number(e.target.value) || 0 } : row))} style={{ width: 90, color: '#111827' }} disabled={(Array.isArray(item.unitIds) && item.unitIds.length > 0) || (Array.isArray(item.serializedEntries) && item.serializedEntries.length > 0) || !canActOnSelectedRow || reviewing} />
