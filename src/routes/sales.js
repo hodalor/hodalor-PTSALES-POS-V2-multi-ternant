@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import Sale from '../models/Sale.js';
 import Product from '../models/Product.js';
+import Promotion from '../models/Promotion.js';
 import Audit from '../models/Audit.js';
 import ServerLog from '../models/ServerLog.js';
 import Settings from '../models/Settings.js';
@@ -427,7 +428,34 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       return res.json(existing);
     }
   }
-  const cleaned = items.map(it => ({
+  const sourceItems = Array.isArray(items) ? items : [];
+  const isComboSource = (it) => String(it?.lineType || '') === 'combo' || String(it?.comboId || '').trim();
+  const comboSources = sourceItems.filter(isComboSource);
+  const productSources = sourceItems.filter((it) => !isComboSource(it));
+  const resolvedCombos = [];
+  if (comboSources.length > 0) {
+    if (posType !== 'retail' || inventoryType !== 'retail') {
+      return res.status(400).json({ error: 'Promotion combos can only be sold from retail POS' });
+    }
+    const promotionIds = Array.from(new Set(comboSources.map((it) => String(it.promotionId || '').trim()).filter(Boolean)));
+    const promotionRows = promotionIds.length > 0 ? await Promotion.find({ _id: { $in: promotionIds } }) : [];
+    const promotionById = new Map(promotionRows.map((row) => [String(row._id), row]));
+    for (const it of comboSources) {
+      const promotion = promotionById.get(String(it.promotionId || '').trim());
+      if (!promotion || promotion.active === false) {
+        return res.status(400).json({ error: 'Promotion is not active' });
+      }
+      if (promotion.allBranches === false && !(promotion.branchIds || []).map(String).includes(branchId)) {
+        return res.status(400).json({ error: `${promotion.name} is not available at this branch` });
+      }
+      const combo = (promotion.combos || []).find((row) => String(row.id) === String(it.comboId || ''));
+      if (!combo) return res.status(400).json({ error: 'Combo was not found on this promotion' });
+      const sets = Math.abs(Number(it.qty) || 0);
+      if (!Number.isFinite(sets) || sets <= 0) return res.status(400).json({ error: 'Combo quantity must be greater than zero' });
+      resolvedCombos.push({ sets, combo, promotion });
+    }
+  }
+  const cleaned = productSources.map(it => ({
     productId: it.productId,
     variantId: it.variantId || null,
     qty: Math.abs(Number(it.qty) || 0),
@@ -440,6 +468,9 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
   }));
   if (cleaned.some(it => !it.productId || !Number.isFinite(it.qty) || it.qty <= 0)) {
     return res.status(400).json({ error: 'Each item must include productId and positive qty' });
+  }
+  if (cleaned.length === 0 && resolvedCombos.length === 0) {
+    return res.status(400).json({ error: 'Sale must include items' });
   }
 
   let customerId = String(payload.customerId || '').trim();
@@ -512,8 +543,12 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
   let costTotal = 0;
   const finalItems = [];
   const touchedSerializedUnits = [];
+  const comboUnitsSold = [];
   try {
-    const productIds = Array.from(new Set(cleaned.map((it) => String(it.productId || '')).filter(Boolean)));
+    const productIds = Array.from(new Set([
+      ...cleaned.map((it) => String(it.productId || '')).filter(Boolean),
+      ...resolvedCombos.flatMap(({ combo }) => (combo.items || []).map((item) => String(item.productId || '')).filter(Boolean))
+    ]));
     const productOr = productIds.flatMap((pid) => {
       const clause = productLookupQuery(pid);
       return Array.isArray(clause.$or) ? clause.$or : [clause];
@@ -664,6 +699,145 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
         costPrice: Number.isFinite(cp) ? cp : 0
       });
     }
+    for (const { sets, combo, promotion } of resolvedCombos) {
+      const soldComponents = [];
+      for (const component of combo.items || []) {
+        const componentQty = sets * Math.abs(Number(component.qty || 0));
+        const p = productByKey.get(String(component.productId || ''));
+        if (!p) {
+          const err = new Error(`Product not found: ${component.name || component.productId}`);
+          err.status = 400;
+          throw err;
+        }
+        const variant = component.variantId && Array.isArray(p.variants)
+          ? p.variants.find(v => String(v.id) === String(component.variantId))
+          : null;
+        if (component.variantId && !variant) {
+          const err = new Error(`Variant not found for product ${p.name}`);
+          err.status = 400;
+          throw err;
+        }
+        const serialized = normalizeTrackType(p.trackType) === 'serialized';
+        const productKey = String(p.id || p._id || component.productId);
+        let chosenIds = [];
+        if (serialized) {
+          const poolIds = (Array.isArray(component.units) ? component.units : [])
+            .map((unit) => String(unit?.unitId || '').trim())
+            .filter(Boolean);
+          const rows = poolIds.length > 0
+            ? await ProductUnit.find({
+              _id: { $in: poolIds },
+              branchId,
+              inventoryType,
+              status: { $in: ['in_stock', 'reserved'] }
+            })
+            : [];
+          const rowById = new Map(rows.map((row) => [String(row._id), row]));
+          const saleReservation = String(payload.reservationToken || '');
+          const chosen = [];
+          poolIds.forEach((unitId) => {
+            if (chosen.length >= componentQty) return;
+            const row = rowById.get(unitId);
+            if (!row || touchedSerializedUnits.includes(unitId)) return;
+            if (String(row.productId || '') !== productKey) return;
+            if (String(row.variantId || '') !== String(component.variantId || '')) return;
+            if (String(row.branchId || '') !== String(branchId)) return;
+            if (row.status === 'reserved' && row.reservationToken && row.reservationToken !== saleReservation) return;
+            chosen.push(row);
+          });
+          if (chosen.length < componentQty) {
+            const label = variant?.label ? `${p.name} (${variant.label})` : p.name;
+            const err = new Error(`Not enough selected units at this branch for ${label} in ${combo.name}`);
+            err.status = 400;
+            throw err;
+          }
+          chosenIds = chosen.map((row) => String(row._id));
+          chosenIds.forEach((unitId) => touchedSerializedUnits.push(unitId));
+        }
+        const target = getStockTarget(p, component.variantId, inventoryType);
+        if (!target) {
+          const err = new Error(`Inventory target not found for ${p.name}`);
+          err.status = 400;
+          throw err;
+        }
+        await assertOutgoingAvailability({
+          product: p,
+          productId: productKey,
+          variantId: String(component.variantId || ''),
+          branchId,
+          inventoryType,
+          qty: componentQty,
+          unitIds: chosenIds,
+          reservationToken: String(payload.reservationToken || ''),
+          purpose: 'sale'
+        });
+        const prev = getMapQty(target.container, branchId);
+        let availableQty = prev;
+        if (serialized && availableQty < componentQty) {
+          const productIds = Array.from(new Set([
+            String(p.id || '').trim(),
+            String(p._id || '').trim(),
+            String(component.productId || '').trim()
+          ].filter(Boolean)));
+          const unitCount = await ProductUnit.countDocuments({
+            productId: { $in: productIds },
+            variantId: String(component.variantId || ''),
+            branchId: String(branchId),
+            inventoryType,
+            status: { $in: ['in_stock', 'reserved'] }
+          });
+          if (unitCount >= componentQty) availableQty = unitCount;
+        }
+        if (availableQty < componentQty) {
+          const label = variant?.label ? `${p.name} (${variant.label})` : p.name;
+          const err = new Error(`Insufficient retail stock for ${label} in ${combo.name}`);
+          err.status = 400;
+          throw err;
+        }
+        touched.push({ target, branchId, prev });
+        setMapQty(target.container, branchId, Math.max(0, availableQty - componentQty));
+        markInventoryModified(target);
+        dirtyProducts.set(String(p._id || p.id || component.productId), p);
+        soldComponents.push({
+          productId: component.productId,
+          variantId: component.variantId || '',
+          name: component.name || '',
+          qty: Number(component.qty || 0),
+          unitIds: chosenIds
+        });
+      }
+      if (soldComponents.some((component) => component.unitIds.length > 0)) {
+        comboUnitsSold.push({
+          promotionId: String(promotion._id),
+          comboId: String(combo.id || ''),
+          unitIds: soldComponents.flatMap((component) => component.unitIds)
+        });
+      }
+      const promoPrice = Math.max(0, Number(combo.promoPrice || 0));
+      const profitEach = Math.min(promoPrice, Math.max(0, Number(combo.profitAmount || 0)));
+      const comboCost = Math.max(0, promoPrice - profitEach);
+      costTotal += comboCost * sets;
+      finalItems.push({
+        productId: '',
+        lineType: 'combo',
+        comboId: combo.id,
+        promotionId: String(promotion._id),
+        promotionName: promotion.name || '',
+        name: combo.name,
+        sku: `COMBO-${String(combo.id || '').slice(0, 8)}`,
+        spec: (combo.items || []).map((item) => `${item.qty} x ${item.name}`).join(', '),
+        qty: sets,
+        price: promoPrice,
+        taxRatePercent: 0,
+        taxAmount: 0,
+        costPrice: comboCost,
+        profitAmount: profitEach,
+        priceTier: 'retail',
+        soldUnitIds: [],
+        soldUnits: [],
+        components: soldComponents
+      });
+    }
     // One save per touched product instead of one save per cart line.
     await Promise.all(Array.from(dirtyProducts.values()).map((product) => product.save()));
   } catch (e) {
@@ -806,6 +980,7 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
       const globalFixed = Math.max(0, Number(settingsData.minimumUpfrontPaymentFixed || 0));
       let requiredUpfront = Math.max(revenueTotal * (globalPercent / 100), globalFixed);
       for (const item of finalItems) {
+        if (String(item.lineType || '') === 'combo' || !String(item.productId || '').trim()) continue;
         const product = await Product.findOne(productLookupQuery(item.productId));
         const pct = Math.max(0, Math.min(100, Number(product?.minimumCreditPercentage || 0)));
         if (product?.allowCredit === false) {
@@ -901,6 +1076,30 @@ r.post('/', requireRoleOrPerm(['Admin','Manager','Cashier'], 'add_sales'), async
           : []
       }));
       await sale.save();
+      if (comboUnitsSold.length > 0) {
+        try {
+          const promotionIds = Array.from(new Set(comboUnitsSold.map((entry) => entry.promotionId)));
+          const promotions = await Promotion.find({ _id: { $in: promotionIds } });
+          for (const promo of promotions) {
+            const pulls = comboUnitsSold.filter((entry) => entry.promotionId === String(promo._id));
+            let changed = false;
+            pulls.forEach((pull) => {
+              const combo = (promo.combos || []).find((row) => String(row.id || '') === pull.comboId);
+              if (!combo) return;
+              const drop = new Set(pull.unitIds.map(String));
+              (combo.items || []).forEach((item) => {
+                const before = Array.isArray(item.units) ? item.units.length : 0;
+                item.units = (item.units || []).filter((unit) => !drop.has(String(unit.unitId || '')));
+                if (item.units.length !== before) changed = true;
+              });
+            });
+            if (changed) {
+              promo.markModified('combos');
+              await promo.save();
+            }
+          }
+        } catch {}
+      }
     }
     if (creditPayload) {
       creditSale = await CreditSale.create({

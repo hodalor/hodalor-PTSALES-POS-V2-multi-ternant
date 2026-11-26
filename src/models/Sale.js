@@ -3,6 +3,12 @@ import { createTenantAwareModel } from './_tenantModel.js';
 
 const SaleItemSchema = new mongoose.Schema({
   productId: String,
+  lineType: { type: String, default: '' },
+  comboId: { type: String, default: '' },
+  promotionId: { type: String, default: '' },
+  promotionName: { type: String, default: '' },
+  profitAmount: { type: Number, default: 0 },
+  components: { type: [{ productId: String, variantId: String, name: String, qty: Number, unitIds: { type: [String], default: [] } }], default: [] },
   sku: String,
   name: String,
   brand: String,

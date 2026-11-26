@@ -28,6 +28,7 @@ import superBin from './superBin.js';
 import chatMessages from './chatMessages.js';
 import ptAi from './ptAi.js';
 import discountApprovals from './discountApprovals.js';
+import promotions from './promotions.js';
 
 const router = Router();
 router.use('/products', products);
@@ -59,5 +60,6 @@ router.use('/super-bin', superBin);
 router.use('/chat-messages', chatMessages);
 router.use('/pt-ai', ptAi);
 router.use('/discount-approvals', discountApprovals);
+router.use('/promotions', promotions);
 
 export default router;

@@ -3,6 +3,7 @@ import RefundRequest from '../models/RefundRequest.js';
 import Audit from '../models/Audit.js';
 import Sale from '../models/Sale.js';
 import Product from '../models/Product.js';
+import Promotion from '../models/Promotion.js';
 import CreditSale from '../models/CreditSale.js';
 import { requireAuth, requireRoleOrPerm } from '../middleware/auth.js';
 import mongoose from 'mongoose';
@@ -14,6 +15,52 @@ import { refreshCreditSaleStatus, updateCustomerCreditMetrics } from '../utils/c
 import { canApproveAreaDirector, canApproveAreaManager } from '../utils/approvalWorkflow.js';
 
 const r = Router();
+
+async function restoreComboUnits(sale, rows) {
+  const returned = Array.isArray(rows) ? rows : [];
+  if (!sale || returned.length === 0) return;
+  const byId = new Map(returned.map((row) => [String(row._id), row]));
+  const promotions = new Map();
+  const dirty = new Set();
+  for (const item of sale.items || []) {
+    if (String(item.lineType || '') !== 'combo' || !item.promotionId) continue;
+    const promotionId = String(item.promotionId);
+    if (!promotions.has(promotionId)) {
+      promotions.set(promotionId, await Promotion.findById(promotionId));
+    }
+    const promo = promotions.get(promotionId);
+    if (!promo) continue;
+    const combo = (promo.combos || []).find((row) => String(row.id || '') === String(item.comboId || ''));
+    if (!combo) continue;
+    for (const component of item.components || []) {
+      const matches = (component.unitIds || []).map((id) => byId.get(String(id))).filter(Boolean);
+      if (matches.length === 0) continue;
+      const comboItem = (combo.items || []).find((row) => (
+        String(row.productId || '') === String(component.productId || '')
+        && String(row.variantId || '') === String(component.variantId || '')
+      ));
+      if (!comboItem) continue;
+      const existing = new Set((comboItem.units || []).map((unit) => String(unit.unitId || '')));
+      matches.forEach((row) => {
+        const unitId = String(row._id);
+        if (existing.has(unitId)) return;
+        existing.add(unitId);
+        comboItem.units.push({
+          unitId,
+          imei: row.imei || '',
+          serialNumber: row.serialNumber || '',
+          branchId: String(row.branchId || '')
+        });
+        dirty.add(promotionId);
+      });
+    }
+  }
+  for (const [promotionId, promo] of promotions) {
+    if (!promo || !dirty.has(promotionId)) continue;
+    promo.markModified('combos');
+    await promo.save();
+  }
+}
 
 r.use(requireAuth);
 
@@ -567,12 +614,15 @@ r.post('/approve', async (req, res) => {
         ? item.unitIds
         : (Array.isArray(saleItem?.soldUnitIds) ? saleItem.soldUnitIds.slice(0, Math.max(0, Number(item.qty || 0))) : []);
       if (unitIds.length > 0) {
-        await returnSerializedUnits({
+        const returnedUnits = await returnSerializedUnits({
           unitIds,
           branchId: rfd.branchId,
           inventoryType,
           saleId: String(saleRef._id || '')
         });
+        try {
+          await restoreComboUnits(saleRef, returnedUnits);
+        } catch {}
       }
     }
   }

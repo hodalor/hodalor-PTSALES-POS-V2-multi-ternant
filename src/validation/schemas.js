@@ -8,14 +8,28 @@ function requiredIdSchema(message = 'id is required') {
 }
 
 const saleItemSchema = z.object({
-  productId: requiredIdSchema('Each item must include productId and positive qty'),
+  productId: z.union([z.string(), z.number(), z.null(), z.undefined()]).transform((value) => String(value || '').trim()),
+  lineType: z.optional(z.union([z.string(), z.null()])).transform((value) => String(value || '').trim()),
+  comboId: z.optional(z.union([z.string(), z.number(), z.null()])).transform((value) => String(value || '').trim()),
+  promotionId: z.optional(z.union([z.string(), z.number(), z.null()])).transform((value) => String(value || '').trim()),
   qty: zLooseNumber.refine((value) => Number.isFinite(value) && value > 0, 'Each item must include productId and positive qty'),
   variantId: z.optional(z.union([z.string(), z.number(), z.null()])).transform((value) => String(value || '').trim()),
   price: z.optional(zLooseNumber),
   requestedPrice: z.optional(zLooseNumber),
   soldUnitIds: z.optional(z.array(z.union([z.string(), z.number()])).default([])),
   unitIds: z.optional(z.array(z.union([z.string(), z.number()])).default([]))
-}).passthrough();
+}).passthrough().superRefine((item, ctx) => {
+  const combo = String(item.lineType || '') === 'combo' || String(item.comboId || '').trim();
+  if (combo) {
+    if (!String(item.comboId || '').trim() || !String(item.promotionId || '').trim()) {
+      ctx.addIssue({ code: 'custom', message: 'Combo sales must include the promotion and combo', path: ['comboId'] });
+    }
+    return;
+  }
+  if (!String(item.productId || '').trim()) {
+    ctx.addIssue({ code: 'custom', message: 'Each item must include productId and positive qty', path: ['productId'] });
+  }
+});
 
 export const saleCreateSchema = z.object({
   branchId: requiredIdSchema('Missing branchId'),
