@@ -116,7 +116,7 @@ function Sidebar({ collapsed, onNavigate }) {
   }
   useEffect(() => {
     const path = String(location.pathname || '');
-    const isRetail = ['/pos','/purchases','/transfers','/adjustments','/refunds','/invoices'].some(prefix => path.startsWith(prefix));
+    const isRetail = ['/pos','/promotions','/purchases','/transfers','/adjustments','/refunds','/invoices'].some(prefix => path.startsWith(prefix));
     const isDistribution = ['/wholesale-goods','/wholesale-pos','/wholesale-invoices','/wholesale-purchase','/wholesale-transfer','/wholesale-adjustment','/wholesale-refund'].some(prefix => path.startsWith(prefix));
     const isWarehouse = ['/warehouse-goods','/warehouse-invoices','/warehouse-purchase','/warehouse-transfer','/warehouse-adjustment','/warehouse-refund','/warehouse-approvals'].some(prefix => path.startsWith(prefix));
     const isCredit = ['/credit-control','/easybuy/'].some(prefix => path.startsWith(prefix));
@@ -186,6 +186,7 @@ function Sidebar({ collapsed, onNavigate }) {
         
         {(sectionEnabled('sections.retail') && (
           (isFeatureEnabled(settings, 'pages.retail.pos') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_pos','see_pos'])) ||
+          (isFeatureEnabled(settings, 'pages.retail.promotions') && can(['Admin','Manager','SuperAdmin'],['view_pos','see_pos','add_products'])) ||
           (isFeatureEnabled(settings, 'pages.retail.purchases') && can(['Admin','Manager','Inventory Staff','SuperAdmin'],['view_purchases','see_purchases'])) ||
           (isFeatureEnabled(settings, 'pages.retail.transfers') && can(['Admin','Manager','Inventory Staff','SuperAdmin'],['view_transfers','see_transfers'])) ||
           (isFeatureEnabled(settings, 'pages.retail.adjustments') && can(['Admin','Manager','Inventory Staff','SuperAdmin'],['view_adjustments','see_adjustments'])) ||
@@ -207,6 +208,11 @@ function Sidebar({ collapsed, onNavigate }) {
             {isFeatureEnabled(settings, 'pages.retail.pos') && can(['Admin','Manager','Cashier','SuperAdmin'],['view_pos','see_pos']) && (
             <NavLink to="/pos" className="sidebar-link" title={t('POS')}>
               <span className="sidebar-text">{t('POS')}</span>
+            </NavLink>
+            )}
+            {isFeatureEnabled(settings, 'pages.retail.promotions') && can(['Admin','Manager','SuperAdmin'],['view_pos','see_pos','add_products']) && (
+            <NavLink to="/promotions" className="sidebar-link" title={t('Promotions')}>
+              <span className="sidebar-text">{t('Promotions')}</span>
             </NavLink>
             )}
             {isFeatureEnabled(settings, 'pages.retail.purchases') && can(['Admin','Manager','Inventory Staff','SuperAdmin'],['view_purchases','see_purchases']) && (

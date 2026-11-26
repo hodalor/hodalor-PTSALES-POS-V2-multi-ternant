@@ -225,6 +225,7 @@ export const TENANT_SIDEBAR_SECTIONS = [
     description: 'Matches the Retail group on the sidebar.',
     items: [
       { label: 'POS', keys: ['pages.retail.pos'] },
+      { label: 'Promotions', keys: ['pages.retail.promotions'] },
       { label: 'Purchases', keys: ['pages.retail.purchases', 'modules.purchases', 'grants.view_purchases', 'grants.add_purchases', 'grants.edit_purchases', 'grants.approve_purchases'] },
       { label: 'Transfers', keys: ['pages.retail.transfers', 'modules.transfers', 'grants.view_transfers', 'grants.add_transfers', 'grants.edit_transfers', 'grants.approve_transfers'] },
       { label: 'Adjustments', keys: ['pages.retail.adjustments', 'modules.adjustments', 'grants.view_adjustments', 'grants.add_adjustments', 'grants.edit_adjustments', 'grants.approve_adjustments'] },

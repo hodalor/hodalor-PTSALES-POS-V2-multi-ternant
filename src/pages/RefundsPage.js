@@ -375,18 +375,33 @@ function RefundsPage({ mode = 'retail' }) {
         requestedAmount = Math.round(v * 100) / 100;
       }
       const restockItems = restock || refundType === 'partial'
-        ? (sale.items || []).map((item, index) => {
+        ? (sale.items || []).flatMap((item, index) => {
             const key = `${index}:${item.sku || ''}`;
             const unitIds = Array.isArray(serializedSelections[key]) ? serializedSelections[key] : [];
             const soldUnits = Array.isArray(item.soldUnits) ? item.soldUnits : [];
             const qty = soldUnits.length > 0 ? unitIds.length : Number(item.qty || 0);
-            return {
+            if (String(item.lineType || '') === 'combo' && Array.isArray(item.components) && item.components.length > 0) {
+              return item.components.map((component) => {
+                const componentUnitIds = Array.isArray(component.unitIds) ? component.unitIds.map(String).filter(Boolean) : [];
+                const componentQty = componentUnitIds.length > 0
+                  ? componentUnitIds.length
+                  : qty * Number(component.qty || 0);
+                return {
+                  sku: component.sku || '',
+                  productId: component.productId || '',
+                  variantId: component.variantId || '',
+                  qty: componentQty,
+                  unitIds: componentUnitIds
+                };
+              }).filter((component) => component.qty > 0);
+            }
+            return [{
               sku: item.sku,
               productId: item.productId || '',
               variantId: item.variantId || '',
               qty,
               unitIds
-            };
+            }];
           }).filter(item => item.qty > 0)
         : [];
       const payload = {

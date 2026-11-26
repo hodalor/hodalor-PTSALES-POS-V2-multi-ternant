@@ -31,6 +31,8 @@ import InlineSpinner from '../components/InlineSpinner';
 import { refreshAffectedProducts } from '../utils/inventoryRefresh';
 import { useAppLanguage } from '../utils/localization';
 import { getBranchStock } from '../utils/branchStock';
+import { comboSetsAvailable, isComboLine, promotionAppliesToBranch, roundPromoMoney } from '../utils/promotions';
+import * as promotionsApi from '../api/promotions';
 import { filterBranchesByType, normalizeBranchType } from '../utils/branchTypes';
 import { getProductBrand, getProductSearchText } from '../utils/productSearch';
 import { evaluateCustomerCreditSale, getLiveCustomerOutstanding, parseCreditLimit } from '../utils/customerCredit';
@@ -38,6 +40,57 @@ import { evaluateCustomerCreditSale, getLiveCustomerOutstanding, parseCreditLimi
 function reportQueuedSalesImeiDebug() {}
 function reportEbkTmpReceiptDebug() {}
 function reportQuantityQueueTamaleDebug() {}
+
+function cartAffectedProductIds(items = []) {
+  const ids = [];
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    if (isComboLine(item)) {
+      (Array.isArray(item.components) ? item.components : []).forEach((component) => {
+        if (component?.productId) ids.push(String(component.productId));
+      });
+      return;
+    }
+    if (item?.productId) ids.push(String(item.productId));
+  });
+  return Array.from(new Set(ids));
+}
+
+function toSalePayloadItem(item, selectedPriceTier) {
+  if (isComboLine(item)) {
+    return {
+      lineType: 'combo',
+      comboId: item.comboId,
+      promotionId: item.promotionId,
+      name: item.name,
+      sku: item.sku || '',
+      spec: item.spec || '',
+      qty: item.quantity,
+      price: item.price,
+      taxRatePercent: 0,
+      taxAmount: 0,
+      priceTier: 'retail',
+      productId: '',
+      variantId: '',
+      soldUnitIds: [],
+      soldUnits: []
+    };
+  }
+  return {
+    name: item.name,
+    brand: item.brand || '',
+    sku: item.sku,
+    spec: item.spec,
+    qty: item.quantity,
+    price: item.price,
+    taxRatePercent: Number(item.taxRatePercent || 0),
+    taxAmount: Number(item.taxAmount || 0),
+    priceTier: item.priceTier || selectedPriceTier,
+    productId: item.productId,
+    variantId: item.variantId || null,
+    soldUnitIds: item.unitId ? [item.unitId] : [],
+    soldUnits: item.unitId ? [{ unitId: item.unitId, imei: item.imei || '', serialNumber: item.serialNumber || '' }] : []
+  };
+}
 
 function createReservationToken() {
   return (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `RES-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -262,6 +315,10 @@ function PosPage({ mode = 'retail' }) {
   const [heldOpen, setHeldOpen] = useState(false);
   const [discountOpen, setDiscountOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(true);
+  const [promotionsOpen, setPromotionsOpen] = useState(false);
+  const [promotionSort, setPromotionSort] = useState('newest');
+  const [promotions, setPromotions] = useState([]);
+  const [promotionEpoch, setPromotionEpoch] = useState(0);
   const [customerOpen, setCustomerOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
     return window.innerWidth > 1440;
@@ -277,6 +334,57 @@ function PosPage({ mode = 'retail' }) {
   });
   const toast = useToast();
   const addItemToCart = (payload) => dispatch(addItem({ ...payload, scope: cartScope }));
+  useEffect(() => {
+    if (isNonRetail) return undefined;
+    let alive = true;
+    promotionsApi.list({ available: true })
+      .then((rows) => { if (alive) setPromotions(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (alive) setPromotions([]); });
+    return () => { alive = false; };
+  }, [isNonRetail, activeBranchId, promotionEpoch]);
+  const visiblePromotions = useMemo(() => {
+    const list = promotions.filter((promotion) => promotionAppliesToBranch(promotion, activeBranchId));
+    return list.slice().sort((a, b) => {
+      const aTime = new Date(a.createdAt || 0).getTime();
+      const bTime = new Date(b.createdAt || 0).getTime();
+      if (promotionSort === 'oldest') return aTime - bTime;
+      if (promotionSort === 'name') return String(a.name || '').localeCompare(String(b.name || ''));
+      return bTime - aTime;
+    });
+  }, [activeBranchId, promotionSort, promotions]);
+  function addPromotionCombo(promotion, combo) {
+    const available = comboSetsAvailable(combo, products, activeBranchId, cart.items);
+    if (available < 1) {
+      toast.show(t('Not enough stock for this combo'), { type: 'error' });
+      return;
+    }
+    const profitAmount = roundPromoMoney(combo.profitAmount);
+    const promoPrice = roundPromoMoney(combo.promoPrice);
+    addItemToCart({
+      lineType: 'combo',
+      comboId: combo.id,
+      promotionId: promotion._id,
+      promotionName: promotion.name,
+      name: combo.name,
+      image: combo.image || '',
+      sku: `COMBO-${String(combo.id || '').slice(0, 8)}`,
+      spec: (combo.items || []).map((item) => `${item.qty} x ${item.name}`).join(', '),
+      price: promoPrice,
+      costPrice: Math.max(0, roundPromoMoney(promoPrice - profitAmount)),
+      profitAmount,
+      quantity: 1,
+      productId: '',
+      variantId: '',
+      priceTier: 'retail',
+      components: (combo.items || []).map((item) => ({
+        productId: item.productId,
+        variantId: item.variantId || '',
+        name: item.name || '',
+        qty: Number(item.qty || 0),
+        units: Array.isArray(item.units) ? item.units : []
+      }))
+    });
+  }
   const removeItemFromCart = (id) => dispatch(removeItem({ id, scope: cartScope }));
   const removeUnitFromCart = (unitId) => dispatch(removeItemByUnitId({ unitId, scope: cartScope }));
   const setCartItemQuantity = (id, quantity) => dispatch(setQuantity({ id, quantity, scope: cartScope }));
@@ -707,6 +815,7 @@ function PosPage({ mode = 'retail' }) {
     setEasyBuyAmountPaidNow('');
     setEasyBuyDueDate('');
     resetSaleDateTime();
+    setPromotionEpoch((value) => value + 1);
   }
 
   const refreshDiscountRequests = useCallback(async () => {
@@ -807,21 +916,7 @@ function PosPage({ mode = 'retail' }) {
       inventoryType,
       defaultPriceTier: selectedPriceTier,
       loyaltyPointsRedeemed: (settings.loyaltyEnabled && checkoutCustomer) ? redeemable : 0,
-      items: cart.items.map(i => ({
-        name: i.name,
-        brand: i.brand || '',
-        sku: i.sku,
-        spec: i.spec,
-        qty: i.quantity,
-        price: i.price,
-        taxRatePercent: Number(i.taxRatePercent || 0),
-        taxAmount: Number(i.taxAmount || 0),
-        priceTier: i.priceTier || selectedPriceTier,
-        productId: i.productId,
-        variantId: i.variantId || null,
-        soldUnitIds: i.unitId ? [i.unitId] : [],
-        soldUnits: i.unitId ? [{ unitId: i.unitId, imei: i.imei || '', serialNumber: i.serialNumber || '' }] : []
-      })),
+      items: cart.items.map((i) => toSalePayloadItem(i, selectedPriceTier)),
       subtotal,
       discount,
       tax,
@@ -866,7 +961,7 @@ function PosPage({ mode = 'retail' }) {
       branchName,
       checkoutCustomer,
       soldUnitIdsForDebug: cart.items.map((item) => item.unitId).filter(Boolean).map(String),
-      affectedProductIds: Array.from(new Set(cart.items.map(i => i.productId).filter(Boolean)))
+      affectedProductIds: cartAffectedProductIds(cart.items)
     };
   }
 
@@ -1536,7 +1631,6 @@ function PosPage({ mode = 'retail' }) {
     setEasyBuyDueDate('');
     setSelectedCreditPackageName('');
     resetSaleDateTime();
-    resetSaleDateTime();
     setPayments([{ type: 'cash', amount: '' }]);
     toast.show('Sale held', { type: 'success' });
   }
@@ -1718,21 +1812,7 @@ function PosPage({ mode = 'retail' }) {
       inventoryType,
       defaultPriceTier: selectedPriceTier,
       loyaltyPointsRedeemed: (settings.loyaltyEnabled && checkoutCustomer) ? redeemable : 0,
-      items: cart.items.map(i => ({
-        name: i.name,
-        brand: i.brand || '',
-        sku: i.sku,
-        spec: i.spec,
-        qty: i.quantity,
-        price: i.price,
-        taxRatePercent: Number(i.taxRatePercent || 0),
-        taxAmount: Number(i.taxAmount || 0),
-        priceTier: i.priceTier || selectedPriceTier,
-        productId: i.productId,
-        variantId: i.variantId || null,
-        soldUnitIds: i.unitId ? [i.unitId] : [],
-        soldUnits: i.unitId ? [{ unitId: i.unitId, imei: i.imei || '', serialNumber: i.serialNumber || '' }] : []
-      })),
+      items: cart.items.map((i) => toSalePayloadItem(i, selectedPriceTier)),
       subtotal,
       discount,
       tax,
@@ -1960,7 +2040,7 @@ function PosPage({ mode = 'retail' }) {
         }
       });
       // #endregion
-      const affectedProductIds = Array.from(new Set(cart.items.map(i => i.productId).filter(Boolean)));
+      const affectedProductIds = cartAffectedProductIds(cart.items);
       const shouldFinalizeLocally = Boolean(savedOnlineSale) || startedOffline;
       if (!shouldFinalizeLocally && queuedAfterHttpFailure) {
         await releaseSerializedCartItemsWithToken(cart.items, sale.reservationToken);
@@ -2129,6 +2209,7 @@ function PosPage({ mode = 'retail' }) {
         }));
       }
       clearActiveCart();
+      setPromotionEpoch((value) => value + 1);
       rotateReservationToken();
       setSelectedCustomerId('');
       setCustomerQuery('');
@@ -2309,6 +2390,15 @@ function PosPage({ mode = 'retail' }) {
                 >
                   <svg viewBox="0 0 24 24" width="14" height="14" fill="none" aria-hidden="true"><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </button>
+                {!isNonRetail ? (
+                  <button
+                    type="button"
+                    className={promotionsOpen ? 'btn btn-primary' : 'btn'}
+                    onClick={() => setPromotionsOpen((open) => !open)}
+                  >
+                    {t('Promotions')}
+                  </button>
+                ) : null}
               </div>
               <div className="pos-page-subtitle">
                 {isWholesale
@@ -2383,6 +2473,53 @@ function PosPage({ mode = 'retail' }) {
           ) : null}
         </div>
         <div className="pos-products-scroll">
+        {!isNonRetail && promotionsOpen ? (
+          <div className="pos-promotions-panel">
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 12 }}>
+              <strong>{t('Promotions')}</strong>
+              <select className="select" value={promotionSort} onChange={(event) => setPromotionSort(event.target.value)} style={{ width: 180 }}>
+                <option value="newest">{t('Newest promotion')}</option>
+                <option value="oldest">{t('Oldest promotion')}</option>
+                <option value="name">{t('Promotion name')}</option>
+              </select>
+            </div>
+            {visiblePromotions.length === 0 ? <div style={{ color: '#64748b' }}>{t('No active promotions for this branch.')}</div> : null}
+            <div style={{ display: 'grid', gap: 12 }}>
+              {visiblePromotions.map((promotion) => (
+                <div key={promotion._id} className="card" style={{ padding: 12 }}>
+                  <div style={{ fontWeight: 800, marginBottom: 8 }}>{promotion.name}</div>
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    {(promotion.combos || []).map((combo) => {
+                      const available = comboSetsAvailable(combo, products, activeBranchId, cart.items);
+                      return (
+                        <button
+                          key={combo.id}
+                          type="button"
+                          className="btn"
+                          onClick={() => addPromotionCombo(promotion, combo)}
+                          disabled={available < 1}
+                          style={{ display: 'flex', justifyContent: 'space-between', gap: 12, textAlign: 'left', width: '100%', alignItems: 'center' }}
+                        >
+                          <span style={{ display: 'flex', gap: 10, alignItems: 'center', minWidth: 0 }}>
+                            {combo.image ? (
+                              <img src={combo.image} alt="" style={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 8, flex: '0 0 auto' }} />
+                            ) : null}
+                            <span style={{ minWidth: 0 }}>
+                              <strong>{combo.name}</strong>
+                              <span style={{ display: 'block', color: '#64748b', fontSize: 12 }}>{(combo.items || []).map((item) => `${item.qty} x ${item.name}`).join(', ')}</span>
+                              <span style={{ display: 'block', color: '#64748b', fontSize: 12 }}>{t('Available')}: {available}</span>
+                            </span>
+                          </span>
+                          <strong>{formatCurrency(Number(combo.promoPrice || 0), settings)}</strong>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {missingInventoryBranch && (
           <div className="card" style={{ marginTop: 12, color: '#92400e', background: '#fffbeb', border: '1px solid #fde68a' }}>
             {isWarehouse
@@ -2714,7 +2851,10 @@ function PosPage({ mode = 'retail' }) {
             return (
             <li key={group.key} className="cart-item">
               <div className="cart-title">
-                <div style={{ paddingRight: 28 }}>{item.name}</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', paddingRight: 28 }}>
+                  {item.image ? <img src={item.image} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 6, flex: '0 0 auto' }} /> : null}
+                  <span>{item.name}</span>
+                </div>
                 {!isWarehouse && item.brand ? <small style={{ color: '#64748b' }}>{item.brand}</small> : null}
                 {!isWarehouse && item.spec ? <small style={{ color: '#64748b' }}>{item.spec}</small> : null}
                 {!isWarehouse && item.sku ? <small>{item.sku}</small> : null}
@@ -2767,6 +2907,17 @@ function PosPage({ mode = 'retail' }) {
                 value={group.quantity}
                 onChange={e => {
                   if (group.serialized) return;
+                  const requested = Math.max(1, Math.floor(Number(e.target.value) || 1));
+                  if (isComboLine(item)) {
+                    const available = comboSetsAvailable({ items: item.components }, products, activeBranchId, cart.items, item.id);
+                    if (requested > available) {
+                      toast.show(t('Not enough stock for this combo'), { type: 'error' });
+                      setCartItemQuantity(item.id, Math.max(1, available));
+                      return;
+                    }
+                    setCartItemQuantity(item.id, requested);
+                    return;
+                  }
                   setCartItemQuantity(item.id, Number(e.target.value));
                 }}
                 className="input pos-cart-qty"
@@ -2783,7 +2934,7 @@ function PosPage({ mode = 'retail' }) {
                       setCartItemPricing({ id: unit.id, priceTier: tier, price: nextPrice });
                     });
                   }}
-                  disabled={priceTierOptions.length <= 1}
+                  disabled={isComboLine(item) || priceTierOptions.length <= 1}
                 >
                   {priceTierOptions.map((option) => (
                     <option key={option.value} value={option.value}>{option.label}</option>

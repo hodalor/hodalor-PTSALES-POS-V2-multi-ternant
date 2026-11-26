@@ -42,6 +42,14 @@ export function getReservedLineQuantity(items = [], productId = '', variantId = 
   const vid = String(variantId || '');
   if (!pid) return 0;
   return (Array.isArray(items) ? items : []).reduce((sum, item) => {
+    if (String(item?.lineType || '') === 'combo' || String(item?.comboId || '').trim()) {
+      const sets = Math.abs(Number(item?.qty ?? item?.quantity ?? 0));
+      return sum + (Array.isArray(item?.components) ? item.components : []).reduce((inner, component) => {
+        if (String(component?.productId || '') !== pid) return inner;
+        if (String(component?.variantId || '') !== vid) return inner;
+        return inner + (sets * Math.abs(Number(component?.qty || 0)));
+      }, 0);
+    }
     if (String(item?.productId || '') !== pid) return sum;
     if (String(item?.variantId || '') !== vid) return sum;
     const qty = Math.abs(Number(item?.qty ?? item?.quantity ?? item?.delta ?? 0));

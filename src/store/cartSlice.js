@@ -85,7 +85,9 @@ const cartSlice = createSlice({
         const { scope: scopeKey, ...itemPayload } = action.payload || {};
         const scope = getCartScope(state, scopeKey);
         const existingIndex = scope.items.findIndex(i =>
-          String(i.productId || '') === String(itemPayload.productId || '')
+          String(i.lineType || '') === String(itemPayload.lineType || '')
+          && String(i.comboId || '') === String(itemPayload.comboId || '')
+          && String(i.productId || '') === String(itemPayload.productId || '')
           && String(i.variantId || '') === String(itemPayload.variantId || '')
           && String(i.priceTier || 'retail') === String(itemPayload.priceTier || 'retail')
           && String(i.unitId || '') === String(itemPayload.unitId || '')

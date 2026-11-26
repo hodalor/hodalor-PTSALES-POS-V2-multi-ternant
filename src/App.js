@@ -36,6 +36,7 @@ import UsersPage from './pages/UsersPage';
 import PurchasesPage from './pages/PurchasesPage';
 import TransfersPage from './pages/TransfersPage';
 import AdjustmentsPage from './pages/AdjustmentsPage';
+import PromotionsPage from './pages/PromotionsPage';
 import SuppliersPage from './pages/SuppliersPage';
 import SalesPage from './pages/SalesPage';
 import CashDrawerPage from './pages/CashDrawerPage';
@@ -800,6 +801,7 @@ function App() {
             <Route path="/" element={<Navigate to={defaultLandingRoute} replace />} />
             <Route path="/dashboard" element={<ProtectedRoute feature="modules.dashboard" roles={['Admin','Manager']} grant={['view_dashboard','see_dashboard']}><DashboardPage /></ProtectedRoute>} />
             <Route path="/pos" element={<ProtectedRoute feature="pages.retail.pos" roles={['Admin','Manager','Cashier']} grant={['view_pos','see_pos']}><PosPage mode="retail" /></ProtectedRoute>} />
+            <Route path="/promotions" element={<ProtectedRoute feature="pages.retail.promotions" roles={['Admin','Manager']} grant={['view_pos','see_pos','add_products']}><PromotionsPage /></ProtectedRoute>} />
             <Route path="/wholesale-pos" element={<ProtectedRoute feature="pages.distribution.pos" roles={['Admin','Manager','Cashier']} grant={['view_wholesale_pos']}><PosPage mode="wholesale" /></ProtectedRoute>} />
             <Route path="/warehouse-pos" element={<ProtectedRoute feature="pages.warehouse.pos" roles={['Admin','Manager','Cashier']} grant={['view_warehouse_pos']}><PosPage mode="warehouse" /></ProtectedRoute>} />
             <Route path="/wholesale-goods" element={<ProtectedRoute feature="pages.distribution.goods" roles={['Admin','Manager','Inventory Staff','Cashier']} grant={['view_distribution_products']}><WholesaleGoodsPage /></ProtectedRoute>} />

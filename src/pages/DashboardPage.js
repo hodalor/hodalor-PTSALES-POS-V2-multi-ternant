@@ -577,19 +577,25 @@ function DashboardPage() {
         if (customerRow) customerRow.sales += 1;
       }
       for (const it of sale.items) {
-        itemsSold += it.qty;
-        const prod = productById.get(String(it.productId || '')) || products.find((p) => p.sku === it.sku);
-        const cat = String(prod?.category || categoryBySku.get(String(it.sku || '').trim()) || '').trim() || t('Uncategorized');
-        categoryTotals[cat] = (categoryTotals[cat] || 0) + it.qty;
-        productUnits[it.sku] = (productUnits[it.sku] || 0) + it.qty;
+        const qty = Number(it.qty) || 0;
+        itemsSold += qty;
+        const isCombo = String(it.lineType || '') === 'combo' || String(it.comboId || '').trim();
+        const prod = isCombo ? null : (productById.get(String(it.productId || '')) || products.find((p) => p.sku === it.sku));
+        const price = Number(it.price) || 0;
+        const cat = isCombo
+          ? t('Promotions')
+          : (String(prod?.category || categoryBySku.get(String(it.sku || '').trim()) || '').trim() || t('Uncategorized'));
+        categoryTotals[cat] = (categoryTotals[cat] || 0) + qty;
+        if (!isCombo && it.sku) productUnits[it.sku] = (productUnits[it.sku] || 0) + qty;
 
-        const pid = it.productId || '';
-        const key = `${pid}:${it.variantId || ''}`;
+        const pid = isCombo ? `combo:${it.comboId || it.name || ''}` : (it.productId || '');
+        const key = `${pid}:${isCombo ? '' : (it.variantId || '')}`;
         if (!productProfit.has(key)) productProfit.set(key, { key, name: it.name || it.sku || '—', units: 0, revenue: 0, cost: 0, profit: 0 });
         const row = productProfit.get(key);
-        const qty = Number(it.qty) || 0;
-        const price = Number(it.price) || 0;
-        const cp = Number(prod?.costPrice || 0);
+        const declaredProfit = Number(it.profitAmount);
+        const cp = isCombo
+          ? (Number.isFinite(declaredProfit) ? Math.max(0, price - declaredProfit) : Number(it.costPrice || 0))
+          : Number(prod?.costPrice || 0);
         row.units += qty;
         row.revenue += qty * price;
         row.cost += qty * (Number.isFinite(cp) ? cp : 0);
