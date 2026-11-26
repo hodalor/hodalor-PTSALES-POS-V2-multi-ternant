@@ -334,14 +334,6 @@ function Header({ onToggleSidebar, sidebarCollapsed = false }) {
   return (
     <div className="topbar">
       <div className="brand">
-        <button
-          className="hamburger"
-          aria-label={sidebarCollapsed ? t('Show sidebar') : t('Hide sidebar')}
-          onClick={() => { if (onToggleSidebar) onToggleSidebar(); }}
-          title={sidebarCollapsed ? t('Show sidebar') : t('Hide sidebar')}
-        >
-          <svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2"/></svg>
-        </button>
         <img
           src={settings.clientLogoUrl || '/clientlogo512.png'}
           alt="logo"
@@ -368,6 +360,17 @@ function Header({ onToggleSidebar, sidebarCollapsed = false }) {
           style={{ background: 'transparent', border: 'none', padding: 0, textAlign: 'left', cursor: auth.isAuthenticated ? 'pointer' : 'default' }}
         >
           <strong>{settings.clientAppName || settings.appName}</strong>
+        </button>
+        <button
+          type="button"
+          className={`hamburger sidebar-toggle${sidebarCollapsed ? ' is-collapsed' : ''}`}
+          aria-label={sidebarCollapsed ? t('Show sidebar') : t('Hide sidebar')}
+          onClick={() => { if (onToggleSidebar) onToggleSidebar(); }}
+          title={sidebarCollapsed ? t('Show sidebar') : t('Hide sidebar')}
+        >
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M14.5 6.5 9 12l5.5 5.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
         </button>
         {canChangeBranch ? (
           <BranchSelect value={currentBranchId} onChange={id => dispatch(setCurrentBranch(id))} className="select topbar-branch-select" />

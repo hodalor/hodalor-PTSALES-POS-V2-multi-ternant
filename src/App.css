@@ -3768,13 +3768,27 @@ html, body, #root {
   width: 100%;
 }
 .hamburger {
-  display: none;
-  padding: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  padding: 0;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: 999px;
   background: #fff;
+  color: #0f172a;
+  cursor: pointer;
 }
-.hamburger svg { width: 18px; height: 18px; }
+.hamburger svg {
+  width: 18px;
+  height: 18px;
+  transition: transform 0.16s ease;
+}
+.hamburger.is-collapsed svg {
+  transform: rotate(180deg);
+}
 
 .breadcrumbs {
   display: flex;
