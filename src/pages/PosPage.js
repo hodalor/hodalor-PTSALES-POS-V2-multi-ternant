@@ -261,10 +261,7 @@ function PosPage({ mode = 'retail' }) {
   const [redeemPoints, setRedeemPoints] = useState('');
   const [heldOpen, setHeldOpen] = useState(false);
   const [discountOpen, setDiscountOpen] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    return window.innerWidth > 1440;
-  });
+  const [searchOpen, setSearchOpen] = useState(true);
   const [customerOpen, setCustomerOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
     return window.innerWidth > 1440;

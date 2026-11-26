@@ -152,7 +152,7 @@ function Layout({ bootstrapLoading = false }) {
     : String(location.pathname || '');
   return (
     <ChatNotificationsProvider>
-      <div className={`layout ${sidebarOpen ? 'sidebar-open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
+      <div className={`layout ${sidebarOpen ? 'sidebar-open' : ''} ${sidebarCollapsed ? 'collapsed' : ''} ${isPosRoute ? 'pos-route' : ''}`}>
         <Sidebar
           collapsed={sidebarCollapsed}
           onNavigate={() => {
@@ -162,7 +162,7 @@ function Layout({ bootstrapLoading = false }) {
         />
         {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
         <div className="content">
-          <Header onToggleSidebar={toggleSidebar} />
+          <Header onToggleSidebar={toggleSidebar} sidebarCollapsed={sidebarCollapsed} />
           {showInstall && (
             <div className="card" style={{ margin: '8px 16px', padding: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
               <div>
