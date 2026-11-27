@@ -23,7 +23,7 @@ function ProductLiveSearchField({
   const { t } = useAppLanguage();
   const hasSearch = String(query || '').trim().length > 0;
   const selectedProduct = useMemo(
-    () => (Array.isArray(allProducts) ? allProducts : products).find((product) => String(product?.id) === String(selectedProductId)) || null,
+    () => (Array.isArray(allProducts) ? allProducts : products).find((product) => String(product?.id || product?._id || '') === String(selectedProductId || '')) || null,
     [allProducts, products, selectedProductId]
   );
   const visibleProducts = Array.isArray(products) ? products.slice(0, limit) : [];
@@ -56,10 +56,11 @@ function ProductLiveSearchField({
             <div className="product-live-empty">{t(emptyText)}</div>
           ) : (
             visibleProducts.map((product) => {
-              const selected = String(product?.id) === String(selectedProductId);
+              const productKey = String(product?.id || product?._id || '');
+              const selected = productKey === String(selectedProductId || '');
               return (
                 <button
-                  key={product.id}
+                  key={productKey}
                   type="button"
                   className={`product-live-option ${selected ? 'selected' : ''}`}
                   onClick={() => onSelect(product)}

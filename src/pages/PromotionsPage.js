@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import Modal from '../components/Modal';
+import ProductLiveSearchField from '../components/ProductLiveSearchField';
 import { useToast } from '../components/ToastProvider';
 import * as promotionsApi from '../api/promotions';
 import * as productUnitsApi from '../api/productUnits';
@@ -86,6 +87,7 @@ function PromotionsPage() {
   const [saving, setSaving] = useState(false);
   const [editor, setEditor] = useState(null);
   const [unitLists, setUnitLists] = useState({});
+  const [productQueries, setProductQueries] = useState({});
   const unitListRef = useRef({});
 
   async function load() {
@@ -157,6 +159,18 @@ function PromotionsPage() {
         return next;
       });
       return { ...current, combos };
+    });
+  }
+
+  function productsMatching(query) {
+    const term = String(query || '').trim().toLowerCase();
+    if (!term) return [];
+    return products.filter((product) => {
+      const variantText = Array.isArray(product.variants)
+        ? product.variants.map((variant) => `${variant.label || ''} ${variant.sku || ''} ${variant.barcode || ''}`).join(' ')
+        : '';
+      const hay = `${product.name || ''} ${product.sku || ''} ${product.barcode || ''} ${product.category || ''} ${variantText}`.toLowerCase();
+      return hay.includes(term);
     });
   }
 
@@ -468,16 +482,19 @@ function PromotionsPage() {
                     const each = Math.max(1, Number(item.qty || 1));
                     const unitReady = !serialized || (selectedCount >= each && selectedCount % each === 0);
                     return (
-                      <div key={`${comboIndex}-${itemIndex}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(120px, 0.8fr) 90px auto', gap: 8, alignItems: 'end' }}>
-                        <label>
-                          <div className="field-label">Product</div>
-                          <select className="select" value={item.productId} onChange={(event) => patchComboItem(comboIndex, itemIndex, { productId: event.target.value, variantId: '', units: [] })}>
-                            <option value="">Select product</option>
-                            {products.map((entry) => (
-                              <option key={entry.id || entry._id} value={entry.id || entry._id}>{entry.name}{String(entry.trackType || '') === 'serialized' ? ' (serialized)' : ''}</option>
-                            ))}
-                          </select>
-                        </label>
+                      <div key={`${comboIndex}-${itemIndex}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(120px, 0.8fr) 90px auto', gap: 8, alignItems: 'start' }}>
+                        <ProductLiveSearchField
+                          label="Product"
+                          query={productQueries[`${comboIndex}:${itemIndex}`] || ''}
+                          onQueryChange={(value) => setProductQueries((current) => ({ ...current, [`${comboIndex}:${itemIndex}`]: value }))}
+                          products={productsMatching(productQueries[`${comboIndex}:${itemIndex}`] || '')}
+                          allProducts={products}
+                          selectedProductId={item.productId}
+                          onSelect={(entry) => {
+                            patchComboItem(comboIndex, itemIndex, { productId: entry.id || entry._id, variantId: '', units: [] });
+                            setProductQueries((current) => ({ ...current, [`${comboIndex}:${itemIndex}`]: '' }));
+                          }}
+                        />
                         <label>
                           <div className="field-label">Variant</div>
                           <select className="select" value={item.variantId} onChange={(event) => patchComboItem(comboIndex, itemIndex, { variantId: event.target.value, units: [] })} disabled={variants.length === 0}>
@@ -491,7 +508,7 @@ function PromotionsPage() {
                           <div className="field-label">Qty per sale</div>
                           <input className="input" type="number" min="1" value={item.qty} onChange={(event) => patchComboItem(comboIndex, itemIndex, { qty: Math.max(1, Math.floor(Number(event.target.value) || 1)) })} />
                         </label>
-                        <button className="btn" onClick={() => patchCombo(comboIndex, { items: combo.items.filter((_, index) => index !== itemIndex) })} disabled={combo.items.length <= 2}>Remove</button>
+                        <button className="btn" style={{ marginTop: 22 }} onClick={() => patchCombo(comboIndex, { items: combo.items.filter((_, index) => index !== itemIndex) })} disabled={combo.items.length <= 2}>Remove</button>
                         <div style={{ gridColumn: '1 / -1', color: '#64748b', fontSize: 12 }}>
                           Normal price {formatCurrency(componentUnitPrice(product, item.variantId), settings)}
                           {serialized
